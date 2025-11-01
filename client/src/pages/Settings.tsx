@@ -4,7 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2 } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +69,14 @@ export default function Settings() {
   });
   
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
+
+  // Password change states
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  // Data reset confirmation dialog
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
 
   // Load settings and locker groups on mount
   useEffect(() => {
@@ -138,6 +156,64 @@ export default function Settings() {
       toast({
         title: "저장 실패",
         description: "그룹 저장 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleChangePassword = () => {
+    const storedPassword = localStorage.getItem("staff_password") || "1234";
+
+    if (currentPassword !== storedPassword) {
+      toast({
+        title: "비밀번호 변경 실패",
+        description: "현재 비밀번호가 일치하지 않습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      toast({
+        title: "비밀번호 변경 실패",
+        description: "새 비밀번호는 최소 4자 이상이어야 합니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "비밀번호 변경 실패",
+        description: "새 비밀번호가 일치하지 않습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    localStorage.setItem("staff_password", newPassword);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    
+    toast({
+      title: "비밀번호 변경 완료",
+      description: "비밀번호가 성공적으로 변경되었습니다.",
+    });
+  };
+
+  const handleResetData = () => {
+    try {
+      localDb.clearAllData();
+      toast({
+        title: "데이터 초기화 완료",
+        description: "모든 입실 기록과 매출 정보가 삭제되었습니다.",
+      });
+      setIsResetDialogOpen(false);
+    } catch (error) {
+      toast({
+        title: "초기화 실패",
+        description: "데이터 초기화 중 오류가 발생했습니다.",
         variant: "destructive",
       });
     }
@@ -242,6 +318,100 @@ export default function Settings() {
                   data-testid="input-foreigner-price"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 비밀번호 변경 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Lock className="h-5 w-5" />
+                비밀번호 변경
+              </CardTitle>
+              <CardDescription>
+                시스템 로그인 비밀번호를 변경합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">현재 비밀번호</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="현재 비밀번호를 입력하세요"
+                  data-testid="input-current-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="newPassword">새 비밀번호</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="새 비밀번호 (최소 4자)"
+                  data-testid="input-new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">새 비밀번호 확인</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="새 비밀번호를 다시 입력하세요"
+                  data-testid="input-confirm-password"
+                />
+              </div>
+              <Button 
+                onClick={handleChangePassword}
+                disabled={!currentPassword || !newPassword || !confirmPassword}
+                className="w-full"
+                data-testid="button-change-password"
+              >
+                <Lock className="h-4 w-4 mr-2" />
+                비밀번호 변경
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* 데이터 관리 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                데이터 관리
+              </CardTitle>
+              <CardDescription>
+                입실 기록과 매출 정보를 관리합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-destructive mb-1">데이터 초기화</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      모든 입실 기록과 매출 정보를 삭제합니다. 시스템 설정과 락커 그룹 설정은 유지됩니다.
+                    </p>
+                    <Button
+                      variant="destructive"
+                      onClick={() => setIsResetDialogOpen(true)}
+                      data-testid="button-reset-data"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      모든 데이터 초기화
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                💡 참고: 1년 이상 된 데이터는 자동으로 삭제됩니다.
+              </p>
             </CardContent>
           </Card>
 
@@ -373,6 +543,36 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Data Reset Confirmation Dialog */}
+      <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              데이터 초기화 확인
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              정말로 모든 입실 기록과 매출 정보를 삭제하시겠습니까?
+              <br />
+              <br />
+              <strong className="text-destructive">이 작업은 되돌릴 수 없습니다.</strong>
+              <br />
+              시스템 설정과 락커 그룹 설정은 유지됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetData}
+              className="bg-destructive hover:bg-destructive/90"
+              data-testid="button-confirm-reset"
+            >
+              초기화
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
