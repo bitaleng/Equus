@@ -2,11 +2,15 @@ import {
   lockerLogs, 
   lockerDailySummaries,
   systemMetadata,
+  lockerGroups,
   type LockerLog, 
   type InsertLockerLog,
   type UpdateLockerLog,
   type DailySummary,
-  type InsertDailySummary
+  type InsertDailySummary,
+  type LockerGroup,
+  type InsertLockerGroup,
+  type UpdateLockerGroup
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, lt, desc, asc, sql } from "drizzle-orm";
@@ -35,6 +39,13 @@ export interface IStorage {
   getSetting(key: string): Promise<string | undefined>;
   setSetting(key: string, value: string): Promise<void>;
   getAllSettings(): Promise<Record<string, string>>;
+  
+  // Locker Group operations
+  createLockerGroup(group: InsertLockerGroup): Promise<LockerGroup>;
+  updateLockerGroup(id: string, update: UpdateLockerGroup): Promise<LockerGroup | undefined>;
+  deleteLockerGroup(id: string): Promise<void>;
+  getLockerGroup(id: string): Promise<LockerGroup | undefined>;
+  getAllLockerGroups(): Promise<LockerGroup[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -281,6 +292,59 @@ export class DatabaseStorage implements IStorage {
       settings[row.key] = row.value;
     }
     return settings;
+  }
+
+  /**
+   * 락커 그룹 생성
+   */
+  async createLockerGroup(group: InsertLockerGroup): Promise<LockerGroup> {
+    const [created] = await db
+      .insert(lockerGroups)
+      .values(group)
+      .returning();
+    return created;
+  }
+
+  /**
+   * 락커 그룹 수정
+   */
+  async updateLockerGroup(id: string, update: UpdateLockerGroup): Promise<LockerGroup | undefined> {
+    const [updated] = await db
+      .update(lockerGroups)
+      .set({ ...update, updatedAt: new Date() })
+      .where(eq(lockerGroups.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  /**
+   * 락커 그룹 삭제
+   */
+  async deleteLockerGroup(id: string): Promise<void> {
+    await db
+      .delete(lockerGroups)
+      .where(eq(lockerGroups.id, id));
+  }
+
+  /**
+   * 락커 그룹 조회
+   */
+  async getLockerGroup(id: string): Promise<LockerGroup | undefined> {
+    const [group] = await db
+      .select()
+      .from(lockerGroups)
+      .where(eq(lockerGroups.id, id));
+    return group || undefined;
+  }
+
+  /**
+   * 모든 락커 그룹 조회 (정렬 순서대로)
+   */
+  async getAllLockerGroups(): Promise<LockerGroup[]> {
+    return await db
+      .select()
+      .from(lockerGroups)
+      .orderBy(asc(lockerGroups.sortOrder), asc(lockerGroups.startNumber));
   }
 }
 
