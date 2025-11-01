@@ -11,12 +11,12 @@ const SEOUL_TIMEZONE = 'Asia/Seoul';
 /**
  * 주어진 시간이 속한 비즈니스 데이를 계산 (KST 기준)
  */
-export function getBusinessDay(date: Date = new Date()): string {
+export function getBusinessDay(date: Date = new Date(), businessDayStartHour: number = 10): string {
   // 서울 시간대로 변환
   const seoulDate = toZonedTime(date, SEOUL_TIMEZONE);
   const hour = seoulDate.getHours();
   
-  if (hour < 10) {
+  if (hour < businessDayStartHour) {
     const yesterday = new Date(seoulDate);
     yesterday.setDate(yesterday.getDate() - 1);
     return formatDate(yesterday);
@@ -34,8 +34,8 @@ export function getTimeType(date: Date = new Date()): '주간' | '야간' {
   return (hour >= 7 && hour < 19) ? '주간' : '야간';
 }
 
-export function getBasePrice(timeType: '주간' | '야간'): number {
-  return timeType === '주간' ? 10000 : 13000;
+export function getBasePrice(timeType: '주간' | '야간', dayPrice: number = 10000, nightPrice: number = 13000): number {
+  return timeType === '주간' ? dayPrice : nightPrice;
 }
 
 function formatDate(date: Date): string {
@@ -45,10 +45,12 @@ function formatDate(date: Date): string {
 export function calculateFinalPrice(
   basePrice: number,
   optionType: 'none' | 'discount' | 'custom' | 'foreigner',
-  optionAmount?: number
+  optionAmount?: number,
+  discountAmount: number = 2000,
+  foreignerPrice: number = 25000
 ): number {
-  if (optionType === 'foreigner') return 25000;
-  if (optionType === 'discount') return basePrice - 2000;
+  if (optionType === 'foreigner') return foreignerPrice;
+  if (optionType === 'discount') return basePrice - discountAmount;
   if (optionType === 'custom' && optionAmount) return basePrice - optionAmount;
   return basePrice;
 }

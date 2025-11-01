@@ -30,6 +30,8 @@ interface LockerOptionsDialogProps {
   timeType: '주간' | '야간';
   currentNotes?: string;
   currentPaymentMethod?: 'card' | 'cash';
+  discountAmount?: number;
+  foreignerPrice?: number;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash') => void;
   onCheckout: () => void;
   onCancel: () => void;
@@ -43,6 +45,8 @@ export default function LockerOptionsDialog({
   timeType,
   currentNotes = "",
   currentPaymentMethod = 'card',
+  discountAmount = 2000,
+  foreignerPrice = 25000,
   onApply,
   onCheckout,
   onCancel,
@@ -60,8 +64,8 @@ export default function LockerOptionsDialog({
   }, [currentNotes, currentPaymentMethod]);
 
   const calculateFinalPrice = () => {
-    if (selectedOption === "foreigner") return 25000;
-    if (selectedOption === "discount") return basePrice - 2000;
+    if (selectedOption === "foreigner") return foreignerPrice;
+    if (selectedOption === "discount") return basePrice - discountAmount;
     if (selectedOption === "custom" && customAmount) {
       return basePrice - parseInt(customAmount);
     }
@@ -123,7 +127,7 @@ export default function LockerOptionsDialog({
                 
                 <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
                   <RadioGroupItem value="discount" id="discount" data-testid="option-discount" />
-                  <Label htmlFor="discount" className="flex-1 cursor-pointer">할인 (2,000원)</Label>
+                  <Label htmlFor="discount" className="flex-1 cursor-pointer">할인 ({discountAmount.toLocaleString()}원)</Label>
                 </div>
                 
                 <div className="space-y-2">
@@ -145,7 +149,7 @@ export default function LockerOptionsDialog({
                 
                 <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
                   <RadioGroupItem value="foreigner" id="foreigner" data-testid="option-foreigner" />
-                  <Label htmlFor="foreigner" className="flex-1 cursor-pointer">외국인 (25,000원)</Label>
+                  <Label htmlFor="foreigner" className="flex-1 cursor-pointer">외국인 ({foreignerPrice.toLocaleString()}원)</Label>
                 </div>
               </RadioGroup>
             </div>
