@@ -17,9 +17,10 @@ interface LockerLog {
   optionType: 'none' | 'discount' | 'custom' | 'foreigner';
   optionAmount?: number;
   finalPrice: number;
+  notes?: string;
+  paymentMethod?: 'card' | 'cash';
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
-  notes?: string;
 }
 
 interface DailySummary {
@@ -272,6 +273,8 @@ export default function Home() {
           lockerNumber={selectedEntry.lockerNumber}
           basePrice={selectedEntry.basePrice}
           timeType={selectedEntry.timeType}
+          currentNotes={selectedEntry.notes}
+          currentPaymentMethod={selectedEntry.paymentMethod}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}
