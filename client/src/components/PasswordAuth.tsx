@@ -54,7 +54,7 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
           <div className="flex items-center justify-center mb-4">
             <Lock className="h-12 w-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl text-center">목욕탕 락커 관리</CardTitle>
+          <CardTitle className="text-2xl text-center">휴게텔 입실관리</CardTitle>
           <CardDescription className="text-center">
             직원 전용 - 비밀번호를 입력하세요
           </CardDescription>
