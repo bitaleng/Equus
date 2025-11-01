@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { storage } from "./storage";
 
 const app = express();
 
@@ -46,6 +47,44 @@ app.use((req, res, next) => {
   next();
 });
 
+// 1년 이상 오래된 데이터 자동 삭제 스케줄러 (매일 새벽 2시)
+let cleanupIntervalId: NodeJS.Timeout | null = null;
+let lastCleanupDate: string | null = null;
+
+async function scheduleOldDataDeletion() {
+  // 이미 스케줄러가 실행 중이면 무시 (중복 방지)
+  if (cleanupIntervalId !== null) {
+    return;
+  }
+
+  const checkAndDelete = async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const today = now.toISOString().split('T')[0];
+    
+    // 매일 새벽 2시에 실행 (하루에 한 번만)
+    if (hour === 2 && lastCleanupDate !== today) {
+      try {
+        log('Starting old data cleanup...');
+        const result = await storage.deleteOldData();
+        log(`Old data cleanup completed: deleted ${result.deletedLogs} logs and ${result.deletedSummaries} summaries`);
+        lastCleanupDate = today;
+      } catch (error) {
+        console.error('Failed to delete old data:', error);
+      }
+    }
+  };
+  
+  // 매시간마다 체크 (새벽 2시인지 확인)
+  cleanupIntervalId = setInterval(checkAndDelete, 60 * 60 * 1000);
+  
+  // 서버 시작 시 현재 시각이 새벽 2시면 실행
+  const now = new Date();
+  if (now.getHours() === 2) {
+    checkAndDelete();
+  }
+}
+
 (async () => {
   const server = await registerRoutes(app);
 
@@ -77,5 +116,7 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    // 오래된 데이터 자동 삭제 스케줄러 시작
+    scheduleOldDataDeletion();
   });
 })();
