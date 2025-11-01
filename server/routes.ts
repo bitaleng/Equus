@@ -17,13 +17,13 @@ import {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Helper function to get settings with defaults
   async function getSettings() {
-    const settings = await storage.getSettings();
+    const rawSettings = await storage.getAllSettings();
     return {
-      businessDayStartHour: settings?.businessDayStartHour ?? 10,
-      dayPrice: settings?.dayPrice ?? 10000,
-      nightPrice: settings?.nightPrice ?? 13000,
-      discountAmount: settings?.discountAmount ?? 2000,
-      foreignerPrice: settings?.foreignerPrice ?? 25000,
+      businessDayStartHour: parseInt(rawSettings.businessDayStartHour || '10'),
+      dayPrice: parseInt(rawSettings.dayPrice || '10000'),
+      nightPrice: parseInt(rawSettings.nightPrice || '13000'),
+      discountAmount: parseInt(rawSettings.discountAmount || '2000'),
+      foreignerPrice: parseInt(rawSettings.foreignerPrice || '25000'),
     };
   }
 
