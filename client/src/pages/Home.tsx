@@ -63,6 +63,7 @@ export default function Home() {
         timeType: '주간',
         basePrice: 10000,
         option: '할인',
+        optionAmount: 2000,
         finalPrice: 8000,
         notes: '단골손님',
       },
