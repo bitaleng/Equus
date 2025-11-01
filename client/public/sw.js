@@ -3,6 +3,7 @@ const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/sql-wasm.wasm',
 ];
 
 self.addEventListener('install', (event) => {
