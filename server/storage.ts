@@ -1,6 +1,7 @@
 import { 
   lockerLogs, 
   lockerDailySummaries,
+  systemMetadata,
   type LockerLog, 
   type InsertLockerLog,
   type UpdateLockerLog,
@@ -9,6 +10,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lte, lt, desc, asc, sql } from "drizzle-orm";
+import { formatInTimeZone } from "date-fns-tz";
 
 export interface IStorage {
   // Locker Log operations
@@ -160,24 +162,61 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
+   * 마지막 cleanup 실행 날짜 조회
+   */
+  async getLastCleanupDate(): Promise<string | null> {
+    const result = await db
+      .select()
+      .from(systemMetadata)
+      .where(eq(systemMetadata.key, 'last_cleanup_date'))
+      .limit(1);
+    
+    return result.length > 0 ? result[0].value : null;
+  }
+
+  /**
+   * 마지막 cleanup 실행 날짜 저장
+   */
+  async setLastCleanupDate(date: string): Promise<void> {
+    await db
+      .insert(systemMetadata)
+      .values({
+        key: 'last_cleanup_date',
+        value: date,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: systemMetadata.key,
+        set: {
+          value: date,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  /**
    * 1년 이상 오래된 데이터 자동 삭제
    */
   async deleteOldData(): Promise<{ deletedLogs: number; deletedSummaries: number }> {
-    const oneYearAgo = new Date();
+    // 타임존 안전한 날짜 계산 (Asia/Seoul 기준)
+    const now = new Date();
+    const oneYearAgo = new Date(now);
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-    const cutoffDateStr = oneYearAgo.toISOString().split('T')[0];
+    
+    // Asia/Seoul 타임존으로 YYYY-MM-DD 형식 생성
+    const cutoffDate = formatInTimeZone(oneYearAgo, 'Asia/Seoul', 'yyyy-MM-dd');
 
     try {
       // 1년 이상 오래된 로그 삭제 (타입 안전한 방식)
       const deletedLogsResult = await db
         .delete(lockerLogs)
-        .where(lt(lockerLogs.businessDay, cutoffDateStr))
+        .where(lt(lockerLogs.businessDay, cutoffDate))
         .returning({ id: lockerLogs.id });
 
       // 1년 이상 오래된 매출 집계 삭제 (타입 안전한 방식)
       const deletedSummariesResult = await db
         .delete(lockerDailySummaries)
-        .where(lt(lockerDailySummaries.businessDay, cutoffDateStr))
+        .where(lt(lockerDailySummaries.businessDay, cutoffDate))
         .returning({ businessDay: lockerDailySummaries.businessDay });
 
       return {

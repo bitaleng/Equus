@@ -40,6 +40,13 @@ export const lockerDailySummaries = pgTable("locker_daily_summaries", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// System Metadata Table - 시스템 메타데이터 (cleanup 상태 추적)
+export const systemMetadata = pgTable("system_metadata", {
+  key: varchar("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Insert Schemas
 export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
