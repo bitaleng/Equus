@@ -3,7 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { 
   insertLockerLogSchema, 
-  updateLockerLogSchema 
+  updateLockerLogSchema,
+  insertLockerGroupSchema,
+  updateLockerGroupSchema
 } from "@shared/schema";
 import { 
   getBusinessDay, 
@@ -228,6 +230,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Get all locker groups (모든 락커 그룹 조회)
+  app.get("/api/locker-groups", async (req, res) => {
+    try {
+      const groups = await storage.getAllLockerGroups();
+      res.json(groups);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Create new locker group (새 락커 그룹 생성)
+  app.post("/api/locker-groups", async (req, res) => {
+    try {
+      const data = insertLockerGroupSchema.parse(req.body);
+      const group = await storage.createLockerGroup(data);
+      res.json(group);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Update locker group (락커 그룹 수정)
+  app.patch("/api/locker-groups/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const data = updateLockerGroupSchema.parse(req.body);
+      const group = await storage.updateLockerGroup(id, data);
+      
+      if (!group) {
+        return res.status(404).json({ error: "Locker group not found" });
+      }
+      
+      res.json(group);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Delete locker group (락커 그룹 삭제)
+  app.delete("/api/locker-groups/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteLockerGroup(id);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
