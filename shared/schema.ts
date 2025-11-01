@@ -54,6 +54,9 @@ export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  notes: z.string().optional(),
+  paymentMethod: z.enum(['card', 'cash']).optional(),
 });
 
 export const updateLockerLogSchema = z.object({
