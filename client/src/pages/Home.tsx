@@ -270,7 +270,7 @@ export default function Home() {
         {/* Header */}
         <div className="p-6 border-b flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">락커 관리</h1>
+            <h1 className="text-2xl font-semibold">입실 관리</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>

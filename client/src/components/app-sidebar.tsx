@@ -12,7 +12,7 @@ import {
 
 const items = [
   {
-    title: "락커 관리",
+    title: "입실 관리",
     url: "/",
     icon: Home,
   },
