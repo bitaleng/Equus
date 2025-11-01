@@ -70,8 +70,8 @@ export const updateLockerLogSchema = z.object({
   finalPrice: z.number().optional(),
   status: z.enum(['in_use', 'checked_out', 'cancelled']).optional(),
   cancelled: z.boolean().optional(),
-  paymentMethod: z.enum(['card', 'cash']).optional(),
-  notes: z.string().optional(),
+  paymentMethod: z.enum(['card', 'cash']).nullish(),
+  notes: z.string().nullish(),
 });
 
 export const insertDailySummarySchema = createInsertSchema(lockerDailySummaries).omit({
