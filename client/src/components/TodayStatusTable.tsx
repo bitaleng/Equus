@@ -92,7 +92,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
             onClick={handleLockerUsageFilter}
             data-testid="button-locker-usage"
           >
-            락카사용회수
+            락커번호조회
           </Button>
           {filteredLockerNumber !== null && (
             <Button 
