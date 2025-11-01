@@ -437,3 +437,36 @@ export function updateSettings(settings: any) {
   const updated = { ...current, ...settings };
   localStorage.setItem('settings', JSON.stringify(updated));
 }
+
+// Data management operations
+export function clearAllData() {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Delete all locker logs and daily summaries (but keep locker groups and system metadata)
+  db.run('DELETE FROM locker_logs');
+  db.run('DELETE FROM locker_daily_summaries');
+  
+  saveDatabase();
+}
+
+export function deleteOldData(cutoffDate: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Delete entries older than cutoff date (1 year ago)
+  db.run('DELETE FROM locker_logs WHERE business_day < ?', [cutoffDate]);
+  db.run('DELETE FROM locker_daily_summaries WHERE business_day < ?', [cutoffDate]);
+  
+  saveDatabase();
+}
+
+export function getOldestEntryDate(): string | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT MIN(business_day) as oldest FROM locker_logs');
+  
+  if (result.length === 0 || result[0].values.length === 0 || !result[0].values[0][0]) {
+    return null;
+  }
+  
+  return result[0].values[0][0] as string;
+}
