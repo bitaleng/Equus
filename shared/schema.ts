@@ -49,6 +49,17 @@ export const systemMetadata = pgTable("system_metadata", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Locker Groups Table - 락커 그룹 관리 (번호대별 그룹)
+export const lockerGroups = pgTable("locker_groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(), // 그룹명 (예: "1층", "2층")
+  startNumber: integer("start_number").notNull(),
+  endNumber: integer("end_number").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0), // 표시 순서
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Insert Schemas
 export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
@@ -79,9 +90,25 @@ export const insertDailySummarySchema = createInsertSchema(lockerDailySummaries)
   updatedAt: true,
 });
 
+export const insertLockerGroupSchema = createInsertSchema(lockerGroups).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLockerGroupSchema = z.object({
+  name: z.string().optional(),
+  startNumber: z.number().optional(),
+  endNumber: z.number().optional(),
+  sortOrder: z.number().optional(),
+});
+
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
 export type LockerLog = typeof lockerLogs.$inferSelect;
 export type UpdateLockerLog = z.infer<typeof updateLockerLogSchema>;
 export type DailySummary = typeof lockerDailySummaries.$inferSelect;
 export type InsertDailySummary = z.infer<typeof insertDailySummarySchema>;
+export type LockerGroup = typeof lockerGroups.$inferSelect;
+export type InsertLockerGroup = z.infer<typeof insertLockerGroupSchema>;
+export type UpdateLockerGroup = z.infer<typeof updateLockerGroupSchema>;
