@@ -1,144 +1,107 @@
 import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { getBusinessDay, getTimeType, getBasePrice } from "@shared/businessDay";
 
-interface LockerEntry {
+interface LockerLog {
+  id: string;
   lockerNumber: number;
   entryTime: string;
+  exitTime: string | null;
   timeType: '주간' | '야간';
   basePrice: number;
-  option: string;
+  optionType: 'none' | 'discount' | 'custom' | 'foreigner';
   optionAmount?: number;
   finalPrice: number;
-  notes?: string;
-}
-
-interface LogEntry {
-  id: number;
-  lockerNumber: number;
-  entryTime: string;
-  exitTime?: string;
-  timeType: '주간' | '야간';
-  basePrice: number;
-  option: string;
-  optionAmount?: number;
-  finalPrice: number;
+  status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
   notes?: string;
 }
 
-export default function Home() {
-  const [lockerStates, setLockerStates] = useState<{ [key: number]: 'empty' | 'in-use' | 'disabled' }>(() => {
-    const states: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
-    for (let i = 1; i <= 80; i++) {
-      states[i] = 'empty';
-    }
-    return states;
-  });
+interface DailySummary {
+  businessDay: string;
+  totalVisitors: number;
+  totalSales: number;
+  cancellations: number;
+  totalDiscount: number;
+  foreignerCount: number;
+  foreignerSales: number;
+}
 
-  const [todayEntries, setTodayEntries] = useState<LockerEntry[]>([]);
-  const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
-  const [nextLogId, setNextLogId] = useState(1);
+export default function Home() {
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // todo: remove mock functionality
-  useEffect(() => {
-    const mockData: LockerEntry[] = [
-      {
-        lockerNumber: 5,
-        entryTime: '09:30',
-        timeType: '주간',
-        basePrice: 10000,
-        option: '없음',
-        finalPrice: 10000,
-      },
-      {
-        lockerNumber: 12,
-        entryTime: '10:15',
-        timeType: '주간',
-        basePrice: 10000,
-        option: '할인',
-        optionAmount: 2000,
-        finalPrice: 8000,
-        notes: '단골손님',
-      },
-      {
-        lockerNumber: 23,
-        entryTime: '11:00',
-        timeType: '주간',
-        basePrice: 10000,
-        option: '외국인',
-        finalPrice: 25000,
-      },
-    ];
-    setTodayEntries(mockData);
-    
-    const mockLogs: LogEntry[] = mockData.map((entry, index) => ({
-      id: index + 1,
-      ...entry,
-      cancelled: false,
-    }));
-    setAllLogs(mockLogs);
-    setNextLogId(mockData.length + 1);
-    
-    const newStates = { ...lockerStates };
-    mockData.forEach(entry => {
-      newStates[entry.lockerNumber] = 'in-use';
-    });
-    setLockerStates(newStates);
-  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // Share logs data with LogsPage via localStorage
-  useEffect(() => {
-    localStorage.setItem('lockerLogs', JSON.stringify(allLogs));
-  }, [allLogs]);
+  // Fetch active lockers
+  const { data: activeLockers = [] } = useQuery<LockerLog[]>({
+    queryKey: ['/api/lockers/active'],
+    refetchInterval: 5000, // Refresh every 5 seconds
+  });
 
-  const getTimeType = (): '주간' | '야간' => {
-    const hour = currentTime.getHours();
-    return (hour >= 7 && hour < 19) ? '주간' : '야간';
-  };
+  // Fetch today's summary
+  const { data: summary } = useQuery<DailySummary>({
+    queryKey: ['/api/daily-summary/today'],
+    refetchInterval: 10000,
+  });
 
-  const getBasePrice = () => {
-    return getTimeType() === '주간' ? 10000 : 13000;
-  };
+  // Create entry mutation
+  const createEntryMutation = useMutation({
+    mutationFn: async (lockerNumber: number) => {
+      const timeType = getTimeType(currentTime);
+      const basePrice = getBasePrice(timeType);
+      const businessDay = getBusinessDay(currentTime);
+      
+      const res = await apiRequest('POST', '/api/entries', {
+        lockerNumber,
+        timeType,
+        basePrice,
+        finalPrice: basePrice,
+        businessDay,
+        optionType: 'none',
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
+    },
+  });
 
-  const handleLockerClick = (lockerNumber: number) => {
+  // Update entry mutation
+  const updateEntryMutation = useMutation({
+    mutationFn: async ({ id, update }: { id: string; update: any }) => {
+      const res = await apiRequest('PATCH', `/api/entries/${id}`, update);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
+    },
+  });
+
+  const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
+  for (let i = 1; i <= 80; i++) {
+    lockerStates[i] = 'empty';
+  }
+  activeLockers.forEach(log => {
+    lockerStates[log.lockerNumber] = 'in-use';
+  });
+
+  const handleLockerClick = async (lockerNumber: number) => {
     const state = lockerStates[lockerNumber];
     
     if (state === 'empty') {
-      const timeType = getTimeType();
-      const basePrice = getBasePrice();
-      const entryTime = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-      
-      const newEntry: LockerEntry = {
-        lockerNumber,
-        entryTime,
-        timeType,
-        basePrice,
-        option: '없음',
-        finalPrice: basePrice,
-      };
-      
-      setTodayEntries([...todayEntries, newEntry]);
-      
-      const newLog: LogEntry = {
-        id: nextLogId,
-        ...newEntry,
-        cancelled: false,
-      };
-      setAllLogs([...allLogs, newLog]);
-      setNextLogId(nextLogId + 1);
-      
-      setLockerStates({ ...lockerStates, [lockerNumber]: 'in-use' });
+      await createEntryMutation.mutateAsync(lockerNumber);
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
@@ -147,102 +110,78 @@ export default function Home() {
     }
   };
 
-  const handleApplyOption = (option: string, customAmount?: number) => {
-    if (selectedLocker === null) return;
+  const selectedEntry = selectedLocker 
+    ? activeLockers.find(log => log.lockerNumber === selectedLocker)
+    : null;
 
-    const entry = todayEntries.find(e => e.lockerNumber === selectedLocker);
-    if (!entry) return;
+  const handleApplyOption = async (option: string, customAmount?: number) => {
+    if (!selectedEntry) return;
 
-    let finalPrice = entry.basePrice;
-    let optionText = '없음';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' = 'none';
+    let finalPrice = selectedEntry.basePrice;
+    let optionAmount: number | undefined;
 
     if (option === 'foreigner') {
+      optionType = 'foreigner';
       finalPrice = 25000;
-      optionText = '외국인';
     } else if (option === 'discount') {
-      finalPrice = entry.basePrice - 2000;
-      optionText = '할인';
+      optionType = 'discount';
+      finalPrice = selectedEntry.basePrice - 2000;
+      optionAmount = 2000;
     } else if (option === 'custom' && customAmount) {
-      finalPrice = entry.basePrice - customAmount;
-      optionText = `할인(${customAmount.toLocaleString()}원)`;
+      optionType = 'custom';
+      finalPrice = selectedEntry.basePrice - customAmount;
+      optionAmount = customAmount;
     }
 
-    const updatedEntries = todayEntries.map(e =>
-      e.lockerNumber === selectedLocker
-        ? { ...e, option: optionText, finalPrice, optionAmount: customAmount }
-        : e
-    );
-    setTodayEntries(updatedEntries);
-
-    const updatedLogs = allLogs.map(log =>
-      log.lockerNumber === selectedLocker && !log.exitTime
-        ? { ...log, option: optionText, finalPrice, optionAmount: customAmount }
-        : log
-    );
-    setAllLogs(updatedLogs);
+    await updateEntryMutation.mutateAsync({
+      id: selectedEntry.id,
+      update: { optionType, optionAmount, finalPrice },
+    });
   };
 
-  const handleCheckout = () => {
-    if (selectedLocker === null) return;
+  const handleCheckout = async () => {
+    if (!selectedEntry) return;
 
-    const exitTime = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    await updateEntryMutation.mutateAsync({
+      id: selectedEntry.id,
+      update: { 
+        status: 'checked_out',
+        exitTime: new Date(),
+      },
+    });
     
-    const updatedLogs = allLogs.map(log =>
-      log.lockerNumber === selectedLocker && !log.exitTime
-        ? { ...log, exitTime }
-        : log
-    );
-    setAllLogs(updatedLogs);
-
-    setTodayEntries(todayEntries.filter(e => e.lockerNumber !== selectedLocker));
-    setLockerStates({ ...lockerStates, [selectedLocker]: 'empty' });
     setDialogOpen(false);
     setSelectedLocker(null);
   };
 
-  const handleCancel = () => {
-    if (selectedLocker === null) return;
+  const handleCancel = async () => {
+    if (!selectedEntry) return;
 
-    const updatedLogs = allLogs.map(log =>
-      log.lockerNumber === selectedLocker && !log.exitTime
-        ? { ...log, cancelled: true }
-        : log
-    );
-    setAllLogs(updatedLogs);
-
-    setTodayEntries(todayEntries.filter(e => e.lockerNumber !== selectedLocker));
-    setLockerStates({ ...lockerStates, [selectedLocker]: 'empty' });
+    await updateEntryMutation.mutateAsync({
+      id: selectedEntry.id,
+      update: { 
+        status: 'cancelled',
+        cancelled: true,
+      },
+    });
+    
     setDialogOpen(false);
     setSelectedLocker(null);
   };
 
-
-  const calculateSummary = () => {
-    const completedToday = allLogs.filter(log => log.exitTime && !log.cancelled);
-    const totalVisitors = completedToday.length;
-    const totalSales = completedToday.reduce((sum, log) => sum + log.finalPrice, 0);
-    const cancellations = allLogs.filter(log => log.cancelled).length;
-    const totalDiscount = completedToday.reduce((sum, log) => {
-      if (log.option.includes('할인')) {
-        return sum + (log.optionAmount || 2000);
-      }
-      return sum;
-    }, 0);
-    const foreignerCount = completedToday.filter(log => log.option === '외국인').length;
-    const foreignerSales = completedToday.filter(log => log.option === '외국인').reduce((sum, log) => sum + log.finalPrice, 0);
-
-    return {
-      totalVisitors,
-      totalSales,
-      cancellations,
-      totalDiscount,
-      foreignerCount,
-      foreignerSales,
-    };
-  };
-
-  const summary = calculateSummary();
-  const selectedEntry = selectedLocker ? todayEntries.find(e => e.lockerNumber === selectedLocker) : null;
+  const todayEntries = activeLockers.map(log => ({
+    lockerNumber: log.lockerNumber,
+    entryTime: new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    timeType: log.timeType,
+    basePrice: log.basePrice,
+    option: log.optionType === 'none' ? '없음' : 
+            log.optionType === 'discount' ? '할인' :
+            log.optionType === 'custom' ? `할인(${log.optionAmount?.toLocaleString()}원)` :
+            '외국인',
+    finalPrice: log.finalPrice,
+    notes: log.notes,
+  }));
 
   return (
     <div className="h-screen w-full flex bg-background">
@@ -262,8 +201,13 @@ export default function Home() {
         {/* Sales Summary */}
         <div className="flex-[2] p-6">
           <SalesSummary
-            date={currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\. /g, '-').replace('.', '')}
-            {...summary}
+            date={getBusinessDay(currentTime)}
+            totalVisitors={summary?.totalVisitors || 0}
+            totalSales={summary?.totalSales || 0}
+            cancellations={summary?.cancellations || 0}
+            totalDiscount={summary?.totalDiscount || 0}
+            foreignerCount={summary?.foreignerCount || 0}
+            foreignerSales={summary?.foreignerSales || 0}
           />
         </div>
       </div>
@@ -275,7 +219,7 @@ export default function Home() {
           <div>
             <h1 className="text-2xl font-semibold">락커 관리</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType()} ({getBasePrice().toLocaleString()}원)
+              {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime)).toLocaleString()}원)
             </p>
           </div>
           <div className="flex items-center gap-4">
