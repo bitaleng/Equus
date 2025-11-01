@@ -11,6 +11,7 @@ import Home from "@/pages/Home";
 import LogsPage from "@/pages/LogsPage";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
+import { initDatabase } from "@/lib/localDb";
 
 function Router() {
   return (
@@ -25,13 +26,31 @@ function Router() {
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
 
   useEffect(() => {
     const authenticated = localStorage.getItem("authenticated");
     if (authenticated === "true") {
       setIsAuthenticated(true);
     }
+
+    // Initialize database
+    initDatabase().then(() => {
+      setDbReady(true);
+    }).catch((error) => {
+      console.error('Failed to initialize database:', error);
+    });
   }, []);
+
+  if (!dbReady) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-lg">데이터베이스 초기화 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (

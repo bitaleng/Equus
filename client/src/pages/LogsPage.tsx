@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +16,7 @@ import { ArrowLeft, Calendar, FileSpreadsheet, FileText } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as localDb from "@/lib/localDb";
 
 interface LogEntry {
   id: string;
@@ -37,27 +37,37 @@ export default function LogsPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showDateFilter, setShowDateFilter] = useState(false);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch logs with optional date range filter
-  const { data, isLoading } = useQuery<{ data: LogEntry[]; nextCursor: string | null }>({
-    queryKey: ['/api/logs', startDate, endDate],
-    queryFn: async ({ queryKey }) => {
-      const [_, start, end] = queryKey;
-      let url = '/api/logs?limit=1000';
+  useEffect(() => {
+    loadLogs();
+  }, [startDate, endDate]);
+
+  const loadLogs = () => {
+    setIsLoading(true);
+    try {
+      let result: LogEntry[];
       
-      if (start && end) {
-        url = `/api/logs?startDate=${start}&endDate=${end}&limit=1000`;
-      } else if (start) {
-        url = `/api/logs?date=${start}&limit=1000`;
+      if (startDate && endDate) {
+        result = localDb.getEntriesByDateRange(startDate, endDate);
+      } else if (startDate) {
+        result = localDb.getEntriesByDateRange(startDate, startDate);
+      } else {
+        // Get all entries by using a wide date range
+        const today = new Date().toISOString().split('T')[0];
+        const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        result = localDb.getEntriesByDateRange(oneYearAgo, today);
       }
       
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch logs');
-      return response.json();
-    },
-  });
-
-  const logs = data?.data || [];
+      setLogs(result);
+    } catch (error) {
+      console.error('Error loading logs:', error);
+      setLogs([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const clearDateFilter = () => {
     setStartDate("");

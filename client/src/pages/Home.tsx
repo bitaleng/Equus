@@ -1,12 +1,10 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
 import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getBusinessDay, getTimeType, getBasePrice } from "@shared/businessDay";
-import type { LockerGroup } from "@shared/schema";
+import * as localDb from "@/lib/localDb";
 
 interface LockerLog {
   id: string;
@@ -34,95 +32,60 @@ interface DailySummary {
   foreignerSales: number;
 }
 
-interface Settings {
-  businessDayStartHour: number;
-  dayPrice: number;
-  nightPrice: number;
-  discountAmount: number;
-  foreignerPrice: number;
+interface LockerGroup {
+  id: string;
+  name: string;
+  startNumber: number;
+  endNumber: number;
+  sortOrder: number;
 }
 
 export default function Home() {
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
+  const [todayAllEntries, setTodayAllEntries] = useState<LockerLog[]>([]);
+  const [summary, setSummary] = useState<DailySummary | null>(null);
+  const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
 
+  // Load settings from localStorage
+  const settings = localDb.getSettings();
+  const businessDayStartHour = settings.businessDayStartHour;
+  const dayPrice = settings.dayPrice;
+  const nightPrice = settings.nightPrice;
+  const discountAmount = settings.discountAmount;
+  const foreignerPrice = settings.foreignerPrice;
+
+  // Update current time every minute
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch settings
-  const { data: settings } = useQuery<Settings>({
-    queryKey: ['/api/settings'],
-  });
+  // Load data on mount and set up refresh interval
+  useEffect(() => {
+    loadData();
+    
+    const interval = setInterval(() => {
+      loadData();
+    }, 5000); // Refresh every 5 seconds
 
-  // Use default values if settings not loaded yet
-  const businessDayStartHour = settings?.businessDayStartHour ?? 10;
-  const dayPrice = settings?.dayPrice ?? 10000;
-  const nightPrice = settings?.nightPrice ?? 13000;
-  const discountAmount = settings?.discountAmount ?? 2000;
-  const foreignerPrice = settings?.foreignerPrice ?? 25000;
+    return () => clearInterval(interval);
+  }, []);
 
-  // Fetch active lockers
-  const { data: activeLockers = [] } = useQuery<LockerLog[]>({
-    queryKey: ['/api/lockers/active'],
-    refetchInterval: 5000, // Refresh every 5 seconds
-  });
-
-  // Fetch today's all entries (오늘의 모든 방문 기록: 입실중, 퇴실, 취소 포함)
-  const { data: todayAllEntries = [] } = useQuery<LockerLog[]>({
-    queryKey: ['/api/entries/today'],
-    refetchInterval: 5000,
-  });
-
-  // Fetch today's summary
-  const { data: summary } = useQuery<DailySummary>({
-    queryKey: ['/api/daily-summary/today'],
-    refetchInterval: 10000,
-  });
-
-  // Fetch locker groups
-  const { data: lockerGroups = [] } = useQuery<LockerGroup[]>({
-    queryKey: ['/api/locker-groups'],
-  });
-
-  // Create entry mutation
-  const createEntryMutation = useMutation({
-    mutationFn: async (lockerNumber: number) => {
-      const timeType = getTimeType(currentTime);
-      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
-      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+  const loadData = () => {
+    try {
+      const businessDay = getBusinessDay(new Date(), businessDayStartHour);
       
-      const res = await apiRequest('POST', '/api/entries', {
-        lockerNumber,
-        timeType,
-        basePrice,
-        finalPrice: basePrice,
-        businessDay,
-        optionType: 'none',
-      });
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/entries/today'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
-    },
-  });
-
-  // Update entry mutation
-  const updateEntryMutation = useMutation({
-    mutationFn: async ({ id, update }: { id: string; update: any }) => {
-      const res = await apiRequest('PATCH', `/api/entries/${id}`, update);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/entries/today'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
-    },
-  });
+      setActiveLockers(localDb.getActiveLockers());
+      setTodayAllEntries(localDb.getTodayEntries(businessDay));
+      setSummary(localDb.getDailySummary(businessDay));
+      setLockerGroups(localDb.getLockerGroups());
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  };
 
   // Calculate all locker numbers from groups and their states
   const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
@@ -135,19 +98,24 @@ export default function Home() {
     lockerStates[log.lockerNumber] = 'in-use';
   });
 
-  // Generate all locker numbers from groups for rendering
-  const allLockerNumbers: number[] = [];
-  lockerGroups.forEach(group => {
-    for (let i = group.startNumber; i <= group.endNumber; i++) {
-      allLockerNumbers.push(i);
-    }
-  });
-
   const handleLockerClick = async (lockerNumber: number) => {
     const state = lockerStates[lockerNumber];
     
     if (state === 'empty') {
-      await createEntryMutation.mutateAsync(lockerNumber);
+      const timeType = getTimeType(currentTime);
+      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      
+      localDb.createEntry({
+        lockerNumber,
+        timeType,
+        basePrice,
+        finalPrice: basePrice,
+        businessDay,
+        optionType: 'none',
+      });
+      
+      loadData();
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
@@ -185,23 +153,26 @@ export default function Home() {
       optionAmount = customAmount;
     }
 
-    await updateEntryMutation.mutateAsync({
-      id: selectedEntry.id,
-      update: { optionType, optionAmount, finalPrice, notes, paymentMethod },
+    localDb.updateEntry(selectedEntry.id, { 
+      optionType, 
+      optionAmount, 
+      finalPrice, 
+      notes, 
+      paymentMethod 
     });
+    
+    loadData();
   };
 
   const handleCheckout = async () => {
     if (!selectedEntry) return;
 
-    await updateEntryMutation.mutateAsync({
-      id: selectedEntry.id,
-      update: { 
-        status: 'checked_out',
-        exitTime: new Date(),
-      },
+    localDb.updateEntry(selectedEntry.id, { 
+      status: 'checked_out',
+      exitTime: new Date(),
     });
     
+    loadData();
     setDialogOpen(false);
     setSelectedLocker(null);
   };
@@ -209,14 +180,12 @@ export default function Home() {
   const handleCancel = async () => {
     if (!selectedEntry) return;
 
-    await updateEntryMutation.mutateAsync({
-      id: selectedEntry.id,
-      update: { 
-        status: 'cancelled',
-        cancelled: true,
-      },
+    localDb.updateEntry(selectedEntry.id, { 
+      status: 'cancelled',
+      cancelled: true,
     });
     
+    loadData();
     setDialogOpen(false);
     setSelectedLocker(null);
   };

@@ -1,6 +1,4 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { LockerGroup } from "@shared/schema";
+import * as localDb from "@/lib/localDb";
 
 interface Settings {
   businessDayStartHour: number;
@@ -23,6 +21,14 @@ interface Settings {
   nightPrice: number;
   discountAmount: number;
   foreignerPrice: number;
+}
+
+interface LockerGroup {
+  id: string;
+  name: string;
+  startNumber: number;
+  endNumber: number;
+  sortOrder: number;
 }
 
 interface LockerGroupFormData {
@@ -51,131 +57,26 @@ export default function Settings() {
     endNumber: 80,
     sortOrder: 0,
   });
+  
+  const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
 
-  // Fetch settings
-  const { data: settings, isLoading } = useQuery<Settings>({
-    queryKey: ['/api/settings'],
-  });
-
-  // Fetch locker groups
-  const { data: lockerGroups = [], isLoading: isGroupsLoading } = useQuery<LockerGroup[]>({
-    queryKey: ['/api/locker-groups'],
-  });
-
-  // Update form data when settings are loaded
+  // Load settings and locker groups on mount
   useEffect(() => {
-    if (settings) {
-      setFormData(settings);
-    }
-  }, [settings]);
+    const settings = localDb.getSettings();
+    setFormData(settings);
+    loadLockerGroups();
+  }, []);
 
-  // Update settings mutation
-  const updateMutation = useMutation({
-    mutationFn: async (settings: Settings) => {
-      const res = await apiRequest('PUT', '/api/settings', settings);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
-      toast({
-        title: "설정 저장 완료",
-        description: "시스템 설정이 성공적으로 저장되었습니다.",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "저장 실패",
-        description: "설정 저장 중 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Create locker group mutation
-  const createGroupMutation = useMutation({
-    mutationFn: async (data: LockerGroupFormData) => {
-      const res = await apiRequest('POST', '/api/locker-groups', data);
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "그룹 생성 실패");
-      }
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/locker-groups'] });
-      setIsGroupDialogOpen(false);
-      setGroupFormData({ name: "", startNumber: 1, endNumber: 80, sortOrder: 0 });
-      toast({
-        title: "그룹 생성 완료",
-        description: "새 락커 그룹이 생성되었습니다.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "그룹 생성 실패",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Update locker group mutation
-  const updateGroupMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<LockerGroupFormData> }) => {
-      const res = await apiRequest('PATCH', `/api/locker-groups/${id}`, data);
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "그룹 수정 실패");
-      }
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/locker-groups'] });
-      setIsGroupDialogOpen(false);
-      setEditingGroup(null);
-      setGroupFormData({ name: "", startNumber: 1, endNumber: 80, sortOrder: 0 });
-      toast({
-        title: "그룹 수정 완료",
-        description: "락커 그룹이 수정되었습니다.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "그룹 수정 실패",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Delete locker group mutation
-  const deleteGroupMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiRequest('DELETE', `/api/locker-groups/${id}`);
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "그룹 삭제 실패");
-      }
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/locker-groups'] });
-      toast({
-        title: "그룹 삭제 완료",
-        description: "락커 그룹이 삭제되었습니다.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "그룹 삭제 실패",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const loadLockerGroups = () => {
+    setLockerGroups(localDb.getLockerGroups());
+  };
 
   const handleSave = () => {
-    updateMutation.mutate(formData);
+    localDb.updateSettings(formData);
+    toast({
+      title: "설정 저장 완료",
+      description: "시스템 설정이 성공적으로 저장되었습니다.",
+    });
   };
 
   const handleAddGroup = () => {
@@ -197,21 +98,50 @@ export default function Settings() {
 
   const handleDeleteGroup = (id: string) => {
     if (confirm("정말로 이 락커 그룹을 삭제하시겠습니까?")) {
-      deleteGroupMutation.mutate(id);
+      try {
+        localDb.deleteLockerGroup(id);
+        loadLockerGroups();
+        toast({
+          title: "그룹 삭제 완료",
+          description: "락커 그룹이 삭제되었습니다.",
+        });
+      } catch (error) {
+        toast({
+          title: "그룹 삭제 실패",
+          description: "그룹 삭제 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const handleSaveGroup = () => {
-    if (editingGroup) {
-      updateGroupMutation.mutate({ id: editingGroup.id, data: groupFormData });
-    } else {
-      createGroupMutation.mutate(groupFormData);
+    try {
+      if (editingGroup) {
+        localDb.updateLockerGroup(editingGroup.id, groupFormData);
+        toast({
+          title: "그룹 수정 완료",
+          description: "락커 그룹이 수정되었습니다.",
+        });
+      } else {
+        localDb.createLockerGroup(groupFormData);
+        toast({
+          title: "그룹 생성 완료",
+          description: "새 락커 그룹이 생성되었습니다.",
+        });
+      }
+      loadLockerGroups();
+      setIsGroupDialogOpen(false);
+      setEditingGroup(null);
+      setGroupFormData({ name: "", startNumber: 1, endNumber: 80, sortOrder: 0 });
+    } catch (error) {
+      toast({
+        title: "저장 실패",
+        description: "그룹 저장 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
     }
   };
-
-  if (isLoading) {
-    return <div className="p-6">로딩 중...</div>;
-  }
 
   return (
     <div className="h-full flex flex-col">
@@ -283,23 +213,23 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* 옵션 요금 설정 */}
+          {/* 할인 및 외국인 요금 */}
           <Card>
             <CardHeader>
               <CardTitle>옵션 요금</CardTitle>
               <CardDescription>
-                할인 및 외국인 요금을 설정합니다
+                할인 금액 및 외국인 요금을 설정합니다
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="discountAmount">기본 할인 금액</Label>
+                <Label htmlFor="discountAmount">할인 금액</Label>
                 <Input
                   id="discountAmount"
                   type="number"
                   value={formData.discountAmount}
                   onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
-                  data-testid="input-discount-amount"
+                  data-testid="input-discount"
                 />
               </div>
               <div className="space-y-2">
@@ -315,18 +245,6 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* 저장 버튼 */}
-          <div className="flex justify-end">
-            <Button
-              onClick={handleSave}
-              disabled={updateMutation.isPending}
-              data-testid="button-save-settings"
-            >
-              <Save className="w-4 h-4 mr-2" />
-              {updateMutation.isPending ? "저장 중..." : "설정 저장"}
-            </Button>
-          </div>
-
           {/* 락커 그룹 관리 */}
           <Card>
             <CardHeader>
@@ -337,55 +255,47 @@ export default function Settings() {
                     락커 번호 그룹을 추가하거나 수정할 수 있습니다
                   </CardDescription>
                 </div>
-                <Button
-                  onClick={handleAddGroup}
-                  size="sm"
-                  data-testid="button-add-locker-group"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button onClick={handleAddGroup} size="sm" data-testid="button-add-group">
+                  <Plus className="h-4 w-4 mr-2" />
                   그룹 추가
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {isGroupsLoading ? (
-                <div className="text-center text-sm text-muted-foreground py-4">
-                  로딩 중...
-                </div>
-              ) : lockerGroups.length === 0 ? (
-                <div className="text-center text-sm text-muted-foreground py-4">
+              {lockerGroups.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
                   등록된 락커 그룹이 없습니다
-                </div>
+                </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {lockerGroups.map((group) => (
                     <div
                       key={group.id}
-                      className="flex items-center justify-between p-3 border rounded-md"
-                      data-testid={`locker-group-${group.id}`}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`group-${group.id}`}
                     >
-                      <div className="flex-1">
-                        <div className="font-medium">{group.name}</div>
-                        <div className="text-sm text-muted-foreground">
+                      <div>
+                        <h4 className="font-medium">{group.name}</h4>
+                        <p className="text-sm text-muted-foreground">
                           {group.startNumber}번 ~ {group.endNumber}번 ({group.endNumber - group.startNumber + 1}개)
-                        </div>
+                        </p>
                       </div>
                       <div className="flex gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleEditGroup(group)}
-                          data-testid={`button-edit-group-${group.id}`}
+                          data-testid={`button-edit-${group.id}`}
                         >
-                          <Pencil className="w-4 h-4" />
+                          <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
                           onClick={() => handleDeleteGroup(group.id)}
-                          data-testid={`button-delete-group-${group.id}`}
+                          data-testid={`button-delete-${group.id}`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
@@ -394,12 +304,20 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          {/* Save Button */}
+          <div className="flex justify-end">
+            <Button onClick={handleSave} size="lg" data-testid="button-save-settings">
+              <Save className="h-4 w-4 mr-2" />
+              설정 저장
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Locker Group Dialog */}
       <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
-        <DialogContent data-testid="dialog-locker-group">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {editingGroup ? "락커 그룹 수정" : "새 락커 그룹 추가"}
@@ -408,17 +326,19 @@ export default function Settings() {
               락커 그룹의 이름과 번호 범위를 설정하세요
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="group-name">그룹 이름</Label>
               <Input
                 id="group-name"
                 value={groupFormData.name}
                 onChange={(e) => setGroupFormData({ ...groupFormData, name: e.target.value })}
-                placeholder="예: 1층, 2층"
+                placeholder="예: 1층 락커"
                 data-testid="input-group-name"
               />
             </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="start-number">시작 번호</Label>
@@ -441,34 +361,14 @@ export default function Settings() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="sort-order">정렬 순서</Label>
-              <Input
-                id="sort-order"
-                type="number"
-                value={groupFormData.sortOrder}
-                onChange={(e) => setGroupFormData({ ...groupFormData, sortOrder: parseInt(e.target.value) || 0 })}
-                data-testid="input-sort-order"
-              />
-              <p className="text-xs text-muted-foreground">
-                작은 숫자가 먼저 표시됩니다
-              </p>
-            </div>
           </div>
+
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsGroupDialogOpen(false)}
-              data-testid="button-cancel-group"
-            >
+            <Button variant="ghost" onClick={() => setIsGroupDialogOpen(false)}>
               취소
             </Button>
-            <Button
-              onClick={handleSaveGroup}
-              disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
-              data-testid="button-save-group"
-            >
-              {createGroupMutation.isPending || updateGroupMutation.isPending ? "저장 중..." : "저장"}
+            <Button onClick={handleSaveGroup} data-testid="button-save-group">
+              {editingGroup ? "수정" : "추가"}
             </Button>
           </DialogFooter>
         </DialogContent>
