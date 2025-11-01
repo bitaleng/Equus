@@ -94,14 +94,49 @@ export const insertLockerGroupSchema = createInsertSchema(lockerGroups).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-});
+}).refine(
+  (data) => data.startNumber <= data.endNumber,
+  {
+    message: "시작 번호는 종료 번호보다 작거나 같아야 합니다",
+    path: ["endNumber"],
+  }
+).refine(
+  (data) => data.startNumber > 0 && data.endNumber > 0,
+  {
+    message: "락커 번호는 1 이상이어야 합니다",
+    path: ["startNumber"],
+  }
+);
 
 export const updateLockerGroupSchema = z.object({
   name: z.string().optional(),
   startNumber: z.number().optional(),
   endNumber: z.number().optional(),
   sortOrder: z.number().optional(),
-});
+}).refine(
+  (data) => {
+    // Only validate if both startNumber and endNumber are provided
+    if (data.startNumber !== undefined && data.endNumber !== undefined) {
+      return data.startNumber <= data.endNumber;
+    }
+    return true;
+  },
+  {
+    message: "시작 번호는 종료 번호보다 작거나 같아야 합니다",
+    path: ["endNumber"],
+  }
+).refine(
+  (data) => {
+    // Validate individual numbers if provided
+    if (data.startNumber !== undefined && data.startNumber <= 0) return false;
+    if (data.endNumber !== undefined && data.endNumber <= 0) return false;
+    return true;
+  },
+  {
+    message: "락커 번호는 1 이상이어야 합니다",
+    path: ["startNumber"],
+  }
+);
 
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
