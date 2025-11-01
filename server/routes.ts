@@ -137,13 +137,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // List logs with pagination and filtering
   app.get("/api/logs", async (req, res) => {
     try {
-      const { date, cursor, limit } = req.query;
+      const { date, startDate: startDateParam, endDate: endDateParam, cursor, limit } = req.query;
       
       let startDate: Date | undefined;
       let endDate: Date | undefined;
       let businessDay: string | undefined;
       
-      if (date && typeof date === 'string') {
+      // Support date range query (startDate & endDate parameters)
+      if (startDateParam && typeof startDateParam === 'string' && endDateParam && typeof endDateParam === 'string') {
+        startDate = getBusinessDayStart(startDateParam);
+        endDate = getBusinessDayEnd(endDateParam);
+      }
+      // Fallback to single date (backward compatibility)
+      else if (date && typeof date === 'string') {
         businessDay = date;
         startDate = getBusinessDayStart(date);
         endDate = getBusinessDayEnd(date);
