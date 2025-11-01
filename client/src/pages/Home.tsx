@@ -224,7 +224,7 @@ export default function Home() {
       {/* Left Panel */}
       <div className="w-[40%] border-r flex flex-col">
         {/* Today Status */}
-        <div className="flex-[3] border-b">
+        <div className="flex-[3] border-b overflow-hidden">
           <TodayStatusTable
             entries={todayEntries}
             onRowClick={(entry) => {
@@ -235,7 +235,7 @@ export default function Home() {
         </div>
 
         {/* Sales Summary */}
-        <div className="flex-[2] p-6">
+        <div className="flex-[2] p-6 overflow-auto">
           <SalesSummary
             date={getBusinessDay(currentTime, businessDayStartHour)}
             totalVisitors={summary?.totalVisitors || 0}
