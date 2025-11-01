@@ -48,6 +48,12 @@ export default function Home() {
     refetchInterval: 5000, // Refresh every 5 seconds
   });
 
+  // Fetch today's all entries (오늘의 모든 방문 기록: 입실중, 퇴실, 취소 포함)
+  const { data: todayAllEntries = [] } = useQuery<LockerLog[]>({
+    queryKey: ['/api/entries/today'],
+    refetchInterval: 5000,
+  });
+
   // Fetch today's summary
   const { data: summary } = useQuery<DailySummary>({
     queryKey: ['/api/daily-summary/today'],
@@ -73,6 +79,7 @@ export default function Home() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/entries/today'] });
       queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
     },
   });
@@ -85,6 +92,7 @@ export default function Home() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/lockers/active'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/entries/today'] });
       queryClient.invalidateQueries({ queryKey: ['/api/daily-summary/today'] });
     },
   });
@@ -170,7 +178,7 @@ export default function Home() {
     setSelectedLocker(null);
   };
 
-  const todayEntries = activeLockers.map(log => ({
+  const todayEntries = todayAllEntries.map(log => ({
     lockerNumber: log.lockerNumber,
     entryTime: new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
     timeType: log.timeType,
@@ -180,6 +188,8 @@ export default function Home() {
             log.optionType === 'custom' ? `할인(${log.optionAmount?.toLocaleString()}원)` :
             '외국인',
     finalPrice: log.finalPrice,
+    status: log.status,
+    cancelled: log.cancelled,
     notes: log.notes,
   }));
 
