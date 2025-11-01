@@ -4,7 +4,6 @@ import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 
 interface LockerEntry {
   lockerNumber: number;
@@ -14,6 +13,20 @@ interface LockerEntry {
   option: string;
   optionAmount?: number;
   finalPrice: number;
+  notes?: string;
+}
+
+interface LogEntry {
+  id: number;
+  lockerNumber: number;
+  entryTime: string;
+  exitTime?: string;
+  timeType: '주간' | '야간';
+  basePrice: number;
+  option: string;
+  optionAmount?: number;
+  finalPrice: number;
+  cancelled: boolean;
   notes?: string;
 }
 
@@ -27,6 +40,8 @@ export default function Home() {
   });
 
   const [todayEntries, setTodayEntries] = useState<LockerEntry[]>([]);
+  const [allLogs, setAllLogs] = useState<LogEntry[]>([]);
+  const [nextLogId, setNextLogId] = useState(1);
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -62,6 +77,14 @@ export default function Home() {
     ];
     setTodayEntries(mockData);
     
+    const mockLogs: LogEntry[] = mockData.map((entry, index) => ({
+      id: index + 1,
+      ...entry,
+      cancelled: false,
+    }));
+    setAllLogs(mockLogs);
+    setNextLogId(mockData.length + 1);
+    
     const newStates = { ...lockerStates };
     mockData.forEach(entry => {
       newStates[entry.lockerNumber] = 'in-use';
@@ -73,6 +96,11 @@ export default function Home() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Share logs data with LogsPage via localStorage
+  useEffect(() => {
+    localStorage.setItem('lockerLogs', JSON.stringify(allLogs));
+  }, [allLogs]);
 
   const getTimeType = (): '주간' | '야간' => {
     const hour = currentTime.getHours();
@@ -101,6 +129,15 @@ export default function Home() {
       };
       
       setTodayEntries([...todayEntries, newEntry]);
+      
+      const newLog: LogEntry = {
+        id: nextLogId,
+        ...newEntry,
+        cancelled: false,
+      };
+      setAllLogs([...allLogs, newLog]);
+      setNextLogId(nextLogId + 1);
+      
       setLockerStates({ ...lockerStates, [lockerNumber]: 'in-use' });
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
@@ -135,12 +172,27 @@ export default function Home() {
         ? { ...e, option: optionText, finalPrice, optionAmount: customAmount }
         : e
     );
-
     setTodayEntries(updatedEntries);
+
+    const updatedLogs = allLogs.map(log =>
+      log.lockerNumber === selectedLocker && !log.exitTime
+        ? { ...log, option: optionText, finalPrice, optionAmount: customAmount }
+        : log
+    );
+    setAllLogs(updatedLogs);
   };
 
   const handleCheckout = () => {
     if (selectedLocker === null) return;
+
+    const exitTime = currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    const updatedLogs = allLogs.map(log =>
+      log.lockerNumber === selectedLocker && !log.exitTime
+        ? { ...log, exitTime }
+        : log
+    );
+    setAllLogs(updatedLogs);
 
     setTodayEntries(todayEntries.filter(e => e.lockerNumber !== selectedLocker));
     setLockerStates({ ...lockerStates, [selectedLocker]: 'empty' });
@@ -150,6 +202,13 @@ export default function Home() {
 
   const handleCancel = () => {
     if (selectedLocker === null) return;
+
+    const updatedLogs = allLogs.map(log =>
+      log.lockerNumber === selectedLocker && !log.exitTime
+        ? { ...log, cancelled: true }
+        : log
+    );
+    setAllLogs(updatedLogs);
 
     setTodayEntries(todayEntries.filter(e => e.lockerNumber !== selectedLocker));
     setLockerStates({ ...lockerStates, [selectedLocker]: 'empty' });
@@ -167,17 +226,18 @@ export default function Home() {
   };
 
   const calculateSummary = () => {
-    const totalVisitors = todayEntries.length;
-    const totalSales = todayEntries.reduce((sum, entry) => sum + entry.finalPrice, 0);
-    const cancellations = 0;
-    const totalDiscount = todayEntries.reduce((sum, entry) => {
-      if (entry.option.includes('할인')) {
-        return sum + (entry.optionAmount || 2000);
+    const completedToday = allLogs.filter(log => log.exitTime && !log.cancelled);
+    const totalVisitors = completedToday.length;
+    const totalSales = completedToday.reduce((sum, log) => sum + log.finalPrice, 0);
+    const cancellations = allLogs.filter(log => log.cancelled).length;
+    const totalDiscount = completedToday.reduce((sum, log) => {
+      if (log.option.includes('할인')) {
+        return sum + (log.optionAmount || 2000);
       }
       return sum;
     }, 0);
-    const foreignerCount = todayEntries.filter(e => e.option === '외국인').length;
-    const foreignerSales = todayEntries.filter(e => e.option === '외국인').reduce((sum, e) => sum + e.finalPrice, 0);
+    const foreignerCount = completedToday.filter(log => log.option === '외국인').length;
+    const foreignerSales = completedToday.filter(log => log.option === '외국인').reduce((sum, log) => sum + log.finalPrice, 0);
 
     return {
       totalVisitors,
