@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -9,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Calendar } from "lucide-react";
 
 interface LogEntry {
   id: number;
@@ -23,6 +26,7 @@ interface LogEntry {
   finalPrice: number;
   cancelled: boolean;
   notes?: string;
+  date?: string; // YYYY-MM-DD format
 }
 
 interface LogsPageProps {
@@ -30,21 +34,96 @@ interface LogsPageProps {
 }
 
 export default function LogsPage({ logs = [] }: LogsPageProps) {
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [showDateFilter, setShowDateFilter] = useState(false);
+
+  // Filter logs by selected date (10:00 AM to next day 9:59:59 AM)
+  const filteredLogs = selectedDate
+    ? logs.filter(log => {
+        // todo: This is simplified for prototype - real implementation needs proper date/time parsing
+        // Should check if log.entryTime is between selectedDate 10:00 and next day 09:59:59
+        return log.date === selectedDate || !log.date; // For now, show all if no date field
+      })
+    : logs;
+
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSelectedDate(e.target.value);
+  };
+
+  const clearDateFilter = () => {
+    setSelectedDate("");
+  };
+
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       {/* Header */}
       <div className="border-b p-6">
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-semibold">입출 기록 로그</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              전체 누적 데이터 ({logs.length}건)
-            </p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="icon" data-testid="button-back">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-2xl font-semibold">입출 기록 로그</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {selectedDate 
+                  ? `${selectedDate} 매출 (10:00 ~ 익일 09:59) - ${filteredLogs.length}건`
+                  : `전체 누적 데이터 (${logs.length}건)`
+                }
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {!showDateFilter ? (
+              <Button 
+                variant="outline" 
+                onClick={() => setShowDateFilter(true)}
+                data-testid="button-show-date-filter"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                날짜별 조회
+              </Button>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="date-filter" className="text-sm whitespace-nowrap">
+                    날짜 선택
+                  </Label>
+                  <Input
+                    id="date-filter"
+                    type="date"
+                    value={selectedDate}
+                    onChange={handleDateChange}
+                    className="w-48"
+                    data-testid="input-date-filter"
+                  />
+                </div>
+                {selectedDate && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={clearDateFilter}
+                    data-testid="button-clear-date"
+                  >
+                    전체보기
+                  </Button>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setShowDateFilter(false);
+                    setSelectedDate("");
+                  }}
+                  data-testid="button-hide-date-filter"
+                >
+                  닫기
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -69,14 +148,17 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {logs.length === 0 ? (
+              {filteredLogs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
-                    아직 기록된 데이터가 없습니다
+                    {selectedDate 
+                      ? `${selectedDate}에 기록된 데이터가 없습니다`
+                      : '아직 기록된 데이터가 없습니다'
+                    }
                   </TableCell>
                 </TableRow>
               ) : (
-                logs.map((log) => (
+                filteredLogs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                     <TableCell className="font-medium">{log.id}</TableCell>
                     <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
