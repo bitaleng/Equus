@@ -8,7 +8,7 @@ import {
   type InsertDailySummary
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, lt, desc, asc, sql } from "drizzle-orm";
 
 export interface IStorage {
   // Locker Log operations
@@ -157,6 +157,37 @@ export class DatabaseStorage implements IStorage {
     };
     
     return await this.upsertDailySummary(summary);
+  }
+
+  /**
+   * 1년 이상 오래된 데이터 자동 삭제
+   */
+  async deleteOldData(): Promise<{ deletedLogs: number; deletedSummaries: number }> {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const cutoffDateStr = oneYearAgo.toISOString().split('T')[0];
+
+    try {
+      // 1년 이상 오래된 로그 삭제 (타입 안전한 방식)
+      const deletedLogsResult = await db
+        .delete(lockerLogs)
+        .where(lt(lockerLogs.businessDay, cutoffDateStr))
+        .returning({ id: lockerLogs.id });
+
+      // 1년 이상 오래된 매출 집계 삭제 (타입 안전한 방식)
+      const deletedSummariesResult = await db
+        .delete(lockerDailySummaries)
+        .where(lt(lockerDailySummaries.businessDay, cutoffDateStr))
+        .returning({ businessDay: lockerDailySummaries.businessDay });
+
+      return {
+        deletedLogs: deletedLogsResult.length,
+        deletedSummaries: deletedSummariesResult.length,
+      };
+    } catch (error) {
+      console.error('Failed to delete old data:', error);
+      throw error;
+    }
   }
 }
 
