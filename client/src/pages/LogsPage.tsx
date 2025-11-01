@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,36 +16,36 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Calendar } from "lucide-react";
 
 interface LogEntry {
-  id: number;
+  id: string;
   lockerNumber: number;
   entryTime: string;
-  exitTime?: string;
+  exitTime?: string | null;
   timeType: '주간' | '야간';
   basePrice: number;
-  option: string;
+  optionType: 'none' | 'discount' | 'custom' | 'foreigner';
   optionAmount?: number;
   finalPrice: number;
   cancelled: boolean;
   notes?: string;
-  date?: string; // YYYY-MM-DD format
 }
 
-interface LogsPageProps {
-  logs?: LogEntry[];
-}
-
-export default function LogsPage({ logs = [] }: LogsPageProps) {
+export default function LogsPage() {
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [showDateFilter, setShowDateFilter] = useState(false);
 
-  // Filter logs by selected date (10:00 AM to next day 9:59:59 AM)
-  const filteredLogs = selectedDate
-    ? logs.filter(log => {
-        // todo: This is simplified for prototype - real implementation needs proper date/time parsing
-        // Should check if log.entryTime is between selectedDate 10:00 and next day 09:59:59
-        return log.date === selectedDate || !log.date; // For now, show all if no date field
-      })
-    : logs;
+  // Fetch logs with optional date filter
+  const { data, isLoading } = useQuery<{ data: LogEntry[]; nextCursor: string | null }>({
+    queryKey: ['/api/logs', selectedDate],
+    queryFn: async ({ queryKey }) => {
+      const [_, date] = queryKey;
+      const url = date ? `/api/logs?date=${date}&limit=200` : '/api/logs?limit=200';
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Failed to fetch logs');
+      return response.json();
+    },
+  });
+
+  const logs = data?.data || [];
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedDate(e.target.value);
@@ -52,6 +53,14 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
 
   const clearDateFilter = () => {
     setSelectedDate("");
+  };
+
+  const getOptionText = (log: LogEntry) => {
+    if (log.optionType === 'none') return '없음';
+    if (log.optionType === 'foreigner') return '외국인';
+    if (log.optionType === 'discount') return '할인';
+    if (log.optionType === 'custom') return `직접입력`;
+    return '-';
   };
 
   return (
@@ -69,7 +78,7 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
               <h1 className="text-2xl font-semibold">입출 기록 로그</h1>
               <p className="text-sm text-muted-foreground mt-1">
                 {selectedDate 
-                  ? `${selectedDate} 매출 (10:00 ~ 익일 09:59) - ${filteredLogs.length}건`
+                  ? `${selectedDate} 매출 (10:00 ~ 익일 09:59) - ${logs.length}건`
                   : `전체 누적 데이터 (${logs.length}건)`
                 }
               </p>
@@ -134,7 +143,6 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-16">순번</TableHead>
                 <TableHead className="w-20">락커번호</TableHead>
                 <TableHead className="w-24">입실시간</TableHead>
                 <TableHead className="w-24">퇴실시간</TableHead>
@@ -148,9 +156,15 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredLogs.length === 0 ? (
+              {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                    로딩중...
+                  </TableCell>
+                </TableRow>
+              ) : logs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
                     {selectedDate 
                       ? `${selectedDate}에 기록된 데이터가 없습니다`
                       : '아직 기록된 데이터가 없습니다'
@@ -158,13 +172,17 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredLogs.map((log) => (
+                logs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
-                    <TableCell className="font-medium">{log.id}</TableCell>
                     <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">{log.entryTime}</TableCell>
                     <TableCell className="text-sm">
-                      {log.exitTime || '-'}
+                      {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.exitTime 
+                        ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                        : '-'
+                      }
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
@@ -174,7 +192,7 @@ export default function LogsPage({ logs = [] }: LogsPageProps) {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm">{log.basePrice.toLocaleString()}원</TableCell>
-                    <TableCell className="text-sm">{log.option}</TableCell>
+                    <TableCell className="text-sm">{getOptionText(log)}</TableCell>
                     <TableCell className="text-sm">
                       {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
                     </TableCell>
