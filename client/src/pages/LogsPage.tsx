@@ -25,6 +25,7 @@ interface LogEntry {
   optionType: 'none' | 'discount' | 'custom' | 'foreigner';
   optionAmount?: number;
   finalPrice: number;
+  paymentMethod?: 'card' | 'cash';
   cancelled: boolean;
   notes?: string;
 }
@@ -151,6 +152,7 @@ export default function LogsPage() {
                 <TableHead className="w-32">옵션</TableHead>
                 <TableHead className="w-24">옵션금액</TableHead>
                 <TableHead className="w-28">최종요금</TableHead>
+                <TableHead className="w-24">지불방식</TableHead>
                 <TableHead className="w-20">입실취소</TableHead>
                 <TableHead className="min-w-32">비고</TableHead>
               </TableRow>
@@ -158,13 +160,13 @@ export default function LogsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
                     {selectedDate 
                       ? `${selectedDate}에 기록된 데이터가 없습니다`
                       : '아직 기록된 데이터가 없습니다'
@@ -198,6 +200,9 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell className="font-semibold">
                       {log.finalPrice.toLocaleString()}원
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-'}
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-2 py-1 rounded ${
