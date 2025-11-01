@@ -6,8 +6,6 @@ import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getBusinessDay, getTimeType, getBasePrice } from "@shared/businessDay";
-import { Button } from "@/components/ui/button";
-import { Grid3x3, List } from "lucide-react";
 
 interface LockerLog {
   id: string;
@@ -47,7 +45,6 @@ export default function Home() {
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [activeView, setActiveView] = useState<'locker' | 'today'>('locker');
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -224,98 +221,68 @@ export default function Home() {
 
   return (
     <div className="h-full w-full flex bg-background">
-      {/* Left Sidebar - View Switcher */}
-      <div className="w-20 border-r flex flex-col gap-2 p-2 bg-muted/30">
-        <Button
-          variant={activeView === 'locker' ? 'default' : 'ghost'}
-          size="icon"
-          className="h-16 w-full flex-col gap-1"
-          onClick={() => setActiveView('locker')}
-          data-testid="button-view-locker"
-        >
-          <Grid3x3 className="h-5 w-5" />
-          <span className="text-xs">락커관리</span>
-        </Button>
-        <Button
-          variant={activeView === 'today' ? 'default' : 'ghost'}
-          size="icon"
-          className="h-16 w-full flex-col gap-1"
-          onClick={() => setActiveView('today')}
-          data-testid="button-view-today"
-        >
-          <List className="h-5 w-5" />
-          <span className="text-xs">오늘현황</span>
-        </Button>
+      {/* Left Panel */}
+      <div className="w-[40%] border-r flex flex-col">
+        {/* Today Status */}
+        <div className="flex-[3] border-b">
+          <TodayStatusTable
+            entries={todayEntries}
+            onRowClick={(entry) => {
+              setSelectedLocker(entry.lockerNumber);
+              setDialogOpen(true);
+            }}
+          />
+        </div>
+
+        {/* Sales Summary */}
+        <div className="flex-[2] p-6">
+          <SalesSummary
+            date={getBusinessDay(currentTime, businessDayStartHour)}
+            totalVisitors={summary?.totalVisitors || 0}
+            totalSales={summary?.totalSales || 0}
+            cancellations={summary?.cancellations || 0}
+            totalDiscount={summary?.totalDiscount || 0}
+            foreignerCount={summary?.foreignerCount || 0}
+            foreignerSales={summary?.foreignerSales || 0}
+          />
+        </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* Right Panel - Locker Grid */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="p-6 border-b flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">
-              {activeView === 'locker' ? '락커 관리' : '오늘 현황'}
-            </h1>
+            <h1 className="text-2xl font-semibold">락커 관리</h1>
             <p className="text-sm text-muted-foreground mt-1">
               {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>
           </div>
-          {activeView === 'locker' && (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-background border-2 border-border"></div>
-                <span className="text-sm">비어있음</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-primary"></div>
-                <span className="text-sm">사용중</span>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-background border-2 border-border"></div>
+              <span className="text-sm">비어있음</span>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded bg-primary"></div>
+              <span className="text-sm">사용중</span>
+            </div>
+          </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto">
-          {activeView === 'locker' ? (
-            // Locker Grid View
-            <div className="p-6">
-              <div className="grid grid-cols-8 gap-2 max-w-4xl mx-auto">
-                {Array.from({ length: 80 }, (_, i) => i + 1).map((num) => (
-                  <LockerButton
-                    key={num}
-                    number={num}
-                    status={lockerStates[num]}
-                    onClick={() => handleLockerClick(num)}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            // Today Status Table View
-            <div className="p-6">
-              <TodayStatusTable
-                entries={todayEntries}
-                onRowClick={(entry) => {
-                  setSelectedLocker(entry.lockerNumber);
-                  setDialogOpen(true);
-                }}
+        {/* Locker Grid */}
+        <div className="flex-1 overflow-auto p-6">
+          <div className="grid grid-cols-8 gap-2 max-w-4xl mx-auto">
+            {Array.from({ length: 80 }, (_, i) => i + 1).map((num) => (
+              <LockerButton
+                key={num}
+                number={num}
+                status={lockerStates[num]}
+                onClick={() => handleLockerClick(num)}
               />
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-      </div>
-
-      {/* Right Panel - Sales Summary (Fixed) */}
-      <div className="w-80 border-l p-6 bg-muted/20">
-        <SalesSummary
-          date={getBusinessDay(currentTime, businessDayStartHour)}
-          totalVisitors={summary?.totalVisitors || 0}
-          totalSales={summary?.totalSales || 0}
-          cancellations={summary?.cancellations || 0}
-          totalDiscount={summary?.totalDiscount || 0}
-          foreignerCount={summary?.foreignerCount || 0}
-          foreignerSales={summary?.foreignerSales || 0}
-        />
       </div>
 
       {/* Options Dialog */}
