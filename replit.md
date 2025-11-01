@@ -158,3 +158,45 @@ Preferred communication style: Simple, everyday language.
 - Zero recurring costs after deployment
 - Works offline on tablets/devices after first visit
 - Data stays local to each device (no cloud sync)
+
+### Security & Data Management Features
+**Date**: November 1, 2025
+**Motivation**: User requested password change capability and automatic data cleanup to prevent storage bloat
+
+**Changes Made**:
+1. **Password Management**:
+   - Default password: "1234" (changeable via Settings)
+   - Password stored in localStorage as "staff_password"
+   - Password change UI in Settings page with validation:
+     - Current password verification
+     - Minimum 4-character requirement
+     - Confirmation password matching
+     - Real-time validation feedback
+
+2. **Data Lifecycle Management**:
+   - **Automatic Cleanup**: Data older than 1 year auto-deleted on app initialization
+     - Respects configured business day start hour for accurate date calculation
+     - Runs silently in background on app load
+     - Preserves system settings and locker groups
+   - **Manual Reset**: "데이터 초기화" button in Settings
+     - Confirmation dialog to prevent accidental deletion
+     - Deletes all `locker_logs` and `locker_daily_summaries`
+     - Preserves system settings, locker groups, and password
+     - Useful for fresh start or when switching businesses
+
+3. **Data Preservation Rules**:
+   - Settings (businessDayStartHour, prices, etc.) always preserved
+   - Locker group configurations always preserved
+   - Password always preserved
+   - Only transactional data (logs and summaries) can be deleted
+
+**Implementation Details**:
+- `localDb.ts`: Added `clearAllData()`, `deleteOldData()`, `getOldestEntryDate()`
+- `Settings.tsx`: Added password change section and data management section
+- `App.tsx`: Auto-delete runs after database initialization
+- `PasswordAuth.tsx`: Changed from API-based to localStorage-based authentication
+
+**Security Notes**:
+- Password stored in plaintext in localStorage (acceptable for single-device offline use)
+- Physical device access required to view password
+- Consider device-level security (screen lock, full-disk encryption) for production use
