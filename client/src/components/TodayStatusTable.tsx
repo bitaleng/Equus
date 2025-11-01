@@ -17,6 +17,8 @@ interface LockerEntry {
   basePrice: number;
   option: string;
   finalPrice: number;
+  status: 'in_use' | 'checked_out' | 'cancelled';
+  cancelled: boolean;
   notes?: string;
 }
 
@@ -32,7 +34,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold">오늘 현황</h2>
           <span className="text-sm text-muted-foreground">
-            사용중: {entries.length}개
+            총 방문: {entries.length}명 (사용중: {entries.filter(e => e.status === 'in_use' && !e.cancelled).length}개)
           </span>
         </div>
         <Link href="/logs">
@@ -51,36 +53,51 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
               <TableHead className="w-20">구분</TableHead>
               <TableHead className="w-24">옵션</TableHead>
               <TableHead className="w-28">최종요금</TableHead>
+              <TableHead className="w-24">상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {entries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                  현재 사용중인 락커가 없습니다
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                  오늘 방문한 손님이 없습니다
                 </TableCell>
               </TableRow>
             ) : (
-              entries.map((entry, index) => (
-                <TableRow
-                  key={index}
-                  className="hover-elevate cursor-pointer"
-                  onClick={() => onRowClick?.(entry)}
-                  data-testid={`row-entry-${entry.lockerNumber}`}
-                >
-                  <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
-                  <TableCell className="text-sm">{entry.entryTime}</TableCell>
-                  <TableCell>
-                    <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
-                      entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
-                    }`}>
-                      {entry.timeType}
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-sm">{entry.option}</TableCell>
-                  <TableCell className="font-semibold text-base">{entry.finalPrice.toLocaleString()}원</TableCell>
-                </TableRow>
-              ))
+              entries.map((entry, index) => {
+                const statusText = entry.cancelled ? '취소' : entry.status === 'in_use' ? '입실중' : '퇴실';
+                const statusColor = entry.cancelled 
+                  ? 'bg-destructive/10 text-destructive' 
+                  : entry.status === 'in_use' 
+                  ? 'bg-primary/10 text-primary' 
+                  : 'bg-muted text-muted-foreground';
+                
+                return (
+                  <TableRow
+                    key={index}
+                    className="hover-elevate cursor-pointer"
+                    onClick={() => onRowClick?.(entry)}
+                    data-testid={`row-entry-${entry.lockerNumber}`}
+                  >
+                    <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
+                    <TableCell className="text-sm">{entry.entryTime}</TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
+                      }`}>
+                        {entry.timeType}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm">{entry.option}</TableCell>
+                    <TableCell className="font-semibold text-base">{entry.finalPrice.toLocaleString()}원</TableCell>
+                    <TableCell>
+                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${statusColor}`}>
+                        {statusText}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
