@@ -3,7 +3,6 @@ import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface LockerEntry {
   lockerNumber: number;
@@ -217,14 +216,6 @@ export default function Home() {
     setSelectedLocker(null);
   };
 
-  const toggleLockerDisabled = (lockerNumber: number) => {
-    const currentState = lockerStates[lockerNumber];
-    if (currentState === 'empty') {
-      setLockerStates({ ...lockerStates, [lockerNumber]: 'disabled' });
-    } else if (currentState === 'disabled') {
-      setLockerStates({ ...lockerStates, [lockerNumber]: 'empty' });
-    }
-  };
 
   const calculateSummary = () => {
     const completedToday = allLogs.filter(log => log.exitTime && !log.cancelled);
@@ -296,10 +287,6 @@ export default function Home() {
               <div className="w-4 h-4 rounded bg-primary"></div>
               <span className="text-sm">사용중</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-muted/50"></div>
-              <span className="text-sm">빈락카</span>
-            </div>
           </div>
         </div>
 
@@ -307,35 +294,12 @@ export default function Home() {
         <div className="flex-1 overflow-auto p-6">
           <div className="grid grid-cols-8 gap-2 max-w-4xl mx-auto">
             {Array.from({ length: 80 }, (_, i) => i + 1).map((num) => (
-              <div key={num} className="relative">
-                <LockerButton
-                  number={num}
-                  status={lockerStates[num]}
-                  onClick={() => handleLockerClick(num)}
-                />
-                {lockerStates[num] === 'empty' && (
-                  <div className="absolute -bottom-1 -right-1">
-                    <Checkbox
-                      id={`disable-${num}`}
-                      checked={false}
-                      onCheckedChange={() => toggleLockerDisabled(num)}
-                      className="w-4 h-4 bg-background border-2"
-                      data-testid={`checkbox-disable-${num}`}
-                    />
-                  </div>
-                )}
-                {lockerStates[num] === 'disabled' && (
-                  <div className="absolute -bottom-1 -right-1">
-                    <Checkbox
-                      id={`enable-${num}`}
-                      checked={true}
-                      onCheckedChange={() => toggleLockerDisabled(num)}
-                      className="w-4 h-4"
-                      data-testid={`checkbox-enable-${num}`}
-                    />
-                  </div>
-                )}
-              </div>
+              <LockerButton
+                key={num}
+                number={num}
+                status={lockerStates[num]}
+                onClick={() => handleLockerClick(num)}
+              />
             ))}
           </div>
         </div>
