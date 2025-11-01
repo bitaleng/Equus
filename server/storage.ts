@@ -30,6 +30,11 @@ export interface IStorage {
   getDailySummary(businessDay: string): Promise<DailySummary | undefined>;
   upsertDailySummary(summary: InsertDailySummary): Promise<DailySummary>;
   recalculateDailySummary(businessDay: string): Promise<DailySummary>;
+  
+  // System Settings operations
+  getSetting(key: string): Promise<string | undefined>;
+  setSetting(key: string, value: string): Promise<void>;
+  getAllSettings(): Promise<Record<string, string>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -228,6 +233,54 @@ export class DatabaseStorage implements IStorage {
       console.error('Failed to delete old data:', error);
       throw error;
     }
+  }
+
+  /**
+   * 시스템 설정 조회
+   */
+  async getSetting(key: string): Promise<string | undefined> {
+    const [result] = await db
+      .select()
+      .from(systemMetadata)
+      .where(eq(systemMetadata.key, key))
+      .limit(1);
+    
+    return result?.value;
+  }
+
+  /**
+   * 시스템 설정 저장
+   */
+  async setSetting(key: string, value: string): Promise<void> {
+    await db
+      .insert(systemMetadata)
+      .values({
+        key,
+        value,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: systemMetadata.key,
+        set: {
+          value,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  /**
+   * 모든 시스템 설정 조회
+   */
+  async getAllSettings(): Promise<Record<string, string>> {
+    const results = await db
+      .select()
+      .from(systemMetadata);
+    
+    const settings: Record<string, string> = {};
+    for (const row of results) {
+      settings[row.key] = row.value;
+    }
+    return settings;
   }
 }
 
