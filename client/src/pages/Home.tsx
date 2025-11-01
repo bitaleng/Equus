@@ -122,7 +122,12 @@ export default function Home() {
     ? activeLockers.find(log => log.lockerNumber === selectedLocker)
     : null;
 
-  const handleApplyOption = async (option: string, customAmount?: number) => {
+  const handleApplyOption = async (
+    option: string, 
+    customAmount?: number, 
+    notes?: string, 
+    paymentMethod?: 'card' | 'cash'
+  ) => {
     if (!selectedEntry) return;
 
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' = 'none';
@@ -144,7 +149,7 @@ export default function Home() {
 
     await updateEntryMutation.mutateAsync({
       id: selectedEntry.id,
-      update: { optionType, optionAmount, finalPrice },
+      update: { optionType, optionAmount, finalPrice, notes, paymentMethod },
     });
   };
 
