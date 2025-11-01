@@ -144,6 +144,7 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
+                <TableHead className="w-28">날짜</TableHead>
                 <TableHead className="w-20">락커번호</TableHead>
                 <TableHead className="w-24">입실시간</TableHead>
                 <TableHead className="w-24">퇴실시간</TableHead>
@@ -160,13 +161,13 @@ export default function LogsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
                     {selectedDate 
                       ? `${selectedDate}에 기록된 데이터가 없습니다`
                       : '아직 기록된 데이터가 없습니다'
@@ -176,6 +177,9 @@ export default function LogsPage() {
               ) : (
                 logs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
+                    <TableCell className="text-sm">
+                      {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                    </TableCell>
                     <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
                     <TableCell className="text-sm">
                       {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
