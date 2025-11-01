@@ -57,9 +57,14 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
 
   return (
     <div className="h-full flex flex-col p-6">
-      <div className="flex items-center justify-between mb-4 gap-4">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 mb-4">
+        {/* 첫 번째 줄: 제목만 */}
+        <div>
           <h2 className="text-lg font-semibold">오늘 현황</h2>
+        </div>
+        
+        {/* 두 번째 줄: 총 방문수와 필터링 결과 */}
+        <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
             총 방문: {entries.length}명 (사용중: {entries.filter(e => e.status === 'in_use' && !e.cancelled).length}개)
           </span>
@@ -69,6 +74,8 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
             </span>
           )}
         </div>
+        
+        {/* 세 번째 줄: 입력란과 버튼들 */}
         <div className="flex items-center gap-2">
           <Input
             type="number"
