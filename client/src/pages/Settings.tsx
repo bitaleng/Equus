@@ -95,6 +95,10 @@ export default function Settings() {
   const createGroupMutation = useMutation({
     mutationFn: async (data: LockerGroupFormData) => {
       const res = await apiRequest('POST', '/api/locker-groups', data);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "그룹 생성 실패");
+      }
       return await res.json();
     },
     onSuccess: () => {
@@ -106,12 +110,23 @@ export default function Settings() {
         description: "새 락커 그룹이 생성되었습니다.",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "그룹 생성 실패",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   // Update locker group mutation
   const updateGroupMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<LockerGroupFormData> }) => {
       const res = await apiRequest('PATCH', `/api/locker-groups/${id}`, data);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "그룹 수정 실패");
+      }
       return await res.json();
     },
     onSuccess: () => {
@@ -124,12 +139,23 @@ export default function Settings() {
         description: "락커 그룹이 수정되었습니다.",
       });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "그룹 수정 실패",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
   });
 
   // Delete locker group mutation
   const deleteGroupMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest('DELETE', `/api/locker-groups/${id}`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "그룹 삭제 실패");
+      }
       return await res.json();
     },
     onSuccess: () => {
@@ -137,6 +163,13 @@ export default function Settings() {
       toast({
         title: "그룹 삭제 완료",
         description: "락커 그룹이 삭제되었습니다.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "그룹 삭제 실패",
+        description: error.message,
+        variant: "destructive",
       });
     },
   });
