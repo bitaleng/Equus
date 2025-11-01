@@ -11,7 +11,7 @@ import Home from "@/pages/Home";
 import LogsPage from "@/pages/LogsPage";
 import Settings from "@/pages/Settings";
 import NotFound from "@/pages/not-found";
-import { initDatabase, deleteOldData } from "@/lib/localDb";
+import { initDatabase, deleteOldData, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
 
 function Router() {
@@ -38,16 +38,17 @@ function App() {
     // Initialize database
     initDatabase().then(() => {
       // Auto-delete data older than 1 year
+      const settings = getSettings();
       const today = new Date();
       const oneYearAgo = new Date(today);
       oneYearAgo.setFullYear(today.getFullYear() - 1);
       
-      // Format as business day string (YYYY-MM-DD)
-      const cutoffDate = getBusinessDay(oneYearAgo);
+      // Format as business day string (YYYY-MM-DD) using configured business day start hour
+      const cutoffDate = getBusinessDay(oneYearAgo, settings.businessDayStartHour);
       
       try {
         deleteOldData(cutoffDate);
-        console.log(`Deleted data older than ${cutoffDate}`);
+        console.log(`Deleted data older than ${cutoffDate} (business day start hour: ${settings.businessDayStartHour})`);
       } catch (error) {
         console.error('Failed to delete old data:', error);
       }
