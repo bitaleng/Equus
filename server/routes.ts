@@ -15,13 +15,26 @@ import {
 } from "./utils/businessDay";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Helper function to get settings with defaults
+  async function getSettings() {
+    const settings = await storage.getSettings();
+    return {
+      businessDayStartHour: settings?.businessDayStartHour ?? 10,
+      dayPrice: settings?.dayPrice ?? 10000,
+      nightPrice: settings?.nightPrice ?? 13000,
+      discountAmount: settings?.discountAmount ?? 2000,
+      foreignerPrice: settings?.foreignerPrice ?? 25000,
+    };
+  }
+
   // Create new locker entry (입실)
   app.post("/api/entries", async (req, res) => {
     try {
+      const settings = await getSettings();
       const now = new Date();
       const timeType = getTimeType(now);
-      const basePrice = getBasePrice(timeType);
-      const businessDay = getBusinessDay(now);
+      const basePrice = getBasePrice(timeType, settings.dayPrice, settings.nightPrice);
+      const businessDay = getBusinessDay(now, settings.businessDayStartHour);
       
       const data = insertLockerLogSchema.parse({
         ...req.body,
@@ -78,8 +91,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // NOTE: This must be before /api/entries/:id to avoid "today" being treated as an ID
   app.get("/api/entries/today", async (req, res) => {
     try {
+      const settings = await getSettings();
       const now = new Date();
-      const businessDay = getBusinessDay(now);
+      const businessDay = getBusinessDay(now, settings.businessDayStartHour);
       
       const result = await storage.listLogs({
         businessDay,
@@ -167,7 +181,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get today's summary (오늘 매출 집계)
   app.get("/api/daily-summary/today", async (req, res) => {
     try {
-      const businessDay = getBusinessDay();
+      const settings = await getSettings();
+      const businessDay = getBusinessDay(new Date(), settings.businessDayStartHour);
       let summary = await storage.getDailySummary(businessDay);
       
       // 집계 데이터가 없으면 재계산
@@ -184,19 +199,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all system settings (시스템 설정 조회)
   app.get("/api/settings", async (req, res) => {
     try {
-      const settings = await storage.getAllSettings();
+      const rawSettings = await storage.getAllSettings();
       
-      // 기본값 설정
-      const defaultSettings = {
-        businessDayStartHour: '10',
-        dayPrice: '10000',
-        nightPrice: '13000',
-        discountAmount: '2000',
-        foreignerPrice: '25000',
+      // Convert string values to numbers
+      const settings = {
+        businessDayStartHour: parseInt(rawSettings.businessDayStartHour || '10'),
+        dayPrice: parseInt(rawSettings.dayPrice || '10000'),
+        nightPrice: parseInt(rawSettings.nightPrice || '13000'),
+        discountAmount: parseInt(rawSettings.discountAmount || '2000'),
+        foreignerPrice: parseInt(rawSettings.foreignerPrice || '25000'),
       };
       
-      // 기본값과 병합
-      res.json({ ...defaultSettings, ...settings });
+      res.json(settings);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

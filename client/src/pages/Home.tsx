@@ -33,6 +33,14 @@ interface DailySummary {
   foreignerSales: number;
 }
 
+interface Settings {
+  businessDayStartHour: number;
+  dayPrice: number;
+  nightPrice: number;
+  discountAmount: number;
+  foreignerPrice: number;
+}
+
 export default function Home() {
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -42,6 +50,18 @@ export default function Home() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch settings
+  const { data: settings } = useQuery<Settings>({
+    queryKey: ['/api/settings'],
+  });
+
+  // Use default values if settings not loaded yet
+  const businessDayStartHour = settings?.businessDayStartHour ?? 10;
+  const dayPrice = settings?.dayPrice ?? 10000;
+  const nightPrice = settings?.nightPrice ?? 13000;
+  const discountAmount = settings?.discountAmount ?? 2000;
+  const foreignerPrice = settings?.foreignerPrice ?? 25000;
 
   // Fetch active lockers
   const { data: activeLockers = [] } = useQuery<LockerLog[]>({
@@ -65,8 +85,8 @@ export default function Home() {
   const createEntryMutation = useMutation({
     mutationFn: async (lockerNumber: number) => {
       const timeType = getTimeType(currentTime);
-      const basePrice = getBasePrice(timeType);
-      const businessDay = getBusinessDay(currentTime);
+      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
       
       const res = await apiRequest('POST', '/api/entries', {
         lockerNumber,
@@ -137,11 +157,11 @@ export default function Home() {
 
     if (option === 'foreigner') {
       optionType = 'foreigner';
-      finalPrice = 25000;
+      finalPrice = foreignerPrice;
     } else if (option === 'discount') {
       optionType = 'discount';
-      finalPrice = selectedEntry.basePrice - 2000;
-      optionAmount = 2000;
+      finalPrice = selectedEntry.basePrice - discountAmount;
+      optionAmount = discountAmount;
     } else if (option === 'custom' && customAmount) {
       optionType = 'custom';
       finalPrice = selectedEntry.basePrice - customAmount;
@@ -217,7 +237,7 @@ export default function Home() {
         {/* Sales Summary */}
         <div className="flex-[2] p-6">
           <SalesSummary
-            date={getBusinessDay(currentTime)}
+            date={getBusinessDay(currentTime, businessDayStartHour)}
             totalVisitors={summary?.totalVisitors || 0}
             totalSales={summary?.totalSales || 0}
             cancellations={summary?.cancellations || 0}
@@ -235,7 +255,7 @@ export default function Home() {
           <div>
             <h1 className="text-2xl font-semibold">락커 관리</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime)).toLocaleString()}원)
+              {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -275,6 +295,8 @@ export default function Home() {
           timeType={selectedEntry.timeType}
           currentNotes={selectedEntry.notes}
           currentPaymentMethod={selectedEntry.paymentMethod}
+          discountAmount={discountAmount}
+          foreignerPrice={foreignerPrice}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}

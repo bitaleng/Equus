@@ -9,21 +9,21 @@ import { useToast } from "@/hooks/use-toast";
 import { Save } from "lucide-react";
 
 interface Settings {
-  businessDayStartHour: string;
-  dayPrice: string;
-  nightPrice: string;
-  discountAmount: string;
-  foreignerPrice: string;
+  businessDayStartHour: number;
+  dayPrice: number;
+  nightPrice: number;
+  discountAmount: number;
+  foreignerPrice: number;
 }
 
 export default function Settings() {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Settings>({
-    businessDayStartHour: '10',
-    dayPrice: '10000',
-    nightPrice: '13000',
-    discountAmount: '2000',
-    foreignerPrice: '25000',
+    businessDayStartHour: 10,
+    dayPrice: 10000,
+    nightPrice: 13000,
+    discountAmount: 2000,
+    foreignerPrice: 25000,
   });
 
   // Fetch settings
@@ -96,7 +96,7 @@ export default function Settings() {
                   min="0"
                   max="23"
                   value={formData.businessDayStartHour}
-                  onChange={(e) => setFormData({ ...formData, businessDayStartHour: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, businessDayStartHour: parseInt(e.target.value) || 0 })}
                   data-testid="input-business-hour"
                 />
                 <p className="text-xs text-muted-foreground">
@@ -121,7 +121,7 @@ export default function Settings() {
                   id="dayPrice"
                   type="number"
                   value={formData.dayPrice}
-                  onChange={(e) => setFormData({ ...formData, dayPrice: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, dayPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-day-price"
                 />
               </div>
@@ -131,7 +131,7 @@ export default function Settings() {
                   id="nightPrice"
                   type="number"
                   value={formData.nightPrice}
-                  onChange={(e) => setFormData({ ...formData, nightPrice: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, nightPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-night-price"
                 />
               </div>
@@ -153,7 +153,7 @@ export default function Settings() {
                   id="discountAmount"
                   type="number"
                   value={formData.discountAmount}
-                  onChange={(e) => setFormData({ ...formData, discountAmount: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
                   data-testid="input-discount-amount"
                 />
               </div>
@@ -163,7 +163,7 @@ export default function Settings() {
                   id="foreignerPrice"
                   type="number"
                   value={formData.foreignerPrice}
-                  onChange={(e) => setFormData({ ...formData, foreignerPrice: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-foreigner-price"
                 />
               </div>
