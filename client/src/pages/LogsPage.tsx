@@ -13,7 +13,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText } from "lucide-react";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface LogEntry {
   id: string;
@@ -31,15 +34,23 @@ interface LogEntry {
 }
 
 export default function LogsPage() {
-  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [showDateFilter, setShowDateFilter] = useState(false);
 
-  // Fetch logs with optional date filter
+  // Fetch logs with optional date range filter
   const { data, isLoading } = useQuery<{ data: LogEntry[]; nextCursor: string | null }>({
-    queryKey: ['/api/logs', selectedDate],
+    queryKey: ['/api/logs', startDate, endDate],
     queryFn: async ({ queryKey }) => {
-      const [_, date] = queryKey;
-      const url = date ? `/api/logs?date=${date}&limit=200` : '/api/logs?limit=200';
+      const [_, start, end] = queryKey;
+      let url = '/api/logs?limit=1000';
+      
+      if (start && end) {
+        url = `/api/logs?startDate=${start}&endDate=${end}&limit=1000`;
+      } else if (start) {
+        url = `/api/logs?date=${start}&limit=1000`;
+      }
+      
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch logs');
       return response.json();
@@ -48,12 +59,9 @@ export default function LogsPage() {
 
   const logs = data?.data || [];
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedDate(e.target.value);
-  };
-
   const clearDateFilter = () => {
-    setSelectedDate("");
+    setStartDate("");
+    setEndDate("");
   };
 
   const getOptionText = (log: LogEntry) => {
@@ -62,6 +70,79 @@ export default function LogsPage() {
     if (log.optionType === 'discount') return '할인';
     if (log.optionType === 'custom') return `직접입력`;
     return '-';
+  };
+
+  const exportToExcel = () => {
+    const exportData = logs.map((log) => ({
+      '날짜': new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      '락커번호': log.lockerNumber,
+      '입실시간': new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      '퇴실시간': log.exitTime 
+        ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '-',
+      '주/야간': log.timeType,
+      '기본요금': log.basePrice,
+      '옵션': getOptionText(log),
+      '옵션금액': log.optionAmount || '-',
+      '최종요금': log.finalPrice,
+      '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-',
+      '입실취소': log.cancelled ? 'O' : '-',
+      '비고': log.notes || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '매출기록');
+    
+    const fileName = startDate && endDate 
+      ? `매출기록_${startDate}_${endDate}.xlsx`
+      : `매출기록_전체.xlsx`;
+    
+    XLSX.writeFile(wb, fileName);
+  };
+
+  const exportToPDF = () => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    
+    // Add Korean font support (using default font for now)
+    doc.setFont("helvetica");
+    
+    const title = startDate && endDate 
+      ? `매출기록 (${startDate} ~ ${endDate})`
+      : '매출기록 (전체)';
+    
+    doc.setFontSize(16);
+    doc.text(title, 14, 15);
+    
+    const tableData = logs.map((log) => [
+      new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
+      log.lockerNumber.toString(),
+      new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      log.exitTime 
+        ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+        : '-',
+      log.timeType,
+      log.basePrice.toLocaleString(),
+      getOptionText(log),
+      log.optionAmount ? log.optionAmount.toLocaleString() : '-',
+      log.finalPrice.toLocaleString(),
+      log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-',
+      log.cancelled ? 'O' : '-',
+    ]);
+
+    autoTable(doc, {
+      head: [['날짜', '락커', '입실', '퇴실', '주/야간', '기본요금', '옵션', '옵션금액', '최종요금', '지불', '취소']],
+      body: tableData,
+      startY: 25,
+      styles: { fontSize: 8, font: 'helvetica' },
+      headStyles: { fillColor: [66, 66, 66] },
+    });
+    
+    const fileName = startDate && endDate 
+      ? `매출기록_${startDate}_${endDate}.pdf`
+      : `매출기록_전체.pdf`;
+    
+    doc.save(fileName);
   };
 
   return (
@@ -78,8 +159,10 @@ export default function LogsPage() {
             <div>
               <h1 className="text-2xl font-semibold">입출 기록 로그</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                {selectedDate 
-                  ? `${selectedDate} 매출 (10:00 ~ 익일 09:59) - ${logs.length}건`
+                {startDate && endDate
+                  ? `${startDate} ~ ${endDate} 매출 - ${logs.length}건`
+                  : startDate
+                  ? `${startDate} 매출 - ${logs.length}건`
                   : `전체 누적 데이터 (${logs.length}건)`
                 }
               </p>
@@ -87,6 +170,27 @@ export default function LogsPage() {
           </div>
           
           <div className="flex items-center gap-3">
+            {logs.length > 0 && (
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={exportToExcel}
+                  data-testid="button-export-excel"
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  엑셀 내보내기
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={exportToPDF}
+                  data-testid="button-export-pdf"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  PDF 내보내기
+                </Button>
+              </>
+            )}
+            
             {!showDateFilter ? (
               <Button 
                 variant="outline" 
@@ -94,24 +198,37 @@ export default function LogsPage() {
                 data-testid="button-show-date-filter"
               >
                 <Calendar className="h-4 w-4 mr-2" />
-                날짜별 조회
+                기간 조회
               </Button>
             ) : (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="date-filter" className="text-sm whitespace-nowrap">
-                    날짜 선택
+                  <Label htmlFor="start-date" className="text-sm whitespace-nowrap">
+                    시작일
                   </Label>
                   <Input
-                    id="date-filter"
+                    id="start-date"
                     type="date"
-                    value={selectedDate}
-                    onChange={handleDateChange}
-                    className="w-48"
-                    data-testid="input-date-filter"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-40"
+                    data-testid="input-start-date"
                   />
                 </div>
-                {selectedDate && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="end-date" className="text-sm whitespace-nowrap">
+                    종료일
+                  </Label>
+                  <Input
+                    id="end-date"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-40"
+                    data-testid="input-end-date"
+                  />
+                </div>
+                {(startDate || endDate) && (
                   <Button 
                     variant="ghost" 
                     size="sm"
@@ -126,7 +243,7 @@ export default function LogsPage() {
                   size="sm"
                   onClick={() => {
                     setShowDateFilter(false);
-                    setSelectedDate("");
+                    clearDateFilter();
                   }}
                   data-testid="button-hide-date-filter"
                 >
@@ -168,8 +285,10 @@ export default function LogsPage() {
               ) : logs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
-                    {selectedDate 
-                      ? `${selectedDate}에 기록된 데이터가 없습니다`
+                    {startDate && endDate
+                      ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
+                      : startDate
+                      ? `${startDate}에 기록된 데이터가 없습니다`
                       : '아직 기록된 데이터가 없습니다'
                     }
                   </TableCell>
