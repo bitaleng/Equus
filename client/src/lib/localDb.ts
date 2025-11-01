@@ -34,8 +34,9 @@ export function saveDatabase() {
   if (!db) return;
   
   const data = db.export();
-  const buffer = Buffer.from(data);
-  localStorage.setItem(DB_NAME, buffer.toString('base64'));
+  const binary = String.fromCharCode.apply(null, Array.from(data));
+  const base64 = btoa(binary);
+  localStorage.setItem(DB_NAME, base64);
 }
 
 // Create all tables
