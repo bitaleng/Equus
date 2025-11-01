@@ -64,7 +64,7 @@ export default function LogsPage() {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-background">
+    <div className="h-full w-full flex flex-col bg-background">
       {/* Header */}
       <div className="border-b p-6">
         <div className="flex items-center justify-between">

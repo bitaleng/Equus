@@ -194,7 +194,7 @@ export default function Home() {
   }));
 
   return (
-    <div className="h-screen w-full flex bg-background">
+    <div className="h-full w-full flex bg-background">
       {/* Left Panel */}
       <div className="w-[40%] border-r flex flex-col">
         {/* Today Status */}
