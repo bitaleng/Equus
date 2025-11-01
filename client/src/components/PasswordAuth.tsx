@@ -19,13 +19,10 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-
-      if (response.ok) {
+      // Get stored password from localStorage (default: "1234")
+      const storedPassword = localStorage.getItem("staff_password") || "1234";
+      
+      if (password === storedPassword) {
         localStorage.setItem("authenticated", "true");
         onAuthenticated();
       } else {
