@@ -35,6 +35,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const entry = await storage.createEntry(data);
+      
+      // 입실 시 바로 매출 집계 업데이트
+      await storage.recalculateDailySummary(businessDay);
+      
       res.json(entry);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -47,7 +51,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { id } = req.params;
       const data = updateLockerLogSchema.parse(req.body);
       
-      // 퇴실 시 매출 집계 업데이트
+      // 퇴실 시 exitTime 설정
       if (data.status === 'checked_out' && !data.exitTime) {
         data.exitTime = new Date();
       }
@@ -58,8 +62,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Entry not found" });
       }
       
-      // 퇴실 또는 취소 시 매출 집계 재계산
-      if (data.status === 'checked_out' || data.cancelled) {
+      // 취소/취소해제, 옵션 변경 시 매출 집계 재계산 (퇴실은 이미 입실 때 집계됨)
+      // cancelled 필드가 존재하면 (true/false 모두) 재계산
+      if (data.cancelled !== undefined || data.finalPrice !== undefined || data.optionType !== undefined) {
         await storage.recalculateDailySummary(entry.businessDay);
       }
       
