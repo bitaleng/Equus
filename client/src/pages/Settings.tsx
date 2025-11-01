@@ -69,7 +69,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="border-b p-6">
         <h1 className="text-2xl font-semibold">시스템 설정</h1>
         <p className="text-sm text-muted-foreground mt-1">
