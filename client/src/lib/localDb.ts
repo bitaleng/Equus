@@ -9,10 +9,10 @@ const DB_NAME = 'rest_hotel_db';
 export async function initDatabase(): Promise<Database> {
   if (db) return db;
 
-  // Load SQL.js WASM
+  // Load SQL.js WASM from local file
   if (!SQL) {
     SQL = await initSqlJs({
-      locateFile: (file: string) => `https://sql.js.org/dist/${file}`
+      locateFile: (file: string) => `/${file}`
     });
   }
 
