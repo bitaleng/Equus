@@ -181,6 +181,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all system settings (시스템 설정 조회)
+  app.get("/api/settings", async (req, res) => {
+    try {
+      const settings = await storage.getAllSettings();
+      
+      // 기본값 설정
+      const defaultSettings = {
+        businessDayStartHour: '10',
+        dayPrice: '10000',
+        nightPrice: '13000',
+        discountAmount: '2000',
+        foreignerPrice: '25000',
+      };
+      
+      // 기본값과 병합
+      res.json({ ...defaultSettings, ...settings });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Update system settings (시스템 설정 업데이트)
+  app.put("/api/settings", async (req, res) => {
+    try {
+      const settings = req.body;
+      
+      // 각 설정값 저장
+      for (const [key, value] of Object.entries(settings)) {
+        if (value !== undefined && value !== null) {
+          await storage.setSetting(key, String(value));
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
