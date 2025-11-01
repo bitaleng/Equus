@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Table,
   TableBody,
@@ -7,7 +8,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
+import { X } from "lucide-react";
 
 interface LockerEntry {
   lockerNumber: number;
@@ -27,6 +30,31 @@ interface TodayStatusTableProps {
 }
 
 export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTableProps) {
+  const [lockerNumberInput, setLockerNumberInput] = useState("");
+  const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
+
+  const handleLockerUsageFilter = () => {
+    const num = parseInt(lockerNumberInput);
+    if (!isNaN(num) && num > 0) {
+      setFilteredLockerNumber(num);
+    }
+  };
+
+  const clearFilter = () => {
+    setFilteredLockerNumber(null);
+    setLockerNumberInput("");
+  };
+
+  // Filter entries based on locker number
+  const displayedEntries = filteredLockerNumber !== null
+    ? entries.filter(e => e.lockerNumber === filteredLockerNumber)
+    : entries;
+
+  // Count usage for filtered locker
+  const usageCount = filteredLockerNumber !== null
+    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled).length
+    : 0;
+
   return (
     <div className="h-full flex flex-col p-6">
       <div className="flex items-center justify-between mb-4 gap-4">
@@ -35,12 +63,47 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
           <span className="text-sm text-muted-foreground">
             총 방문: {entries.length}명 (사용중: {entries.filter(e => e.status === 'in_use' && !e.cancelled).length}개)
           </span>
+          {filteredLockerNumber !== null && (
+            <span className="text-sm font-semibold text-primary">
+              락커 {filteredLockerNumber}번 사용: {usageCount}회
+            </span>
+          )}
         </div>
-        <Link href="/logs">
-          <Button variant="outline" size="sm" data-testid="button-view-logs">
-            상세정보보기
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            placeholder="락커번호"
+            value={lockerNumberInput}
+            onChange={(e) => setLockerNumberInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleLockerUsageFilter()}
+            className="w-24 h-9"
+            data-testid="input-locker-number-filter"
+          />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleLockerUsageFilter}
+            data-testid="button-locker-usage"
+          >
+            락카사용회수
           </Button>
-        </Link>
+          {filteredLockerNumber !== null && (
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={clearFilter}
+              data-testid="button-clear-filter"
+              className="h-9 w-9"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+          <Link href="/logs">
+            <Button variant="outline" size="sm" data-testid="button-view-logs">
+              상세정보보기
+            </Button>
+          </Link>
+        </div>
       </div>
       
       <div className="flex-1 overflow-y-auto pr-2" style={{ scrollbarGutter: 'stable' }}>
@@ -56,14 +119,17 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
             </TableRow>
           </TableHeader>
           <TableBody>
-            {entries.length === 0 ? (
+            {displayedEntries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                  오늘 방문한 손님이 없습니다
+                  {filteredLockerNumber !== null 
+                    ? `락커 ${filteredLockerNumber}번 사용 기록이 없습니다`
+                    : '오늘 방문한 손님이 없습니다'
+                  }
                 </TableCell>
               </TableRow>
             ) : (
-              entries.map((entry, index) => {
+              displayedEntries.map((entry, index) => {
                 const statusText = entry.cancelled ? '취소' : entry.status === 'in_use' ? '입실중' : '퇴실';
                 const statusColor = entry.cancelled 
                   ? 'bg-destructive/10 text-destructive' 
