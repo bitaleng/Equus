@@ -6,6 +6,7 @@ import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { getBusinessDay, getTimeType, getBasePrice } from "@shared/businessDay";
+import type { LockerGroup } from "@shared/schema";
 
 interface LockerLog {
   id: string;
@@ -81,6 +82,11 @@ export default function Home() {
     refetchInterval: 10000,
   });
 
+  // Fetch locker groups
+  const { data: lockerGroups = [] } = useQuery<LockerGroup[]>({
+    queryKey: ['/api/locker-groups'],
+  });
+
   // Create entry mutation
   const createEntryMutation = useMutation({
     mutationFn: async (lockerNumber: number) => {
@@ -118,12 +124,23 @@ export default function Home() {
     },
   });
 
+  // Calculate all locker numbers from groups and their states
   const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
-  for (let i = 1; i <= 80; i++) {
-    lockerStates[i] = 'empty';
-  }
+  lockerGroups.forEach(group => {
+    for (let i = group.startNumber; i <= group.endNumber; i++) {
+      lockerStates[i] = 'empty';
+    }
+  });
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
+  });
+
+  // Generate all locker numbers from groups for rendering
+  const allLockerNumbers: number[] = [];
+  lockerGroups.forEach(group => {
+    for (let i = group.startNumber; i <= group.endNumber; i++) {
+      allLockerNumbers.push(i);
+    }
   });
 
   const handleLockerClick = async (lockerNumber: number) => {
@@ -272,16 +289,33 @@ export default function Home() {
 
         {/* Locker Grid */}
         <div className="flex-1 overflow-auto p-6">
-          <div className="grid grid-cols-8 gap-2 max-w-4xl mx-auto">
-            {Array.from({ length: 80 }, (_, i) => i + 1).map((num) => (
-              <LockerButton
-                key={num}
-                number={num}
-                status={lockerStates[num]}
-                onClick={() => handleLockerClick(num)}
-              />
-            ))}
-          </div>
+          {lockerGroups.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">
+              <p>락커 그룹이 설정되지 않았습니다.</p>
+              <p className="text-sm mt-2">설정 페이지에서 락커 그룹을 추가해주세요.</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {lockerGroups.map((group) => (
+                <div key={group.id}>
+                  <h3 className="text-lg font-semibold mb-3">{group.name}</h3>
+                  <div className="grid grid-cols-8 gap-2 max-w-4xl">
+                    {Array.from(
+                      { length: group.endNumber - group.startNumber + 1 },
+                      (_, i) => group.startNumber + i
+                    ).map((num) => (
+                      <LockerButton
+                        key={num}
+                        number={num}
+                        status={lockerStates[num] || 'empty'}
+                        onClick={() => handleLockerClick(num)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
