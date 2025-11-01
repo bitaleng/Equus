@@ -139,21 +139,22 @@ export class DatabaseStorage implements IStorage {
       .from(lockerLogs)
       .where(eq(lockerLogs.businessDay, businessDay));
     
-    const completedLogs = logs.filter(log => log.status === 'checked_out' && !log.cancelled);
+    // 입실한 모든 로그 (취소 제외)
+    const activeLogs = logs.filter(log => !log.cancelled);
     
     const summary: InsertDailySummary = {
       businessDay,
-      totalVisitors: completedLogs.length,
-      totalSales: completedLogs.reduce((sum, log) => sum + log.finalPrice, 0),
+      totalVisitors: activeLogs.length,
+      totalSales: activeLogs.reduce((sum, log) => sum + log.finalPrice, 0),
       cancellations: logs.filter(log => log.cancelled).length,
-      totalDiscount: completedLogs.reduce((sum, log) => {
+      totalDiscount: activeLogs.reduce((sum, log) => {
         if (log.optionType === 'discount' || log.optionType === 'custom') {
           return sum + (log.optionAmount || 2000);
         }
         return sum;
       }, 0),
-      foreignerCount: completedLogs.filter(log => log.optionType === 'foreigner').length,
-      foreignerSales: completedLogs
+      foreignerCount: activeLogs.filter(log => log.optionType === 'foreigner').length,
+      foreignerSales: activeLogs
         .filter(log => log.optionType === 'foreigner')
         .reduce((sum, log) => sum + log.finalPrice, 0),
     };
