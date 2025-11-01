@@ -100,6 +100,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get today's all entries (오늘의 모든 방문 기록: 입실중, 퇴실, 취소 포함)
+  app.get("/api/entries/today", async (req, res) => {
+    try {
+      const now = new Date();
+      const businessDay = getBusinessDay(now);
+      
+      const result = await storage.listLogs({
+        businessDay,
+        limit: 1000,
+      });
+      
+      res.json(result.data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // List logs with pagination and filtering
   app.get("/api/logs", async (req, res) => {
     try {
