@@ -67,7 +67,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       `}
       data-testid={`locker-${number}`}
     >
-      <span className="text-lg font-bold">{number}</span>
+      <span className="text-2xl font-bold">{number}</span>
       <span className="text-[10px] font-normal opacity-90">{getStatusText()}</span>
     </Button>
   );
