@@ -50,6 +50,7 @@ export default function Home() {
   const [todayAllEntries, setTodayAllEntries] = useState<LockerLog[]>([]);
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
+  const [newLockerInfo, setNewLockerInfo] = useState<{lockerNumber: number, timeType: '주간' | '야간', basePrice: number} | null>(null);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -106,27 +107,18 @@ export default function Home() {
     if (state === 'empty') {
       const timeType = getTimeType(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
-      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
       
-      localDb.createEntry({
-        lockerNumber,
-        timeType,
-        basePrice,
-        finalPrice: basePrice,
-        businessDay,
-        optionType: 'none',
-      });
-      
-      loadData();
+      setNewLockerInfo({ lockerNumber, timeType, basePrice });
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
+      setNewLockerInfo(null);
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     }
   };
 
-  const selectedEntry = selectedLocker 
+  const selectedEntry = selectedLocker && !newLockerInfo
     ? activeLockers.find(log => log.lockerNumber === selectedLocker)
     : null;
 
@@ -136,6 +128,49 @@ export default function Home() {
     notes?: string, 
     paymentMethod?: 'card' | 'cash'
   ) => {
+    // Handle new locker entry
+    if (newLockerInfo) {
+      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+      let finalPrice = newLockerInfo.basePrice;
+      let optionAmount: number | undefined;
+
+      if (option === 'direct_price' && customAmount) {
+        optionType = 'direct_price';
+        finalPrice = customAmount;
+        optionAmount = customAmount;
+      } else if (option === 'foreigner') {
+        optionType = 'foreigner';
+        finalPrice = foreignerPrice;
+      } else if (option === 'discount') {
+        optionType = 'discount';
+        finalPrice = Math.max(0, newLockerInfo.basePrice - discountAmount);
+        optionAmount = discountAmount;
+      } else if (option === 'custom' && customAmount) {
+        optionType = 'custom';
+        finalPrice = Math.max(0, newLockerInfo.basePrice - customAmount);
+        optionAmount = customAmount;
+      }
+
+      await localDb.createEntry({
+        lockerNumber: newLockerInfo.lockerNumber,
+        timeType: newLockerInfo.timeType,
+        basePrice: newLockerInfo.basePrice,
+        finalPrice,
+        businessDay,
+        optionType,
+        optionAmount,
+        notes,
+        paymentMethod,
+      });
+
+      setNewLockerInfo(null);
+      setDialogOpen(false);
+      loadData();
+      return;
+    }
+
+    // Handle existing entry update
     if (!selectedEntry) return;
 
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
@@ -297,21 +332,24 @@ export default function Home() {
       </div>
 
       {/* Options Dialog */}
-      {selectedEntry && (
+      {(selectedEntry || newLockerInfo) && (
         <LockerOptionsDialog
           open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          lockerNumber={selectedEntry.lockerNumber}
-          basePrice={selectedEntry.basePrice}
-          timeType={selectedEntry.timeType}
-          currentNotes={selectedEntry.notes}
-          currentPaymentMethod={selectedEntry.paymentMethod}
-          currentOptionType={selectedEntry.optionType}
-          currentOptionAmount={selectedEntry.optionAmount}
-          currentFinalPrice={selectedEntry.finalPrice}
+          onClose={() => {
+            setDialogOpen(false);
+            setNewLockerInfo(null);
+          }}
+          lockerNumber={selectedEntry?.lockerNumber || newLockerInfo!.lockerNumber}
+          basePrice={selectedEntry?.basePrice || newLockerInfo!.basePrice}
+          timeType={selectedEntry?.timeType || newLockerInfo!.timeType}
+          currentNotes={selectedEntry?.notes}
+          currentPaymentMethod={selectedEntry?.paymentMethod}
+          currentOptionType={selectedEntry?.optionType}
+          currentOptionAmount={selectedEntry?.optionAmount}
+          currentFinalPrice={selectedEntry?.finalPrice}
           discountAmount={discountAmount}
           foreignerPrice={foreignerPrice}
-          isInUse={selectedEntry.status === 'in_use' && selectedEntry.exitTime === null}
+          isInUse={!!selectedEntry}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}
