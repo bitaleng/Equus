@@ -330,9 +330,6 @@ export default function LockerOptionsDialog({
           <DialogFooter className="gap-2 sm:gap-2">
             {isInUse ? (
               <>
-                <Button variant="ghost" onClick={onClose} data-testid="button-close">
-                  닫기
-                </Button>
                 <Button variant="destructive" onClick={onCancel} data-testid="button-cancel">
                   입실취소
                 </Button>
@@ -349,7 +346,7 @@ export default function LockerOptionsDialog({
                   취소
                 </Button>
                 <Button onClick={handleProcessEntry} className="bg-primary" data-testid="button-process-entry">
-                  입실처리
+                  입실
                 </Button>
               </>
             )}
