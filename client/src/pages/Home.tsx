@@ -307,14 +307,26 @@ export default function Home() {
               {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-background border-2 border-border"></div>
-              <span className="text-sm">비어있음</span>
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
+              <span className="text-xs">빈칸</span>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-primary"></div>
-              <span className="text-sm">사용중</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
+              <span className="text-xs">주간</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
+              <span className="text-xs">야간</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-[#FF9933] border-2 border-[#FF7700]"></div>
+              <span className="text-xs">외상1회</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
+              <span className="text-xs">외상2회+</span>
             </div>
           </div>
         </div>
