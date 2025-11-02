@@ -620,3 +620,98 @@ export function getOldestEntryDate(): string | null {
   
   return result[0].values[0][0] as string;
 }
+
+// Test data generation for time-based features
+export function createTestData() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const settings = getSettings();
+  const { dayPrice, nightPrice, businessDayStartHour } = settings;
+  
+  // Helper function to format date for business day
+  const getBusinessDay = (date: Date): string => {
+    const hour = date.getHours();
+    if (hour < businessDayStartHour) {
+      const yesterday = new Date(date);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return yesterday.toISOString().split('T')[0];
+    }
+    return date.toISOString().split('T')[0];
+  };
+  
+  // Delete existing test data (locker numbers 101-104)
+  db.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 101 AND 104');
+  
+  const testEntries = [
+    {
+      lockerNumber: 101,
+      daysAgo: 1,
+      timeType: '주간' as const,
+      hour: 14, // 오후 2시
+      description: '1일 전 주간 입실 - 추가요금 1회 (오렌지)'
+    },
+    {
+      lockerNumber: 102,
+      daysAgo: 2,
+      timeType: '야간' as const,
+      hour: 20, // 오후 8시
+      description: '2일 전 야간 입실 - 추가요금 2회 (레드)'
+    },
+    {
+      lockerNumber: 103,
+      daysAgo: 3,
+      timeType: '주간' as const,
+      hour: 10, // 오전 10시
+      description: '3일 전 주간 입실 - 노란색 버튼'
+    },
+    {
+      lockerNumber: 104,
+      daysAgo: 3,
+      timeType: '야간' as const,
+      hour: 22, // 오후 10시
+      description: '3일 전 야간 입실 - 파란색 버튼'
+    }
+  ];
+  
+  const database = db; // Store reference for forEach callback
+  
+  testEntries.forEach(entry => {
+    const entryDate = new Date();
+    entryDate.setDate(entryDate.getDate() - entry.daysAgo);
+    entryDate.setHours(entry.hour, 0, 0, 0);
+    
+    const id = generateId();
+    const entryTime = entryDate.toISOString();
+    const businessDay = getBusinessDay(entryDate);
+    const basePrice = entry.timeType === '주간' ? dayPrice : nightPrice;
+    
+    database.run(
+      `INSERT INTO locker_logs 
+      (id, locker_number, entry_time, business_day, time_type, base_price, 
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
+      [
+        id,
+        entry.lockerNumber,
+        entryTime,
+        businessDay,
+        entry.timeType,
+        basePrice,
+        'none',
+        null,
+        basePrice,
+        `테스트 데이터: ${entry.description}`,
+        null,
+        null
+      ]
+    );
+    
+    // Update daily summary for this business day
+    updateDailySummary(businessDay);
+  });
+  
+  saveDatabase();
+  
+  console.log('테스트 데이터 생성 완료:');
+  testEntries.forEach(e => console.log(`- 락커 #${e.lockerNumber}: ${e.description}`));
+}
