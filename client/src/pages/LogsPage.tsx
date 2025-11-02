@@ -272,18 +272,18 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-24 text-xs">날짜</TableHead>
-                <TableHead className="w-16 text-xs">락커번호</TableHead>
-                <TableHead className="w-20 text-xs">입실시간</TableHead>
-                <TableHead className="w-20 text-xs">퇴실시간</TableHead>
-                <TableHead className="w-16 text-xs">주/야간</TableHead>
-                <TableHead className="w-20 text-xs">기본요금</TableHead>
-                <TableHead className="w-24 text-xs">옵션</TableHead>
-                <TableHead className="w-20 text-xs">옵션금액</TableHead>
-                <TableHead className="w-24 text-xs">최종요금</TableHead>
-                <TableHead className="w-20 text-xs">지불방식</TableHead>
-                <TableHead className="w-16 text-xs">입실취소</TableHead>
-                <TableHead className="min-w-28 text-xs">비고</TableHead>
+                <TableHead className="w-24 text-[10px] whitespace-nowrap">날짜</TableHead>
+                <TableHead className="w-16 text-[10px] whitespace-nowrap">락커</TableHead>
+                <TableHead className="w-20 text-[10px] whitespace-nowrap">입실</TableHead>
+                <TableHead className="w-20 text-[10px] whitespace-nowrap">퇴실</TableHead>
+                <TableHead className="w-16 text-[10px] whitespace-nowrap">주야</TableHead>
+                <TableHead className="w-20 text-[10px] whitespace-nowrap">기본</TableHead>
+                <TableHead className="w-24 text-[10px] whitespace-nowrap">옵션</TableHead>
+                <TableHead className="w-20 text-[10px] whitespace-nowrap">옵션금액</TableHead>
+                <TableHead className="w-24 text-[10px] whitespace-nowrap">최종</TableHead>
+                <TableHead className="w-20 text-[10px] whitespace-nowrap">지불</TableHead>
+                <TableHead className="w-16 text-[10px] whitespace-nowrap">취소</TableHead>
+                <TableHead className="min-w-28 text-[10px] whitespace-nowrap">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
