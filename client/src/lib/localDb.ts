@@ -1,4 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import { getTimeType } from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -639,11 +640,6 @@ export function createTestData() {
     return date.toISOString().split('T')[0];
   };
   
-  // Helper to get time type based on hour (7AM-7PM = 주간, 7PM-7AM = 야간)
-  const getTimeType = (hour: number): '주간' | '야간' => {
-    return (hour >= 7 && hour < 19) ? '주간' : '야간';
-  };
-  
   // Random helpers
   const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
   const randomElement = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -654,7 +650,7 @@ export function createTestData() {
   
   const now = new Date();
   const currentHour = now.getHours();
-  const isCurrentlyDaytime = getTimeType(currentHour) === '주간';
+  const isCurrentlyDaytime = getTimeType(now) === '주간';
   
   const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
   const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
@@ -678,7 +674,7 @@ export function createTestData() {
     const entryDate = new Date(targetDate);
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(hour);
+    const timeType = getTimeType(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     const optionType = randomElement(optionTypes);
     let optionAmount = null;
@@ -723,7 +719,7 @@ export function createTestData() {
     const entryDate = new Date(targetDate);
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(hour);
+    const timeType = getTimeType(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     const optionType = randomElement(optionTypes);
     let optionAmount = null;
@@ -781,7 +777,7 @@ export function createTestData() {
     const entryDate = new Date();
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(hour); // 실제 입실 시각으로 판단
+    const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     // Random option type
@@ -867,7 +863,7 @@ export function createTestData() {
       entryDate.setHours(hour, minute, 0, 0);
     }
     
-    const timeType = getTimeType(hour); // 실제 입실 시각으로 판단
+    const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     // Random option type
@@ -938,7 +934,7 @@ export function createTestData() {
       const entryDate = new Date(pastDate);
       entryDate.setHours(hour, minute, 0, 0);
       
-      const timeType = getTimeType(hour);
+      const timeType = getTimeType(entryDate);
       const basePrice = timeType === '주간' ? dayPrice : nightPrice;
       
       const optionType = randomElement(optionTypes);
