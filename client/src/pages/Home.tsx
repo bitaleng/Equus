@@ -145,7 +145,7 @@ export default function Home() {
     option: string, 
     customAmount?: number, 
     notes?: string, 
-    paymentMethod?: 'card' | 'cash'
+    paymentMethod?: 'card' | 'cash' | 'transfer'
   ) => {
     // Handle new locker entry
     if (newLockerInfo) {

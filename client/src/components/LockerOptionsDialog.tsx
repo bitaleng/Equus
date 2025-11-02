@@ -38,7 +38,7 @@ interface LockerOptionsDialogProps {
   timeType: '주간' | '야간';
   entryTime?: string;
   currentNotes?: string;
-  currentPaymentMethod?: 'card' | 'cash';
+  currentPaymentMethod?: 'card' | 'cash' | 'transfer';
   currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   currentOptionAmount?: number;
   currentFinalPrice?: number;
@@ -47,7 +47,7 @@ interface LockerOptionsDialogProps {
   isInUse?: boolean;
   dayPrice?: number;
   nightPrice?: number;
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash') => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer') => void;
   onCheckout: () => void;
   onCancel: () => void;
 }
@@ -78,7 +78,7 @@ export default function LockerOptionsDialog({
   const [isForeigner, setIsForeigner] = useState(false);
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>(currentPaymentMethod);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentPaymentMethod);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
@@ -349,7 +349,7 @@ export default function LockerOptionsDialog({
   };
 
   const confirmCheckout = () => {
-    playClickSound();
+    playCloseSound(); // Use a more distinctive sound for checkout
     setShowCheckoutConfirm(false);
     onCheckout();
   };
@@ -514,13 +514,14 @@ export default function LockerOptionsDialog({
             {/* 지불방식 Select */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold">지불방식</Label>
-              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash')}>
+              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash' | 'transfer')}>
                 <SelectTrigger data-testid="select-payment-method">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="card">카드</SelectItem>
                   <SelectItem value="cash">현금</SelectItem>
+                  <SelectItem value="transfer">이체</SelectItem>
                 </SelectContent>
               </Select>
             </div>

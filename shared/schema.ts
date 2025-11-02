@@ -7,7 +7,7 @@ import { z } from "zod";
 export const optionTypeEnum = pgEnum('option_type', ['none', 'discount', 'custom', 'foreigner']);
 export const timeTypeEnum = pgEnum('time_type', ['주간', '야간']);
 export const statusEnum = pgEnum('status', ['in_use', 'checked_out', 'cancelled']);
-export const paymentMethodEnum = pgEnum('payment_method', ['card', 'cash']);
+export const paymentMethodEnum = pgEnum('payment_method', ['card', 'cash', 'transfer']);
 
 // Locker Logs Table - 입출 기록
 export const lockerLogs = pgTable("locker_logs", {
@@ -67,7 +67,7 @@ export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   updatedAt: true,
 }).extend({
   notes: z.string().optional(),
-  paymentMethod: z.enum(['card', 'cash']).optional(),
+  paymentMethod: z.enum(['card', 'cash', 'transfer']).optional(),
 });
 
 export const updateLockerLogSchema = z.object({
@@ -81,7 +81,7 @@ export const updateLockerLogSchema = z.object({
   finalPrice: z.number().optional(),
   status: z.enum(['in_use', 'checked_out', 'cancelled']).optional(),
   cancelled: z.boolean().optional(),
-  paymentMethod: z.enum(['card', 'cash']).nullish(),
+  paymentMethod: z.enum(['card', 'cash', 'transfer']).nullish(),
   notes: z.string().nullish(),
 });
 
