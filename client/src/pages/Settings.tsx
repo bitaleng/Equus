@@ -202,6 +202,22 @@ export default function Settings() {
     });
   };
 
+  const handleCreateTestData = () => {
+    try {
+      localDb.createTestData();
+      toast({
+        title: "테스트 데이터 생성 완료",
+        description: "락커 #101~104에 시간 기반 테스트 데이터가 생성되었습니다.",
+      });
+    } catch (error) {
+      toast({
+        title: "생성 실패",
+        description: "테스트 데이터 생성 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleResetData = () => {
     try {
       localDb.clearAllData();
@@ -390,6 +406,32 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="p-4 border border-primary/50 rounded-lg bg-primary/5">
+                <div className="flex items-start gap-3">
+                  <Database className="h-5 w-5 text-primary mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-primary mb-1">테스트 데이터 생성</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      시간 기반 기능 테스트를 위한 샘플 데이터를 생성합니다.
+                      <br />
+                      <span className="text-xs">
+                        • 락커 #101: 1일 전 입실 (추가요금 1회 - 오렌지)<br />
+                        • 락커 #102: 2일 전 입실 (추가요금 2회 - 레드)<br />
+                        • 락커 #103: 3일 전 주간 입실 (노란색 버튼)<br />
+                        • 락커 #104: 3일 전 야간 입실 (파란색 버튼)
+                      </span>
+                    </p>
+                    <Button
+                      onClick={handleCreateTestData}
+                      data-testid="button-create-test-data"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      테스트 데이터 생성
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
               <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/5">
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
