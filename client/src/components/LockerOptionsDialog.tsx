@@ -48,7 +48,7 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer') => void;
-  onCheckout: () => void;
+  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer') => void;
   onCancel: () => void;
 }
 
@@ -344,14 +344,14 @@ export default function LockerOptionsDialog({
     if (generatedNotes && generatedNotes.trim()) {
       setShowCheckoutConfirm(true);
     } else {
-      onCheckout();
+      onCheckout(paymentMethod);
     }
   };
 
   const confirmCheckout = () => {
     playCloseSound(); // Use a more distinctive sound for checkout
     setShowCheckoutConfirm(false);
-    onCheckout();
+    onCheckout(paymentMethod);
   };
 
   const handleWarningResolved = () => {
