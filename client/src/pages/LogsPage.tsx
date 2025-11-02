@@ -318,50 +318,73 @@ export default function LogsPage() {
         
         {/* 필터 옵션 */}
         {showFilters && (
-          <div className="px-6 pb-4 flex items-center gap-2 flex-wrap">
-            <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
-              <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="active">정상건</SelectItem>
-                <SelectItem value="cancelled">취소건</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="px-6 pb-4 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  <SelectItem value="active">정상건</SelectItem>
+                  <SelectItem value="cancelled">취소건</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  <SelectItem value="day">주간</SelectItem>
+                  <SelectItem value="night">야간</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  <SelectItem value="card">카드</SelectItem>
+                  <SelectItem value="cash">현금</SelectItem>
+                  <SelectItem value="transfer">이체</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {hasActiveFilters && (
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={clearAllFilters}
+                  data-testid="button-clear-all-filters"
+                >
+                  필터 초기화
+                </Button>
+              )}
+            </div>
             
-            <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
-              <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="day">주간</SelectItem>
-                <SelectItem value="night">야간</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-              <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="card">카드</SelectItem>
-                <SelectItem value="cash">현금</SelectItem>
-                <SelectItem value="transfer">이체</SelectItem>
-              </SelectContent>
-            </Select>
-            
+            {/* 필터 결과 통계 */}
             {hasActiveFilters && (
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={clearAllFilters}
-                data-testid="button-clear-all-filters"
-              >
-                필터 초기화
-              </Button>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                {cancelledFilter !== "all" && (
+                  <span data-testid="text-cancelled-filter-count">
+                    {cancelledFilter === "cancelled" ? "취소건" : "정상건"}: 총 {displayedLogs.length}건
+                  </span>
+                )}
+                {timeTypeFilter !== "all" && (
+                  <span data-testid="text-timetype-filter-count">
+                    {timeTypeFilter === "day" ? "주간" : "야간"}: 총 {displayedLogs.length}건
+                  </span>
+                )}
+                {paymentMethodFilter !== "all" && (
+                  <span data-testid="text-payment-filter-count">
+                    {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}: 총 {displayedLogs.length}건
+                  </span>
+                )}
+              </div>
             )}
           </div>
         )}
