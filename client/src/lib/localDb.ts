@@ -660,9 +660,102 @@ export function createTestData() {
   const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
   
   let totalGenerated = 0;
+  let additionalFee1Count = 0; // 추가요금 1회 카운터
+  let additionalFee2PlusCount = 0; // 추가요금 2회 이상 카운터
   const database = db;
   
-  // Generate data for past 7 days
+  // 먼저 추가요금 발생 데이터를 제한된 개수만큼 생성
+  // 1. 추가요금 1회 데이터 (1일 전 입실, 최대 2개)
+  for (let i = 0; i < 2; i++) {
+    const daysAgo = 1;
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - daysAgo);
+    
+    const lockerNumber = randomInt(1, 80);
+    const hour = randomInt(0, 23);
+    const minute = randomInt(0, 59);
+    
+    const entryDate = new Date(targetDate);
+    entryDate.setHours(hour, minute, 0, 0);
+    
+    const timeType = getTimeType(hour);
+    const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    const optionType = randomElement(optionTypes);
+    let optionAmount = null;
+    let finalPrice = basePrice;
+    
+    if (optionType === 'discount') {
+      optionAmount = -discountAmount;
+      finalPrice = basePrice - discountAmount;
+    } else if (optionType === 'foreigner') {
+      optionAmount = foreignerPrice - basePrice;
+      finalPrice = foreignerPrice;
+    }
+    
+    const paymentMethod = randomElement(paymentMethods);
+    const id = generateId();
+    const entryTime = entryDate.toISOString();
+    const businessDay = getBusinessDay(entryDate);
+    
+    database.run(
+      `INSERT INTO locker_logs 
+      (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
+      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 1회', paymentMethod, null]
+    );
+    
+    totalGenerated++;
+    additionalFee1Count++;
+    updateDailySummary(businessDay);
+  }
+  
+  // 2. 추가요금 2회 이상 데이터 (2~3일 전 입실, 최대 2개)
+  for (let i = 0; i < 2; i++) {
+    const daysAgo = randomInt(2, 3);
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - daysAgo);
+    
+    const lockerNumber = randomInt(1, 80);
+    const hour = randomInt(0, 23);
+    const minute = randomInt(0, 59);
+    
+    const entryDate = new Date(targetDate);
+    entryDate.setHours(hour, minute, 0, 0);
+    
+    const timeType = getTimeType(hour);
+    const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    const optionType = randomElement(optionTypes);
+    let optionAmount = null;
+    let finalPrice = basePrice;
+    
+    if (optionType === 'discount') {
+      optionAmount = -discountAmount;
+      finalPrice = basePrice - discountAmount;
+    } else if (optionType === 'foreigner') {
+      optionAmount = foreignerPrice - basePrice;
+      finalPrice = foreignerPrice;
+    }
+    
+    const paymentMethod = randomElement(paymentMethods);
+    const id = generateId();
+    const entryTime = entryDate.toISOString();
+    const businessDay = getBusinessDay(entryDate);
+    
+    database.run(
+      `INSERT INTO locker_logs 
+      (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
+      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 2회+', paymentMethod, null]
+    );
+    
+    totalGenerated++;
+    additionalFee2PlusCount++;
+    updateDailySummary(businessDay);
+  }
+  
+  // 3. 나머지는 일반 데이터 생성 (과거 7일치, 추가요금 없음)
   for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - daysAgo);
@@ -758,4 +851,6 @@ export function createTestData() {
   saveDatabase();
   
   console.log(`테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
+  console.log(`- 추가요금 1회: ${additionalFee1Count}건 (오렌지)`);
+  console.log(`- 추가요금 2회+: ${additionalFee2PlusCount}건 (레드)`);
 }
