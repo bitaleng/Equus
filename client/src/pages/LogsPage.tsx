@@ -4,6 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -12,7 +19,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText } from "lucide-react";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -39,6 +46,10 @@ export default function LogsPage() {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [cancelledFilter, setCancelledFilter] = useState<string>("all");
+  const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
 
   useEffect(() => {
     loadLogs();
@@ -73,6 +84,35 @@ export default function LogsPage() {
     setStartDate("");
     setEndDate("");
   };
+
+  const clearAllFilters = () => {
+    setCancelledFilter("all");
+    setTimeTypeFilter("all");
+    setPaymentMethodFilter("all");
+  };
+
+  const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all";
+
+  // Apply filters to logs
+  let displayedLogs = [...logs];
+
+  if (cancelledFilter === "cancelled") {
+    displayedLogs = displayedLogs.filter(log => log.cancelled);
+  } else if (cancelledFilter === "active") {
+    displayedLogs = displayedLogs.filter(log => !log.cancelled);
+  }
+
+  if (timeTypeFilter === "day") {
+    displayedLogs = displayedLogs.filter(log => log.timeType === '주간');
+  } else if (timeTypeFilter === "night") {
+    displayedLogs = displayedLogs.filter(log => log.timeType === '야간');
+  }
+
+  if (paymentMethodFilter === "card") {
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'card');
+  } else if (paymentMethodFilter === "cash") {
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'cash' || !log.paymentMethod);
+  }
 
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
@@ -202,6 +242,15 @@ export default function LogsPage() {
               </>
             )}
             
+            <Button 
+              variant={showFilters || hasActiveFilters ? "default" : "outline"}
+              onClick={() => setShowFilters(!showFilters)}
+              data-testid="button-toggle-filters"
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              필터
+            </Button>
+
             {!showDateFilter ? (
               <Button 
                 variant="outline" 
@@ -264,6 +313,55 @@ export default function LogsPage() {
             )}
           </div>
         </div>
+        
+        {/* 필터 옵션 */}
+        {showFilters && (
+          <div className="px-6 pb-4 flex items-center gap-2 flex-wrap">
+            <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="active">정상건</SelectItem>
+                <SelectItem value="cancelled">취소건</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="day">주간</SelectItem>
+                <SelectItem value="night">야간</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="card">카드</SelectItem>
+                <SelectItem value="cash">현금</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {hasActiveFilters && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={clearAllFilters}
+                data-testid="button-clear-all-filters"
+              >
+                필터 초기화
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Log Table */}
@@ -272,18 +370,18 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-24 text-xs whitespace-nowrap">날짜</TableHead>
-                <TableHead className="w-16 text-xs whitespace-nowrap">락커</TableHead>
-                <TableHead className="w-20 text-xs whitespace-nowrap">입실</TableHead>
-                <TableHead className="w-20 text-xs whitespace-nowrap">퇴실</TableHead>
-                <TableHead className="w-16 text-xs whitespace-nowrap">주야</TableHead>
-                <TableHead className="w-20 text-xs whitespace-nowrap">기본</TableHead>
-                <TableHead className="w-24 text-xs whitespace-nowrap">옵션</TableHead>
-                <TableHead className="w-20 text-xs whitespace-nowrap">옵션금액</TableHead>
-                <TableHead className="w-24 text-xs whitespace-nowrap">최종</TableHead>
-                <TableHead className="w-20 text-xs whitespace-nowrap">지불</TableHead>
-                <TableHead className="w-16 text-xs whitespace-nowrap">취소</TableHead>
-                <TableHead className="min-w-28 text-xs whitespace-nowrap">비고</TableHead>
+                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">날짜</TableHead>
+                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">락커</TableHead>
+                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">입실</TableHead>
+                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">퇴실</TableHead>
+                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">주야</TableHead>
+                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">기본</TableHead>
+                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">옵션</TableHead>
+                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">옵션금액</TableHead>
+                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">최종</TableHead>
+                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">지불</TableHead>
+                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">취소</TableHead>
+                <TableHead className="min-w-28 text-xs font-bold whitespace-nowrap">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -293,19 +391,21 @@ export default function LogsPage() {
                     로딩중...
                   </TableCell>
                 </TableRow>
-              ) : logs.length === 0 ? (
+              ) : displayedLogs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-xs">
                     {startDate && endDate
                       ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
                       : startDate
                       ? `${startDate}에 기록된 데이터가 없습니다`
+                      : hasActiveFilters
+                      ? '필터 조건에 맞는 데이터가 없습니다'
                       : '아직 기록된 데이터가 없습니다'
                     }
                   </TableCell>
                 </TableRow>
               ) : (
-                logs.map((log) => (
+                displayedLogs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                     <TableCell className="text-xs">
                       {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}

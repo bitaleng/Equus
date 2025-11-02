@@ -9,8 +9,14 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link } from "wouter";
-import { X } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { X, Filter } from "lucide-react";
 
 interface LockerEntry {
   lockerNumber: number;
@@ -33,6 +39,10 @@ interface TodayStatusTableProps {
 export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTableProps) {
   const [lockerNumberInput, setLockerNumberInput] = useState("");
   const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [cancelledFilter, setCancelledFilter] = useState<string>("all");
+  const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
 
   const handleLockerUsageFilter = () => {
     const num = parseInt(lockerNumberInput);
@@ -44,12 +54,36 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
   const clearFilter = () => {
     setFilteredLockerNumber(null);
     setLockerNumberInput("");
+    setCancelledFilter("all");
+    setTimeTypeFilter("all");
+    setPaymentMethodFilter("all");
   };
 
-  // Filter entries based on locker number
-  const displayedEntries = filteredLockerNumber !== null
+  const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all";
+
+  // Filter entries based on all filters
+  let displayedEntries = filteredLockerNumber !== null
     ? entries.filter(e => e.lockerNumber === filteredLockerNumber)
     : entries;
+
+  // Apply additional filters
+  if (cancelledFilter === "cancelled") {
+    displayedEntries = displayedEntries.filter(e => e.cancelled);
+  } else if (cancelledFilter === "active") {
+    displayedEntries = displayedEntries.filter(e => !e.cancelled);
+  }
+
+  if (timeTypeFilter === "day") {
+    displayedEntries = displayedEntries.filter(e => e.timeType === '주간');
+  } else if (timeTypeFilter === "night") {
+    displayedEntries = displayedEntries.filter(e => e.timeType === '야간');
+  }
+
+  if (paymentMethodFilter === "card") {
+    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'card');
+  } else if (paymentMethodFilter === "cash") {
+    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'cash' || !e.paymentMethod);
+  }
 
   // Count usage for filtered locker
   const usageCount = filteredLockerNumber !== null
@@ -77,7 +111,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         </div>
         
         {/* 세 번째 줄: 입력란과 버튼들 */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Input
             type="number"
             placeholder="락커번호"
@@ -95,36 +129,78 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
           >
             락커번호조회
           </Button>
-          {filteredLockerNumber !== null && (
+          <Button 
+            variant={showFilters || hasActiveFilters ? "default" : "outline"}
+            size="sm" 
+            onClick={() => setShowFilters(!showFilters)}
+            data-testid="button-toggle-filters"
+          >
+            <Filter className="h-4 w-4 mr-1" />
+            필터
+          </Button>
+          {(filteredLockerNumber !== null || hasActiveFilters) && (
             <Button 
               variant="ghost" 
-              size="icon"
+              size="sm"
               onClick={clearFilter}
-              data-testid="button-clear-filter"
-              className="h-9 w-9"
+              data-testid="button-clear-all-filters"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4 mr-1" />
+              전체초기화
             </Button>
           )}
-          <Link href="/logs">
-            <Button variant="outline" size="sm" data-testid="button-view-logs">
-              상세정보보기
-            </Button>
-          </Link>
         </div>
+        
+        {/* 필터 옵션 */}
+        {showFilters && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="active">정상건</SelectItem>
+                <SelectItem value="cancelled">취소건</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="day">주간</SelectItem>
+                <SelectItem value="night">야간</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+              <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체</SelectItem>
+                <SelectItem value="card">카드</SelectItem>
+                <SelectItem value="cash">현금</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
       
       <div className="flex-1 overflow-y-auto pr-2" style={{ scrollbarGutter: 'stable' }}>
         <Table>
           <TableHeader className="sticky top-0 bg-muted/50">
             <TableRow>
-              <TableHead className="w-16 text-xs">번호</TableHead>
-              <TableHead className="w-20 text-xs">입실시간</TableHead>
-              <TableHead className="w-16 text-xs">구분</TableHead>
-              <TableHead className="w-20 text-xs">옵션</TableHead>
-              <TableHead className="w-16 text-xs">지불</TableHead>
-              <TableHead className="w-24 text-xs">최종요금</TableHead>
-              <TableHead className="w-20 text-xs">상태</TableHead>
+              <TableHead className="w-16 text-xs font-bold">번호</TableHead>
+              <TableHead className="w-20 text-xs font-bold">입실시간</TableHead>
+              <TableHead className="w-16 text-xs font-bold">구분</TableHead>
+              <TableHead className="w-20 text-xs font-bold">옵션</TableHead>
+              <TableHead className="w-16 text-xs font-bold">지불</TableHead>
+              <TableHead className="w-24 text-xs font-bold">최종요금</TableHead>
+              <TableHead className="w-20 text-xs font-bold">상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
