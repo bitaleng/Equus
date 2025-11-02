@@ -396,30 +396,30 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">날짜</TableHead>
-                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">락커</TableHead>
-                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">입실</TableHead>
-                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">퇴실</TableHead>
-                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">주야</TableHead>
-                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">기본</TableHead>
-                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">옵션</TableHead>
-                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">옵션금액</TableHead>
-                <TableHead className="w-24 text-xs font-bold whitespace-nowrap">최종</TableHead>
-                <TableHead className="w-20 text-xs font-bold whitespace-nowrap">지불</TableHead>
-                <TableHead className="w-16 text-xs font-bold whitespace-nowrap">취소</TableHead>
-                <TableHead className="min-w-28 text-xs font-bold whitespace-nowrap">비고</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">날짜</TableHead>
+                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">입실</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">퇴실</TableHead>
+                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">주야</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">기본</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">옵션금액</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
+                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
+                <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-xs">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-sm">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : displayedLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-xs">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-sm">
                     {startDate && endDate
                       ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
                       : startDate
@@ -433,45 +433,45 @@ export default function LogsPage() {
               ) : (
                 displayedLogs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">
                       {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                     </TableCell>
-                    <TableCell className="font-semibold text-sm">{log.lockerNumber}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
+                    <TableCell className="text-sm">
                       {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">
                       {log.exitTime 
                         ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
                         : '-'
                       }
                     </TableCell>
                     <TableCell>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${
+                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
                         log.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
                       }`}>
                         {log.timeType}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs">{log.basePrice.toLocaleString()}원</TableCell>
-                    <TableCell className="text-xs">{getOptionText(log)}</TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">{log.basePrice.toLocaleString()}원</TableCell>
+                    <TableCell className="text-sm">{getOptionText(log)}</TableCell>
+                    <TableCell className="text-sm">
                       {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
                     </TableCell>
-                    <TableCell className="font-semibold text-sm">
+                    <TableCell className="font-semibold text-base">
                       {log.finalPrice.toLocaleString()}원
                     </TableCell>
-                    <TableCell className="text-xs">
+                    <TableCell className="text-sm">
                       {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-'}
                     </TableCell>
                     <TableCell>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
                         log.cancelled ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
                       }`}>
                         {log.cancelled ? 'O' : '-'}
                       </span>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-sm text-muted-foreground">
                       {log.notes || '-'}
                     </TableCell>
                   </TableRow>
