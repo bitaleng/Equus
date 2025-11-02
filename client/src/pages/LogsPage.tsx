@@ -35,7 +35,7 @@ interface LogEntry {
   optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   optionAmount?: number;
   finalPrice: number;
-  paymentMethod?: 'card' | 'cash';
+  paymentMethod?: 'card' | 'cash' | 'transfer';
   cancelled: boolean;
   notes?: string;
 }
@@ -112,6 +112,8 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'card');
   } else if (paymentMethodFilter === "cash") {
     displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'cash' || !log.paymentMethod);
+  } else if (paymentMethodFilter === "transfer") {
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'transfer');
   }
 
   const getOptionText = (log: LogEntry) => {
@@ -136,7 +138,7 @@ export default function LogsPage() {
       '옵션': getOptionText(log),
       '옵션금액': log.optionAmount || '-',
       '최종요금': log.finalPrice,
-      '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-',
+      '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
       '입실취소': log.cancelled ? 'O' : '-',
       '비고': log.notes || '-'
     }));
@@ -177,7 +179,7 @@ export default function LogsPage() {
       getOptionText(log),
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
       log.finalPrice.toLocaleString(),
-      log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-',
+      log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
       log.cancelled ? 'O' : '-',
     ]);
 
@@ -347,6 +349,7 @@ export default function LogsPage() {
                 <SelectItem value="all">전체</SelectItem>
                 <SelectItem value="card">카드</SelectItem>
                 <SelectItem value="cash">현금</SelectItem>
+                <SelectItem value="transfer">이체</SelectItem>
               </SelectContent>
             </Select>
             
@@ -436,7 +439,7 @@ export default function LogsPage() {
                       {log.finalPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-xs">
-                      {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-'}
+                      {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-'}
                     </TableCell>
                     <TableCell>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${
