@@ -75,7 +75,7 @@ export default function LockerOptionsDialog({
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>(currentPaymentMethod);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
 
-  // Initialize state from current option data when dialog opens
+  // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
       setNotes(currentNotes);
@@ -114,6 +114,16 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
         setDiscountInputAmount("");
       }
+    } else {
+      // Reset all state when dialog closes to prevent state leakage
+      setDiscountOption("none");
+      setDiscountInputAmount("");
+      setIsForeigner(false);
+      setIsDirectPrice(false);
+      setDirectPrice("");
+      setNotes("");
+      setPaymentMethod('card');
+      setShowCheckoutConfirm(false);
     }
   }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice]);
 
