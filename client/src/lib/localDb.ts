@@ -85,9 +85,11 @@ function migrateDatabase() {
     if (result.length > 0 && result[0].values.length > 0) {
       const createSql = result[0].values[0][0] as string;
       
-      // Check if 'direct_price' is already in the CHECK constraint
-      if (!createSql.includes('direct_price')) {
-        console.log('Migrating locker_logs table to add direct_price option...');
+      // Check if 'direct_price' and 'transfer' are already in the CHECK constraints
+      const needsMigration = !createSql.includes('direct_price') || !createSql.includes('transfer');
+      
+      if (needsMigration) {
+        console.log('Migrating locker_logs table to add direct_price option and transfer payment method...');
         
         try {
           // Create backup table
@@ -96,7 +98,7 @@ function migrateDatabase() {
           // Drop old table
           db.run(`DROP TABLE locker_logs`);
           
-          // Create new table with updated CHECK constraint
+          // Create new table with updated CHECK constraints
           db.run(`
             CREATE TABLE locker_logs (
               id TEXT PRIMARY KEY,
@@ -112,7 +114,8 @@ function migrateDatabase() {
               status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
               cancelled INTEGER NOT NULL DEFAULT 0,
               notes TEXT,
-              payment_method TEXT CHECK(payment_method IN ('card', 'cash'))
+              payment_method TEXT CHECK(payment_method IN ('card', 'cash', 'transfer')),
+              rental_items TEXT
             )
           `);
           
@@ -185,7 +188,7 @@ function createTables() {
       status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
       cancelled INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
-      payment_method TEXT CHECK(payment_method IN ('card', 'cash')),
+      payment_method TEXT CHECK(payment_method IN ('card', 'cash', 'transfer')),
       rental_items TEXT
     )
   `);

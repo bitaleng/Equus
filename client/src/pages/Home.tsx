@@ -17,7 +17,7 @@ interface LockerLog {
   optionAmount?: number;
   finalPrice: number;
   notes?: string;
-  paymentMethod?: 'card' | 'cash';
+  paymentMethod?: 'card' | 'cash' | 'transfer';
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
 }
@@ -224,12 +224,13 @@ export default function Home() {
     loadData();
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (paymentMethod: 'card' | 'cash' | 'transfer') => {
     if (!selectedEntry) return;
 
     localDb.updateEntry(selectedEntry.id, { 
       status: 'checked_out',
       exitTime: new Date(),
+      paymentMethod: paymentMethod,
     });
     
     loadData();
