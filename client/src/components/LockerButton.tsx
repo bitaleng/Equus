@@ -14,7 +14,7 @@ export default function LockerButton({ number, status, onClick }: LockerButtonPr
     if (status === 'in-use') {
       return "bg-[#FF6B4A] text-white border-2 border-[#FF5733]";
     }
-    return "bg-[#A8C8E8] text-white border-2 border-[#88B8D8] hover-elevate active-elevate-2";
+    return "bg-[#7BA8D1] text-white border-2 border-[#5A98C1] hover-elevate active-elevate-2";
   };
 
   const getStatusText = () => {
