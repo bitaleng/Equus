@@ -78,7 +78,6 @@ export default function LockerOptionsDialog({
   const [isForeigner, setIsForeigner] = useState(false);
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
-  const [notes, setNotes] = useState<string>(currentNotes);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>(currentPaymentMethod);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
@@ -88,17 +87,101 @@ export default function LockerOptionsDialog({
   const [hasBlanket, setHasBlanket] = useState(false);
   const [hasLongTowel, setHasLongTowel] = useState(false);
 
+  // Play click sound
+  const playClickSound = () => {
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRhIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQA=');
+      audio.volume = 0.3;
+      audio.play().catch(() => {});
+    } catch (error) {
+      console.error('Failed to play click sound:', error);
+    }
+  };
+
+  // Play close sound
+  const playCloseSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 600;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.2);
+    } catch (error) {
+      console.error('Failed to play close sound:', error);
+    }
+  };
+
+  // Play emergency alert sound
+  const playEmergencySound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.value = 1000; // 1000 Hz alert tone
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+      
+      // Play twice for emphasis
+      setTimeout(() => {
+        const osc2 = audioContext.createOscillator();
+        const gain2 = audioContext.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioContext.destination);
+        osc2.frequency.value = 1200;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc2.start(audioContext.currentTime);
+        osc2.stop(audioContext.currentTime + 0.5);
+      }, 200);
+    } catch (error) {
+      console.error('Failed to play emergency sound:', error);
+    }
+  };
+
   // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
-      setNotes(currentNotes);
       setPaymentMethod(currentPaymentMethod);
       
       // Parse rental items from notes
-      const blanketPresent = currentNotes.includes('담요');
-      const towelPresent = currentNotes.includes('롱타올');
+      const blanketPresent = currentNotes?.includes('담요') || false;
+      const towelPresent = currentNotes?.includes('롱타올') || false;
       setHasBlanket(blanketPresent);
       setHasLongTowel(towelPresent);
+      
+      // Auto-show warning alert if there are rental items or additional fees
+      if (isInUse) {
+        const hasRentalItems = blanketPresent || towelPresent;
+        const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
+        
+        if (hasRentalItems || hasAdditionalFee) {
+          // Play emergency alert sound
+          playEmergencySound();
+          
+          // Delay to allow dialog to fully open first
+          setTimeout(() => setShowWarningAlert(true), 300);
+        }
+      }
       
       // Initialize option states based on current optionType
       if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
@@ -146,7 +229,6 @@ export default function LockerOptionsDialog({
       setIsForeigner(false);
       setIsDirectPrice(false);
       setDirectPrice("");
-      setNotes("");
       setPaymentMethod('card');
       setShowCheckoutConfirm(false);
     }
@@ -183,6 +265,8 @@ export default function LockerOptionsDialog({
   };
 
   const handleProcessEntry = () => {
+    playClickSound();
+    
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
     let optionAmount: number | undefined;
 
@@ -205,6 +289,8 @@ export default function LockerOptionsDialog({
   };
 
   const handleSaveChanges = () => {
+    playClickSound();
+    
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
     let optionAmount: number | undefined;
 
@@ -223,9 +309,15 @@ export default function LockerOptionsDialog({
 
     const generatedNotes = generateNotes();
     onApply(optionType, optionAmount, generatedNotes, paymentMethod);
+    
+    // Auto-close dialog after save
+    playCloseSound();
+    setTimeout(() => setDialogOpen(false), 100);
   };
 
   const handleCheckoutClick = () => {
+    playClickSound();
+    
     // Check if there are rental items or additional fees
     const hasRentalItems = hasBlanket || hasLongTowel;
     const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
@@ -235,7 +327,9 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    if (notes && notes.trim()) {
+    // Check if there are any notes (rental items)
+    const generatedNotes = generateNotes();
+    if (generatedNotes && generatedNotes.trim()) {
       setShowCheckoutConfirm(true);
     } else {
       onCheckout();
@@ -243,22 +337,36 @@ export default function LockerOptionsDialog({
   };
 
   const confirmCheckout = () => {
+    playClickSound();
     setShowCheckoutConfirm(false);
     onCheckout();
   };
 
   const handleWarningResolved = () => {
+    playClickSound();
     setShowWarningAlert(false);
     setCheckoutResolved(true);
   };
 
   const handleWarningClose = () => {
+    playClickSound();
     setShowWarningAlert(false);
     setCheckoutResolved(false);
   };
 
+  const handleCancelClick = () => {
+    playClickSound();
+    onCancel();
+  };
+
+  const handleCloseClick = () => {
+    playCloseSound();
+    setTimeout(() => setDialogOpen(false), 100);
+  };
+
   const setDialogOpen = (open: boolean) => {
     if (!open) {
+      playCloseSound();
       onClose();
     }
   };
@@ -438,19 +546,24 @@ export default function LockerOptionsDialog({
           <DialogFooter className="gap-2 sm:gap-2">
             {isInUse ? (
               <>
-                <Button variant="destructive" onClick={onCancel} data-testid="button-cancel">
+                <Button variant="destructive" onClick={handleCancelClick} data-testid="button-cancel">
                   입실취소
                 </Button>
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
-                <Button onClick={handleCheckoutClick} className="bg-primary" data-testid="button-checkout">
+                <Button 
+                  onClick={handleCheckoutClick} 
+                  className="bg-primary" 
+                  data-testid="button-checkout"
+                  disabled={(hasBlanket || hasLongTowel || additionalFeeInfo.additionalFee > 0) && !checkoutResolved}
+                >
                   퇴실
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="ghost" onClick={onClose} data-testid="button-close-new">
+                <Button variant="ghost" onClick={handleCloseClick} data-testid="button-close-new">
                   취소
                 </Button>
                 <Button onClick={handleProcessEntry} className="bg-primary" data-testid="button-process-entry">
@@ -505,9 +618,9 @@ export default function LockerOptionsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>퇴실 확인</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
-              <p>다음 비고 내용을 확인하셨습니까?</p>
+              <p>다음 대여 물품을 확인하셨습니까?</p>
               <div className="p-3 bg-muted rounded-md border">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{notes}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{currentNotes || generateNotes()}</p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
