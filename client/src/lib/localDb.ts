@@ -626,7 +626,7 @@ export function createTestData() {
   if (!db) throw new Error('Database not initialized');
   
   const settings = getSettings();
-  const { dayPrice, nightPrice, businessDayStartHour } = settings;
+  const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice } = settings;
   
   // Helper function to format date for business day
   const getBusinessDay = (date: Date): string => {
@@ -639,79 +639,123 @@ export function createTestData() {
     return date.toISOString().split('T')[0];
   };
   
-  // Delete existing test data (locker numbers 101-104)
-  db.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 101 AND 104');
+  // Helper to get time type based on hour (7AM-7PM = 주간, 7PM-7AM = 야간)
+  const getTimeType = (hour: number): '주간' | '야간' => {
+    return (hour >= 7 && hour < 19) ? '주간' : '야간';
+  };
   
-  const testEntries = [
-    {
-      lockerNumber: 101,
-      daysAgo: 1,
-      timeType: '주간' as const,
-      hour: 14, // 오후 2시
-      description: '1일 전 주간 입실 - 추가요금 1회 (오렌지)'
-    },
-    {
-      lockerNumber: 102,
-      daysAgo: 2,
-      timeType: '야간' as const,
-      hour: 20, // 오후 8시
-      description: '2일 전 야간 입실 - 추가요금 2회 (레드)'
-    },
-    {
-      lockerNumber: 103,
-      daysAgo: 3,
-      timeType: '주간' as const,
-      hour: 10, // 오전 10시
-      description: '3일 전 주간 입실 - 노란색 버튼'
-    },
-    {
-      lockerNumber: 104,
-      daysAgo: 3,
-      timeType: '야간' as const,
-      hour: 22, // 오후 10시
-      description: '3일 전 야간 입실 - 파란색 버튼'
+  // Random helpers
+  const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+  const randomElement = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+  const randomBoolean = (probability = 0.5) => Math.random() < probability;
+  
+  // Delete existing test data (locker numbers 1-80)
+  db.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 1 AND 80');
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  const isCurrentlyDaytime = getTimeType(currentHour) === '주간';
+  
+  const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
+  const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
+  
+  let totalGenerated = 0;
+  const database = db;
+  
+  // Generate data for past 7 days
+  for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - daysAgo);
+    
+    // Number of entries for this day (10-30 random entries per day)
+    const entriesPerDay = randomInt(10, 30);
+    
+    for (let i = 0; i < entriesPerDay; i++) {
+      // Random locker number (1-80)
+      const lockerNumber = randomInt(1, 80);
+      
+      // Random hour
+      let hour: number;
+      
+      if (daysAgo === 0) {
+        // Today: ensure we have both daytime and nighttime entries
+        if (isCurrentlyDaytime) {
+          // Current is daytime, add some nighttime entries from last night
+          hour = randomBoolean(0.3) ? randomInt(0, 6) : randomInt(7, 18);
+        } else {
+          // Current is nighttime, add some daytime entries from earlier today
+          hour = randomBoolean(0.3) ? randomInt(7, 18) : randomInt(19, 23);
+        }
+      } else {
+        // Past days: completely random
+        hour = randomInt(0, 23);
+      }
+      
+      const minute = randomInt(0, 59);
+      
+      const entryDate = new Date(targetDate);
+      entryDate.setHours(hour, minute, 0, 0);
+      
+      const timeType = getTimeType(hour);
+      const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+      
+      // Random option type
+      const optionType = randomElement(optionTypes);
+      let optionAmount = null;
+      let finalPrice = basePrice;
+      
+      if (optionType === 'discount') {
+        optionAmount = -discountAmount;
+        finalPrice = basePrice - discountAmount;
+      } else if (optionType === 'foreigner') {
+        optionAmount = foreignerPrice - basePrice;
+        finalPrice = foreignerPrice;
+      }
+      
+      // Random payment method
+      const paymentMethod = randomElement(paymentMethods);
+      
+      // Random status (most are in_use, some checked out)
+      const status = daysAgo >= 2 ? (randomBoolean(0.7) ? 'checked_out' : 'in_use') : 'in_use';
+      const exitTime = status === 'checked_out' 
+        ? new Date(entryDate.getTime() + randomInt(30, 180) * 60000).toISOString() 
+        : null;
+      
+      const id = generateId();
+      const entryTime = entryDate.toISOString();
+      const businessDay = getBusinessDay(entryDate);
+      
+      database.run(
+        `INSERT INTO locker_logs 
+        (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+         option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+        [
+          id,
+          lockerNumber,
+          entryTime,
+          exitTime,
+          businessDay,
+          timeType,
+          basePrice,
+          optionType,
+          optionAmount,
+          finalPrice,
+          status,
+          '테스트 데이터',
+          paymentMethod,
+          null
+        ]
+      );
+      
+      totalGenerated++;
+      
+      // Update daily summary for this business day
+      updateDailySummary(businessDay);
     }
-  ];
-  
-  const database = db; // Store reference for forEach callback
-  
-  testEntries.forEach(entry => {
-    const entryDate = new Date();
-    entryDate.setDate(entryDate.getDate() - entry.daysAgo);
-    entryDate.setHours(entry.hour, 0, 0, 0);
-    
-    const id = generateId();
-    const entryTime = entryDate.toISOString();
-    const businessDay = getBusinessDay(entryDate);
-    const basePrice = entry.timeType === '주간' ? dayPrice : nightPrice;
-    
-    database.run(
-      `INSERT INTO locker_logs 
-      (id, locker_number, entry_time, business_day, time_type, base_price, 
-       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
-      [
-        id,
-        entry.lockerNumber,
-        entryTime,
-        businessDay,
-        entry.timeType,
-        basePrice,
-        'none',
-        null,
-        basePrice,
-        `테스트 데이터: ${entry.description}`,
-        null,
-        null
-      ]
-    );
-    
-    // Update daily summary for this business day
-    updateDailySummary(businessDay);
-  });
+  }
   
   saveDatabase();
   
-  console.log('테스트 데이터 생성 완료:');
-  testEntries.forEach(e => console.log(`- 락커 #${e.lockerNumber}: ${e.description}`));
+  console.log(`테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
 }

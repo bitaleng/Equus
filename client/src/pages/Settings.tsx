@@ -207,7 +207,7 @@ export default function Settings() {
       localDb.createTestData();
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "락커 #101~104에 시간 기반 테스트 데이터가 생성되었습니다.",
+        description: "과거 7일치 랜덤 데이터가 락커 #1~80에 생성되었습니다.",
       });
     } catch (error) {
       toast({
@@ -412,13 +412,15 @@ export default function Settings() {
                   <div className="flex-1">
                     <h4 className="font-medium text-primary mb-1">테스트 데이터 생성</h4>
                     <p className="text-sm text-muted-foreground mb-3">
-                      시간 기반 기능 테스트를 위한 샘플 데이터를 생성합니다.
+                      과거 7일치 랜덤 테스트 데이터를 생성합니다.
                       <br />
                       <span className="text-xs">
-                        • 락커 #101: 1일 전 입실 (추가요금 1회 - 오렌지)<br />
-                        • 락커 #102: 2일 전 입실 (추가요금 2회 - 레드)<br />
-                        • 락커 #103: 3일 전 주간 입실 (노란색 버튼)<br />
-                        • 락커 #104: 3일 전 야간 입실 (파란색 버튼)
+                        • 락커 번호: #1~80<br />
+                        • 기간: 현재 기준 과거 7일<br />
+                        • 하루당 10~30건 랜덤 생성<br />
+                        • 주간/야간 모두 포함 (현재 시간대 고려)<br />
+                        • 지불방식: 카드/현금/이체 랜덤<br />
+                        • 옵션: 일반/할인/외국인 랜덤
                       </span>
                     </p>
                     <Button
