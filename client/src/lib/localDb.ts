@@ -831,10 +831,10 @@ export function createTestData() {
     updateDailySummary(businessDay);
   }
   
-  // 야간 데이터 생성
+  // 야간 데이터 생성 (오늘 새벽 시간대)
   for (let i = 0; i < nightEntries; i++) {
     const lockerNumber = randomInt(1, 80);
-    const hour = randomInt(19, 23); // 야간: 19-23시 (오늘 저녁)
+    const hour = randomInt(0, 6); // 야간: 0-6시 (오늘 새벽, 어제 저녁에 입실한 것)
     const minute = randomInt(0, 59);
     
     const entryDate = new Date(targetDate);
