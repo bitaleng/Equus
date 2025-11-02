@@ -16,10 +16,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 
 interface LockerOptionsDialogProps {
@@ -30,8 +37,12 @@ interface LockerOptionsDialogProps {
   timeType: '주간' | '야간';
   currentNotes?: string;
   currentPaymentMethod?: 'card' | 'cash';
+  currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
+  currentOptionAmount?: number;
+  currentFinalPrice?: number;
   discountAmount?: number;
   foreignerPrice?: number;
+  isInUse?: boolean;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash') => void;
   onCheckout: () => void;
   onCancel: () => void;
@@ -45,39 +56,128 @@ export default function LockerOptionsDialog({
   timeType,
   currentNotes = "",
   currentPaymentMethod = 'card',
+  currentOptionType = 'none',
+  currentOptionAmount,
+  currentFinalPrice,
   discountAmount = 2000,
   foreignerPrice = 25000,
+  isInUse = false,
   onApply,
   onCheckout,
   onCancel,
 }: LockerOptionsDialogProps) {
-  const [selectedOption, setSelectedOption] = useState<string>("none");
-  const [customAmount, setCustomAmount] = useState<string>("");
+  const [discountOption, setDiscountOption] = useState<string>("none");
+  const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
+  const [isForeigner, setIsForeigner] = useState(false);
+  const [isDirectPrice, setIsDirectPrice] = useState(false);
+  const [directPrice, setDirectPrice] = useState<string>("");
   const [notes, setNotes] = useState<string>(currentNotes);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>(currentPaymentMethod);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
 
-  // Update notes and paymentMethod when props change
+  // Initialize state from current option data when dialog opens
   useEffect(() => {
-    setNotes(currentNotes);
-    setPaymentMethod(currentPaymentMethod);
-  }, [currentNotes, currentPaymentMethod]);
+    if (open) {
+      setNotes(currentNotes);
+      setPaymentMethod(currentPaymentMethod);
+      
+      // Initialize option states based on current optionType
+      if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
+        setIsDirectPrice(true);
+        setDirectPrice(currentFinalPrice.toString());
+        setIsForeigner(false);
+        setDiscountOption("none");
+        setDiscountInputAmount("");
+      } else if (currentOptionType === 'foreigner') {
+        setIsForeigner(true);
+        setIsDirectPrice(false);
+        setDiscountOption("none");
+        setDirectPrice("");
+        setDiscountInputAmount("");
+      } else if (currentOptionType === 'discount') {
+        setDiscountOption("discount");
+        setIsForeigner(false);
+        setIsDirectPrice(false);
+        setDirectPrice("");
+        setDiscountInputAmount("");
+      } else if (currentOptionType === 'custom' && currentOptionAmount !== undefined) {
+        setDiscountOption("custom");
+        setDiscountInputAmount(currentOptionAmount.toString());
+        setIsForeigner(false);
+        setIsDirectPrice(false);
+        setDirectPrice("");
+      } else {
+        // none or default
+        setDiscountOption("none");
+        setIsForeigner(false);
+        setIsDirectPrice(false);
+        setDirectPrice("");
+        setDiscountInputAmount("");
+      }
+    }
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice]);
 
   const calculateFinalPrice = () => {
-    if (selectedOption === "foreigner") return foreignerPrice;
-    if (selectedOption === "discount") return basePrice - discountAmount;
-    if (selectedOption === "custom" && customAmount) {
-      return basePrice - parseInt(customAmount);
+    // 우선순위 1: 요금직접입력
+    if (isDirectPrice && directPrice) {
+      return parseInt(directPrice);
     }
+    
+    // 우선순위 2: 외국인
+    if (isForeigner) {
+      return foreignerPrice;
+    }
+    
+    // 우선순위 3: 할인 옵션
+    if (discountOption === "discount") {
+      return basePrice - discountAmount;
+    }
+    if (discountOption === "custom" && discountInputAmount) {
+      return basePrice - parseInt(discountInputAmount);
+    }
+    
     return basePrice;
   };
 
-  const handleApply = () => {
-    if (selectedOption === "custom" && customAmount) {
-      onApply(selectedOption, parseInt(customAmount), notes, paymentMethod);
-    } else {
-      onApply(selectedOption, undefined, notes, paymentMethod);
+  const handleProcessEntry = () => {
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+    let optionAmount: number | undefined;
+
+    if (isDirectPrice && directPrice) {
+      optionType = 'direct_price';
+      optionAmount = parseInt(directPrice);
+    } else if (isForeigner) {
+      optionType = 'foreigner';
+    } else if (discountOption === 'discount') {
+      optionType = 'discount';
+      optionAmount = discountAmount;
+    } else if (discountOption === 'custom' && discountInputAmount) {
+      optionType = 'custom';
+      optionAmount = parseInt(discountInputAmount);
     }
+
+    onApply(optionType, optionAmount, notes, paymentMethod);
+    setDialogOpen(false);
+  };
+
+  const handleSaveChanges = () => {
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+    let optionAmount: number | undefined;
+
+    if (isDirectPrice && directPrice) {
+      optionType = 'direct_price';
+      optionAmount = parseInt(directPrice);
+    } else if (isForeigner) {
+      optionType = 'foreigner';
+    } else if (discountOption === 'discount') {
+      optionType = 'discount';
+      optionAmount = discountAmount;
+    } else if (discountOption === 'custom' && discountInputAmount) {
+      optionType = 'custom';
+      optionAmount = parseInt(discountInputAmount);
+    }
+
+    onApply(optionType, optionAmount, notes, paymentMethod);
   };
 
   const handleCheckoutClick = () => {
@@ -93,12 +193,18 @@ export default function LockerOptionsDialog({
     onCheckout();
   };
 
+  const setDialogOpen = (open: boolean) => {
+    if (!open) {
+      onClose();
+    }
+  };
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onClose}>
+      <Dialog open={open} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[425px]" data-testid="dialog-locker-options">
           <DialogHeader>
-            <DialogTitle className="text-xl">락커 {lockerNumber}번 - 옵션 선택</DialogTitle>
+            <DialogTitle className="text-xl">락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}</DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -117,57 +223,86 @@ export default function LockerOptionsDialog({
               </div>
             </div>
 
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold">할인 옵션</Label>
-              <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                  <RadioGroupItem value="none" id="none" data-testid="option-none" />
-                  <Label htmlFor="none" className="flex-1 cursor-pointer">없음</Label>
-                </div>
-                
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                  <RadioGroupItem value="discount" id="discount" data-testid="option-discount" />
-                  <Label htmlFor="discount" className="flex-1 cursor-pointer">할인 ({discountAmount.toLocaleString()}원)</Label>
-                </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                    <RadioGroupItem value="custom" id="custom" data-testid="option-custom" />
-                    <Label htmlFor="custom" className="flex-1 cursor-pointer">직접 입력</Label>
-                  </div>
-                  {selectedOption === "custom" && (
-                    <Input
-                      type="number"
-                      placeholder="할인 금액 입력"
-                      value={customAmount}
-                      onChange={(e) => setCustomAmount(e.target.value)}
-                      className="ml-8"
-                      data-testid="input-custom-amount"
-                    />
-                  )}
-                </div>
-                
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                  <RadioGroupItem value="foreigner" id="foreigner" data-testid="option-foreigner" />
-                  <Label htmlFor="foreigner" className="flex-1 cursor-pointer">외국인 ({foreignerPrice.toLocaleString()}원)</Label>
-                </div>
-              </RadioGroup>
+            {/* 요금직접입력 체크박스 */}
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="direct-price" 
+                  checked={isDirectPrice}
+                  onCheckedChange={(checked) => setIsDirectPrice(checked as boolean)}
+                  data-testid="checkbox-direct-price"
+                />
+                <Label htmlFor="direct-price" className="text-sm font-semibold cursor-pointer">
+                  요금 직접 입력
+                </Label>
+              </div>
+              {isDirectPrice && (
+                <Input
+                  type="number"
+                  placeholder="최종 요금 입력"
+                  value={directPrice}
+                  onChange={(e) => setDirectPrice(e.target.value)}
+                  data-testid="input-direct-price"
+                />
+              )}
             </div>
 
+            {/* 외국인 체크박스 */}
+            {!isDirectPrice && (
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="foreigner" 
+                  checked={isForeigner}
+                  onCheckedChange={(checked) => setIsForeigner(checked as boolean)}
+                  data-testid="checkbox-foreigner"
+                />
+                <Label htmlFor="foreigner" className="text-sm font-semibold cursor-pointer">
+                  외국인 ({foreignerPrice.toLocaleString()}원)
+                </Label>
+              </div>
+            )}
+
+            {/* 할인 옵션 Select */}
+            {!isDirectPrice && !isForeigner && (
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">할인 옵션</Label>
+                <Select value={discountOption} onValueChange={setDiscountOption}>
+                  <SelectTrigger data-testid="select-discount-option">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">없음</SelectItem>
+                    <SelectItem value="discount">할인 ({discountAmount.toLocaleString()}원)</SelectItem>
+                    <SelectItem value="custom">할인 직접입력</SelectItem>
+                  </SelectContent>
+                </Select>
+                {discountOption === "custom" && (
+                  <Input
+                    type="number"
+                    placeholder="할인 금액 입력"
+                    value={discountInputAmount}
+                    onChange={(e) => setDiscountInputAmount(e.target.value)}
+                    data-testid="input-custom-discount"
+                  />
+                )}
+              </div>
+            )}
+
+            {/* 지불방식 Select */}
             <div className="space-y-3">
               <Label className="text-sm font-semibold">지불방식</Label>
-              <RadioGroup value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash')}>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                  <RadioGroupItem value="card" id="card" data-testid="payment-card" />
-                  <Label htmlFor="card" className="flex-1 cursor-pointer">카드</Label>
-                </div>
-                <div className="flex items-center space-x-2 p-3 rounded-lg border hover-elevate">
-                  <RadioGroupItem value="cash" id="cash" data-testid="payment-cash" />
-                  <Label htmlFor="cash" className="flex-1 cursor-pointer">현금</Label>
-                </div>
-              </RadioGroup>
+              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash')}>
+                <SelectTrigger data-testid="select-payment-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="card">카드</SelectItem>
+                  <SelectItem value="cash">현금</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
+            {/* 비고 */}
             <div className="space-y-2">
               <Label htmlFor="notes" className="text-sm font-semibold">비고 (선택사항)</Label>
               <Textarea
@@ -183,18 +318,31 @@ export default function LockerOptionsDialog({
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="ghost" onClick={onClose} data-testid="button-close">
-              닫기
-            </Button>
-            <Button variant="outline" onClick={handleApply} data-testid="button-apply">
-              적용
-            </Button>
-            <Button onClick={handleCheckoutClick} className="bg-primary" data-testid="button-checkout">
-              퇴실
-            </Button>
-            <Button variant="destructive" onClick={onCancel} data-testid="button-cancel">
-              입실취소
-            </Button>
+            {isInUse ? (
+              <>
+                <Button variant="ghost" onClick={onClose} data-testid="button-close">
+                  닫기
+                </Button>
+                <Button variant="destructive" onClick={onCancel} data-testid="button-cancel">
+                  입실취소
+                </Button>
+                <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
+                  수정저장
+                </Button>
+                <Button onClick={handleCheckoutClick} className="bg-primary" data-testid="button-checkout">
+                  퇴실
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={onClose} data-testid="button-close-new">
+                  취소
+                </Button>
+                <Button onClick={handleProcessEntry} className="bg-primary" data-testid="button-process-entry">
+                  입실처리
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -13,7 +13,7 @@ interface LockerLog {
   exitTime: string | null;
   timeType: '주간' | '야간';
   basePrice: number;
-  optionType: 'none' | 'discount' | 'custom' | 'foreigner';
+  optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   optionAmount?: number;
   finalPrice: number;
   notes?: string;
@@ -30,6 +30,8 @@ interface DailySummary {
   totalDiscount: number;
   foreignerCount: number;
   foreignerSales: number;
+  dayVisitors: number;
+  nightVisitors: number;
 }
 
 interface LockerGroup {
@@ -136,11 +138,15 @@ export default function Home() {
   ) => {
     if (!selectedEntry) return;
 
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
     let finalPrice = selectedEntry.basePrice;
     let optionAmount: number | undefined;
 
-    if (option === 'foreigner') {
+    if (option === 'direct_price' && customAmount) {
+      optionType = 'direct_price';
+      finalPrice = customAmount;
+      optionAmount = customAmount;
+    } else if (option === 'foreigner') {
       optionType = 'foreigner';
       finalPrice = foreignerPrice;
     } else if (option === 'discount') {
@@ -197,12 +203,14 @@ export default function Home() {
     basePrice: log.basePrice,
     option: log.optionType === 'none' ? '없음' : 
             log.optionType === 'discount' ? '할인' :
-            log.optionType === 'custom' ? `할인(${log.optionAmount?.toLocaleString()}원)` :
+            log.optionType === 'custom' ? `할인직접` :
+            log.optionType === 'direct_price' ? '요금직접' :
             '외국인',
     finalPrice: log.finalPrice,
     status: log.status,
     cancelled: log.cancelled,
     notes: log.notes,
+    paymentMethod: log.paymentMethod,
   }));
 
   return (
@@ -227,9 +235,9 @@ export default function Home() {
             totalVisitors={summary?.totalVisitors || 0}
             totalSales={summary?.totalSales || 0}
             cancellations={summary?.cancellations || 0}
-            totalDiscount={summary?.totalDiscount || 0}
             foreignerCount={summary?.foreignerCount || 0}
-            foreignerSales={summary?.foreignerSales || 0}
+            dayVisitors={summary?.dayVisitors || 0}
+            nightVisitors={summary?.nightVisitors || 0}
           />
         </div>
       </div>
@@ -298,8 +306,12 @@ export default function Home() {
           timeType={selectedEntry.timeType}
           currentNotes={selectedEntry.notes}
           currentPaymentMethod={selectedEntry.paymentMethod}
+          currentOptionType={selectedEntry.optionType}
+          currentOptionAmount={selectedEntry.optionAmount}
+          currentFinalPrice={selectedEntry.finalPrice}
           discountAmount={discountAmount}
           foreignerPrice={foreignerPrice}
+          isInUse={selectedEntry.status === 'in_use' && selectedEntry.exitTime === null}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}
