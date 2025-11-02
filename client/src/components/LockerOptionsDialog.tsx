@@ -169,20 +169,6 @@ export default function LockerOptionsDialog({
       setHasBlanket(blanketPresent);
       setHasLongTowel(towelPresent);
       
-      // Auto-show warning alert if there are rental items or additional fees
-      if (isInUse) {
-        const hasRentalItems = blanketPresent || towelPresent;
-        const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
-        
-        if (hasRentalItems || hasAdditionalFee) {
-          // Play emergency alert sound
-          playEmergencySound();
-          
-          // Delay to allow dialog to fully open first
-          setTimeout(() => setShowWarningAlert(true), 300);
-        }
-      }
-      
       // Initialize option states based on current optionType
       if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
         setIsDirectPrice(true);
