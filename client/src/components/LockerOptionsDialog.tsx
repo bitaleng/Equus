@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -86,6 +86,9 @@ export default function LockerOptionsDialog({
   // Rental items state (담요, 롱타올)
   const [hasBlanket, setHasBlanket] = useState(false);
   const [hasLongTowel, setHasLongTowel] = useState(false);
+  
+  // Track previous locker number to reset checkoutResolved only when changing lockers
+  const previousLockerRef = useRef<number | null>(null);
 
   // Play click sound
   const playClickSound = () => {
@@ -161,6 +164,12 @@ export default function LockerOptionsDialog({
   // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
+      // Reset checkoutResolved only when opening a different locker
+      if (previousLockerRef.current !== lockerNumber) {
+        setCheckoutResolved(false);
+        previousLockerRef.current = lockerNumber;
+      }
+      
       setPaymentMethod(currentPaymentMethod);
       
       // Parse rental items from notes
@@ -168,6 +177,20 @@ export default function LockerOptionsDialog({
       const towelPresent = currentNotes?.includes('롱타올') || false;
       setHasBlanket(blanketPresent);
       setHasLongTowel(towelPresent);
+      
+      // Auto-show warning alert if there are rental items or additional fees (only if not resolved yet)
+      if (isInUse && !checkoutResolved) {
+        const hasRentalItems = blanketPresent || towelPresent;
+        const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
+        
+        if (hasRentalItems || hasAdditionalFee) {
+          // Play emergency alert sound
+          playEmergencySound();
+          
+          // Delay to allow dialog to fully open first
+          setTimeout(() => setShowWarningAlert(true), 300);
+        }
+      }
       
       // Initialize option states based on current optionType
       if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
@@ -206,7 +229,6 @@ export default function LockerOptionsDialog({
       // Reset rental items
       setHasBlanket(false);
       setHasLongTowel(false);
-      setCheckoutResolved(false);
       setShowWarningAlert(false);
       
       // Reset all state when dialog closes to prevent state leakage
@@ -217,8 +239,9 @@ export default function LockerOptionsDialog({
       setDirectPrice("");
       setPaymentMethod('card');
       setShowCheckoutConfirm(false);
+      // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved]);
 
   const calculateFinalPrice = () => {
     // 우선순위 1: 요금직접입력
@@ -295,6 +318,9 @@ export default function LockerOptionsDialog({
 
     const generatedNotes = generateNotes();
     onApply(optionType, optionAmount, generatedNotes, paymentMethod);
+    
+    // Mark as resolved to prevent warning on next open
+    setCheckoutResolved(true);
     
     // Auto-close dialog after save
     playCloseSound();
