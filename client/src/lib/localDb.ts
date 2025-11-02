@@ -755,44 +755,106 @@ export function createTestData() {
     updateDailySummary(businessDay);
   }
   
-  // 3. 나머지는 일반 데이터 생성 (과거 7일치, 추가요금 없음)
-  for (let daysAgo = 0; daysAgo <= 7; daysAgo++) {
-    const targetDate = new Date();
-    targetDate.setDate(targetDate.getDate() - daysAgo);
+  // 3. 나머지는 오늘 데이터만 생성 (추가요금 발생하지 않도록)
+  const targetDate = new Date(); // 오늘만
+  const daysAgo = 0;
+  
+  // 오늘 데이터를 충분히 생성 (140-240건)
+  const entriesToday = randomInt(140, 240);
+  
+  for (let i = 0; i < entriesToday; i++) {
+    // Random locker number (1-80)
+    const lockerNumber = randomInt(1, 80);
     
-    // Number of entries for this day (10-30 random entries per day)
-    const entriesPerDay = randomInt(10, 30);
+    // Random hour - 주간과 야간 모두 포함
+    let hour: number;
+    if (isCurrentlyDaytime) {
+      // Current is daytime, add some nighttime entries from last night
+      hour = randomBoolean(0.3) ? randomInt(0, 6) : randomInt(7, 18);
+    } else {
+      // Current is nighttime, add some daytime entries from earlier today
+      hour = randomBoolean(0.3) ? randomInt(7, 18) : randomInt(19, 23);
+    }
     
-    for (let i = 0; i < entriesPerDay; i++) {
-      // Random locker number (1-80)
+    const minute = randomInt(0, 59);
+    
+    const entryDate = new Date(targetDate);
+    entryDate.setHours(hour, minute, 0, 0);
+    
+    const timeType = getTimeType(hour);
+    const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    
+    // Random option type
+    const optionType = randomElement(optionTypes);
+    let optionAmount = null;
+    let finalPrice = basePrice;
+    
+    if (optionType === 'discount') {
+      optionAmount = -discountAmount;
+      finalPrice = basePrice - discountAmount;
+    } else if (optionType === 'foreigner') {
+      optionAmount = foreignerPrice - basePrice;
+      finalPrice = foreignerPrice;
+    }
+    
+    // Random payment method
+    const paymentMethod = randomElement(paymentMethods);
+    
+    // Most are in_use (today's data)
+    const status = 'in_use';
+    const exitTime = null;
+    
+    const id = generateId();
+    const entryTime = entryDate.toISOString();
+    const businessDay = getBusinessDay(entryDate);
+    
+    database.run(
+      `INSERT INTO locker_logs 
+      (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+      [
+        id,
+        lockerNumber,
+        entryTime,
+        exitTime,
+        businessDay,
+        timeType,
+        basePrice,
+        optionType,
+        optionAmount,
+        finalPrice,
+        status,
+        '테스트 데이터',
+        paymentMethod,
+        null
+      ]
+    );
+    
+    totalGenerated++;
+    
+    // Update daily summary for this business day
+    updateDailySummary(businessDay);
+  }
+  
+  // 4. 과거 데이터는 퇴실 완료된 데이터로만 생성 (추가요금 방지)
+  for (let pastDays = 1; pastDays <= 7; pastDays++) {
+    const pastDate = new Date();
+    pastDate.setDate(pastDate.getDate() - pastDays);
+    
+    const pastEntries = randomInt(10, 30);
+    
+    for (let i = 0; i < pastEntries; i++) {
       const lockerNumber = randomInt(1, 80);
-      
-      // Random hour
-      let hour: number;
-      
-      if (daysAgo === 0) {
-        // Today: ensure we have both daytime and nighttime entries
-        if (isCurrentlyDaytime) {
-          // Current is daytime, add some nighttime entries from last night
-          hour = randomBoolean(0.3) ? randomInt(0, 6) : randomInt(7, 18);
-        } else {
-          // Current is nighttime, add some daytime entries from earlier today
-          hour = randomBoolean(0.3) ? randomInt(7, 18) : randomInt(19, 23);
-        }
-      } else {
-        // Past days: completely random
-        hour = randomInt(0, 23);
-      }
-      
+      const hour = randomInt(0, 23);
       const minute = randomInt(0, 59);
       
-      const entryDate = new Date(targetDate);
+      const entryDate = new Date(pastDate);
       entryDate.setHours(hour, minute, 0, 0);
       
       const timeType = getTimeType(hour);
       const basePrice = timeType === '주간' ? dayPrice : nightPrice;
       
-      // Random option type
       const optionType = randomElement(optionTypes);
       let optionAmount = null;
       let finalPrice = basePrice;
@@ -805,14 +867,11 @@ export function createTestData() {
         finalPrice = foreignerPrice;
       }
       
-      // Random payment method
       const paymentMethod = randomElement(paymentMethods);
       
-      // Random status (most are in_use, some checked out)
-      const status = daysAgo >= 2 ? (randomBoolean(0.7) ? 'checked_out' : 'in_use') : 'in_use';
-      const exitTime = status === 'checked_out' 
-        ? new Date(entryDate.getTime() + randomInt(30, 180) * 60000).toISOString() 
-        : null;
+      // 과거 데이터는 모두 퇴실 완료 상태
+      const status = 'checked_out';
+      const exitTime = new Date(entryDate.getTime() + randomInt(30, 180) * 60000).toISOString();
       
       const id = generateId();
       const entryTime = entryDate.toISOString();
@@ -835,15 +894,13 @@ export function createTestData() {
           optionAmount,
           finalPrice,
           status,
-          '테스트 데이터',
+          '테스트 데이터 (퇴실완료)',
           paymentMethod,
           null
         ]
       );
       
       totalGenerated++;
-      
-      // Update daily summary for this business day
       updateDailySummary(businessDay);
     }
   }
