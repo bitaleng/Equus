@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { calculateAdditionalFee } from "@shared/businessDay";
 
 interface LockerOptionsDialogProps {
   open: boolean;
@@ -35,6 +36,7 @@ interface LockerOptionsDialogProps {
   lockerNumber: number;
   basePrice: number;
   timeType: '주간' | '야간';
+  entryTime?: string;
   currentNotes?: string;
   currentPaymentMethod?: 'card' | 'cash';
   currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
@@ -43,6 +45,8 @@ interface LockerOptionsDialogProps {
   discountAmount?: number;
   foreignerPrice?: number;
   isInUse?: boolean;
+  dayPrice?: number;
+  nightPrice?: number;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash') => void;
   onCheckout: () => void;
   onCancel: () => void;
@@ -54,6 +58,7 @@ export default function LockerOptionsDialog({
   lockerNumber,
   basePrice,
   timeType,
+  entryTime,
   currentNotes = "",
   currentPaymentMethod = 'card',
   currentOptionType = 'none',
@@ -62,6 +67,8 @@ export default function LockerOptionsDialog({
   discountAmount = 2000,
   foreignerPrice = 25000,
   isInUse = false,
+  dayPrice = 10000,
+  nightPrice = 13000,
   onApply,
   onCheckout,
   onCancel,
@@ -74,12 +81,24 @@ export default function LockerOptionsDialog({
   const [notes, setNotes] = useState<string>(currentNotes);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash'>(currentPaymentMethod);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
+  const [showWarningAlert, setShowWarningAlert] = useState(false);
+  const [checkoutResolved, setCheckoutResolved] = useState(false);
+  
+  // Rental items state (담요, 롱타올)
+  const [hasBlanket, setHasBlanket] = useState(false);
+  const [hasLongTowel, setHasLongTowel] = useState(false);
 
   // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
       setNotes(currentNotes);
       setPaymentMethod(currentPaymentMethod);
+      
+      // Parse rental items from notes
+      const blanketPresent = currentNotes.includes('담요');
+      const towelPresent = currentNotes.includes('롱타올');
+      setHasBlanket(blanketPresent);
+      setHasLongTowel(towelPresent);
       
       // Initialize option states based on current optionType
       if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
@@ -115,6 +134,12 @@ export default function LockerOptionsDialog({
         setDiscountInputAmount("");
       }
     } else {
+      // Reset rental items
+      setHasBlanket(false);
+      setHasLongTowel(false);
+      setCheckoutResolved(false);
+      setShowWarningAlert(false);
+      
       // Reset all state when dialog closes to prevent state leakage
       setDiscountOption("none");
       setDiscountInputAmount("");
@@ -149,6 +174,14 @@ export default function LockerOptionsDialog({
     return basePrice;
   };
 
+  // Generate notes from rental items
+  const generateNotes = () => {
+    const items: string[] = [];
+    if (hasBlanket) items.push('담요');
+    if (hasLongTowel) items.push('롱타올');
+    return items.length > 0 ? items.join(', ') : '';
+  };
+
   const handleProcessEntry = () => {
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
     let optionAmount: number | undefined;
@@ -166,7 +199,8 @@ export default function LockerOptionsDialog({
       optionAmount = parseInt(discountInputAmount);
     }
 
-    onApply(optionType, optionAmount, notes, paymentMethod);
+    const generatedNotes = generateNotes();
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod);
     setDialogOpen(false);
   };
 
@@ -187,10 +221,20 @@ export default function LockerOptionsDialog({
       optionAmount = parseInt(discountInputAmount);
     }
 
-    onApply(optionType, optionAmount, notes, paymentMethod);
+    const generatedNotes = generateNotes();
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod);
   };
 
   const handleCheckoutClick = () => {
+    // Check if there are rental items or additional fees
+    const hasRentalItems = hasBlanket || hasLongTowel;
+    const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
+    
+    if ((hasRentalItems || hasAdditionalFee) && !checkoutResolved) {
+      setShowWarningAlert(true);
+      return;
+    }
+    
     if (notes && notes.trim()) {
       setShowCheckoutConfirm(true);
     } else {
@@ -203,11 +247,37 @@ export default function LockerOptionsDialog({
     onCheckout();
   };
 
+  const handleWarningResolved = () => {
+    setShowWarningAlert(false);
+    setCheckoutResolved(true);
+  };
+
+  const handleWarningClose = () => {
+    setShowWarningAlert(false);
+    setCheckoutResolved(false);
+  };
+
   const setDialogOpen = (open: boolean) => {
     if (!open) {
       onClose();
     }
   };
+
+  // Calculate additional fee if entry time exists
+  const additionalFeeInfo = entryTime && isInUse
+    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice)
+    : { additionalFee: 0, midnightsPassed: 0 };
+
+  // Format entry date and time
+  const formatEntryDateTime = (entryTime?: string) => {
+    if (!entryTime) return null;
+    const date = new Date(entryTime);
+    const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    return { dateStr, timeStr };
+  };
+
+  const entryDateTime = formatEntryDateTime(entryTime);
 
   return (
     <>
@@ -219,6 +289,20 @@ export default function LockerOptionsDialog({
           
           <div className="space-y-4 py-4">
             <div className="space-y-2">
+              {/* 입실 날짜/시간 표시 (사용중일 때만) */}
+              {isInUse && entryDateTime && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">입실 날짜</span>
+                    <span className="font-medium">{entryDateTime.dateStr}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">입실 시간</span>
+                    <span className="font-medium">{entryDateTime.timeStr}</span>
+                  </div>
+                </>
+              )}
+              
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">시간대</span>
                 <span className="font-medium">{timeType}</span>
@@ -227,6 +311,15 @@ export default function LockerOptionsDialog({
                 <span className="text-muted-foreground">기본 요금</span>
                 <span className="font-semibold">{basePrice.toLocaleString()}원</span>
               </div>
+              
+              {/* 추가요금 표시 */}
+              {isInUse && additionalFeeInfo.additionalFee > 0 && (
+                <div className="flex justify-between text-sm bg-orange-50 dark:bg-orange-950 p-2 rounded">
+                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.midnightsPassed}회)</span>
+                  <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
+                </div>
+              )}
+              
               <div className="flex justify-between text-base pt-2 border-t">
                 <span className="font-medium">최종 요금</span>
                 <span className="font-bold text-lg text-primary">{calculateFinalPrice().toLocaleString()}원</span>
@@ -312,18 +405,33 @@ export default function LockerOptionsDialog({
               </Select>
             </div>
 
-            {/* 비고 */}
+            {/* 비고 - 대여 물품 체크박스 */}
             <div className="space-y-2">
-              <Label htmlFor="notes" className="text-sm font-semibold">비고 (선택사항)</Label>
-              <Textarea
-                id="notes"
-                placeholder="예: 담요 빌렸음, 귀중품 보관함 사용 등"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="resize-none"
-                rows={2}
-                data-testid="input-notes"
-              />
+              <Label className="text-sm font-semibold">대여 물품 (선택사항)</Label>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="blanket" 
+                    checked={hasBlanket}
+                    onCheckedChange={(checked) => setHasBlanket(checked as boolean)}
+                    data-testid="checkbox-blanket"
+                  />
+                  <Label htmlFor="blanket" className="text-sm cursor-pointer font-normal">
+                    담요 대여
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="long-towel" 
+                    checked={hasLongTowel}
+                    onCheckedChange={(checked) => setHasLongTowel(checked as boolean)}
+                    data-testid="checkbox-long-towel"
+                  />
+                  <Label htmlFor="long-towel" className="text-sm cursor-pointer font-normal">
+                    롱타올 대여
+                  </Label>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -353,6 +461,44 @@ export default function LockerOptionsDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Warning Alert for rental items and additional fees */}
+      <AlertDialog open={showWarningAlert} onOpenChange={setShowWarningAlert}>
+        <AlertDialogContent data-testid="dialog-warning-alert">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-orange-600">⚠️ 확인 필요</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              {(hasBlanket || hasLongTowel) && (
+                <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800">
+                  <p className="font-semibold text-orange-700 dark:text-orange-300 mb-1">대여 물품:</p>
+                  <p className="text-sm text-orange-600 dark:text-orange-400">
+                    {[hasBlanket && '담요', hasLongTowel && '롱타올'].filter(Boolean).join(', ')}
+                  </p>
+                </div>
+              )}
+              {additionalFeeInfo.additionalFee > 0 && (
+                <div className="p-3 bg-red-50 dark:bg-red-950 rounded-md border border-red-200 dark:border-red-800">
+                  <p className="font-semibold text-red-700 dark:text-red-300 mb-1">미지급 추가요금:</p>
+                  <p className="text-lg font-bold text-red-600 dark:text-red-400">
+                    {additionalFeeInfo.additionalFee.toLocaleString()}원 ({additionalFeeInfo.midnightsPassed}회)
+                  </p>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground mt-2">
+                위 내용을 확인하고 해결하셨으면 '해결' 버튼을 눌러주세요.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleWarningClose} data-testid="button-warning-close">
+              닫기
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleWarningResolved} className="bg-green-600 hover:bg-green-700" data-testid="button-warning-resolved">
+              해결
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={showCheckoutConfirm} onOpenChange={setShowCheckoutConfirm}>
         <AlertDialogContent data-testid="dialog-checkout-confirm">
