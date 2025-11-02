@@ -4,10 +4,11 @@ interface LockerButtonProps {
   number: number;
   status: 'empty' | 'in-use' | 'disabled';
   additionalFeeCount?: number; // 추가요금 발생 횟수 (0: 없음, 1: 1회, 2+: 2회 이상)
+  timeType?: 'day' | 'night'; // 입실 시간대 (주간/야간)
   onClick: () => void;
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, onClick }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', onClick }: LockerButtonProps) {
   const getButtonStyles = () => {
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
@@ -21,8 +22,14 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, o
       if (additionalFeeCount === 1) {
         return "bg-[#FF9933] text-white border-2 border-[#FF7700]";
       }
-      // 일반 사용중: 블루
-      return "bg-[#4A90E2] text-white border-2 border-[#357ABD]";
+      // 추가요금 없음: 주간/야간 구분
+      if (timeType === 'day') {
+        // 주간: 노란색
+        return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700]";
+      } else {
+        // 야간: 퍼플 블루
+        return "bg-[#7B68EE] text-white border-2 border-[#6A5ACD]";
+      }
     }
     // 빈 락카: 흰색
     return "bg-white text-gray-700 border-2 border-gray-300 hover-elevate active-elevate-2";

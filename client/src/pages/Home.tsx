@@ -93,11 +93,13 @@ export default function Home() {
   // Calculate all locker numbers from groups and their states
   const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
   const additionalFeeCounts: { [key: number]: number } = {};
+  const lockerTimeTypes: { [key: number]: 'day' | 'night' } = {};
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
       lockerStates[i] = 'empty';
       additionalFeeCounts[i] = 0;
+      lockerTimeTypes[i] = 'day';
     }
   });
   
@@ -113,6 +115,9 @@ export default function Home() {
       currentTime
     );
     additionalFeeCounts[log.lockerNumber] = midnightsPassed;
+    
+    // Store time type (convert Korean to English)
+    lockerTimeTypes[log.lockerNumber] = log.timeType === '주간' ? 'day' : 'night';
   });
 
   const handleLockerClick = async (lockerNumber: number) => {
@@ -335,6 +340,7 @@ export default function Home() {
                         number={num}
                         status={lockerStates[num] || 'empty'}
                         additionalFeeCount={additionalFeeCounts[num] || 0}
+                        timeType={lockerTimeTypes[num] || 'day'}
                         onClick={() => handleLockerClick(num)}
                       />
                     ))}
