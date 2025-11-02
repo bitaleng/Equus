@@ -3,7 +3,7 @@ import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
-import { getBusinessDay, getTimeType, getBasePrice } from "@shared/businessDay";
+import { getBusinessDay, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
 interface LockerLog {
@@ -92,13 +92,27 @@ export default function Home() {
 
   // Calculate all locker numbers from groups and their states
   const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
+  const additionalFeeCounts: { [key: number]: number } = {};
+  
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
       lockerStates[i] = 'empty';
+      additionalFeeCounts[i] = 0;
     }
   });
+  
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
+    
+    // Calculate additional fee count for this locker
+    const { midnightsPassed } = calculateAdditionalFee(
+      log.entryTime,
+      log.timeType,
+      dayPrice,
+      nightPrice,
+      currentTime
+    );
+    additionalFeeCounts[log.lockerNumber] = midnightsPassed;
   });
 
   const handleLockerClick = async (lockerNumber: number) => {
@@ -320,6 +334,7 @@ export default function Home() {
                         key={num}
                         number={num}
                         status={lockerStates[num] || 'empty'}
+                        additionalFeeCount={additionalFeeCounts[num] || 0}
                         onClick={() => handleLockerClick(num)}
                       />
                     ))}
@@ -342,6 +357,7 @@ export default function Home() {
           lockerNumber={selectedEntry?.lockerNumber || newLockerInfo!.lockerNumber}
           basePrice={selectedEntry?.basePrice || newLockerInfo!.basePrice}
           timeType={selectedEntry?.timeType || newLockerInfo!.timeType}
+          entryTime={selectedEntry?.entryTime}
           currentNotes={selectedEntry?.notes}
           currentPaymentMethod={selectedEntry?.paymentMethod}
           currentOptionType={selectedEntry?.optionType}
@@ -349,6 +365,8 @@ export default function Home() {
           currentFinalPrice={selectedEntry?.finalPrice}
           discountAmount={discountAmount}
           foreignerPrice={foreignerPrice}
+          dayPrice={dayPrice}
+          nightPrice={nightPrice}
           isInUse={!!selectedEntry}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}

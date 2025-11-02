@@ -151,6 +151,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 4: Add rental_items column to locker_logs (for tracking blanket/towel rentals)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN rental_items TEXT`);
+      console.log('Added rental_items column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -177,7 +185,8 @@ function createTables() {
       status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
       cancelled INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
-      payment_method TEXT CHECK(payment_method IN ('card', 'cash'))
+      payment_method TEXT CHECK(payment_method IN ('card', 'cash')),
+      rental_items TEXT
     )
   `);
 
@@ -238,17 +247,21 @@ export function createEntry(entry: {
   optionAmount?: number;
   notes?: string;
   paymentMethod?: string;
+  rentalItems?: string[];
 }): string {
   if (!db) throw new Error('Database not initialized');
 
   const id = generateId();
   const now = new Date().toISOString();
+  const rentalItemsJson = entry.rentalItems && entry.rentalItems.length > 0 
+    ? JSON.stringify(entry.rentalItems) 
+    : null;
 
   db.run(
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
-     option_type, option_amount, final_price, status, cancelled, notes, payment_method)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?)`,
+     option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -260,7 +273,8 @@ export function createEntry(entry: {
       entry.optionAmount || null,
       entry.finalPrice,
       entry.notes || null,
-      entry.paymentMethod || null
+      entry.paymentMethod || null,
+      rentalItemsJson
     ]
   );
 
@@ -308,6 +322,13 @@ export function updateEntry(id: string, updates: any) {
   if (updates.cancelled !== undefined) {
     sets.push('cancelled = ?');
     values.push(updates.cancelled ? 1 : 0);
+  }
+  if (updates.rentalItems !== undefined) {
+    sets.push('rental_items = ?');
+    const rentalItemsJson = updates.rentalItems && updates.rentalItems.length > 0
+      ? JSON.stringify(updates.rentalItems)
+      : null;
+    values.push(rentalItemsJson);
   }
 
   if (sets.length > 0) {
