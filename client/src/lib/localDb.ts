@@ -781,8 +781,8 @@ export function createTestData() {
     const entryDate = new Date();
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = '주간';
-    const basePrice = dayPrice;
+    const timeType = getTimeType(hour); // 실제 입실 시각으로 판단
+    const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     // Random option type
     const optionType = randomElement(optionTypes);
@@ -867,8 +867,8 @@ export function createTestData() {
       entryDate.setHours(hour, minute, 0, 0);
     }
     
-    const timeType = '야간';
-    const basePrice = nightPrice;
+    const timeType = getTimeType(hour); // 실제 입실 시각으로 판단
+    const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     // Random option type
     const optionType = randomElement(optionTypes);
