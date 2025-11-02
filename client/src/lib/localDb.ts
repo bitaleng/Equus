@@ -21,6 +21,9 @@ export async function initDatabase(): Promise<Database> {
   if (savedDb) {
     const buf = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
     db = new SQL.Database(buf);
+    
+    // Run migrations for existing databases
+    migrateDatabase();
   } else {
     db = new SQL.Database();
     createTables();
@@ -39,6 +42,121 @@ export function saveDatabase() {
   localStorage.setItem(DB_NAME, base64);
 }
 
+// Migrate existing database schema
+function migrateDatabase() {
+  if (!db) return;
+  
+  try {
+    // Step 1: Ensure all tables exist first (before any ALTER operations)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS system_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    
+    db.run(`
+      CREATE TABLE IF NOT EXISTS locker_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        start_number INTEGER NOT NULL,
+        end_number INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    
+    db.run(`
+      CREATE TABLE IF NOT EXISTS locker_daily_summaries (
+        business_day TEXT PRIMARY KEY,
+        total_visitors INTEGER NOT NULL DEFAULT 0,
+        total_sales INTEGER NOT NULL DEFAULT 0,
+        cancellations INTEGER NOT NULL DEFAULT 0,
+        total_discount INTEGER NOT NULL DEFAULT 0,
+        foreigner_count INTEGER NOT NULL DEFAULT 0,
+        foreigner_sales INTEGER NOT NULL DEFAULT 0,
+        day_visitors INTEGER NOT NULL DEFAULT 0,
+        night_visitors INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    
+    // Step 2: Migrate locker_logs table if needed
+    const result = db.exec(`SELECT sql FROM sqlite_master WHERE type='table' AND name='locker_logs'`);
+    
+    if (result.length > 0 && result[0].values.length > 0) {
+      const createSql = result[0].values[0][0] as string;
+      
+      // Check if 'direct_price' is already in the CHECK constraint
+      if (!createSql.includes('direct_price')) {
+        console.log('Migrating locker_logs table to add direct_price option...');
+        
+        try {
+          // Create backup table
+          db.run(`CREATE TABLE locker_logs_backup AS SELECT * FROM locker_logs`);
+          
+          // Drop old table
+          db.run(`DROP TABLE locker_logs`);
+          
+          // Create new table with updated CHECK constraint
+          db.run(`
+            CREATE TABLE locker_logs (
+              id TEXT PRIMARY KEY,
+              locker_number INTEGER NOT NULL,
+              entry_time TEXT NOT NULL,
+              exit_time TEXT,
+              business_day TEXT NOT NULL,
+              time_type TEXT NOT NULL CHECK(time_type IN ('주간', '야간')),
+              base_price INTEGER NOT NULL,
+              option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price')),
+              option_amount INTEGER,
+              final_price INTEGER NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
+              cancelled INTEGER NOT NULL DEFAULT 0,
+              notes TEXT,
+              payment_method TEXT CHECK(payment_method IN ('card', 'cash'))
+            )
+          `);
+          
+          // Copy data back
+          db.run(`INSERT INTO locker_logs SELECT * FROM locker_logs_backup`);
+          
+          // Drop backup table
+          db.run(`DROP TABLE locker_logs_backup`);
+          
+          console.log('Migration completed successfully!');
+          saveDatabase();
+        } catch (migrationError) {
+          console.error('Locker logs migration failed:', migrationError);
+          // Try to restore from backup if it exists
+          try {
+            db.run(`DROP TABLE IF EXISTS locker_logs`);
+            db.run(`ALTER TABLE locker_logs_backup RENAME TO locker_logs`);
+            console.log('Rollback successful');
+          } catch (rollbackError) {
+            console.error('Rollback failed:', rollbackError);
+          }
+          throw migrationError;
+        }
+      }
+    }
+    
+    // Step 3: Add missing columns to daily summaries (safe now that table exists)
+    try {
+      db.run(`ALTER TABLE locker_daily_summaries ADD COLUMN day_visitors INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE locker_daily_summaries ADD COLUMN night_visitors INTEGER NOT NULL DEFAULT 0`);
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+  } catch (error) {
+    console.error('Migration error:', error);
+    throw error;
+  }
+}
+
 // Create all tables
 function createTables() {
   if (!db) return;
@@ -53,7 +171,7 @@ function createTables() {
       business_day TEXT NOT NULL,
       time_type TEXT NOT NULL CHECK(time_type IN ('주간', '야간')),
       base_price INTEGER NOT NULL,
-      option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner')),
+      option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price')),
       option_amount INTEGER,
       final_price INTEGER NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
@@ -72,7 +190,9 @@ function createTables() {
       cancellations INTEGER NOT NULL DEFAULT 0,
       total_discount INTEGER NOT NULL DEFAULT 0,
       foreigner_count INTEGER NOT NULL DEFAULT 0,
-      foreigner_sales INTEGER NOT NULL DEFAULT 0
+      foreigner_sales INTEGER NOT NULL DEFAULT 0,
+      day_visitors INTEGER NOT NULL DEFAULT 0,
+      night_visitors INTEGER NOT NULL DEFAULT 0
     )
   `);
 
@@ -266,7 +386,9 @@ export function getDailySummary(businessDay: string) {
       cancellations: 0,
       totalDiscount: 0,
       foreignerCount: 0,
-      foreignerSales: 0
+      foreignerSales: 0,
+      dayVisitors: 0,
+      nightVisitors: 0
     };
   }
 
@@ -283,7 +405,9 @@ function updateDailySummary(businessDay: string) {
       COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancellations,
       COALESCE(SUM(CASE WHEN option_type IN ('discount', 'custom') AND status != 'cancelled' THEN option_amount ELSE 0 END), 0) as total_discount,
       COUNT(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' THEN 1 END) as foreigner_count,
-      COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' THEN final_price ELSE 0 END), 0) as foreigner_sales
+      COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' THEN final_price ELSE 0 END), 0) as foreigner_sales,
+      COUNT(CASE WHEN time_type = '주간' AND status != 'cancelled' THEN 1 END) as day_visitors,
+      COUNT(CASE WHEN time_type = '야간' AND status != 'cancelled' THEN 1 END) as night_visitors
     FROM locker_logs
     WHERE business_day = ?`,
     [businessDay]
@@ -291,21 +415,23 @@ function updateDailySummary(businessDay: string) {
 
   if (result.length === 0 || result[0].values.length === 0) return;
 
-  const [totalVisitors, totalSales, cancellations, totalDiscount, foreignerCount, foreignerSales] = result[0].values[0];
+  const [totalVisitors, totalSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
 
   // Insert or update
   db.run(
     `INSERT INTO locker_daily_summaries 
-     (business_day, total_visitors, total_sales, cancellations, total_discount, foreigner_count, foreigner_sales)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+     (business_day, total_visitors, total_sales, cancellations, total_discount, foreigner_count, foreigner_sales, day_visitors, night_visitors)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(business_day) DO UPDATE SET
        total_visitors = excluded.total_visitors,
        total_sales = excluded.total_sales,
        cancellations = excluded.cancellations,
        total_discount = excluded.total_discount,
        foreigner_count = excluded.foreigner_count,
-       foreigner_sales = excluded.foreigner_sales`,
-    [businessDay, totalVisitors, totalSales, cancellations, totalDiscount, foreignerCount, foreignerSales]
+       foreigner_sales = excluded.foreigner_sales,
+       day_visitors = excluded.day_visitors,
+       night_visitors = excluded.night_visitors`,
+    [businessDay, totalVisitors, totalSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors]
   );
 }
 

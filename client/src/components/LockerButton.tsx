@@ -9,12 +9,18 @@ interface LockerButtonProps {
 export default function LockerButton({ number, status, onClick }: LockerButtonProps) {
   const getButtonStyles = () => {
     if (status === 'disabled') {
-      return "bg-muted/50 text-muted-foreground cursor-not-allowed border-2 border-border";
+      return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
-      return "bg-primary text-primary-foreground border-2 border-primary-border";
+      return "bg-[#FF6B4A] text-white border-2 border-[#FF5733]";
     }
-    return "bg-background text-foreground border-2 border-border hover-elevate active-elevate-2";
+    return "bg-[#D8E4F7] text-white border-2 border-[#B8CEE7] hover-elevate active-elevate-2";
+  };
+
+  const getStatusText = () => {
+    if (status === 'disabled') return '퇴실완료';
+    if (status === 'in-use') return '사용중';
+    return '비어있음';
   };
 
   const handleClick = () => {
@@ -34,11 +40,13 @@ export default function LockerButton({ number, status, onClick }: LockerButtonPr
         aspect-square w-full min-h-[56px] rounded-lg font-semibold text-base
         transition-all duration-100
         active:scale-95
+        flex flex-col items-center justify-center gap-0.5
         ${getButtonStyles()}
       `}
       data-testid={`locker-${number}`}
     >
-      {number}
+      <span className="text-lg font-bold">{number}</span>
+      <span className="text-[10px] font-normal opacity-90">{getStatusText()}</span>
     </Button>
   );
 }

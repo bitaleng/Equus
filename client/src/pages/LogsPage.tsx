@@ -25,7 +25,7 @@ interface LogEntry {
   exitTime?: string | null;
   timeType: '주간' | '야간';
   basePrice: number;
-  optionType: 'none' | 'discount' | 'custom' | 'foreigner';
+  optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   optionAmount?: number;
   finalPrice: number;
   paymentMethod?: 'card' | 'cash';
@@ -78,7 +78,8 @@ export default function LogsPage() {
     if (log.optionType === 'none') return '없음';
     if (log.optionType === 'foreigner') return '외국인';
     if (log.optionType === 'discount') return '할인';
-    if (log.optionType === 'custom') return `직접입력`;
+    if (log.optionType === 'custom') return '할인직접입력';
+    if (log.optionType === 'direct_price') return '요금직접입력';
     return '-';
   };
 
@@ -167,8 +168,8 @@ export default function LogsPage() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-2xl font-semibold">입출 기록 로그</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="text-xl font-semibold">입출 기록 로그</h1>
+              <p className="text-xs text-muted-foreground mt-1">
                 {startDate && endDate
                   ? `${startDate} ~ ${endDate} 매출 - ${logs.length}건`
                   : startDate
@@ -271,30 +272,30 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-28">날짜</TableHead>
-                <TableHead className="w-20">락커번호</TableHead>
-                <TableHead className="w-24">입실시간</TableHead>
-                <TableHead className="w-24">퇴실시간</TableHead>
-                <TableHead className="w-20">주/야간</TableHead>
-                <TableHead className="w-24">기본요금</TableHead>
-                <TableHead className="w-32">옵션</TableHead>
-                <TableHead className="w-24">옵션금액</TableHead>
-                <TableHead className="w-28">최종요금</TableHead>
-                <TableHead className="w-24">지불방식</TableHead>
-                <TableHead className="w-20">입실취소</TableHead>
-                <TableHead className="min-w-32">비고</TableHead>
+                <TableHead className="w-24 text-xs">날짜</TableHead>
+                <TableHead className="w-16 text-xs">락커번호</TableHead>
+                <TableHead className="w-20 text-xs">입실시간</TableHead>
+                <TableHead className="w-20 text-xs">퇴실시간</TableHead>
+                <TableHead className="w-16 text-xs">주/야간</TableHead>
+                <TableHead className="w-20 text-xs">기본요금</TableHead>
+                <TableHead className="w-24 text-xs">옵션</TableHead>
+                <TableHead className="w-20 text-xs">옵션금액</TableHead>
+                <TableHead className="w-24 text-xs">최종요금</TableHead>
+                <TableHead className="w-20 text-xs">지불방식</TableHead>
+                <TableHead className="w-16 text-xs">입실취소</TableHead>
+                <TableHead className="min-w-28 text-xs">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-xs">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-xs">
                     {startDate && endDate
                       ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
                       : startDate
@@ -306,45 +307,45 @@ export default function LogsPage() {
               ) : (
                 logs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                     </TableCell>
-                    <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="font-semibold text-sm">{log.lockerNumber}</TableCell>
+                    <TableCell className="text-xs">
                       {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       {log.exitTime 
                         ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
                         : '-'
                       }
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${
                         log.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
                       }`}>
                         {log.timeType}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm">{log.basePrice.toLocaleString()}원</TableCell>
-                    <TableCell className="text-sm">{getOptionText(log)}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">{log.basePrice.toLocaleString()}원</TableCell>
+                    <TableCell className="text-xs">{getOptionText(log)}</TableCell>
+                    <TableCell className="text-xs">
                       {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
                     </TableCell>
-                    <TableCell className="font-semibold">
+                    <TableCell className="font-semibold text-sm">
                       {log.finalPrice.toLocaleString()}원
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs">
                       {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : '-'}
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-1 rounded ${
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                         log.cancelled ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
                       }`}>
                         {log.cancelled ? 'O' : '-'}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground">
                       {log.notes || '-'}
                     </TableCell>
                   </TableRow>

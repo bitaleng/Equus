@@ -5,9 +5,9 @@ interface SalesSummaryProps {
   totalVisitors: number;
   totalSales: number;
   cancellations: number;
-  totalDiscount: number;
   foreignerCount: number;
-  foreignerSales: number;
+  dayVisitors: number;
+  nightVisitors: number;
 }
 
 export default function SalesSummary({
@@ -15,9 +15,9 @@ export default function SalesSummary({
   totalVisitors,
   totalSales,
   cancellations,
-  totalDiscount,
   foreignerCount,
-  foreignerSales,
+  dayVisitors,
+  nightVisitors,
 }: SalesSummaryProps) {
   return (
     <div className="space-y-4">
@@ -46,20 +46,16 @@ export default function SalesSummary({
               <p className="text-xl font-medium" data-testid="text-cancellations">{cancellations}건</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">총 할인금액</p>
-              <p className="text-xl font-medium" data-testid="text-total-discount">
-                {totalDiscount.toLocaleString()}원
-              </p>
-            </div>
-            <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">외국인 수</p>
               <p className="text-xl font-medium" data-testid="text-foreigner-count">{foreignerCount}명</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">외국인 매출</p>
-              <p className="text-xl font-medium" data-testid="text-foreigner-sales">
-                {foreignerSales.toLocaleString()}원
-              </p>
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">주간 방문수</p>
+              <p className="text-xl font-medium" data-testid="text-day-visitors">{dayVisitors}명</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">야간 방문수</p>
+              <p className="text-xl font-medium" data-testid="text-night-visitors">{nightVisitors}명</p>
             </div>
           </div>
         </CardContent>

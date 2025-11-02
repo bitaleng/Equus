@@ -22,6 +22,7 @@ interface LockerEntry {
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
   notes?: string;
+  paymentMethod?: 'card' | 'cash';
 }
 
 interface TodayStatusTableProps {
@@ -117,18 +118,19 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         <Table>
           <TableHeader className="sticky top-0 bg-muted/50">
             <TableRow>
-              <TableHead className="w-20">번호</TableHead>
-              <TableHead className="w-24">입실시간</TableHead>
-              <TableHead className="w-20">구분</TableHead>
-              <TableHead className="w-24">옵션</TableHead>
-              <TableHead className="w-28">최종요금</TableHead>
-              <TableHead className="w-24">상태</TableHead>
+              <TableHead className="w-16 text-xs">번호</TableHead>
+              <TableHead className="w-20 text-xs">입실시간</TableHead>
+              <TableHead className="w-16 text-xs">구분</TableHead>
+              <TableHead className="w-20 text-xs">옵션</TableHead>
+              <TableHead className="w-16 text-xs">지불</TableHead>
+              <TableHead className="w-24 text-xs">최종요금</TableHead>
+              <TableHead className="w-20 text-xs">상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {displayedEntries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8 text-xs">
                   {filteredLockerNumber !== null 
                     ? `락커 ${filteredLockerNumber}번 사용 기록이 없습니다`
                     : '오늘 방문한 손님이 없습니다'
@@ -151,19 +153,20 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     onClick={() => onRowClick?.(entry)}
                     data-testid={`row-entry-${entry.lockerNumber}`}
                   >
-                    <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">{entry.entryTime}</TableCell>
+                    <TableCell className="font-semibold text-sm">{entry.lockerNumber}</TableCell>
+                    <TableCell className="text-xs">{entry.entryTime}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${
                         entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
                       }`}>
                         {entry.timeType}
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm">{entry.option}</TableCell>
-                    <TableCell className="font-semibold text-base">{entry.finalPrice.toLocaleString()}원</TableCell>
+                    <TableCell className="text-xs">{entry.option}</TableCell>
+                    <TableCell className="text-xs">{entry.paymentMethod === 'card' ? '카드' : '현금'}</TableCell>
+                    <TableCell className="font-semibold text-sm">{entry.finalPrice.toLocaleString()}원</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-2 py-1 rounded whitespace-nowrap ${statusColor}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${statusColor}`}>
                         {statusText}
                       </span>
                     </TableCell>
