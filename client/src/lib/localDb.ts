@@ -756,23 +756,29 @@ export function createTestData() {
   }
   
   // 3. 나머지는 오늘 데이터만 생성 (추가요금 발생하지 않도록)
-  const targetDate = new Date(); // 오늘만
-  const daysAgo = 0;
-  
-  // 오늘 데이터를 충분히 생성 (140-240건)
+  // 현재 시각 기준으로 과거 시간만 생성
   const entriesToday = randomInt(140, 240);
   
   // 주간과 야간을 반반씩 생성하도록
   const dayEntries = Math.floor(entriesToday / 2);
   const nightEntries = entriesToday - dayEntries;
   
-  // 주간 데이터 생성
+  // 주간 데이터 생성 (오전 7시부터 현재 시각까지만)
   for (let i = 0; i < dayEntries; i++) {
     const lockerNumber = randomInt(1, 80);
-    const hour = randomInt(7, 18); // 주간: 7-18시
-    const minute = randomInt(0, 59);
     
-    const entryDate = new Date(targetDate);
+    // 현재 시각보다 이전 시간으로만 생성
+    const minHour = 7;
+    const maxHour = Math.min(currentHour, 18); // 현재 시각과 18시 중 작은 값
+    
+    // 만약 현재가 오전 7시 이전이면 주간 데이터 생성 불가
+    if (maxHour < minHour) continue;
+    
+    const hour = randomInt(minHour, maxHour);
+    const maxMinute = (hour === currentHour) ? now.getMinutes() : 59; // 현재 시각이면 현재 분까지만
+    const minute = randomInt(0, maxMinute);
+    
+    const entryDate = new Date();
     entryDate.setHours(hour, minute, 0, 0);
     
     const timeType = '주간';
@@ -831,14 +837,35 @@ export function createTestData() {
     updateDailySummary(businessDay);
   }
   
-  // 야간 데이터 생성 (오늘 새벽 시간대)
+  // 야간 데이터 생성 (어제 저녁 19시 ~ 오늘 오전 7시)
   for (let i = 0; i < nightEntries; i++) {
     const lockerNumber = randomInt(1, 80);
-    const hour = randomInt(0, 6); // 야간: 0-6시 (오늘 새벽, 어제 저녁에 입실한 것)
-    const minute = randomInt(0, 59);
     
-    const entryDate = new Date(targetDate);
-    entryDate.setHours(hour, minute, 0, 0);
+    let entryDate: Date;
+    let hour: number;
+    let minute: number;
+    
+    // 50% 확률로 오늘 새벽 또는 어제 저녁
+    if (randomBoolean()) {
+      // 오늘 새벽 (0-6시, 현재가 7시 이전이면 현재 시각까지)
+      const maxNightHour = currentHour < 7 ? currentHour : 6;
+      if (maxNightHour < 0) continue; // 현재가 자정 이전이면 스킵
+      
+      hour = randomInt(0, maxNightHour);
+      const maxMinute = (hour === currentHour && currentHour < 7) ? now.getMinutes() : 59;
+      minute = randomInt(0, maxMinute);
+      
+      entryDate = new Date();
+      entryDate.setHours(hour, minute, 0, 0);
+    } else {
+      // 어제 저녁 (19-23시)
+      hour = randomInt(19, 23);
+      minute = randomInt(0, 59);
+      
+      entryDate = new Date();
+      entryDate.setDate(entryDate.getDate() - 1); // 어제
+      entryDate.setHours(hour, minute, 0, 0);
+    }
     
     const timeType = '야간';
     const basePrice = nightPrice;
