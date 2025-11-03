@@ -125,7 +125,18 @@ export default function Home() {
     additionalFeeCounts[log.lockerNumber] = midnightsPassed;
     
     // Store time type (convert Korean to English)
-    lockerTimeTypes[log.lockerNumber] = log.timeType === '주간' ? 'day' : 'night';
+    const convertedTimeType = log.timeType === '주간' ? 'day' : 'night';
+    lockerTimeTypes[log.lockerNumber] = convertedTimeType;
+    
+    // 디버깅: 락커 21, 45번 변환 결과 출력
+    if (log.lockerNumber === 21 || log.lockerNumber === 45) {
+      console.log(`락커 ${log.lockerNumber}번 변환:`, {
+        원본: log.timeType,
+        비교결과: log.timeType === '주간',
+        변환후: convertedTimeType,
+        추가요금: midnightsPassed
+      });
+    }
   });
 
   const handleLockerClick = async (lockerNumber: number) => {
