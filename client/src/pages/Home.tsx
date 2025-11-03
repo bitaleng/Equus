@@ -114,15 +114,26 @@ export default function Home() {
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
     
-    // Calculate additional fee count for this locker
-    const { midnightsPassed } = calculateAdditionalFee(
+    // Calculate additional fee for this locker
+    const { additionalFee, midnightsPassed } = calculateAdditionalFee(
       log.entryTime,
       log.timeType,
       dayPrice,
       nightPrice,
       currentTime
     );
-    additionalFeeCounts[log.lockerNumber] = midnightsPassed;
+    
+    // Convert additional fee amount to count level for color coding
+    // 0원 → 0 (노란색/파란색)
+    // 1~12999원 → 1 (오렌지색)
+    // 13000원 이상 → 2 (빨간색)
+    let feeLevel = 0;
+    if (additionalFee > 0 && additionalFee < nightPrice) {
+      feeLevel = 1;
+    } else if (additionalFee >= nightPrice) {
+      feeLevel = 2;
+    }
+    additionalFeeCounts[log.lockerNumber] = feeLevel;
     
     // Store time type (convert Korean to English)
     const convertedTimeType = log.timeType === '주간' ? 'day' : 'night';
@@ -134,7 +145,10 @@ export default function Home() {
         원본: log.timeType,
         비교결과: log.timeType === '주간',
         변환후: convertedTimeType,
-        추가요금: midnightsPassed
+        입실시각: new Date(log.entryTime).toLocaleString('ko-KR'),
+        자정넘긴횟수: midnightsPassed,
+        추가요금: additionalFee,
+        색상레벨: feeLevel
       });
     }
   });
