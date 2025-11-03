@@ -34,7 +34,7 @@ export function getTimeType(date: Date = new Date()): '주간' | '야간' {
   return (hour >= 7 && hour < 19) ? '주간' : '야간';
 }
 
-export function getBasePrice(timeType: '주간' | '야간', dayPrice: number = 10000, nightPrice: number = 13000): number {
+export function getBasePrice(timeType: '주간' | '야간', dayPrice: number = 10000, nightPrice: number = 15000): number {
   return timeType === '주간' ? dayPrice : nightPrice;
 }
 
@@ -59,9 +59,9 @@ export function calculateFinalPrice(
  * 추가요금 계산 함수
  * 
  * 규칙:
- * 1. 주간 입실 (07:00-18:59): 첫 자정에 5,000원, 두 번째 자정부터 13,000원
- * 2. 야간 입실 >= 19:00: 첫 자정 무료, 두 번째 자정부터 13,000원
- * 3. 야간 입실 < 07:00: 첫 자정부터 13,000원
+ * 1. 주간 입실 (07:00-18:59): 첫 자정에 5,000원, 두 번째 자정부터 15,000원
+ * 2. 야간 입실 >= 19:00: 첫 자정 무료, 두 번째 자정부터 15,000원
+ * 3. 야간 입실 < 07:00: 첫 자정부터 15,000원
  * 
  * @param entryTime 입실 시간
  * @param entryTimeType 입실 시간대 (주간/야간)
@@ -74,7 +74,7 @@ export function calculateAdditionalFee(
   entryTime: Date | string,
   entryTimeType: '주간' | '야간',
   dayPrice: number = 10000,
-  nightPrice: number = 13000,
+  nightPrice: number = 15000,
   currentTime: Date = new Date()
 ): { additionalFee: number; midnightsPassed: number } {
   const entry = typeof entryTime === 'string' ? new Date(entryTime) : entryTime;

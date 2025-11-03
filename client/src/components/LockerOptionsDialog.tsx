@@ -68,7 +68,7 @@ export default function LockerOptionsDialog({
   foreignerPrice = 25000,
   isInUse = false,
   dayPrice = 10000,
-  nightPrice = 13000,
+  nightPrice = 15000,
   onApply,
   onCheckout,
   onCancel,

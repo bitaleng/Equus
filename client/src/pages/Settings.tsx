@@ -53,7 +53,7 @@ export default function Settings() {
   const [formData, setFormData] = useState<Settings>({
     businessDayStartHour: 10,
     dayPrice: 10000,
-    nightPrice: 13000,
+    nightPrice: 15000,
     discountAmount: 2000,
     foreignerPrice: 25000,
   });
