@@ -354,12 +354,8 @@ export default function Home() {
               <span className="text-xs">야간</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-[#FF9933] border-2 border-[#FF7700]"></div>
-              <span className="text-xs">외상1회</span>
-            </div>
-            <div className="flex items-center gap-1.5">
               <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
-              <span className="text-xs">외상2회+</span>
+              <span className="text-xs">추가요금</span>
             </div>
           </div>
         </div>
