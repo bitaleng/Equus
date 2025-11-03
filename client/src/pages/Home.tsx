@@ -139,16 +139,18 @@ export default function Home() {
     const convertedTimeType = log.timeType === '주간' ? 'day' : 'night';
     lockerTimeTypes[log.lockerNumber] = convertedTimeType;
     
-    // 디버깅: 락커 21, 45번 변환 결과 출력
-    if (log.lockerNumber === 21 || log.lockerNumber === 45) {
-      console.log(`락커 ${log.lockerNumber}번 변환:`, {
-        원본: log.timeType,
-        비교결과: log.timeType === '주간',
-        변환후: convertedTimeType,
+    // 디버깅: 특정 락커 변환 결과 출력
+    if (log.lockerNumber === 6 || log.lockerNumber === 21 || log.lockerNumber === 45) {
+      console.log(`락커 ${log.lockerNumber}번 상세:`, {
+        원본timeType: log.timeType,
+        변환후timeType: convertedTimeType,
         입실시각: new Date(log.entryTime).toLocaleString('ko-KR'),
+        현재시각: currentTime.toLocaleString('ko-KR'),
         자정넘긴횟수: midnightsPassed,
-        추가요금: additionalFee,
-        색상레벨: feeLevel
+        추가요금금액: additionalFee + '원',
+        nightPrice설정: nightPrice + '원',
+        색상레벨: feeLevel,
+        색상의미: feeLevel === 0 ? '추가요금없음' : feeLevel === 1 ? '추가요금1회' : '추가요금2회+'
       });
     }
   });
