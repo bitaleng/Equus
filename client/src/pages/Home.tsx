@@ -114,13 +114,18 @@ export default function Home() {
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
     
+    // 외국인 여부 확인
+    const isForeigner = log.optionType === 'foreigner';
+    
     // Calculate additional fee for this locker
     const { additionalFee, midnightsPassed, additionalFeeCount } = calculateAdditionalFee(
       log.entryTime,
       log.timeType,
       dayPrice,
       nightPrice,
-      currentTime
+      currentTime,
+      isForeigner,
+      foreignerPrice
     );
     
     // 추가요금 횟수를 그대로 저장 (0이면 추가요금 없음)
@@ -133,14 +138,16 @@ export default function Home() {
     // 디버깅: 특정 락커 변환 결과 출력
     if (log.lockerNumber === 6 || log.lockerNumber === 21 || log.lockerNumber === 45) {
       console.log(`락커 ${log.lockerNumber}번 상세:`, {
+        외국인여부: isForeigner ? '외국인' : '내국인',
         원본timeType: log.timeType,
         변환후timeType: convertedTimeType,
         입실시각: new Date(log.entryTime).toLocaleString('ko-KR'),
         현재시각: currentTime.toLocaleString('ko-KR'),
-        자정넘긴횟수: midnightsPassed,
+        자정넘긴횟수_또는_24시간단위: midnightsPassed,
         추가요금횟수: additionalFeeCount + '회',
         추가요금금액: additionalFee.toLocaleString() + '원',
         nightPrice설정: nightPrice.toLocaleString() + '원',
+        foreignerPrice설정: foreignerPrice.toLocaleString() + '원',
         색상: additionalFeeCount > 0 ? '레드' : (convertedTimeType === 'day' ? '노란색' : '블루')
       });
     }
