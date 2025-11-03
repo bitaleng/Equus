@@ -656,8 +656,22 @@ export function createTestData() {
   console.log('현재 시각:', now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
   console.log('현재 시간대:', getTimeType(now));
   
+  // 중복 방지: 각 락커당 하나의 entry만 생성
+  const usedLockers = new Set<number>();
+  
   const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
   const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
+  
+  // Helper: Get unused random locker number
+  const getUnusedLocker = (): number | null => {
+    if (usedLockers.size >= 80) return null;
+    let lockerNumber: number;
+    do {
+      lockerNumber = randomInt(1, 80);
+    } while (usedLockers.has(lockerNumber));
+    usedLockers.add(lockerNumber);
+    return lockerNumber;
+  };
   
   let totalGenerated = 0;
   let additionalFee1Count = 0; // 추가요금 1회 카운터
@@ -668,11 +682,13 @@ export function createTestData() {
   console.log('\n추가요금 1회 데이터 2개 생성 중...');
   // 1. 추가요금 1회 데이터 (1일 전 입실, 최대 2개)
   for (let i = 0; i < 2; i++) {
+    const lockerNumber = getUnusedLocker();
+    if (!lockerNumber) break;
+    
     const daysAgo = 1;
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - daysAgo);
     
-    const lockerNumber = randomInt(1, 80);
     const hour = randomInt(0, 23);
     const minute = randomInt(0, 59);
     
@@ -717,11 +733,13 @@ export function createTestData() {
   // 2. 추가요금 2회 이상 데이터 (2~3일 전 입실, 최대 2개)
   console.log('\n추가요금 2회+ 데이터 2개 생성 중...');
   for (let i = 0; i < 2; i++) {
+    const lockerNumber = getUnusedLocker();
+    if (!lockerNumber) break;
+    
     const daysAgo = randomInt(2, 3);
     const targetDate = new Date();
     targetDate.setDate(targetDate.getDate() - daysAgo);
     
-    const lockerNumber = randomInt(1, 80);
     const hour = randomInt(0, 23);
     const minute = randomInt(0, 59);
     
@@ -765,16 +783,17 @@ export function createTestData() {
   
   // 3. 나머지는 오늘 데이터만 생성 (추가요금 발생하지 않도록)
   // 현재 시각 기준으로 과거 시간만 생성
-  const entriesToday = randomInt(140, 240);
+  const remainingLockers = 80 - usedLockers.size;
   
   // 주간과 야간을 반반씩 생성하도록
-  const dayEntries = Math.floor(entriesToday / 2);
-  const nightEntries = entriesToday - dayEntries;
+  const dayEntries = Math.floor(remainingLockers / 2);
+  const nightEntries = remainingLockers - dayEntries;
   
   // 주간 데이터 생성 (오전 7시부터 현재 시각까지만)
   console.log(`\n주간 데이터 ${dayEntries}개 생성 중...`);
   for (let i = 0; i < dayEntries; i++) {
-    const lockerNumber = randomInt(1, 80);
+    const lockerNumber = getUnusedLocker();
+    if (!lockerNumber) break;
     
     // 현재 시각보다 이전 시간으로만 생성
     const minHour = 7;
@@ -853,7 +872,8 @@ export function createTestData() {
   // 야간 데이터 생성 (어제 저녁 19시 ~ 오늘 오전 7시)
   console.log(`\n야간 데이터 ${nightEntries}개 생성 중...`);
   for (let i = 0; i < nightEntries; i++) {
-    const lockerNumber = randomInt(1, 80);
+    const lockerNumber = getUnusedLocker();
+    if (!lockerNumber) break;
     
     let entryDate: Date;
     let hour: number;
