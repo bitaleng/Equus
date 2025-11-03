@@ -81,7 +81,15 @@ export default function Home() {
     try {
       const businessDay = getBusinessDay(new Date(), businessDayStartHour);
       
-      setActiveLockers(localDb.getActiveLockers());
+      const activeData = localDb.getActiveLockers();
+      setActiveLockers(activeData);
+      
+      // 디버깅: 락커 21, 45번 데이터 출력
+      const locker21 = activeData.find(l => l.lockerNumber === 21);
+      const locker45 = activeData.find(l => l.lockerNumber === 45);
+      if (locker21) console.log('락커 21번 데이터:', locker21);
+      if (locker45) console.log('락커 45번 데이터:', locker45);
+      
       setTodayAllEntries(localDb.getTodayEntries(businessDay));
       setSummary(localDb.getDailySummary(businessDay));
       setLockerGroups(localDb.getLockerGroups());
