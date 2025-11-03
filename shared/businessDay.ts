@@ -57,7 +57,11 @@ export function calculateFinalPrice(
 
 /**
  * 추가요금 계산 함수
- * 밤 12시를 기준으로 추가요금을 계산합니다.
+ * 
+ * 규칙:
+ * 1. 주간 입실 (07:00-18:59): 첫 자정에 5,000원, 두 번째 자정부터 13,000원
+ * 2. 야간 입실 >= 19:00: 첫 자정 무료, 두 번째 자정부터 13,000원
+ * 3. 야간 입실 < 07:00: 첫 자정부터 13,000원
  * 
  * @param entryTime 입실 시간
  * @param entryTimeType 입실 시간대 (주간/야간)
@@ -77,9 +81,12 @@ export function calculateAdditionalFee(
   const entrySeoul = toZonedTime(entry, SEOUL_TIMEZONE);
   const currentSeoul = toZonedTime(currentTime, SEOUL_TIMEZONE);
   
+  const entryHour = entrySeoul.getHours();
+  
   // 입실일의 자정 (다음날 00:00)
   const firstMidnight = new Date(entrySeoul);
-  firstMidnight.setHours(24, 0, 0, 0); // 다음날 00:00
+  firstMidnight.setDate(firstMidnight.getDate() + 1);
+  firstMidnight.setHours(0, 0, 0, 0);
   
   // 현재 시간이 첫 자정을 넘지 않았으면 추가요금 없음
   if (currentSeoul < firstMidnight) {
@@ -88,24 +95,39 @@ export function calculateAdditionalFee(
   
   // 넘긴 자정 횟수 계산
   const timeDiff = currentSeoul.getTime() - firstMidnight.getTime();
-  const daysPassed = Math.floor(timeDiff / (24 * 60 * 60 * 1000)) + 1; // +1은 첫 자정
+  const midnightsPassed = Math.floor(timeDiff / (24 * 60 * 60 * 1000)) + 1; // +1은 첫 자정
   
   let additionalFee = 0;
   
-  // 첫 번째 자정: 주간 입실이면 차액, 야간 입실이면 야간요금
+  // 케이스 분류:
+  // 1. 주간 입실 (07:00-18:59): 첫 자정에 차액(5,000원)
   if (entryTimeType === '주간') {
-    additionalFee += (nightPrice - dayPrice); // 차액만
-  } else {
-    additionalFee += nightPrice; // 야간요금 전액
+    additionalFee = (nightPrice - dayPrice); // 첫 자정: 5,000원
+    
+    // 두 번째 자정부터 야간요금 추가
+    if (midnightsPassed > 1) {
+      additionalFee += (midnightsPassed - 1) * nightPrice;
+    }
   }
-  
-  // 두 번째 자정부터는 매번 야간요금 추가
-  if (daysPassed > 1) {
-    additionalFee += (daysPassed - 1) * nightPrice;
+  // 2. 야간 입실 >= 19:00: 첫 자정 무료, 두 번째 자정부터 야간요금
+  else if (entryHour >= 19) {
+    // 첫 자정(내일 00:00)까지는 무료
+    if (midnightsPassed === 1) {
+      additionalFee = 0;
+    }
+    // 두 번째 자정부터 야간요금
+    else if (midnightsPassed > 1) {
+      additionalFee = (midnightsPassed - 1) * nightPrice;
+    }
+  }
+  // 3. 야간 입실 < 07:00: 첫 자정(오늘 00:00)부터 야간요금
+  else {
+    // 새벽에 입실한 경우 첫 자정부터 야간요금
+    additionalFee = midnightsPassed * nightPrice;
   }
   
   return {
     additionalFee,
-    midnightsPassed: daysPassed
+    midnightsPassed
   };
 }
