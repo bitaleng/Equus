@@ -58,16 +58,21 @@ export function calculateFinalPrice(
 /**
  * 추가요금 계산 함수
  * 
- * 규칙:
+ * 규칙 (내국인):
  * 1. 주간 입실 (07:00-18:59): 첫 자정에 5,000원, 두 번째 자정부터 15,000원
  * 2. 야간 입실 >= 19:00: 첫 자정 무료, 두 번째 자정부터 15,000원
  * 3. 야간 입실 < 07:00: 첫 자정부터 15,000원
+ * 
+ * 규칙 (외국인):
+ * - 입실 시각 기준 24시간마다 외국인요금(foreignerPrice) 추가
  * 
  * @param entryTime 입실 시간
  * @param entryTimeType 입실 시간대 (주간/야간)
  * @param dayPrice 주간 요금
  * @param nightPrice 야간 요금
  * @param currentTime 현재 시간 (기본값: 현재)
+ * @param isForeigner 외국인 여부 (기본값: false)
+ * @param foreignerPrice 외국인 요금 (기본값: 25000)
  * @returns { additionalFee: 추가요금, midnightsPassed: 넘긴 자정 횟수, additionalFeeCount: 추가요금 횟수 }
  */
 export function calculateAdditionalFee(
@@ -75,12 +80,37 @@ export function calculateAdditionalFee(
   entryTimeType: '주간' | '야간',
   dayPrice: number = 10000,
   nightPrice: number = 15000,
-  currentTime: Date = new Date()
+  currentTime: Date = new Date(),
+  isForeigner: boolean = false,
+  foreignerPrice: number = 25000
 ): { additionalFee: number; midnightsPassed: number; additionalFeeCount: number } {
   const entry = typeof entryTime === 'string' ? new Date(entryTime) : entryTime;
   const entrySeoul = toZonedTime(entry, SEOUL_TIMEZONE);
   const currentSeoul = toZonedTime(currentTime, SEOUL_TIMEZONE);
   
+  // 외국인: 입실 시각 기준 24시간 간격으로 계산
+  if (isForeigner) {
+    // 입실 시각부터 경과한 시간 (밀리초)
+    const elapsedTime = currentSeoul.getTime() - entrySeoul.getTime();
+    
+    // 24시간 = 24 * 60 * 60 * 1000 = 86,400,000 밀리초
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    
+    // 24시간 단위로 넘긴 횟수
+    const periodsElapsed = Math.floor(elapsedTime / twentyFourHours);
+    
+    // 추가요금 = 넘긴 24시간 단위 × 외국인요금
+    const additionalFee = periodsElapsed * foreignerPrice;
+    const additionalFeeCount = periodsElapsed;
+    
+    return {
+      additionalFee,
+      midnightsPassed: periodsElapsed, // 외국인은 자정 개념이 아니지만 호환성을 위해
+      additionalFeeCount
+    };
+  }
+  
+  // 내국인: 자정 기준 계산
   const entryHour = entrySeoul.getHours();
   
   // 입실일의 자정 (다음날 00:00)

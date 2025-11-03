@@ -384,8 +384,9 @@ export default function LockerOptionsDialog({
   };
 
   // Calculate additional fee if entry time exists
+  const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const additionalFeeInfo = entryTime && isInUse
-    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice)
+    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice)
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
 
   // Format entry date and time
