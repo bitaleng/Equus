@@ -652,6 +652,10 @@ export function createTestData() {
   const currentHour = now.getHours();
   const isCurrentlyDaytime = getTimeType(now) === '주간';
   
+  console.log('=== 테스트 데이터 생성 시작 ===');
+  console.log('현재 시각:', now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
+  console.log('현재 시간대:', getTimeType(now));
+  
   const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
   const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
   
@@ -661,6 +665,7 @@ export function createTestData() {
   const database = db;
   
   // 먼저 추가요금 발생 데이터를 제한된 개수만큼 생성
+  console.log('\n추가요금 1회 데이터 2개 생성 중...');
   // 1. 추가요금 1회 데이터 (1일 전 입실, 최대 2개)
   for (let i = 0; i < 2; i++) {
     const daysAgo = 1;
@@ -676,6 +681,9 @@ export function createTestData() {
     
     const timeType = getTimeType(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    
+    console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} (1일 전) → timeType: ${timeType}, basePrice: ${basePrice}`);
+    
     const optionType = randomElement(optionTypes);
     let optionAmount = null;
     let finalPrice = basePrice;
@@ -707,6 +715,7 @@ export function createTestData() {
   }
   
   // 2. 추가요금 2회 이상 데이터 (2~3일 전 입실, 최대 2개)
+  console.log('\n추가요금 2회+ 데이터 2개 생성 중...');
   for (let i = 0; i < 2; i++) {
     const daysAgo = randomInt(2, 3);
     const targetDate = new Date();
@@ -721,6 +730,9 @@ export function createTestData() {
     
     const timeType = getTimeType(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    
+    console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} (${daysAgo}일 전) → timeType: ${timeType}, basePrice: ${basePrice}`);
+    
     const optionType = randomElement(optionTypes);
     let optionAmount = null;
     let finalPrice = basePrice;
@@ -760,6 +772,7 @@ export function createTestData() {
   const nightEntries = entriesToday - dayEntries;
   
   // 주간 데이터 생성 (오전 7시부터 현재 시각까지만)
+  console.log(`\n주간 데이터 ${dayEntries}개 생성 중...`);
   for (let i = 0; i < dayEntries; i++) {
     const lockerNumber = randomInt(1, 80);
     
@@ -779,6 +792,10 @@ export function createTestData() {
     
     const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    
+    if (i < 3) { // 처음 3개만 로그 출력
+      console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} → timeType: ${timeType}, basePrice: ${basePrice}`);
+    }
     
     // Random option type
     const optionType = randomElement(optionTypes);
@@ -834,6 +851,7 @@ export function createTestData() {
   }
   
   // 야간 데이터 생성 (어제 저녁 19시 ~ 오늘 오전 7시)
+  console.log(`\n야간 데이터 ${nightEntries}개 생성 중...`);
   for (let i = 0; i < nightEntries; i++) {
     const lockerNumber = randomInt(1, 80);
     
@@ -865,6 +883,10 @@ export function createTestData() {
     
     const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+    
+    if (i < 3) { // 처음 3개만 로그 출력
+      console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} → timeType: ${timeType}, basePrice: ${basePrice}`);
+    }
     
     // Random option type
     const optionType = randomElement(optionTypes);
