@@ -60,7 +60,7 @@ export default function LockerOptionsDialog({
   timeType,
   entryTime,
   currentNotes = "",
-  currentPaymentMethod = 'card',
+  currentPaymentMethod = 'cash',
   currentOptionType = 'none',
   currentOptionAmount,
   currentFinalPrice,
