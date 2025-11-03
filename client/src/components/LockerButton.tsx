@@ -14,13 +14,9 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
-      // 추가요금 2회 이상: 레드
-      if (additionalFeeCount >= 2) {
+      // 추가요금 있음: 레드 (내외국인, 횟수 무관하게 통일)
+      if (additionalFeeCount > 0) {
         return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
-      }
-      // 추가요금 1회: 오렌지
-      if (additionalFeeCount === 1) {
-        return "bg-[#FF9933] text-white border-2 border-[#FF7700]";
       }
       // 추가요금 없음: 주간/야간 구분
       if (timeType === 'day') {
@@ -38,8 +34,8 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   const getStatusText = () => {
     if (status === 'disabled') return '퇴실완료';
     if (status === 'in-use') {
-      if (additionalFeeCount >= 2) return '추가요금 2회+';
-      if (additionalFeeCount === 1) return '추가요금 1회';
+      // 추가요금이 있으면 횟수만 표시
+      if (additionalFeeCount > 0) return `추가 ${additionalFeeCount}회`;
       return '사용중';
     }
     return '비어있음';

@@ -386,7 +386,7 @@ export default function LockerOptionsDialog({
   // Calculate additional fee if entry time exists
   const additionalFeeInfo = entryTime && isInUse
     ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice)
-    : { additionalFee: 0, midnightsPassed: 0 };
+    : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
 
   // Format entry date and time
   const formatEntryDateTime = (entryTime?: string) => {
@@ -435,7 +435,7 @@ export default function LockerOptionsDialog({
               {/* 추가요금 표시 */}
               {isInUse && additionalFeeInfo.additionalFee > 0 && (
                 <div className="flex justify-between text-sm bg-orange-50 dark:bg-orange-950 p-2 rounded">
-                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.midnightsPassed}회)</span>
+                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
                   <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
                 </div>
               )}
@@ -606,7 +606,7 @@ export default function LockerOptionsDialog({
                 <div className="p-3 bg-red-50 dark:bg-red-950 rounded-md border border-red-200 dark:border-red-800">
                   <p className="font-semibold text-red-700 dark:text-red-300 mb-1">미지급 추가요금:</p>
                   <p className="text-lg font-bold text-red-600 dark:text-red-400">
-                    {additionalFeeInfo.additionalFee.toLocaleString()}원 ({additionalFeeInfo.midnightsPassed}회)
+                    {additionalFeeInfo.additionalFee.toLocaleString()}원 ({additionalFeeInfo.additionalFeeCount}회)
                   </p>
                 </div>
               )}
