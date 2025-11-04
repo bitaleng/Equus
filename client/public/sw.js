@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hugaetel-v1';
+const CACHE_NAME = 'hugaetel-v2';
 const urlsToCache = [
   '/',
   '/index.html',
