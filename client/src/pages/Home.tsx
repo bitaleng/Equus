@@ -51,6 +51,7 @@ export default function Home() {
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
   const [newLockerInfo, setNewLockerInfo] = useState<{lockerNumber: number, timeType: '주간' | '야간', basePrice: number} | null>(null);
+  const [additionalFeeSales, setAdditionalFeeSales] = useState<number>(0);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -93,6 +94,10 @@ export default function Home() {
       setTodayAllEntries(localDb.getTodayEntries(businessDay));
       setSummary(localDb.getDailySummary(businessDay));
       setLockerGroups(localDb.getLockerGroups());
+      
+      // Get additional fee sales for today
+      const additionalFees = localDb.getTotalAdditionalFeesByBusinessDay(businessDay);
+      setAdditionalFeeSales(additionalFees);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -355,6 +360,7 @@ export default function Home() {
             foreignerCount={summary?.foreignerCount || 0}
             dayVisitors={summary?.dayVisitors || 0}
             nightVisitors={summary?.nightVisitors || 0}
+            additionalFeeSales={additionalFeeSales}
           />
         </div>
       </div>

@@ -1177,3 +1177,18 @@ export function getAllAdditionalFeeEvents() {
     createdAt: row[7],
   }));
 }
+
+export function getTotalAdditionalFeesByBusinessDay(businessDay: string): number {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT COALESCE(SUM(fee_amount), 0) as total FROM additional_fee_events WHERE business_day = ?`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return 0;
+  }
+  
+  return result[0].values[0][0] as number;
+}
