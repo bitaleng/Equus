@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -403,6 +404,22 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-1">
           매출집계 시간과 요금을 설정할 수 있습니다
         </p>
+        
+        {/* Quick Navigation */}
+        <div className="flex gap-3 mt-4">
+          <Link href="/expenses">
+            <Button variant="outline" data-testid="button-goto-expenses">
+              <Receipt className="h-4 w-4 mr-2" />
+              지출관리
+            </Button>
+          </Link>
+          <Link href="/closing">
+            <Button variant="outline" data-testid="button-goto-closing">
+              <Calculator className="h-4 w-4 mr-2" />
+              정산하기
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6">
