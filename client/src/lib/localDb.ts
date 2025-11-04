@@ -38,7 +38,15 @@ export function saveDatabase() {
   if (!db) return;
   
   const data = db.export();
-  const binary = String.fromCharCode.apply(null, Array.from(data));
+  
+  // Convert to binary string in chunks to avoid "Maximum call stack size exceeded"
+  const chunkSize = 65535; // Safe chunk size for String.fromCharCode
+  let binary = '';
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  
   const base64 = btoa(binary);
   localStorage.setItem(DB_NAME, base64);
 }
