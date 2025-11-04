@@ -209,14 +209,22 @@ function migrateDatabase() {
     if (migrationCheck.length > 0) {
       // Table exists, check if it has the new schema
       const schemaCheck = db.exec(`PRAGMA table_info(rental_transactions)`);
-      const hasRevenueColumn = schemaCheck[0]?.values.some((row: any) => row[1] === 'revenue');
+      const columns = schemaCheck.length > 0 && schemaCheck[0].values ? schemaCheck[0].values : [];
+      const hasRevenueColumn = columns.some((row: any) => row[1] === 'revenue');
       
       // Check if return_time is nullable (notnull = 0 means nullable, notnull = 1 means NOT NULL)
-      const returnTimeInfo = schemaCheck[0]?.values.find((row: any) => row[1] === 'return_time');
-      const isReturnTimeNullable = returnTimeInfo && returnTimeInfo[3] === 0; // row[3] is the 'notnull' field
+      const returnTimeInfo = columns.find((row: any) => row[1] === 'return_time');
+      const isReturnTimeNullable = returnTimeInfo ? returnTimeInfo[3] === 0 : false; // row[3] is the 'notnull' field
+      
+      console.log('[Migration] rental_transactions check:', { 
+        hasRevenueColumn, 
+        isReturnTimeNullable,
+        returnTimeInfo: returnTimeInfo ? `notnull=${returnTimeInfo[3]}` : 'not found'
+      });
       
       // Need migration if missing revenue column OR return_time is not nullable
       if (!hasRevenueColumn || !isReturnTimeNullable) {
+        console.log('[Migration] Starting rental_transactions migration...');
         // Old schema detected, need to migrate
         // Since SQLite doesn't support easy column rename/restructure, we need to:
         // 1. Rename old table
@@ -287,9 +295,15 @@ function migrateDatabase() {
         // Only drop the old table if migration was successful
         if (migrationSuccess) {
           db.run('DROP TABLE rental_transactions_old');
+          console.log('[Migration] rental_transactions migration completed successfully');
+        } else {
+          console.warn('[Migration] rental_transactions migration failed - old table preserved as rental_transactions_old');
         }
+      } else {
+        console.log('[Migration] rental_transactions schema is up-to-date');
       }
     } else {
+      console.log('[Migration] rental_transactions table does not exist, creating new...');
       // Table doesn't exist, create it with new schema
       db.run(`
         CREATE TABLE rental_transactions (
