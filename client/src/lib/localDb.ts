@@ -1311,6 +1311,21 @@ export function getAdditionalFeeEventsByDateRange(startDate: string, endDate: st
   }));
 }
 
+export function getTotalRentalRevenueByBusinessDay(businessDay: string): number {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT COALESCE(SUM(revenue), 0) as total FROM rental_transactions WHERE business_day = ?`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return 0;
+  }
+  
+  return result[0].values[0][0] as number;
+}
+
 // Additional Revenue Items (rental items: 롱타올, 담요 등) operations
 export function getAdditionalRevenueItems() {
   if (!db) throw new Error('Database not initialized');

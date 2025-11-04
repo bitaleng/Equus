@@ -9,6 +9,7 @@ interface SalesSummaryProps {
   dayVisitors: number;
   nightVisitors: number;
   additionalFeeSales: number;
+  rentalRevenue: number;
 }
 
 export default function SalesSummary({
@@ -20,6 +21,7 @@ export default function SalesSummary({
   dayVisitors,
   nightVisitors,
   additionalFeeSales,
+  rentalRevenue,
 }: SalesSummaryProps) {
   return (
     <div className="space-y-4">
@@ -47,6 +49,12 @@ export default function SalesSummary({
               <p className="text-xs text-muted-foreground uppercase tracking-wide">추가요금 매출</p>
               <p className="text-xl font-medium text-destructive" data-testid="text-additional-fee-sales">
                 {additionalFeeSales.toLocaleString()}원
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 매출</p>
+              <p className="text-xl font-medium text-primary" data-testid="text-rental-revenue">
+                {rentalRevenue.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
