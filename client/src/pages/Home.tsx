@@ -550,6 +550,7 @@ export default function Home() {
             additionalFeeSales={additionalFeeSales}
             rentalRevenue={rentalRevenue}
             totalExpenses={totalExpenses}
+            onExpenseAdded={loadData}
           />
         </div>
       </div>
