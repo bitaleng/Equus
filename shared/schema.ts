@@ -8,6 +8,7 @@ export const optionTypeEnum = pgEnum('option_type', ['none', 'discount', 'custom
 export const timeTypeEnum = pgEnum('time_type', ['주간', '야간']);
 export const statusEnum = pgEnum('status', ['in_use', 'checked_out', 'cancelled']);
 export const paymentMethodEnum = pgEnum('payment_method', ['card', 'cash', 'transfer']);
+export const depositStatusEnum = pgEnum('deposit_status', ['received', 'refunded', 'forfeited']);
 
 // Locker Logs Table - 입출 기록
 export const lockerLogs = pgTable("locker_logs", {
@@ -58,6 +59,47 @@ export const lockerGroups = pgTable("locker_groups", {
   sortOrder: integer("sort_order").notNull().default(0), // 표시 순서
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Additional Revenue Items Table - 추가매출 항목 (롱타올, 담요 등)
+export const additionalRevenueItems = pgTable("additional_revenue_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name").notNull(), // 항목명 (예: "롱타올대여", "담요대여")
+  rentalFee: integer("rental_fee").notNull().default(0), // 대여비
+  depositAmount: integer("deposit_amount").notNull().default(0), // 보증금
+  sortOrder: integer("sort_order").notNull().default(0), // 표시 순서
+  isDefault: boolean("is_default").notNull().default(false), // 기본 항목 여부
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Rental Transactions Table - 대여 거래 기록
+export const rentalTransactions = pgTable("rental_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lockerLogId: varchar("locker_log_id").notNull(), // 락커 로그 ID (외래키)
+  itemId: varchar("item_id").notNull(), // 추가매출 항목 ID
+  lockerNumber: integer("locker_number").notNull(), // 락커 번호
+  rentalDate: date("rental_date").notNull(), // 대여 날짜 (business day)
+  rentalTime: timestamp("rental_time", { withTimezone: true }).notNull(), // 대여 시간
+  rentalFee: integer("rental_fee").notNull(), // 대여비
+  depositAmount: integer("deposit_amount").notNull(), // 보증금
+  paymentMethod: paymentMethodEnum("payment_method").notNull(), // 지급방식
+  depositStatus: depositStatusEnum("deposit_status").notNull().default('received'), // 보증금 상태
+  depositRevenue: integer("deposit_revenue").notNull().default(0), // 보증금 매출 (받음=보증금, 환급=0, 몰수=보증금)
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Additional Fee Events Table - 추가요금 이벤트 (퇴실 시 추가요금)
+export const additionalFeeEvents = pgTable("additional_fee_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lockerLogId: varchar("locker_log_id").notNull(), // 원래 락커 로그 ID
+  lockerNumber: integer("locker_number").notNull(), // 락커 번호
+  checkoutTime: timestamp("checkout_time", { withTimezone: true }).notNull(), // 퇴실 시간
+  feeAmount: integer("fee_amount").notNull(), // 추가요금
+  businessDay: date("business_day").notNull(), // 매출 집계일 (퇴실일 기준)
+  paymentMethod: paymentMethodEnum("payment_method").notNull(), // 지급방식
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Insert Schemas
@@ -138,6 +180,36 @@ export const updateLockerGroupSchema = z.object({
   }
 );
 
+export const insertAdditionalRevenueItemSchema = createInsertSchema(additionalRevenueItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateAdditionalRevenueItemSchema = z.object({
+  name: z.string().optional(),
+  rentalFee: z.number().optional(),
+  depositAmount: z.number().optional(),
+  sortOrder: z.number().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+export const insertRentalTransactionSchema = createInsertSchema(rentalTransactions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateRentalTransactionSchema = z.object({
+  depositStatus: z.enum(['received', 'refunded', 'forfeited']).optional(),
+  depositRevenue: z.number().optional(),
+});
+
+export const insertAdditionalFeeEventSchema = createInsertSchema(additionalFeeEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
 export type LockerLog = typeof lockerLogs.$inferSelect;
@@ -147,3 +219,14 @@ export type InsertDailySummary = z.infer<typeof insertDailySummarySchema>;
 export type LockerGroup = typeof lockerGroups.$inferSelect;
 export type InsertLockerGroup = z.infer<typeof insertLockerGroupSchema>;
 export type UpdateLockerGroup = z.infer<typeof updateLockerGroupSchema>;
+
+export type AdditionalRevenueItem = typeof additionalRevenueItems.$inferSelect;
+export type InsertAdditionalRevenueItem = z.infer<typeof insertAdditionalRevenueItemSchema>;
+export type UpdateAdditionalRevenueItem = z.infer<typeof updateAdditionalRevenueItemSchema>;
+
+export type RentalTransaction = typeof rentalTransactions.$inferSelect;
+export type InsertRentalTransaction = z.infer<typeof insertRentalTransactionSchema>;
+export type UpdateRentalTransaction = z.infer<typeof updateRentalTransactionSchema>;
+
+export type AdditionalFeeEvent = typeof additionalFeeEvents.$inferSelect;
+export type InsertAdditionalFeeEvent = z.infer<typeof insertAdditionalFeeEventSchema>;
