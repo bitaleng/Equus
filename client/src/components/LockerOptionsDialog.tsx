@@ -36,7 +36,7 @@ interface RentalItemInfo {
   itemName: string;
   rentalFee: number;
   depositAmount: number;
-  depositStatus: 'received' | 'refunded' | 'forfeited';
+  depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
 }
 
 interface LockerOptionsDialogProps {
@@ -101,7 +101,7 @@ export default function LockerOptionsDialog({
   // Dynamic rental items from database
   const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
   const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
-  const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited'>>(new Map());
+  const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   
   // Track previous locker number to reset checkoutResolved only when changing lockers
@@ -655,12 +655,16 @@ export default function LockerOptionsDialog({
                                 const newSelected = new Set(selectedRentalItems);
                                 if (checked) {
                                   newSelected.add(itemId);
-                                  // If deposit amount is 0, automatically set depositStatus to 'received'
+                                  // Automatically set depositStatus based on deposit amount
+                                  const newStatuses = new Map(depositStatuses);
                                   if (item.depositAmount === 0) {
-                                    const newStatuses = new Map(depositStatuses);
+                                    // No deposit - set to 'none'
+                                    newStatuses.set(itemId, 'none');
+                                  } else {
+                                    // Has deposit - set to 'received' by default
                                     newStatuses.set(itemId, 'received');
-                                    setDepositStatuses(newStatuses);
                                   }
+                                  setDepositStatuses(newStatuses);
                                 } else {
                                   newSelected.delete(itemId);
                                   // Remove deposit status
@@ -678,17 +682,22 @@ export default function LockerOptionsDialog({
                           </div>
                         </div>
                         
-                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시, 보증금이 0이 아닐 때만 표시 */}
-                        {isChecked && item.depositAmount > 0 && (
+                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시 */}
+                        {isChecked && (
                           <div className="ml-6 space-y-2">
                             <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
-                              보증금 상태
+                              보증금 처리
+                              {item.depositAmount > 0 && depositStatus === 'received' && !isInUse && (
+                                <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                                  ⚠ 보증금 받음
+                                </span>
+                              )}
                             </Label>
                             <Select 
                               value={depositStatus} 
                               onValueChange={(value) => {
                                 const newStatuses = new Map(depositStatuses);
-                                newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited');
+                                newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited' | 'none');
                                 setDepositStatuses(newStatuses);
                               }}
                             >
@@ -697,10 +706,13 @@ export default function LockerOptionsDialog({
                                 data-testid={`select-deposit-${itemId}`}
                                 className={!depositStatus ? 'border-orange-500' : ''}
                               >
-                                <SelectValue placeholder="보증금 상태를 선택하세요" />
+                                <SelectValue placeholder="보증금 처리를 선택하세요" />
                               </SelectTrigger>
                               <SelectContent>
-                                {!isInUse && (
+                                {item.depositAmount === 0 && (
+                                  <SelectItem value="none">없음 (보증금 없음)</SelectItem>
+                                )}
+                                {item.depositAmount > 0 && !isInUse && (
                                   <SelectItem value="received">받음 (입실 시)</SelectItem>
                                 )}
                                 {isInUse && (
@@ -716,13 +728,6 @@ export default function LockerOptionsDialog({
                                 {isInUse ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
                               </p>
                             )}
-                          </div>
-                        )}
-                        {/* 보증금이 0인 경우 "없음" 표시 */}
-                        {isChecked && item.depositAmount === 0 && (
-                          <div className="ml-6 space-y-1">
-                            <Label className="text-xs text-muted-foreground">보증금 상태</Label>
-                            <p className="text-sm text-muted-foreground">없음</p>
                           </div>
                         )}
                       </div>
