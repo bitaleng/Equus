@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +48,21 @@ interface LockerGroupFormData {
   sortOrder: number;
 }
 
+interface AdditionalRevenueItem {
+  id: string;
+  name: string;
+  rental_fee: number;
+  deposit_amount: number;
+  sort_order: number;
+  is_default: number;
+}
+
+interface RevenueItemFormData {
+  name: string;
+  rentalFee: number;
+  depositAmount: number;
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const [formData, setFormData] = useState<Settings>({
@@ -70,6 +85,17 @@ export default function Settings() {
   
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
 
+  // Additional revenue items dialog states
+  const [isRevenueItemDialogOpen, setIsRevenueItemDialogOpen] = useState(false);
+  const [editingRevenueItem, setEditingRevenueItem] = useState<AdditionalRevenueItem | null>(null);
+  const [revenueItemFormData, setRevenueItemFormData] = useState<RevenueItemFormData>({
+    name: "",
+    rentalFee: 1000,
+    depositAmount: 5000,
+  });
+  
+  const [revenueItems, setRevenueItems] = useState<AdditionalRevenueItem[]>([]);
+
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -83,10 +109,15 @@ export default function Settings() {
     const settings = localDb.getSettings();
     setFormData(settings);
     loadLockerGroups();
+    loadRevenueItems();
   }, []);
 
   const loadLockerGroups = () => {
     setLockerGroups(localDb.getLockerGroups());
+  };
+
+  const loadRevenueItems = () => {
+    setRevenueItems(localDb.getAdditionalRevenueItems());
   };
 
   const handleSave = () => {
@@ -230,6 +261,69 @@ export default function Settings() {
       toast({
         title: "초기화 실패",
         description: "데이터 초기화 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddRevenueItem = () => {
+    setEditingRevenueItem(null);
+    setRevenueItemFormData({ name: "", rentalFee: 1000, depositAmount: 5000 });
+    setIsRevenueItemDialogOpen(true);
+  };
+
+  const handleEditRevenueItem = (item: AdditionalRevenueItem) => {
+    setEditingRevenueItem(item);
+    setRevenueItemFormData({
+      name: item.name,
+      rentalFee: item.rental_fee,
+      depositAmount: item.deposit_amount,
+    });
+    setIsRevenueItemDialogOpen(true);
+  };
+
+  const handleDeleteRevenueItem = (id: string) => {
+    if (confirm("정말로 이 대여 항목을 삭제하시겠습니까?")) {
+      try {
+        localDb.deleteAdditionalRevenueItem(id);
+        loadRevenueItems();
+        toast({
+          title: "항목 삭제 완료",
+          description: "대여 항목이 삭제되었습니다.",
+        });
+      } catch (error) {
+        toast({
+          title: "항목 삭제 실패",
+          description: "항목 삭제 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleSaveRevenueItem = () => {
+    try {
+      if (editingRevenueItem) {
+        localDb.updateAdditionalRevenueItem(editingRevenueItem.id, revenueItemFormData);
+        toast({
+          title: "항목 수정 완료",
+          description: "대여 항목이 수정되었습니다.",
+        });
+      } else {
+        localDb.createAdditionalRevenueItem(revenueItemFormData);
+        toast({
+          title: "항목 생성 완료",
+          description: "새 대여 항목이 생성되었습니다.",
+        });
+      }
+      loadRevenueItems();
+      setIsRevenueItemDialogOpen(false);
+      setEditingRevenueItem(null);
+      setRevenueItemFormData({ name: "", rentalFee: 1000, depositAmount: 5000 });
+    } catch (error) {
+      toast({
+        title: "저장 실패",
+        description: "항목 저장 중 오류가 발생했습니다.",
         variant: "destructive",
       });
     }
@@ -459,6 +553,79 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* 추가매출 항목 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    추가매출 항목 관리
+                  </CardTitle>
+                  <CardDescription>
+                    대여 상품(롱타올, 담요 등)을 추가하거나 수정할 수 있습니다
+                  </CardDescription>
+                </div>
+                <Button onClick={handleAddRevenueItem} size="sm" data-testid="button-add-revenue-item">
+                  <Plus className="h-4 w-4 mr-2" />
+                  항목 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {revenueItems.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  등록된 대여 항목이 없습니다
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {revenueItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`revenue-item-${item.id}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{item.name}</h4>
+                          {item.is_default === 1 && (
+                            <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                              기본
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          대여비: ₩{item.rental_fee.toLocaleString()} | 
+                          보증금: ₩{item.deposit_amount.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditRevenueItem(item)}
+                          data-testid={`button-edit-revenue-${item.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {item.is_default === 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteRevenueItem(item.id)}
+                            data-testid={`button-delete-revenue-${item.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* 락커 그룹 관리 */}
           <Card>
             <CardHeader>
@@ -583,6 +750,65 @@ export default function Settings() {
             </Button>
             <Button onClick={handleSaveGroup} data-testid="button-save-group">
               {editingGroup ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revenue Item Dialog */}
+      <Dialog open={isRevenueItemDialogOpen} onOpenChange={setIsRevenueItemDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingRevenueItem ? "대여 항목 수정" : "새 대여 항목 추가"}
+            </DialogTitle>
+            <DialogDescription>
+              대여 항목의 이름, 대여비, 보증금을 설정하세요
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="revenue-item-name">항목 이름</Label>
+              <Input
+                id="revenue-item-name"
+                value={revenueItemFormData.name}
+                onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, name: e.target.value })}
+                placeholder="예: 롱타올, 담요"
+                data-testid="input-revenue-item-name"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="rental-fee">대여비 (원)</Label>
+                <Input
+                  id="rental-fee"
+                  type="number"
+                  value={revenueItemFormData.rentalFee}
+                  onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, rentalFee: parseInt(e.target.value) || 0 })}
+                  data-testid="input-rental-fee"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deposit-amount">보증금 (원)</Label>
+                <Input
+                  id="deposit-amount"
+                  type="number"
+                  value={revenueItemFormData.depositAmount}
+                  onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, depositAmount: parseInt(e.target.value) || 0 })}
+                  data-testid="input-deposit-amount"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsRevenueItemDialogOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={handleSaveRevenueItem} data-testid="button-save-revenue-item">
+              {editingRevenueItem ? "수정" : "추가"}
             </Button>
           </DialogFooter>
         </DialogContent>
