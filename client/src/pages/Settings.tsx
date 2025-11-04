@@ -52,10 +52,10 @@ interface LockerGroupFormData {
 interface AdditionalRevenueItem {
   id: string;
   name: string;
-  rental_fee: number;
-  deposit_amount: number;
-  sort_order: number;
-  is_default: number;
+  rentalFee: number;
+  depositAmount: number;
+  sortOrder: number;
+  isDefault: number;
 }
 
 interface RevenueItemFormData {
@@ -344,8 +344,8 @@ export default function Settings() {
     setEditingRevenueItem(item);
     setRevenueItemFormData({
       name: item.name,
-      rentalFee: item.rental_fee,
-      depositAmount: item.deposit_amount,
+      rentalFee: item.rentalFee,
+      depositAmount: item.depositAmount,
     });
     setIsRevenueItemDialogOpen(true);
   };
@@ -629,15 +629,15 @@ export default function Settings() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h4 className="font-medium">{item.name}</h4>
-                          {item.is_default === 1 && (
+                          {item.isDefault === 1 && (
                             <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
                               기본
                             </span>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          대여비: ₩{item.rental_fee?.toLocaleString() ?? '0'} | 
-                          보증금: ₩{item.deposit_amount?.toLocaleString() ?? '0'}
+                          대여비: ₩{item.rentalFee?.toLocaleString() ?? '0'} | 
+                          보증금: ₩{item.depositAmount?.toLocaleString() ?? '0'}
                         </p>
                       </div>
                       <div className="flex gap-2">
