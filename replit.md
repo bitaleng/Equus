@@ -2,9 +2,7 @@
 
 ## Overview
 
-This is a Progressive Web App (PWA) designed for rest hotel (휴게텔) operations that runs **completely offline** in the browser. The application helps counter staff digitize the manual ledger process, allowing them to track customer check-ins, locker assignments, pricing options, and daily sales with simple touch/click interactions. All data is stored locally in the browser using SQLite WASM, eliminating the need for server costs or internet connectivity after initial installation.
-
-**Core Purpose**: Transform the traditional paper notebook workflow into a zero-cost, fully offline digital system where staff can record locker assignments, entry times, pricing options (including discounts and foreigner rates), and manage checkouts with minimal clicks.
+This Progressive Web App (PWA) digitizes manual ledger processes for rest hotels, enabling offline tracking of customer check-ins, locker assignments, pricing, and daily sales. It transforms traditional paper-based workflows into a zero-cost, digital solution by storing all data locally in the browser using SQLite WASM, eliminating server costs and internet dependency after initial installation. The system includes features for real-time locker status, sales aggregation, expense tracking, and daily financial settlements.
 
 ## User Preferences
 
@@ -12,191 +10,48 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
-### Frontend Architecture
+### Frontend
+- **React** with TypeScript, **Wouter** for routing, and **Vite** for building.
+- **shadcn/ui** and **Tailwind CSS** for a customizable and accessible UI.
+- Local component state with React hooks; data persists in browser localStorage as a base64-encoded SQLite database.
+- Split-panel layout optimized for desktop/tablet, touch-first design, high-contrast visual states, and tactile feedback.
 
-**Framework & UI Library**
-- **React** with TypeScript for type-safe component development
-- **Wouter** for lightweight client-side routing (main page and logs page)
-- **Vite** as the build tool and development server
-- **shadcn/ui** component library built on Radix UI primitives for accessible, customizable components
-- **Tailwind CSS** for utility-first styling with custom design tokens
+### PWA & Offline Capabilities
+- **Service Worker** for offline caching and **Web App Manifest** for an installable experience.
+- Cache-first strategy for static assets; network-first with cache fallback for dynamic content.
+- All operations are client-side; no backend API calls.
 
-**State Management**
-- Local component state with React hooks for UI interactions
-- useState/useEffect for data loading from browser SQLite database
-- 5-second polling interval for active locker data to ensure real-time updates
-- All data persists in browser localStorage as base64-encoded SQLite database
-
-**Key Design Decisions**
-- Split-panel layout (40% left / 60% right) optimized for desktop/tablet use
-- Touch-first interaction design with generous tap targets (minimum 56px for locker buttons)
-- High-contrast visual states for locker availability (white=empty, blue=in-use, gray=checked-out)
-- Tactile feedback through CSS animations (scale transform on click) and audio cues
-- Material Design principles adapted for business productivity tools
-
-**Component Structure**
-- `LockerButton`: Grid-based locker selection with visual state indicators
-- `LockerOptionsDialog`: Modal for applying discounts, custom pricing, and foreigner rates
-- `TodayStatusTable`: Real-time display of current active lockers
-- `SalesSummary`: Daily sales aggregation widget
-- `LogsPage`: Historical transaction viewer with date filtering
-
-### PWA & Offline Architecture
-
-**Progressive Web App (PWA)**
-- **Service Worker** (`client/public/sw.js`) for offline caching and resource management
-- **Web App Manifest** (`client/public/manifest.json`) for installable app experience
-- Automatic registration of service worker on page load
-- Cache-first strategy for all static assets (HTML, CSS, JS, fonts)
-- Network-first with fallback to cache for dynamic content
-
-**Business Logic Layer**
-- **Business Day Calculation**: Custom logic treating 10:00 AM as the day boundary (sales aggregated from 10 AM to 9:59 AM next day)
-- **Time-based Pricing**: Automatic day/night rate calculation (주간 7AM-7PM: configurable / 야간 7PM-7AM: configurable)
-- **Korea Standard Time (KST)**: All datetime operations use Asia/Seoul timezone via `date-fns-tz` to ensure consistency
-- **Shared Logic**: Common business rules (pricing, time calculations) exported from `shared/businessDay.ts`
-
-**Browser-Only Operation**
-- No backend API calls - all operations performed client-side
-- Express server only used for development (serving Vite build)
-- Production deployment can be static HTML/JS/CSS files on any hosting
-- Zero recurring server costs after deployment
+### Business Logic
+- Custom business day calculation (e.g., 10:00 AM boundary) and time-based pricing (day/night rates).
+- All datetime operations use Korea Standard Time (KST) via `date-fns-tz`.
+- Shared logic for pricing and time calculations.
+- Integrated expense management by category and payment method.
+- Daily closing/settlement feature for financial reconciliation, including expected cash, actual cash, and discrepancy tracking.
+- Automated settlement reminders based on configured business day start hour.
 
 ### Data Storage & Schema
+- **SQLite WASM** (`sql.js`) for in-browser database, persisted in `localStorage`.
+- **`locker_logs`**: Stores all entry/exit records, including locker number, entry/exit times, pricing details, and status.
+- **`locker_daily_summaries`**: Aggregated daily metrics like total visitors and sales, recalculated on entry updates.
+- **`system_metadata`**: Key-value store for operational state.
+- **`expenses`**: Tracks daily operational costs by category, amount, and payment method.
+- **`closing_days`**: Records daily financial settlements, including income, expenses, cash, and discrepancies.
+- Data export functionality to Excel (.xlsx) and PDF.
+- Automatic data cleanup for records older than one year and manual data reset options.
 
-**Database Technology**
-- **SQLite WASM** (`sql.js`) running entirely in the browser
-- **localStorage** for database persistence (base64-encoded SQLite file)
-- **localDb.ts** abstraction layer providing CRUD operations
-- Database automatically saves to localStorage after every modification
-- No server required - all data stays on the user's device
+## External Dependencies
 
-**Schema Design**
+### Third-Party Services
+- **Google Fonts CDN**: Inter and Roboto font families.
+- **sql.js CDN**: SQLite WASM binary.
 
-1. **locker_logs** (Primary transaction table)
-   - Stores all entry/exit records with sequential logging
-   - Fields: locker number, entry/exit times, business day, time type (day/night), base price, option type, option amount, final price, status, cancellation flag, notes
-   - Supports multiple uses of same locker per business day
-   - Status enum: `in_use`, `checked_out`, `cancelled`
-   - Option type enum: `none`, `discount` (₩2,000), `custom` (manual input), `foreigner` (₩25,000 flat rate)
-
-2. **locker_daily_summaries** (Aggregated metrics table)
-   - Business day as primary key (format: YYYY-MM-DD)
-   - Aggregated fields: total visitors, total sales, cancellation count, total discount amount, foreigner count, foreigner sales
-   - Automatically recalculated when entries are updated
-
-3. **system_metadata** (Operational state tracking)
-   - Key-value store for system-level data (e.g., cleanup tracking)
-
-**Data Flow**
-- Entry creation → Auto-populate business day, time type, base price based on entry timestamp → Save to localStorage
-- Option selection → Calculate final price (foreigner overrides to configurable amount, discounts subtract from base) → Save to localStorage
-- Checkout/cancellation → Trigger summary recalculation for affected business day → Save to localStorage
-- Daily summary queries use business day (configurable hour boundary) rather than calendar day
-- Database export: Users can export to Excel (.xlsx) for backup/reporting
-
-### External Dependencies
-
-**Third-Party Services**
-- **Google Fonts CDN**: Inter and Roboto font families for typography (cached by service worker for offline use)
-- **sql.js CDN**: SQLite WASM binary loaded from https://sql.js.org/dist/
-
-**Key NPM Packages**
-- **sql.js**: SQLite compiled to WebAssembly for in-browser database
-- **@radix-ui/***: Headless UI component primitives (18+ components)
-- **date-fns** & **date-fns-tz**: Date manipulation and timezone handling (Asia/Seoul)
-- **react-hook-form** & **@hookform/resolvers**: Form state management
-- **wouter**: Lightweight routing (alternative to React Router)
-- **class-variance-authority**: Type-safe CSS variant management
-- **tailwind-merge**: Intelligent Tailwind class merging
-- **xlsx**: Excel file export functionality
-- **jspdf** & **jspdf-autotable**: PDF export functionality
-
-**Development Tools**
-- **TypeScript**: Full-stack type safety with strict mode enabled
-- **ESBuild**: Server-side bundling for production
-- **tsx**: TypeScript execution for development server
-- **Replit-specific plugins**: Runtime error overlay, cartographer, dev banner (development only)
-
-**Audio Integration**
-- Inline base64-encoded WAV for click sound effects (no external audio files)
-
-## Recent Changes (November 2025)
-
-### PWA Migration for Offline Operation
-**Date**: November 1, 2025
-**Motivation**: User requested zero-cost solution for friend's business - eliminating monthly server fees
-
-**Changes Made**:
-1. **Database Migration**: PostgreSQL → SQLite WASM (sql.js)
-   - All data now stored in browser localStorage
-   - Database persists as base64-encoded SQLite file
-   - Automatic save after every data modification
-
-2. **Architecture Shift**: Client-Server → Pure Client-Side
-   - Removed all API endpoint calls
-   - Direct database operations via `localDb.ts` abstraction layer
-   - Express server only used for development (can be replaced with static hosting)
-
-3. **PWA Implementation**:
-   - Service Worker for offline caching
-   - Web App Manifest for "Add to Home Screen"
-   - Cache-first strategy for all static assets
-   - Fully functional without internet after initial load
-
-4. **Settings Management**:
-   - Settings stored in localStorage (JSON)
-   - Configurable: business day start hour, day/night prices, discount amount, foreigner price
-   - Locker groups configuration persisted in SQLite
-
-5. **Data Export**:
-   - Excel (.xlsx) export for logs and sales data
-   - PDF export available (Korean font limitations apply)
-
-**Deployment Options**:
-- Can be deployed as static files on any free hosting (GitHub Pages, Netlify, Vercel)
-- Zero recurring costs after deployment
-- Works offline on tablets/devices after first visit
-- Data stays local to each device (no cloud sync)
-
-### Security & Data Management Features
-**Date**: November 1, 2025
-**Motivation**: User requested password change capability and automatic data cleanup to prevent storage bloat
-
-**Changes Made**:
-1. **Password Management**:
-   - Default password: "1234" (changeable via Settings)
-   - Password stored in localStorage as "staff_password"
-   - Password change UI in Settings page with validation:
-     - Current password verification
-     - Minimum 4-character requirement
-     - Confirmation password matching
-     - Real-time validation feedback
-
-2. **Data Lifecycle Management**:
-   - **Automatic Cleanup**: Data older than 1 year auto-deleted on app initialization
-     - Respects configured business day start hour for accurate date calculation
-     - Runs silently in background on app load
-     - Preserves system settings and locker groups
-   - **Manual Reset**: "데이터 초기화" button in Settings
-     - Confirmation dialog to prevent accidental deletion
-     - Deletes all `locker_logs` and `locker_daily_summaries`
-     - Preserves system settings, locker groups, and password
-     - Useful for fresh start or when switching businesses
-
-3. **Data Preservation Rules**:
-   - Settings (businessDayStartHour, prices, etc.) always preserved
-   - Locker group configurations always preserved
-   - Password always preserved
-   - Only transactional data (logs and summaries) can be deleted
-
-**Implementation Details**:
-- `localDb.ts`: Added `clearAllData()`, `deleteOldData()`, `getOldestEntryDate()`
-- `Settings.tsx`: Added password change section and data management section
-- `App.tsx`: Auto-delete runs after database initialization
-- `PasswordAuth.tsx`: Changed from API-based to localStorage-based authentication
-
-**Security Notes**:
-- Password stored in plaintext in localStorage (acceptable for single-device offline use)
-- Physical device access required to view password
-- Consider device-level security (screen lock, full-disk encryption) for production use
+### NPM Packages
+- **sql.js**: SQLite in WebAssembly.
+- **@radix-ui/**\*: Headless UI component primitives.
+- **date-fns** & **date-fns-tz**: Date manipulation and timezone handling.
+- **react-hook-form**: Form state management.
+- **wouter**: Lightweight client-side routing.
+- **class-variance-authority**: Type-safe CSS variant management.
+- **tailwind-merge**: Utility for merging Tailwind classes.
+- **xlsx**: Excel file export.
+- **jspdf** & **jspdf-autotable**: PDF export functionality.
