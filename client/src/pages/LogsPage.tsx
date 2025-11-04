@@ -19,7 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -86,6 +87,7 @@ export default function LogsPage() {
   const [rentalItemFilter, setRentalItemFilter] = useState<string>("all");
   const [rentalPaymentFilter, setRentalPaymentFilter] = useState<string>("all");
   const [rentalDepositFilter, setRentalDepositFilter] = useState<string>("all");
+  const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
 
   useEffect(() => {
     loadLogs();
@@ -640,31 +642,38 @@ export default function LogsPage() {
         const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all";
         
         return (
-          <div className="border rounded-lg p-6 bg-card mt-6">
-            <div className="flex items-center justify-between mb-4">
+          <Collapsible open={isRentalSectionOpen} onOpenChange={setIsRentalSectionOpen} className="mt-6">
+            <CollapsibleTrigger 
+              className="w-full flex items-center justify-between p-4 rounded-md hover-elevate border border-border bg-card cursor-pointer"
+              data-testid="button-toggle-rental-section"
+            >
               <div>
                 <h2 className="text-lg font-semibold">추가매출 (대여 물품)</h2>
                 <p className="text-xs text-muted-foreground mt-1">
                   담요/롱타올 대여 거래 - {filteredRentals.length}건
                 </p>
               </div>
-              <div className="text-right space-y-1">
-                <div>
-                  <p className="text-xs text-muted-foreground">현금 대여금 합계</p>
-                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                    {cashRentalFeeTotal.toLocaleString()}원
-                  </p>
+              <div className="flex items-center gap-3">
+                <div className="text-right space-y-1">
+                  <div>
+                    <p className="text-xs text-muted-foreground">현금 대여금</p>
+                    <p className="text-sm font-bold text-green-600 dark:text-green-400">
+                      {cashRentalFeeTotal.toLocaleString()}원
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">현금 보증금</p>
+                    <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                      {cashDepositTotal.toLocaleString()}원
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">현금 보증금 매출</p>
-                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                    {cashDepositTotal.toLocaleString()}원
-                  </p>
-                </div>
+                {isRentalSectionOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
               </div>
-            </div>
-
-            {/* Rental Filters */}
+            </CollapsibleTrigger>
+            
+            <CollapsibleContent className="border rounded-lg p-6 bg-card mt-2">
+              {/* Rental Filters */}
             <div className="mb-4 flex items-center gap-3">
               <Button 
                 variant={showRentalFilters ? "default" : "outline"}
@@ -794,7 +803,8 @@ export default function LogsPage() {
                 </TableBody>
               </Table>
             </ScrollArea>
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
         );
       })()}
 
