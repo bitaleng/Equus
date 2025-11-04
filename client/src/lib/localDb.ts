@@ -163,6 +163,20 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 5: Create additional_fee_events table (Stage 1 migration)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS additional_fee_events (
+        id TEXT PRIMARY KEY,
+        locker_log_id TEXT NOT NULL,
+        locker_number INTEGER NOT NULL,
+        checkout_time TEXT NOT NULL,
+        fee_amount INTEGER NOT NULL,
+        business_day TEXT NOT NULL,
+        payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+        created_at TEXT NOT NULL
+      )
+    `);
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -225,6 +239,20 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS system_metadata (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    )
+  `);
+
+  // Additional fee events table (Stage 1: fees recorded at checkout)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS additional_fee_events (
+      id TEXT PRIMARY KEY,
+      locker_log_id TEXT NOT NULL,
+      locker_number INTEGER NOT NULL,
+      checkout_time TEXT NOT NULL,
+      fee_amount INTEGER NOT NULL,
+      business_day TEXT NOT NULL,
+      payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      created_at TEXT NOT NULL
     )
   `);
 
@@ -1034,4 +1062,102 @@ export function createTestData() {
   console.log(`테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
   console.log(`- 추가요금 1회: ${additionalFee1Count}건 (오렌지)`);
   console.log(`- 추가요금 2회+: ${additionalFee2PlusCount}건 (레드)`);
+}
+
+// ===== Stage 1: Additional Fee Events =====
+
+export function createAdditionalFeeEvent(event: {
+  lockerLogId: string;
+  lockerNumber: number;
+  checkoutTime: Date;
+  feeAmount: number;
+  businessDay: string;
+  paymentMethod: string;
+}): string {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = generateId();
+  const checkoutTimeStr = event.checkoutTime.toISOString();
+  const createdAt = new Date().toISOString();
+  
+  db.run(
+    `INSERT INTO additional_fee_events 
+    (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, event.lockerLogId, event.lockerNumber, checkoutTimeStr, event.feeAmount, event.businessDay, event.paymentMethod, createdAt]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function getAdditionalFeeEventsByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events WHERE business_day = ? ORDER BY checkout_time DESC`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
+}
+
+export function getAdditionalFeeEventsByLockerLog(lockerLogId: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events WHERE locker_log_id = ? ORDER BY created_at DESC`,
+    [lockerLogId]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
+}
+
+export function getAllAdditionalFeeEvents() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events ORDER BY checkout_time DESC`
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
 }
