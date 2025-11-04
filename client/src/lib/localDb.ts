@@ -454,7 +454,7 @@ function createTables() {
       item_name TEXT NOT NULL,
       locker_number INTEGER NOT NULL,
       rental_time TEXT NOT NULL,
-      return_time TEXT NOT NULL,
+      return_time TEXT,
       business_day TEXT NOT NULL,
       rental_fee INTEGER NOT NULL,
       deposit_amount INTEGER NOT NULL,
@@ -467,6 +467,57 @@ function createTables() {
   `);
 
   saveDatabase();
+}
+
+// Force database regeneration (drops all tables and recreates them)
+export function forceRegenerateDatabase() {
+  if (!db) {
+    console.error('Database not initialized');
+    return false;
+  }
+  
+  try {
+    console.log('[Force Regenerate] Starting database regeneration...');
+    
+    // Drop all existing tables
+    const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
+                   'system_metadata', 'additional_fee_events', 'additional_revenue_items', 
+                   'rental_transactions'];
+    
+    tables.forEach(table => {
+      try {
+        db!.run(`DROP TABLE IF EXISTS ${table}`);
+        console.log(`[Force Regenerate] Dropped table: ${table}`);
+      } catch (e) {
+        console.error(`[Force Regenerate] Failed to drop table ${table}:`, e);
+      }
+    });
+    
+    // Recreate all tables with correct schema
+    createTables();
+    
+    // Initialize default rental items
+    const now = new Date().toISOString();
+    const id1 = crypto.randomUUID();
+    const id2 = crypto.randomUUID();
+    
+    db.run(`
+      INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+      VALUES (?, '롱타올', 1000, 5000, 0, 1, ?, ?)
+    `, [id1, now, now]);
+    
+    db.run(`
+      INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+      VALUES (?, '담요', 1000, 5000, 1, 1, ?, ?)
+    `, [id2, now, now]);
+    
+    console.log('[Force Regenerate] Database regeneration completed successfully');
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('[Force Regenerate] Error during database regeneration:', error);
+    return false;
+  }
 }
 
 // Generate UUID
