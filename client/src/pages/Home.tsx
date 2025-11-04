@@ -236,9 +236,11 @@ export default function Home() {
       // Create rental transaction records for each rented item (at check-in)
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
         rentalItems.forEach(item => {
-          // At check-in, depositStatus should be 'received'
-          // Revenue calculation: rental fee + deposit (since received)
-          const revenue = item.rentalFee + item.depositAmount;
+          // Revenue calculation: rental fee + deposit (only if received or forfeited)
+          let revenue = item.rentalFee;
+          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+            revenue += item.depositAmount;
+          }
           
           localDb.createRentalTransaction({
             lockerLogId: lockerLogId,
@@ -306,7 +308,11 @@ export default function Home() {
         
         if (!existingItem) {
           // Create new rental transaction if it doesn't exist
-          const revenue = item.rentalFee + item.depositAmount;
+          // Revenue calculation: rental fee + deposit (only if received or forfeited)
+          let revenue = item.rentalFee;
+          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+            revenue += item.depositAmount;
+          }
           
           localDb.createRentalTransaction({
             lockerLogId: selectedEntry.id,
