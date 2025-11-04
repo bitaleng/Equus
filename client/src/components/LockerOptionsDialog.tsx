@@ -29,6 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { calculateAdditionalFee } from "@shared/businessDay";
+import * as localDb from "@/lib/localDb";
 
 interface LockerOptionsDialogProps {
   open: boolean;
@@ -83,12 +84,23 @@ export default function LockerOptionsDialog({
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
   
-  // Rental items state (담요, 롱타올)
+  // Rental items state (담요, 롱타올) - legacy
   const [hasBlanket, setHasBlanket] = useState(false);
   const [hasLongTowel, setHasLongTowel] = useState(false);
   
+  // Dynamic rental items from database
+  const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
+  const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
+  const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited'>>(new Map());
+  
   // Track previous locker number to reset checkoutResolved only when changing lockers
   const previousLockerRef = useRef<number | null>(null);
+
+  // Load rental items from database on mount
+  useEffect(() => {
+    const items = localDb.getAdditionalRevenueItems();
+    setAvailableRentalItems(items);
+  }, []);
 
   // Play click sound
   const playClickSound = () => {
@@ -528,33 +540,84 @@ export default function LockerOptionsDialog({
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">대여 물품 (선택사항)</Label>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="blanket" 
-                    checked={hasBlanket}
-                    onCheckedChange={(checked) => setHasBlanket(checked as boolean)}
-                    data-testid="checkbox-blanket"
-                  />
-                  <Label htmlFor="blanket" className="text-sm cursor-pointer font-normal">
-                    담요 대여
-                  </Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="long-towel" 
-                    checked={hasLongTowel}
-                    onCheckedChange={(checked) => setHasLongTowel(checked as boolean)}
-                    data-testid="checkbox-long-towel"
-                  />
-                  <Label htmlFor="long-towel" className="text-sm cursor-pointer font-normal">
-                    롱타올 대여
-                  </Label>
+            {availableRentalItems.length > 0 && (
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">대여 물품 (선택사항)</Label>
+                <div className="space-y-3">
+                  {availableRentalItems.map((item) => {
+                    const itemId = item.id;
+                    const isChecked = selectedRentalItems.has(itemId);
+                    const depositStatus = depositStatuses.get(itemId);
+                    
+                    return (
+                      <div key={itemId} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <Checkbox 
+                              id={`rental-${itemId}`}
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                const newSelected = new Set(selectedRentalItems);
+                                if (checked) {
+                                  newSelected.add(itemId);
+                                  // Do NOT set default deposit status - require explicit selection
+                                } else {
+                                  newSelected.delete(itemId);
+                                  // Remove deposit status
+                                  const newStatuses = new Map(depositStatuses);
+                                  newStatuses.delete(itemId);
+                                  setDepositStatuses(newStatuses);
+                                }
+                                setSelectedRentalItems(newSelected);
+                              }}
+                              data-testid={`checkbox-rental-${itemId}`}
+                            />
+                            <Label htmlFor={`rental-${itemId}`} className="text-sm cursor-pointer font-normal">
+                              {item.name} (대여비: {item.rental_fee.toLocaleString()}원, 보증금: {item.deposit_amount.toLocaleString()}원)
+                            </Label>
+                          </div>
+                        </div>
+                        
+                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시 */}
+                        {isChecked && isInUse && (
+                          <div className="ml-6 space-y-2">
+                            <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
+                              보증금 상태
+                            </Label>
+                            <Select 
+                              value={depositStatus} 
+                              onValueChange={(value) => {
+                                const newStatuses = new Map(depositStatuses);
+                                newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited');
+                                setDepositStatuses(newStatuses);
+                              }}
+                            >
+                              <SelectTrigger 
+                                id={`deposit-status-${itemId}`} 
+                                data-testid={`select-deposit-${itemId}`}
+                                className={!depositStatus ? 'border-orange-500' : ''}
+                              >
+                                <SelectValue placeholder="보증금 상태를 선택하세요" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="received">받음 (매출 기록)</SelectItem>
+                                <SelectItem value="refunded">환불 (매출 없음)</SelectItem>
+                                <SelectItem value="forfeited">미반환 (매출 기록)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {!depositStatus && (
+                              <p className="text-xs text-orange-600 dark:text-orange-400">
+                                ⚠️ 퇴실 전에 보증금 상태를 선택해주세요
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 sm:gap-2">
@@ -570,7 +633,18 @@ export default function LockerOptionsDialog({
                   onClick={handleCheckoutClick} 
                   className="bg-primary" 
                   data-testid="button-checkout"
-                  disabled={(hasBlanket || hasLongTowel || additionalFeeInfo.additionalFee > 0) && !checkoutResolved}
+                  disabled={(() => {
+                    // Check if any selected rental item has no deposit status
+                    const hasUnresolvedDeposits = Array.from(selectedRentalItems).some(itemId => {
+                      const status = depositStatuses.get(itemId);
+                      return !status; // Require explicit deposit status selection
+                    });
+                    
+                    // Check if there are additional fees or rental items but not resolved yet
+                    const hasIssues = selectedRentalItems.size > 0 || additionalFeeInfo.additionalFee > 0;
+                    
+                    return (hasIssues && !checkoutResolved) || hasUnresolvedDeposits;
+                  })()}
                 >
                   퇴실
                 </Button>
