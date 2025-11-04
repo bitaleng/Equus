@@ -188,7 +188,14 @@ export default function Home() {
     option: string, 
     customAmount?: number, 
     notes?: string, 
-    paymentMethod?: 'card' | 'cash' | 'transfer'
+    paymentMethod?: 'card' | 'cash' | 'transfer',
+    rentalItems?: Array<{
+      itemId: string;
+      itemName: string;
+      rentalFee: number;
+      depositAmount: number;
+      depositStatus: 'received' | 'refunded' | 'forfeited';
+    }>
   ) => {
     // Handle new locker entry
     if (newLockerInfo) {
@@ -214,7 +221,7 @@ export default function Home() {
         optionAmount = customAmount;
       }
 
-      await localDb.createEntry({
+      const lockerLogId = await localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
         timeType: newLockerInfo.timeType,
         basePrice: newLockerInfo.basePrice,
@@ -225,6 +232,30 @@ export default function Home() {
         notes,
         paymentMethod,
       });
+
+      // Create rental transaction records for each rented item (at check-in)
+      if (rentalItems && rentalItems.length > 0 && lockerLogId) {
+        rentalItems.forEach(item => {
+          // At check-in, depositStatus should be 'received'
+          // Revenue calculation: rental fee + deposit (since received)
+          const revenue = item.rentalFee + item.depositAmount;
+          
+          localDb.createRentalTransaction({
+            lockerLogId: lockerLogId,
+            lockerNumber: newLockerInfo.lockerNumber,
+            itemId: item.itemId,
+            itemName: item.itemName,
+            rentalFee: item.rentalFee,
+            depositAmount: item.depositAmount,
+            depositStatus: item.depositStatus,
+            rentalTime: currentTime,
+            returnTime: null,
+            businessDay: businessDay,
+            paymentMethod: paymentMethod || 'cash',
+            revenue: revenue,
+          });
+        });
+      }
 
       setNewLockerInfo(null);
       setDialogOpen(false);
@@ -263,6 +294,42 @@ export default function Home() {
       notes, 
       paymentMethod 
     });
+    
+    // Handle rental items for existing entry (if saving changes)
+    if (rentalItems && rentalItems.length > 0) {
+      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      
+      rentalItems.forEach(item => {
+        // Check if rental transaction already exists for this item
+        const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
+        const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
+        
+        if (!existingItem) {
+          // Create new rental transaction if it doesn't exist
+          const revenue = item.rentalFee + item.depositAmount;
+          
+          localDb.createRentalTransaction({
+            lockerLogId: selectedEntry.id,
+            lockerNumber: selectedEntry.lockerNumber,
+            itemId: item.itemId,
+            itemName: item.itemName,
+            rentalFee: item.rentalFee,
+            depositAmount: item.depositAmount,
+            depositStatus: item.depositStatus,
+            rentalTime: selectedEntry.entryTime,
+            returnTime: null,
+            businessDay: businessDay,
+            paymentMethod: paymentMethod || 'cash',
+            revenue: revenue,
+          });
+        } else {
+          // Update existing rental transaction
+          localDb.updateRentalTransaction(existingItem.id, {
+            depositStatus: item.depositStatus,
+          });
+        }
+      });
+    }
     
     loadData();
   };
