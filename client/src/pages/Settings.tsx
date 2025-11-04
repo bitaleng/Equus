@@ -103,6 +103,9 @@ export default function Settings() {
 
   // Data reset confirmation dialog
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  
+  // Database regeneration confirmation dialog
+  const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
 
   // Load settings and locker groups on mount
   useEffect(() => {
@@ -261,6 +264,35 @@ export default function Settings() {
       toast({
         title: "초기화 실패",
         description: "데이터 초기화 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRegenerateDatabase = () => {
+    try {
+      const success = localDb.forceRegenerateDatabase();
+      if (success) {
+        toast({
+          title: "데이터베이스 재생성 완료",
+          description: "데이터베이스가 성공적으로 재생성되었습니다. 모든 데이터가 삭제되었습니다.",
+        });
+        setIsRegenerateDialogOpen(false);
+        // Reload page to re-initialize database
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        toast({
+          title: "재생성 실패",
+          description: "데이터베이스 재생성 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "재생성 실패",
+        description: "데이터베이스 재생성 중 오류가 발생했습니다.",
         variant: "destructive",
       });
     }
@@ -528,6 +560,31 @@ export default function Settings() {
                 </div>
               </div>
               
+              <div className="p-4 border border-orange-500/50 rounded-lg bg-orange-500/5">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-orange-500 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-orange-600 dark:text-orange-400 mb-1">데이터베이스 강제 재생성</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      데이터베이스 오류 발생 시 사용하세요. 모든 테이블을 삭제하고 새로 생성합니다.
+                      <br />
+                      <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                        ⚠️ 경고: 모든 데이터가 영구적으로 삭제됩니다!
+                      </span>
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="border-orange-500 text-orange-600 hover:bg-orange-500/10 dark:text-orange-400"
+                      onClick={() => setIsRegenerateDialogOpen(true)}
+                      data-testid="button-regenerate-database"
+                    >
+                      <Database className="h-4 w-4 mr-2" />
+                      데이터베이스 강제 재생성
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
               <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/5">
                 <div className="flex items-start gap-3">
                   <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
@@ -595,8 +652,8 @@ export default function Settings() {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          대여비: ₩{item.rentalFee?.toLocaleString() ?? '0'} | 
-                          보증금: ₩{item.depositAmount?.toLocaleString() ?? '0'}
+                          대여비: ₩{item.rental_fee?.toLocaleString() ?? '0'} | 
+                          보증금: ₩{item.deposit_amount?.toLocaleString() ?? '0'}
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -813,6 +870,48 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Database Regeneration Confirmation Dialog */}
+      <AlertDialog open={isRegenerateDialogOpen} onOpenChange={setIsRegenerateDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              데이터베이스 강제 재생성 확인
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              정말로 데이터베이스를 강제로 재생성하시겠습니까?
+              <br />
+              <br />
+              <strong className="text-orange-600 dark:text-orange-400">⚠️ 경고: 모든 데이터가 영구적으로 삭제됩니다!</strong>
+              <br />
+              <br />
+              이 기능은 데이터베이스 오류가 발생했을 때만 사용하세요.
+              <br />
+              • 모든 입실 기록 삭제
+              <br />
+              • 모든 매출 정보 삭제
+              <br />
+              • 모든 락커 그룹 삭제
+              <br />
+              • 모든 시스템 설정 초기화
+              <br />
+              <br />
+              <strong className="text-destructive">이 작업은 되돌릴 수 없습니다.</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleRegenerateDatabase}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+              data-testid="button-confirm-regenerate"
+            >
+              재생성
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Data Reset Confirmation Dialog */}
       <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
