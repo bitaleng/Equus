@@ -107,12 +107,30 @@ export default function Settings() {
   // Database regeneration confirmation dialog
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
 
+  // Cash register (시재금) states
+  const [cashRegister, setCashRegister] = useState({
+    count50000: 0,
+    count10000: 0,
+    count5000: 0,
+    count1000: 0,
+  });
+
   // Load settings and locker groups on mount
   useEffect(() => {
     const settings = localDb.getSettings();
     setFormData(settings);
     loadLockerGroups();
     loadRevenueItems();
+    
+    // Load cash register from localStorage
+    const savedCashRegister = localStorage.getItem('cash_register');
+    if (savedCashRegister) {
+      try {
+        setCashRegister(JSON.parse(savedCashRegister));
+      } catch (error) {
+        console.error('Failed to load cash register data:', error);
+      }
+    }
   }, []);
 
   const loadLockerGroups = () => {
@@ -298,6 +316,23 @@ export default function Settings() {
     }
   };
 
+  const handleSaveCashRegister = () => {
+    localStorage.setItem('cash_register', JSON.stringify(cashRegister));
+    toast({
+      title: "시재금 저장 완료",
+      description: "시재금이 성공적으로 저장되었습니다.",
+    });
+  };
+
+  const calculateCashTotal = () => {
+    return (
+      cashRegister.count50000 * 50000 +
+      cashRegister.count10000 * 10000 +
+      cashRegister.count5000 * 5000 +
+      cashRegister.count1000 * 1000
+    );
+  };
+
   const handleAddRevenueItem = () => {
     setEditingRevenueItem(null);
     setRevenueItemFormData({ name: "", rentalFee: 1000, depositAmount: 5000 });
@@ -460,6 +495,101 @@ export default function Settings() {
                   data-testid="input-foreigner-price"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 시재금 관리 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                시재금 관리
+              </CardTitle>
+              <CardDescription>
+                지폐 단위별 매수를 입력하여 시재금을 관리합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="count50000">5만원권</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="count50000"
+                      type="number"
+                      min="0"
+                      value={cashRegister.count50000}
+                      onChange={(e) => setCashRegister({ ...cashRegister, count50000: parseInt(e.target.value) || 0 })}
+                      placeholder="매수"
+                      data-testid="input-count-50000"
+                    />
+                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
+                      {(cashRegister.count50000 * 50000).toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="count10000">1만원권</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="count10000"
+                      type="number"
+                      min="0"
+                      value={cashRegister.count10000}
+                      onChange={(e) => setCashRegister({ ...cashRegister, count10000: parseInt(e.target.value) || 0 })}
+                      placeholder="매수"
+                      data-testid="input-count-10000"
+                    />
+                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
+                      {(cashRegister.count10000 * 10000).toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="count5000">5천원권</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="count5000"
+                      type="number"
+                      min="0"
+                      value={cashRegister.count5000}
+                      onChange={(e) => setCashRegister({ ...cashRegister, count5000: parseInt(e.target.value) || 0 })}
+                      placeholder="매수"
+                      data-testid="input-count-5000"
+                    />
+                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
+                      {(cashRegister.count5000 * 5000).toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="count1000">1천원권</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="count1000"
+                      type="number"
+                      min="0"
+                      value={cashRegister.count1000}
+                      onChange={(e) => setCashRegister({ ...cashRegister, count1000: parseInt(e.target.value) || 0 })}
+                      placeholder="매수"
+                      data-testid="input-count-1000"
+                    />
+                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
+                      {(cashRegister.count1000 * 1000).toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="pt-4 border-t">
+                <div className="flex items-center justify-between text-lg font-semibold">
+                  <span>시재금 총합</span>
+                  <span className="text-primary">{calculateCashTotal().toLocaleString()}원</span>
+                </div>
+              </div>
+              <Button onClick={handleSaveCashRegister} className="w-full" data-testid="button-save-cash-register">
+                <Save className="h-4 w-4 mr-2" />
+                시재금 저장
+              </Button>
             </CardContent>
           </Card>
 

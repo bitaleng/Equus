@@ -684,6 +684,21 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
   return rowsToObjects(result[0]);
 }
 
+export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT * FROM locker_logs 
+     WHERE entry_time >= ? AND entry_time <= ?
+     ORDER BY entry_time DESC`,
+    [startDateTime, endDateTime]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 export function getDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
@@ -1480,6 +1495,32 @@ export function getAdditionalFeeEventsByDateRange(startDate: string, endDate: st
   }));
 }
 
+export function getAdditionalFeeEventsByDateTimeRange(startDateTime: string, endDateTime: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events 
+     WHERE checkout_time >= ? AND checkout_time <= ?
+     ORDER BY checkout_time DESC`,
+    [startDateTime, endDateTime]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
+}
+
 export function getTotalRentalRevenueByBusinessDay(businessDay: string): number {
   if (!db) throw new Error('Database not initialized');
   
@@ -1681,6 +1722,35 @@ export function getRentalTransactionsByDateRange(startDate: string, endDate: str
      WHERE business_day >= ? AND business_day <= ?
      ORDER BY rental_time DESC`,
     [startDate, endDate]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    itemId: row[2],
+    itemName: row[3],
+    lockerNumber: row[4],
+    rentalTime: row[5],
+    returnTime: row[6],
+    businessDay: row[7],
+    rentalFee: row[8],
+    depositAmount: row[9],
+    paymentMethod: row[10],
+    depositStatus: row[11],
+    revenue: row[12],
+  }));
+}
+
+export function getRentalTransactionsByDateTimeRange(startDateTime: string, endDateTime: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM rental_transactions 
+     WHERE rental_time >= ? AND rental_time <= ?
+     ORDER BY rental_time DESC`,
+    [startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
