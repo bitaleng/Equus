@@ -1671,34 +1671,45 @@ export function createRentalTransaction(rental: {
 
 export function updateRentalTransaction(id: string, updates: {
   depositStatus?: 'received' | 'refunded' | 'forfeited';
+  returnTime?: Date;
+  paymentMethod?: 'card' | 'cash' | 'transfer';
+  businessDay?: string;
 }) {
   if (!db) throw new Error('Database not initialized');
   
-  if (updates.depositStatus) {
-    // Get current transaction to calculate new revenue
-    const result = db.exec('SELECT rental_fee, deposit_amount FROM rental_transactions WHERE id = ?', [id]);
-    
-    if (result.length === 0 || result[0].values.length === 0) return;
-    
-    const rentalFee = result[0].values[0][0] as number;
-    const depositAmount = result[0].values[0][1] as number;
-    
-    // Calculate revenue based on deposit status
-    let revenue = rentalFee; // Always include rental fee
-    if (updates.depositStatus === 'received' || updates.depositStatus === 'forfeited') {
-      revenue += depositAmount; // Add deposit amount if received or forfeited
-    }
-    // If refunded, only rental fee is counted (already in revenue variable)
-    
-    db.run(
-      `UPDATE rental_transactions 
-       SET deposit_status = ?, revenue = ?, updated_at = ?
-       WHERE id = ?`,
-      [updates.depositStatus, revenue, new Date().toISOString(), id]
-    );
-    
-    saveDatabase();
+  // Get current transaction to calculate new revenue and prepare updates
+  const result = db.exec('SELECT rental_fee, deposit_amount, deposit_status, return_time, payment_method, business_day FROM rental_transactions WHERE id = ?', [id]);
+  
+  if (result.length === 0 || result[0].values.length === 0) return;
+  
+  const rentalFee = result[0].values[0][0] as number;
+  const depositAmount = result[0].values[0][1] as number;
+  const currentDepositStatus = result[0].values[0][2] as string;
+  const currentReturnTime = result[0].values[0][3];
+  const currentPaymentMethod = result[0].values[0][4];
+  const currentBusinessDay = result[0].values[0][5];
+  
+  // Determine final values
+  const finalDepositStatus = updates.depositStatus || currentDepositStatus;
+  const finalReturnTime = updates.returnTime ? updates.returnTime.toISOString() : currentReturnTime;
+  const finalPaymentMethod = updates.paymentMethod || currentPaymentMethod;
+  const finalBusinessDay = updates.businessDay || currentBusinessDay;
+  
+  // Calculate revenue based on deposit status
+  let revenue = rentalFee; // Always include rental fee
+  if (finalDepositStatus === 'received' || finalDepositStatus === 'forfeited') {
+    revenue += depositAmount; // Add deposit amount if received or forfeited
   }
+  // If refunded, only rental fee is counted (already in revenue variable)
+  
+  db.run(
+    `UPDATE rental_transactions 
+     SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, updated_at = ?
+     WHERE id = ?`,
+    [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, new Date().toISOString(), id]
+  );
+  
+  saveDatabase();
 }
 
 export function getRentalTransactionsByLockerLog(lockerLogId: string) {

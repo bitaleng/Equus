@@ -392,30 +392,43 @@ export default function Home() {
       });
     }
     
-    // Create rental transaction records for each rented item
+    // Update rental transaction records for each rented item
     if (rentalItems && rentalItems.length > 0) {
       rentalItems.forEach(item => {
-        // Calculate revenue based on deposit status
-        let revenue = item.rentalFee; // Always include rental fee
-        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-          revenue += item.depositAmount; // Add deposit amount if received or forfeited
-        }
-        // If refunded, only rental fee is counted (already in revenue variable)
+        // Find existing rental transaction for this item
+        const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
+        const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        localDb.createRentalTransaction({
-          lockerLogId: selectedEntry.id,
-          lockerNumber: selectedEntry.lockerNumber,
-          itemId: item.itemId,
-          itemName: item.itemName,
-          rentalFee: item.rentalFee,
-          depositAmount: item.depositAmount,
-          depositStatus: item.depositStatus,
-          rentalTime: selectedEntry.entryTime,
-          returnTime: now,
-          businessDay: checkoutBusinessDay,
-          paymentMethod: paymentMethod,
-          revenue: revenue,
-        });
+        if (existingItem) {
+          // Update existing rental transaction with all checkout details
+          localDb.updateRentalTransaction(existingItem.id, {
+            depositStatus: item.depositStatus,
+            returnTime: now,
+            paymentMethod: paymentMethod,
+            businessDay: checkoutBusinessDay,
+          });
+        } else {
+          // Fallback: Create new rental transaction if not found (defensive coding)
+          let revenue = item.rentalFee;
+          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+            revenue += item.depositAmount;
+          }
+          
+          localDb.createRentalTransaction({
+            lockerLogId: selectedEntry.id,
+            lockerNumber: selectedEntry.lockerNumber,
+            itemId: item.itemId,
+            itemName: item.itemName,
+            rentalFee: item.rentalFee,
+            depositAmount: item.depositAmount,
+            depositStatus: item.depositStatus,
+            rentalTime: selectedEntry.entryTime,
+            returnTime: now,
+            businessDay: checkoutBusinessDay,
+            paymentMethod: paymentMethod,
+            revenue: revenue,
+          });
+        }
       });
     }
     
