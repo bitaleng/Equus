@@ -451,6 +451,7 @@ export function getDailySummary(businessDay: string) {
 function updateDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
+  // Get locker logs summary
   const result = db.exec(
     `SELECT 
       COUNT(*) as total_visitors,
@@ -468,7 +469,22 @@ function updateDailySummary(businessDay: string) {
 
   if (result.length === 0 || result[0].values.length === 0) return;
 
-  const [totalVisitors, totalSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
+  const [totalVisitors, baseSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
+
+  // Get additional fee events for this business day (fees recorded at checkout time)
+  const additionalFeeResult = db.exec(
+    `SELECT COALESCE(SUM(fee_amount), 0) as additional_fee_total
+     FROM additional_fee_events
+     WHERE business_day = ?`,
+    [businessDay]
+  );
+  
+  const additionalFeeTotal = additionalFeeResult.length > 0 && additionalFeeResult[0].values.length > 0 
+    ? additionalFeeResult[0].values[0][0] 
+    : 0;
+
+  // Total sales = base sales from locker_logs + additional fees from checkout time
+  const totalSales = (baseSales as number) + (additionalFeeTotal as number);
 
   // Insert or update
   db.run(
