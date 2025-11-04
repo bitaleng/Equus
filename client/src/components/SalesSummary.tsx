@@ -23,6 +23,9 @@ export default function SalesSummary({
   additionalFeeSales,
   rentalRevenue,
 }: SalesSummaryProps) {
+  const entrySales = totalSales + additionalFeeSales;
+  const grandTotal = entrySales + rentalRevenue;
+  
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold">매출 집계</h2>
@@ -41,19 +44,19 @@ export default function SalesSummary({
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">총 매출</p>
-              <p className="text-2xl font-semibold text-primary" data-testid="text-total-sales">
-                {totalSales.toLocaleString()}원
+              <p className="text-2xl font-semibold text-primary" data-testid="text-grand-total">
+                {grandTotal.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">추가요금 매출</p>
-              <p className="text-xl font-medium text-destructive" data-testid="text-additional-fee-sales">
-                {additionalFeeSales.toLocaleString()}원
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">입실매출 (추가요금 포함)</p>
+              <p className="text-xl font-medium text-blue-600 dark:text-blue-400" data-testid="text-entry-sales">
+                {entrySales.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 매출</p>
-              <p className="text-xl font-medium text-primary" data-testid="text-rental-revenue">
+              <p className="text-xl font-medium text-green-600 dark:text-green-400" data-testid="text-rental-revenue">
                 {rentalRevenue.toLocaleString()}원
               </p>
             </div>
