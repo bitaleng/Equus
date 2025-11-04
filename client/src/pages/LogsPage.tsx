@@ -41,11 +41,23 @@ interface LogEntry {
   additionalFees?: number; // Total additional fees from checkout
 }
 
+interface AdditionalFeeEvent {
+  id: string;
+  lockerLogId: string;
+  lockerNumber: number;
+  checkoutTime: string;
+  feeAmount: number;
+  businessDay: string;
+  paymentMethod: 'card' | 'cash' | 'transfer';
+  createdAt: string;
+}
+
 export default function LogsPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [additionalFeeEvents, setAdditionalFeeEvents] = useState<AdditionalFeeEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
@@ -60,16 +72,20 @@ export default function LogsPage() {
     setIsLoading(true);
     try {
       let result: LogEntry[];
+      let feeEvents: AdditionalFeeEvent[];
       
       if (startDate && endDate) {
         result = localDb.getEntriesByDateRange(startDate, endDate);
+        feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, endDate);
       } else if (startDate) {
         result = localDb.getEntriesByDateRange(startDate, startDate);
+        feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, startDate);
       } else {
         // Get all entries by using a wide date range
         const today = new Date().toISOString().split('T')[0];
         const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         result = localDb.getEntriesByDateRange(oneYearAgo, today);
+        feeEvents = localDb.getAdditionalFeeEventsByDateRange(oneYearAgo, today);
       }
       
       // Attach additional fees for each log entry
@@ -83,9 +99,11 @@ export default function LogsPage() {
       });
       
       setLogs(logsWithFees);
+      setAdditionalFeeEvents(feeEvents);
     } catch (error) {
       console.error('Error loading logs:', error);
       setLogs([]);
+      setAdditionalFeeEvents([]);
     } finally {
       setIsLoading(false);
     }
@@ -504,6 +522,59 @@ export default function LogsPage() {
           </Table>
         </ScrollArea>
       </div>
+
+      {/* Additional Fee Events Section - 추가매출 */}
+      {additionalFeeEvents.length > 0 && (
+        <div className="border rounded-lg p-6 bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">추가매출 (초과시간 퇴실)</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                정산시간 이후 퇴실한 추가요금 - {additionalFeeEvents.length}건
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">총 추가매출</p>
+              <p className="text-2xl font-bold text-destructive">
+                {additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0).toLocaleString()}원
+              </p>
+            </div>
+          </div>
+
+          <ScrollArea className="h-[300px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">날짜</TableHead>
+                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">퇴실시간</TableHead>
+                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
+                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {additionalFeeEvents.map((event) => (
+                  <TableRow key={event.id} data-testid={`row-additional-fee-${event.id}`}>
+                    <TableCell className="text-sm">
+                      {new Date(event.checkoutTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                    </TableCell>
+                    <TableCell className="font-semibold text-base">{event.lockerNumber}</TableCell>
+                    <TableCell className="text-sm">
+                      {new Date(event.checkoutTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </TableCell>
+                    <TableCell className="font-semibold text-base text-destructive">
+                      {event.feeAmount.toLocaleString()}원
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {event.paymentMethod === 'card' ? '카드' : event.paymentMethod === 'cash' ? '현금' : event.paymentMethod === 'transfer' ? '이체' : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </div>
+      )}
     </div>
   );
 }
