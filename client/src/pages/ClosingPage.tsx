@@ -141,9 +141,13 @@ export default function ClosingPage() {
     setRentalBreakdown(rentalData);
     
     // Calculate total sales for backward compatibility
-    const totalCashSales = detailedSales.totalEntrySales.cash + rentalData.totals.grandTotal.cash;
-    const totalCardSales = detailedSales.totalEntrySales.card + rentalData.totals.grandTotal.card;
-    const totalTransferSales = detailedSales.totalEntrySales.transfer + rentalData.totals.grandTotal.transfer;
+    const rentalCash = rentalData?.totals?.grandTotal?.cash || 0;
+    const rentalCard = rentalData?.totals?.grandTotal?.card || 0;
+    const rentalTransfer = rentalData?.totals?.grandTotal?.transfer || 0;
+    
+    const totalCashSales = detailedSales.totalEntrySales.cash + rentalCash;
+    const totalCardSales = detailedSales.totalEntrySales.card + rentalCard;
+    const totalTransferSales = detailedSales.totalEntrySales.transfer + rentalTransfer;
     const grandTotalSales = totalCashSales + totalCardSales + totalTransferSales;
     
     setSalesSummary({
