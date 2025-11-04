@@ -80,6 +80,12 @@ export default function LogsPage() {
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  
+  // Rental transaction filters
+  const [showRentalFilters, setShowRentalFilters] = useState(false);
+  const [rentalItemFilter, setRentalItemFilter] = useState<string>("all");
+  const [rentalPaymentFilter, setRentalPaymentFilter] = useState<string>("all");
+  const [rentalDepositFilter, setRentalDepositFilter] = useState<string>("all");
 
   useEffect(() => {
     loadLogs();
@@ -599,78 +605,191 @@ export default function LogsPage() {
         </div>
       )}
 
-      {/* Rental Transactions Section - 대여 거래 */}
-      {rentalTransactions.length > 0 && (
-        <div className="border rounded-lg p-6 bg-card">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">대여 거래 (담요/롱타올 등)</h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                대여 물품 거래 내역 - {rentalTransactions.length}건
-              </p>
+      {/* Rental Transactions Section - 추가매출 */}
+      {rentalTransactions.length > 0 && (() => {
+        // Apply rental filters
+        let filteredRentals = [...rentalTransactions];
+        
+        if (rentalItemFilter !== "all") {
+          filteredRentals = filteredRentals.filter(txn => txn.itemName === rentalItemFilter);
+        }
+        
+        if (rentalPaymentFilter !== "all") {
+          filteredRentals = filteredRentals.filter(txn => txn.paymentMethod === rentalPaymentFilter);
+        }
+        
+        if (rentalDepositFilter === "received") {
+          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'received');
+        } else if (rentalDepositFilter === "refunded") {
+          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'refunded');
+        } else if (rentalDepositFilter === "forfeited") {
+          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'forfeited');
+        }
+        
+        // Calculate cash totals
+        const cashRentals = filteredRentals.filter(txn => txn.paymentMethod === 'cash');
+        const cashRentalFeeTotal = cashRentals.reduce((sum, txn) => sum + txn.rentalFee, 0);
+        const cashDepositTotal = cashRentals.reduce((sum, txn) => {
+          // Only count deposit as revenue if status is 'received' or 'forfeited'
+          if (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') {
+            return sum + txn.depositAmount;
+          }
+          return sum;
+        }, 0);
+        
+        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all";
+        
+        return (
+          <div className="border rounded-lg p-6 bg-card mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold">추가매출 (대여 물품)</h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  담요/롱타올 대여 거래 - {filteredRentals.length}건
+                </p>
+              </div>
+              <div className="text-right space-y-1">
+                <div>
+                  <p className="text-xs text-muted-foreground">현금 대여금 합계</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                    {cashRentalFeeTotal.toLocaleString()}원
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">현금 보증금 매출</p>
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {cashDepositTotal.toLocaleString()}원
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">총 대여 매출</p>
-              <p className="text-2xl font-bold text-primary">
-                {rentalTransactions.reduce((sum, txn) => sum + txn.revenue, 0).toLocaleString()}원
-              </p>
-            </div>
-          </div>
 
-          <ScrollArea className="h-[300px]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">날짜</TableHead>
-                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
-                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">항목</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여비</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금</TableHead>
-                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">보증금 상태</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">매출</TableHead>
-                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rentalTransactions.map((txn) => (
-                  <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
-                    <TableCell className="text-sm">
-                      {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                    </TableCell>
-                    <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">
-                      {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {new Date(txn.returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
-                    <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
-                    <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
-                    <TableCell className="text-sm">
-                      <span className={`px-2 py-1 rounded text-xs ${
-                        txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
-                        txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
-                        'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
-                      }`}>
-                        {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환불' : '미반환'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="font-semibold text-base text-primary">
-                      {txn.revenue.toLocaleString()}원
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : txn.paymentMethod === 'transfer' ? '이체' : '-'}
-                    </TableCell>
+            {/* Rental Filters */}
+            <div className="mb-4 flex items-center gap-3">
+              <Button 
+                variant={showRentalFilters ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowRentalFilters(!showRentalFilters)}
+                data-testid="button-toggle-rental-filters"
+              >
+                <Filter className="h-3 w-3 mr-2" />
+                필터
+              </Button>
+              
+              {showRentalFilters && (
+                <>
+                  <Select value={rentalItemFilter} onValueChange={setRentalItemFilter}>
+                    <SelectTrigger className="w-36 h-8" data-testid="select-rental-item-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체 항목</SelectItem>
+                      <SelectItem value="담요대여">담요대여</SelectItem>
+                      <SelectItem value="롱타올대여">롱타올대여</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <Select value={rentalPaymentFilter} onValueChange={setRentalPaymentFilter}>
+                    <SelectTrigger className="w-28 h-8" data-testid="select-rental-payment-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="cash">현금</SelectItem>
+                      <SelectItem value="card">카드</SelectItem>
+                      <SelectItem value="transfer">이체</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  <Select value={rentalDepositFilter} onValueChange={setRentalDepositFilter}>
+                    <SelectTrigger className="w-36 h-8" data-testid="select-rental-deposit-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">전체</SelectItem>
+                      <SelectItem value="received">보증금 받음</SelectItem>
+                      <SelectItem value="refunded">보증금 환급</SelectItem>
+                      <SelectItem value="forfeited">보증금 몰수</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
+                  {hasRentalFilters && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        setRentalItemFilter("all");
+                        setRentalPaymentFilter("all");
+                        setRentalDepositFilter("all");
+                      }}
+                      data-testid="button-clear-rental-filters"
+                    >
+                      필터 초기화
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
+
+            <ScrollArea className="h-[400px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
+                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여날짜</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
+                    <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여금액</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금액</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
+                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금처리</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금매출</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </div>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {filteredRentals.map((txn) => {
+                    // Calculate deposit revenue: only if 'received' or 'forfeited'
+                    const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
+                      ? txn.depositAmount 
+                      : 0;
+                    
+                    return (
+                      <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
+                        <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </TableCell>
+                        <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
+                        <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
+                        <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
+                        <TableCell className="text-sm">
+                          {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : '이체'}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <span className={`px-2 py-1 rounded text-xs ${
+                            txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
+                            txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
+                            'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
+                          }`}>
+                            {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환급' : '몰수'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-semibold text-base text-primary">
+                          {depositRevenue.toLocaleString()}원
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </ScrollArea>
+          </div>
+        );
+      })()}
+
     </div>
   );
 }
