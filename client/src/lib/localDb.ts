@@ -177,6 +177,65 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 6: Create additional_revenue_items table (rental items)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS additional_revenue_items (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        rental_fee INTEGER NOT NULL DEFAULT 0,
+        deposit_amount INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    
+    // Step 7: Create rental_transactions table (rental records)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS rental_transactions (
+        id TEXT PRIMARY KEY,
+        locker_log_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        locker_number INTEGER NOT NULL,
+        rental_date TEXT NOT NULL,
+        rental_time TEXT NOT NULL,
+        rental_fee INTEGER NOT NULL,
+        deposit_amount INTEGER NOT NULL,
+        payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+        deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+        deposit_revenue INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    
+    // Step 8: Initialize default rental items if not exist
+    const countResult = db.exec(`SELECT COUNT(*) FROM additional_revenue_items`);
+    const count = countResult.length > 0 && countResult[0].values.length > 0 ? countResult[0].values[0][0] : 0;
+    
+    if (count === 0) {
+      console.log('Initializing default rental items...');
+      const now = new Date().toISOString();
+      const id1 = crypto.randomUUID();
+      const id2 = crypto.randomUUID();
+      
+      // 롱타올
+      db.run(`
+        INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+        VALUES (?, '롱타올', 1000, 5000, 0, 1, ?, ?)
+      `, [id1, now, now]);
+      
+      // 담요
+      db.run(`
+        INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+        VALUES (?, '담요', 1000, 5000, 1, 1, ?, ?)
+      `, [id2, now, now]);
+      
+      console.log('Default rental items created');
+      saveDatabase();
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -253,6 +312,39 @@ function createTables() {
       business_day TEXT NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
       created_at TEXT NOT NULL
+    )
+  `);
+
+  // Additional revenue items table (rental items: 롱타올, 담요 등)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS additional_revenue_items (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      rental_fee INTEGER NOT NULL DEFAULT 0,
+      deposit_amount INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  // Rental transactions table (대여 거래 기록)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rental_transactions (
+      id TEXT PRIMARY KEY,
+      locker_log_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      locker_number INTEGER NOT NULL,
+      rental_date TEXT NOT NULL,
+      rental_time TEXT NOT NULL,
+      rental_fee INTEGER NOT NULL,
+      deposit_amount INTEGER NOT NULL,
+      payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+      deposit_revenue INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     )
   `);
 
@@ -1217,4 +1309,191 @@ export function getAdditionalFeeEventsByDateRange(startDate: string, endDate: st
     paymentMethod: row[6],
     createdAt: row[7],
   }));
+}
+
+// Additional Revenue Items (rental items: 롱타올, 담요 등) operations
+export function getAdditionalRevenueItems() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT * FROM additional_revenue_items ORDER BY sort_order ASC');
+  
+  if (result.length === 0) return [];
+  
+  return rowsToObjects(result[0]);
+}
+
+export function createAdditionalRevenueItem(item: {
+  name: string;
+  rentalFee: number;
+  depositAmount: number;
+  sortOrder?: number;
+}): string {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = generateId();
+  const now = new Date().toISOString();
+  const sortOrder = item.sortOrder ?? 999;
+  
+  db.run(
+    `INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, item.name, item.rentalFee, item.depositAmount, sortOrder, now, now]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function updateAdditionalRevenueItem(id: string, updates: {
+  name?: string;
+  rentalFee?: number;
+  depositAmount?: number;
+  sortOrder?: number;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const sets: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.name !== undefined) {
+    sets.push('name = ?');
+    values.push(updates.name);
+  }
+  if (updates.rentalFee !== undefined) {
+    sets.push('rental_fee = ?');
+    values.push(updates.rentalFee);
+  }
+  if (updates.depositAmount !== undefined) {
+    sets.push('deposit_amount = ?');
+    values.push(updates.depositAmount);
+  }
+  if (updates.sortOrder !== undefined) {
+    sets.push('sort_order = ?');
+    values.push(updates.sortOrder);
+  }
+  
+  if (sets.length === 0) return;
+  
+  sets.push('updated_at = ?');
+  values.push(new Date().toISOString());
+  values.push(id);
+  
+  db.run(
+    `UPDATE additional_revenue_items SET ${sets.join(', ')} WHERE id = ?`,
+    values
+  );
+  
+  saveDatabase();
+}
+
+export function deleteAdditionalRevenueItem(id: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  db.run('DELETE FROM additional_revenue_items WHERE id = ? AND is_default = 0', [id]);
+  saveDatabase();
+}
+
+// Rental Transactions operations
+export function createRentalTransaction(rental: {
+  lockerLogId: string;
+  itemId: string;
+  lockerNumber: number;
+  rentalDate: string;
+  rentalFee: number;
+  depositAmount: number;
+  paymentMethod: 'card' | 'cash' | 'transfer';
+  depositStatus: 'received' | 'refunded' | 'forfeited';
+}): string {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = generateId();
+  const now = new Date().toISOString();
+  
+  // Calculate deposit revenue based on status
+  let depositRevenue = 0;
+  if (rental.depositStatus === 'received' || rental.depositStatus === 'forfeited') {
+    depositRevenue = rental.depositAmount;
+  }
+  
+  db.run(
+    `INSERT INTO rental_transactions 
+     (id, locker_log_id, item_id, locker_number, rental_date, rental_time, 
+      rental_fee, deposit_amount, payment_method, deposit_status, deposit_revenue, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      rental.lockerLogId,
+      rental.itemId,
+      rental.lockerNumber,
+      rental.rentalDate,
+      now,
+      rental.rentalFee,
+      rental.depositAmount,
+      rental.paymentMethod,
+      rental.depositStatus,
+      depositRevenue,
+      now,
+      now
+    ]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function updateRentalTransaction(id: string, updates: {
+  depositStatus?: 'received' | 'refunded' | 'forfeited';
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  if (updates.depositStatus) {
+    // Get current transaction to calculate new deposit revenue
+    const result = db.exec('SELECT deposit_amount FROM rental_transactions WHERE id = ?', [id]);
+    
+    if (result.length === 0 || result[0].values.length === 0) return;
+    
+    const depositAmount = result[0].values[0][0] as number;
+    let depositRevenue = 0;
+    
+    if (updates.depositStatus === 'received' || updates.depositStatus === 'forfeited') {
+      depositRevenue = depositAmount;
+    }
+    
+    db.run(
+      `UPDATE rental_transactions 
+       SET deposit_status = ?, deposit_revenue = ?, updated_at = ?
+       WHERE id = ?`,
+      [updates.depositStatus, depositRevenue, new Date().toISOString(), id]
+    );
+    
+    saveDatabase();
+  }
+}
+
+export function getRentalTransactionsByLockerLog(lockerLogId: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM rental_transactions WHERE locker_log_id = ? ORDER BY created_at DESC`,
+    [lockerLogId]
+  );
+  
+  if (result.length === 0) return [];
+  
+  return rowsToObjects(result[0]);
+}
+
+export function getRentalTransactionsByDateRange(startDate: string, endDate: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM rental_transactions 
+     WHERE rental_date >= ? AND rental_date <= ?
+     ORDER BY rental_time DESC`,
+    [startDate, endDate]
+  );
+  
+  if (result.length === 0) return [];
+  
+  return rowsToObjects(result[0]);
 }
