@@ -8,6 +8,7 @@ interface SalesSummaryProps {
   foreignerCount: number;
   dayVisitors: number;
   nightVisitors: number;
+  additionalFeeSales: number;
 }
 
 export default function SalesSummary({
@@ -18,6 +19,7 @@ export default function SalesSummary({
   foreignerCount,
   dayVisitors,
   nightVisitors,
+  additionalFeeSales,
 }: SalesSummaryProps) {
   return (
     <div className="space-y-4">
@@ -39,6 +41,12 @@ export default function SalesSummary({
               <p className="text-xs text-muted-foreground uppercase tracking-wide">총 매출</p>
               <p className="text-2xl font-semibold text-primary" data-testid="text-total-sales">
                 {totalSales.toLocaleString()}원
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">추가요금 매출</p>
+              <p className="text-xl font-medium text-destructive" data-testid="text-additional-fee-sales">
+                {additionalFeeSales.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
