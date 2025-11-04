@@ -1192,3 +1192,29 @@ export function getTotalAdditionalFeesByBusinessDay(businessDay: string): number
   
   return result[0].values[0][0] as number;
 }
+
+export function getAdditionalFeeEventsByDateRange(startDate: string, endDate: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events 
+     WHERE business_day >= ? AND business_day <= ?
+     ORDER BY checkout_time DESC`,
+    [startDate, endDate]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
+}

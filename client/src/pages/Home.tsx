@@ -266,7 +266,7 @@ export default function Home() {
     if (!selectedEntry) return;
 
     const now = new Date();
-    const entryBusinessDay = selectedEntry.businessDay;
+    const entryBusinessDay = (selectedEntry as any).businessDay;
     const checkoutBusinessDay = getBusinessDay(now, businessDayStartHour);
     
     // Calculate additional fee if any
