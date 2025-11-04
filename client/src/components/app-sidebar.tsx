@@ -1,4 +1,4 @@
-import { Home, FileText, Settings } from "lucide-react";
+import { Home, FileText, Settings, Receipt, Calculator } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -25,6 +25,16 @@ const items = [
     title: "시스템 설정",
     url: "/settings",
     icon: Settings,
+  },
+  {
+    title: "정산하기",
+    url: "/closing",
+    icon: Calculator,
+  },
+  {
+    title: "지출관리",
+    url: "/expenses",
+    icon: Receipt,
   },
 ];
 

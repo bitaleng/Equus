@@ -404,22 +404,6 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-1">
           매출집계 시간과 요금을 설정할 수 있습니다
         </p>
-        
-        {/* Quick Navigation */}
-        <div className="flex gap-3 mt-4">
-          <Link href="/expenses">
-            <Button variant="outline" data-testid="button-goto-expenses">
-              <Receipt className="h-4 w-4 mr-2" />
-              지출관리
-            </Button>
-          </Link>
-          <Link href="/closing">
-            <Button variant="outline" data-testid="button-goto-closing">
-              <Calculator className="h-4 w-4 mr-2" />
-              정산하기
-            </Button>
-          </Link>
-        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6">
@@ -610,6 +594,139 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* 추가매출 항목 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="h-5 w-5" />
+                    추가매출 항목 관리
+                  </CardTitle>
+                  <CardDescription>
+                    대여 상품(롱타올, 담요 등)을 추가하거나 수정할 수 있습니다
+                  </CardDescription>
+                </div>
+                <Button onClick={handleAddRevenueItem} size="sm" data-testid="button-add-revenue-item">
+                  <Plus className="h-4 w-4 mr-2" />
+                  항목 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {revenueItems.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  등록된 대여 항목이 없습니다
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {revenueItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`revenue-item-${item.id}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{item.name}</h4>
+                          {item.is_default === 1 && (
+                            <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                              기본
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          대여비: ₩{item.rental_fee?.toLocaleString() ?? '0'} | 
+                          보증금: ₩{item.deposit_amount?.toLocaleString() ?? '0'}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditRevenueItem(item)}
+                          data-testid={`button-edit-revenue-${item.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {item.is_default === 0 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteRevenueItem(item.id)}
+                            data-testid={`button-delete-revenue-${item.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 락커 그룹 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>락커 그룹 관리</CardTitle>
+                  <CardDescription>
+                    락커 번호 그룹을 추가하거나 수정할 수 있습니다
+                  </CardDescription>
+                </div>
+                <Button onClick={handleAddGroup} size="sm" data-testid="button-add-group">
+                  <Plus className="h-4 w-4 mr-2" />
+                  그룹 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {lockerGroups.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  등록된 락커 그룹이 없습니다
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {lockerGroups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`group-${group.id}`}
+                    >
+                      <div>
+                        <h4 className="font-medium">{group.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {group.startNumber}번 ~ {group.endNumber}번 ({group.endNumber - group.startNumber + 1}개)
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditGroup(group)}
+                          data-testid={`button-edit-${group.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteGroup(group.id)}
+                          data-testid={`button-delete-${group.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* 비밀번호 변경 */}
           <Card>
             <CardHeader>
@@ -754,139 +871,6 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 💡 참고: 1년 이상 된 데이터는 자동으로 삭제됩니다.
               </p>
-            </CardContent>
-          </Card>
-
-          {/* 추가매출 항목 관리 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5" />
-                    추가매출 항목 관리
-                  </CardTitle>
-                  <CardDescription>
-                    대여 상품(롱타올, 담요 등)을 추가하거나 수정할 수 있습니다
-                  </CardDescription>
-                </div>
-                <Button onClick={handleAddRevenueItem} size="sm" data-testid="button-add-revenue-item">
-                  <Plus className="h-4 w-4 mr-2" />
-                  항목 추가
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {revenueItems.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  등록된 대여 항목이 없습니다
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {revenueItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                      data-testid={`revenue-item-${item.id}`}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{item.name}</h4>
-                          {item.is_default === 1 && (
-                            <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
-                              기본
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          대여비: ₩{item.rental_fee?.toLocaleString() ?? '0'} | 
-                          보증금: ₩{item.deposit_amount?.toLocaleString() ?? '0'}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditRevenueItem(item)}
-                          data-testid={`button-edit-revenue-${item.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        {item.is_default === 0 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteRevenueItem(item.id)}
-                            data-testid={`button-delete-revenue-${item.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 락커 그룹 관리 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>락커 그룹 관리</CardTitle>
-                  <CardDescription>
-                    락커 번호 그룹을 추가하거나 수정할 수 있습니다
-                  </CardDescription>
-                </div>
-                <Button onClick={handleAddGroup} size="sm" data-testid="button-add-group">
-                  <Plus className="h-4 w-4 mr-2" />
-                  그룹 추가
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {lockerGroups.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">
-                  등록된 락커 그룹이 없습니다
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {lockerGroups.map((group) => (
-                    <div
-                      key={group.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                      data-testid={`group-${group.id}`}
-                    >
-                      <div>
-                        <h4 className="font-medium">{group.name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {group.startNumber}번 ~ {group.endNumber}번 ({group.endNumber - group.startNumber + 1}개)
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditGroup(group)}
-                          data-testid={`button-edit-${group.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteGroup(group.id)}
-                          data-testid={`button-delete-${group.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
             </CardContent>
           </Card>
 
