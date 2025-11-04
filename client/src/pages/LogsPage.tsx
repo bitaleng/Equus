@@ -784,12 +784,13 @@ export default function LogsPage() {
                     <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
                     <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금처리</TableHead>
                     <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금매출</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredRentals.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
                         대여 거래가 없습니다
                       </TableCell>
                     </TableRow>
@@ -799,6 +800,9 @@ export default function LogsPage() {
                       const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
                         ? txn.depositAmount 
                         : 0;
+                      
+                      // Calculate total: rental fee + deposit revenue
+                      const total = txn.rentalFee + depositRevenue;
                       
                       return (
                         <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
@@ -826,6 +830,9 @@ export default function LogsPage() {
                           </TableCell>
                           <TableCell className="font-semibold text-base text-primary">
                             {depositRevenue.toLocaleString()}원
+                          </TableCell>
+                          <TableCell className="font-bold text-base text-green-600 dark:text-green-400">
+                            {total.toLocaleString()}원
                           </TableCell>
                         </TableRow>
                       );
