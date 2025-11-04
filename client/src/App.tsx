@@ -80,7 +80,7 @@ function MainLayout() {
               <Menu className="h-4 w-4" />
             </Button>
           </header>
-          <main className="flex-1 overflow-hidden">
+          <main className="flex-1 overflow-auto">
             <Router />
           </main>
         </div>
