@@ -10,6 +10,8 @@ import { PasswordAuth } from "@/components/PasswordAuth";
 import Home from "@/pages/Home";
 import LogsPage from "@/pages/LogsPage";
 import Settings from "@/pages/Settings";
+import ExpensesPage from "@/pages/ExpensesPage";
+import ClosingPage from "@/pages/ClosingPage";
 import NotFound from "@/pages/not-found";
 import { initDatabase, deleteOldData, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
@@ -30,6 +32,8 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/logs" component={LogsPage} />
       <Route path="/settings" component={Settings} />
+      <Route path="/expenses" component={ExpensesPage} />
+      <Route path="/closing" component={ClosingPage} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -167,3 +167,10 @@ export function calculateAdditionalFee(
     additionalFeeCount
   };
 }
+
+/**
+ * 금액을 한국 원화 형식으로 포맷
+ */
+export function formatKoreanCurrency(amount: number): string {
+  return `₩${amount.toLocaleString()}`;
+}
