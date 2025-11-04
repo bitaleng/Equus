@@ -337,8 +337,12 @@ export default function LockerOptionsDialog({
   // Generate notes from rental items
   const generateNotes = () => {
     const items: string[] = [];
-    if (hasBlanket) items.push('담요');
-    if (hasLongTowel) items.push('롱타올');
+    selectedRentalItems.forEach(itemId => {
+      const item = availableRentalItems.find(i => i.id === itemId);
+      if (item) {
+        items.push(item.name);
+      }
+    });
     return items.length > 0 ? items.join(', ') : '';
   };
 

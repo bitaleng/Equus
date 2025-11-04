@@ -352,6 +352,43 @@ function migrateDatabase() {
       saveDatabase();
     }
     
+    // Step 9: Create expenses table if not exists
+    db.run(`
+      CREATE TABLE IF NOT EXISTS expenses (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        time TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+        business_day TEXT NOT NULL,
+        notes TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    
+    // Step 10: Create closing_days table if not exists
+    db.run(`
+      CREATE TABLE IF NOT EXISTS closing_days (
+        id TEXT PRIMARY KEY,
+        business_day TEXT NOT NULL UNIQUE,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        opening_float INTEGER NOT NULL,
+        target_float INTEGER NOT NULL,
+        actual_cash INTEGER,
+        expected_cash INTEGER,
+        discrepancy INTEGER DEFAULT 0,
+        bank_deposit INTEGER,
+        notes TEXT,
+        is_confirmed INTEGER NOT NULL DEFAULT 0,
+        confirmed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -466,6 +503,43 @@ function createTables() {
     )
   `);
 
+  // Expenses table (지출 기록)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS expenses (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      category TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      business_day TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Closing days table (정산 기록)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS closing_days (
+      id TEXT PRIMARY KEY,
+      business_day TEXT NOT NULL UNIQUE,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      opening_float INTEGER NOT NULL,
+      target_float INTEGER NOT NULL,
+      actual_cash INTEGER,
+      expected_cash INTEGER,
+      discrepancy INTEGER DEFAULT 0,
+      bank_deposit INTEGER,
+      notes TEXT,
+      is_confirmed INTEGER NOT NULL DEFAULT 0,
+      confirmed_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   saveDatabase();
 }
 
@@ -482,7 +556,7 @@ export function forceRegenerateDatabase() {
     // Drop all existing tables
     const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
                    'system_metadata', 'additional_fee_events', 'additional_revenue_items', 
-                   'rental_transactions'];
+                   'rental_transactions', 'expenses', 'closing_days'];
     
     tables.forEach(table => {
       try {
@@ -1781,4 +1855,414 @@ export function getRentalTransactionsByDateTimeRange(startDateTime: string, endD
     depositStatus: row[11],
     revenue: row[12],
   }));
+}
+
+// ============================================
+// Expenses (지출) Functions
+// ============================================
+
+export function createExpense(data: {
+  date: string;
+  time: string;
+  category: string;
+  amount: number;
+  quantity?: number;
+  paymentMethod: 'card' | 'cash' | 'transfer';
+  businessDay: string;
+  notes?: string;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  
+  db.run(
+    `INSERT INTO expenses (id, date, time, category, amount, quantity, payment_method, business_day, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.date,
+      data.time,
+      data.category,
+      data.amount,
+      data.quantity || 1,
+      data.paymentMethod,
+      data.businessDay,
+      data.notes || null,
+      now
+    ]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function getExpenses() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(`SELECT * FROM expenses ORDER BY date DESC, time DESC`);
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    date: row[1],
+    time: row[2],
+    category: row[3],
+    amount: row[4],
+    quantity: row[5],
+    paymentMethod: row[6],
+    businessDay: row[7],
+    notes: row[8],
+    createdAt: row[9],
+  }));
+}
+
+export function getExpensesByDateRange(startDate: string, endDate: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM expenses 
+     WHERE date >= ? AND date <= ?
+     ORDER BY date DESC, time DESC`,
+    [startDate, endDate]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    date: row[1],
+    time: row[2],
+    category: row[3],
+    amount: row[4],
+    quantity: row[5],
+    paymentMethod: row[6],
+    businessDay: row[7],
+    notes: row[8],
+    createdAt: row[9],
+  }));
+}
+
+export function getExpensesByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM expenses WHERE business_day = ? ORDER BY date DESC, time DESC`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    date: row[1],
+    time: row[2],
+    category: row[3],
+    amount: row[4],
+    quantity: row[5],
+    paymentMethod: row[6],
+    businessDay: row[7],
+    notes: row[8],
+    createdAt: row[9],
+  }));
+}
+
+export function getExpenseSummaryByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT 
+       SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) as cash_total,
+       SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END) as card_total,
+       SUM(CASE WHEN payment_method = 'transfer' THEN amount ELSE 0 END) as transfer_total,
+       SUM(amount) as total
+     FROM expenses 
+     WHERE business_day = ?`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return { cashTotal: 0, cardTotal: 0, transferTotal: 0, total: 0 };
+  }
+  
+  const row = result[0].values[0];
+  return {
+    cashTotal: row[0] || 0,
+    cardTotal: row[1] || 0,
+    transferTotal: row[2] || 0,
+    total: row[3] || 0,
+  };
+}
+
+export function updateExpense(id: string, updates: {
+  date?: string;
+  time?: string;
+  category?: string;
+  amount?: number;
+  quantity?: number;
+  paymentMethod?: 'card' | 'cash' | 'transfer';
+  businessDay?: string;
+  notes?: string;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const fields: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.date !== undefined) {
+    fields.push('date = ?');
+    values.push(updates.date);
+  }
+  if (updates.time !== undefined) {
+    fields.push('time = ?');
+    values.push(updates.time);
+  }
+  if (updates.category !== undefined) {
+    fields.push('category = ?');
+    values.push(updates.category);
+  }
+  if (updates.amount !== undefined) {
+    fields.push('amount = ?');
+    values.push(updates.amount);
+  }
+  if (updates.quantity !== undefined) {
+    fields.push('quantity = ?');
+    values.push(updates.quantity);
+  }
+  if (updates.paymentMethod !== undefined) {
+    fields.push('payment_method = ?');
+    values.push(updates.paymentMethod);
+  }
+  if (updates.businessDay !== undefined) {
+    fields.push('business_day = ?');
+    values.push(updates.businessDay);
+  }
+  if (updates.notes !== undefined) {
+    fields.push('notes = ?');
+    values.push(updates.notes);
+  }
+  
+  if (fields.length === 0) return;
+  
+  values.push(id);
+  
+  db.run(
+    `UPDATE expenses SET ${fields.join(', ')} WHERE id = ?`,
+    values
+  );
+  
+  saveDatabase();
+}
+
+export function deleteExpense(id: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  db.run('DELETE FROM expenses WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+// ============================================
+// Closing Days (정산) Functions
+// ============================================
+
+export function createClosingDay(data: {
+  businessDay: string;
+  startTime: string;
+  endTime: string;
+  openingFloat: number;
+  targetFloat: number;
+  actualCash?: number;
+  expectedCash?: number;
+  discrepancy?: number;
+  bankDeposit?: number;
+  notes?: string;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  
+  db.run(
+    `INSERT INTO closing_days 
+     (id, business_day, start_time, end_time, opening_float, target_float, 
+      actual_cash, expected_cash, discrepancy, bank_deposit, notes, is_confirmed, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [
+      id,
+      data.businessDay,
+      data.startTime,
+      data.endTime,
+      data.openingFloat,
+      data.targetFloat,
+      data.actualCash || null,
+      data.expectedCash || null,
+      data.discrepancy || 0,
+      data.bankDeposit || null,
+      data.notes || null,
+      now,
+      now
+    ]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function getClosingDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM closing_days WHERE business_day = ?`,
+    [businessDay]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  
+  const row = result[0].values[0];
+  return {
+    id: row[0],
+    businessDay: row[1],
+    startTime: row[2],
+    endTime: row[3],
+    openingFloat: row[4],
+    targetFloat: row[5],
+    actualCash: row[6],
+    expectedCash: row[7],
+    discrepancy: row[8],
+    bankDeposit: row[9],
+    notes: row[10],
+    isConfirmed: row[11] === 1,
+    confirmedAt: row[12],
+    createdAt: row[13],
+    updatedAt: row[14],
+  };
+}
+
+export function getClosingDays() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(`SELECT * FROM closing_days ORDER BY business_day DESC`);
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    businessDay: row[1],
+    startTime: row[2],
+    endTime: row[3],
+    openingFloat: row[4],
+    targetFloat: row[5],
+    actualCash: row[6],
+    expectedCash: row[7],
+    discrepancy: row[8],
+    bankDeposit: row[9],
+    notes: row[10],
+    isConfirmed: row[11] === 1,
+    confirmedAt: row[12],
+    createdAt: row[13],
+    updatedAt: row[14],
+  }));
+}
+
+export function getLatestClosingDay() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT * FROM closing_days ORDER BY business_day DESC LIMIT 1`
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  
+  const row = result[0].values[0];
+  return {
+    id: row[0],
+    businessDay: row[1],
+    startTime: row[2],
+    endTime: row[3],
+    openingFloat: row[4],
+    targetFloat: row[5],
+    actualCash: row[6],
+    expectedCash: row[7],
+    discrepancy: row[8],
+    bankDeposit: row[9],
+    notes: row[10],
+    isConfirmed: row[11] === 1,
+    confirmedAt: row[12],
+    createdAt: row[13],
+    updatedAt: row[14],
+  };
+}
+
+export function updateClosingDay(businessDay: string, updates: {
+  openingFloat?: number;
+  targetFloat?: number;
+  actualCash?: number;
+  expectedCash?: number;
+  discrepancy?: number;
+  bankDeposit?: number;
+  notes?: string;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const fields: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.openingFloat !== undefined) {
+    fields.push('opening_float = ?');
+    values.push(updates.openingFloat);
+  }
+  if (updates.targetFloat !== undefined) {
+    fields.push('target_float = ?');
+    values.push(updates.targetFloat);
+  }
+  if (updates.actualCash !== undefined) {
+    fields.push('actual_cash = ?');
+    values.push(updates.actualCash);
+  }
+  if (updates.expectedCash !== undefined) {
+    fields.push('expected_cash = ?');
+    values.push(updates.expectedCash);
+  }
+  if (updates.discrepancy !== undefined) {
+    fields.push('discrepancy = ?');
+    values.push(updates.discrepancy);
+  }
+  if (updates.bankDeposit !== undefined) {
+    fields.push('bank_deposit = ?');
+    values.push(updates.bankDeposit);
+  }
+  if (updates.notes !== undefined) {
+    fields.push('notes = ?');
+    values.push(updates.notes);
+  }
+  
+  if (fields.length === 0) return;
+  
+  fields.push('updated_at = ?');
+  values.push(new Date().toISOString());
+  
+  values.push(businessDay);
+  
+  db.run(
+    `UPDATE closing_days SET ${fields.join(', ')} WHERE business_day = ?`,
+    values
+  );
+  
+  saveDatabase();
+}
+
+export function confirmClosingDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const now = new Date().toISOString();
+  
+  db.run(
+    `UPDATE closing_days 
+     SET is_confirmed = 1, confirmed_at = ?, updated_at = ?
+     WHERE business_day = ?`,
+    [now, now, businessDay]
+  );
+  
+  saveDatabase();
 }

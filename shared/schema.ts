@@ -104,6 +104,39 @@ export const additionalFeeEvents = pgTable("additional_fee_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Expenses Table - 지출 기록
+export const expenses = pgTable("expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  date: date("date").notNull(), // 지출 날짜
+  time: varchar("time").notNull(), // 지출 시간 (HH:mm)
+  category: varchar("category").notNull(), // 지출 항목 (예: "간식", "비품" 등)
+  amount: integer("amount").notNull(), // 금액
+  quantity: integer("quantity").default(1), // 수량
+  paymentMethod: paymentMethodEnum("payment_method").notNull(), // 결제 방식
+  businessDay: date("business_day").notNull(), // 영업일 (정산 기준일)
+  notes: text("notes"), // 비고
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Closing Days Table - 정산 기록
+export const closingDays = pgTable("closing_days", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  businessDay: date("business_day").notNull().unique(), // 정산 영업일 (정산 기간 시작일)
+  startTime: timestamp("start_time", { withTimezone: true }).notNull(), // 정산 시작 시간 (전일 10:00)
+  endTime: timestamp("end_time", { withTimezone: true }).notNull(), // 정산 종료 시간 (당일 10:00)
+  openingFloat: integer("opening_float").notNull(), // 시작 시재금
+  targetFloat: integer("target_float").notNull(), // 목표 시재금
+  actualCash: integer("actual_cash"), // 금전함 실잔액 (직원 입력)
+  expectedCash: integer("expected_cash"), // 기대 잔액 (계산값)
+  discrepancy: integer("discrepancy").default(0), // 과부족 (실잔액 - 기대잔액)
+  bankDeposit: integer("bank_deposit"), // 은행 입금액
+  notes: text("notes"), // 비고 (과부족 사유 등)
+  isConfirmed: boolean("is_confirmed").notNull().default(false), // 정산 확정 여부
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }), // 확정 시간
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Insert Schemas
 export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
@@ -212,6 +245,44 @@ export const insertAdditionalFeeEventSchema = createInsertSchema(additionalFeeEv
   createdAt: true,
 });
 
+export const insertExpenseSchema = createInsertSchema(expenses).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const updateExpenseSchema = z.object({
+  date: z.string().optional(),
+  time: z.string().optional(),
+  category: z.string().optional(),
+  amount: z.number().optional(),
+  quantity: z.number().optional(),
+  paymentMethod: z.enum(['card', 'cash', 'transfer']).optional(),
+  businessDay: z.string().optional(),
+  notes: z.string().nullish(),
+});
+
+export const insertClosingDaySchema = createInsertSchema(closingDays).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateClosingDaySchema = z.object({
+  openingFloat: z.number().optional(),
+  targetFloat: z.number().optional(),
+  actualCash: z.number().optional(),
+  expectedCash: z.number().optional(),
+  discrepancy: z.number().optional(),
+  bankDeposit: z.number().optional(),
+  notes: z.string().nullish(),
+  isConfirmed: z.boolean().optional(),
+  confirmedAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
+});
+
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
 export type LockerLog = typeof lockerLogs.$inferSelect;
@@ -232,3 +303,11 @@ export type UpdateRentalTransaction = z.infer<typeof updateRentalTransactionSche
 
 export type AdditionalFeeEvent = typeof additionalFeeEvents.$inferSelect;
 export type InsertAdditionalFeeEvent = z.infer<typeof insertAdditionalFeeEventSchema>;
+
+export type Expense = typeof expenses.$inferSelect;
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+export type UpdateExpense = z.infer<typeof updateExpenseSchema>;
+
+export type ClosingDay = typeof closingDays.$inferSelect;
+export type InsertClosingDay = z.infer<typeof insertClosingDaySchema>;
+export type UpdateClosingDay = z.infer<typeof updateClosingDaySchema>;
