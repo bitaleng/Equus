@@ -1514,7 +1514,7 @@ export function createRentalTransaction(rental: {
   itemName: string;
   lockerNumber: number;
   rentalTime: string | Date;
-  returnTime: string | Date;
+  returnTime: string | Date | null;
   businessDay: string;
   rentalFee: number;
   depositAmount: number;
@@ -1528,7 +1528,7 @@ export function createRentalTransaction(rental: {
   const now = new Date().toISOString();
   
   const rentalTimeStr = rental.rentalTime instanceof Date ? rental.rentalTime.toISOString() : rental.rentalTime;
-  const returnTimeStr = rental.returnTime instanceof Date ? rental.returnTime.toISOString() : rental.returnTime;
+  const returnTimeStr = rental.returnTime ? (rental.returnTime instanceof Date ? rental.returnTime.toISOString() : rental.returnTime) : null;
   
   db.run(
     `INSERT INTO rental_transactions 

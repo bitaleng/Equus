@@ -57,7 +57,7 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   currentLockerLogId?: string;
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer') => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
   onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
   onCancel: () => void;
 }
@@ -220,7 +220,7 @@ export default function LockerOptionsDialog({
       
       setPaymentMethod(currentPaymentMethod);
       
-      // Parse rental items from notes
+      // Parse rental items from notes (legacy)
       const blanketPresent = currentNotes?.includes('담요') || false;
       const towelPresent = currentNotes?.includes('롱타올') || false;
       setHasBlanket(blanketPresent);
@@ -228,7 +228,7 @@ export default function LockerOptionsDialog({
       
       // Auto-show warning alert if there are rental items or additional fees (only if not resolved yet)
       if (isInUse && !checkoutResolved) {
-        const hasRentalItems = blanketPresent || towelPresent;
+        const hasRentalItems = currentRentalTransactions.length > 0;
         const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
         
         if (hasRentalItems || hasAdditionalFee) {
@@ -363,7 +363,8 @@ export default function LockerOptionsDialog({
     }
 
     const generatedNotes = generateNotes();
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod);
+    const rentalItemInfo = generateRentalItemInfo();
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo);
     setDialogOpen(false);
   };
 
@@ -387,7 +388,8 @@ export default function LockerOptionsDialog({
     }
 
     const generatedNotes = generateNotes();
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod);
+    const rentalItemInfo = generateRentalItemInfo();
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo);
     
     // Mark as resolved to prevent warning on next open
     setCheckoutResolved(true);
