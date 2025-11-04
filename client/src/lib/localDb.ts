@@ -775,7 +775,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       const camelCol = col.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
       
       // Convert numeric strings to numbers where appropriate
-      if (col.includes('number') || col.includes('price') || col.includes('amount') || col.includes('count') || col.includes('visitors') || col.includes('sales') || col.includes('order')) {
+      if (col.includes('number') || col.includes('price') || col.includes('amount') || col.includes('count') || col.includes('visitors') || col.includes('sales') || col.includes('order') || col.includes('fee') || col.includes('revenue')) {
         value = typeof value === 'number' ? value : (value ? parseInt(value as string) : value);
       }
       
