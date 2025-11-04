@@ -747,9 +747,13 @@ export default function LockerOptionsDialog({
                   className="bg-primary" 
                   data-testid="button-checkout"
                   disabled={(() => {
-                    // Check if any existing rental transaction needs deposit resolution
+                    // Check if any existing rental transaction with deposit needs deposit resolution
                     const hasUnresolvedExistingRentals = currentRentalTransactions.some(txn => {
-                      // If transaction is in 'received' state, must be updated to 'refunded' or 'forfeited'
+                      // Skip items with zero deposit
+                      if (txn.depositAmount === 0) {
+                        return false;
+                      }
+                      // If transaction is in 'received' state and has deposit, must be updated to 'refunded' or 'forfeited'
                       if (txn.depositStatus === 'received') {
                         // Check if this item is selected and has a valid new status
                         const newStatus = depositStatuses.get(txn.itemId);
@@ -758,11 +762,16 @@ export default function LockerOptionsDialog({
                       return false;
                     });
                     
-                    // Check if any newly selected rental item has invalid deposit status for checkout
+                    // Check if any newly selected rental item with deposit has invalid deposit status for checkout
                     const hasUnresolvedNewRentals = Array.from(selectedRentalItems).some(itemId => {
                       // Skip items that are already in currentRentalTransactions
                       if (currentRentalTransactions.some(txn => txn.itemId === itemId)) {
                         return false;
+                      }
+                      // Find the item to check if it has deposit
+                      const item = availableRentalItems.find((r: any) => r.id === itemId);
+                      if (!item || item.depositAmount === 0) {
+                        return false; // Skip items with zero deposit
                       }
                       const status = depositStatuses.get(itemId);
                       // For checkout, require 'refunded' or 'forfeited' (not 'received')
@@ -810,11 +819,13 @@ export default function LockerOptionsDialog({
                           <p className="font-medium text-orange-700 dark:text-orange-300">
                             {txn.itemName} 회수하세요
                           </p>
-                          <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
-                            {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
-                            {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
-                            {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
-                          </p>
+                          {txn.depositAmount > 0 && (
+                            <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
+                              {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
+                              {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
+                              {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
+                            </p>
+                          )}
                         </div>
                       </div>
                     );

@@ -2352,13 +2352,15 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
     [itemName: string]: {
       rentalFee: { cash: number; card: number; transfer: number; total: number };
       depositForfeited: { cash: number; card: number; transfer: number; total: number };
+      depositAmount: number;
     }
   } = {};
   
   items.forEach(item => {
     breakdown[item.name] = {
       rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
-      depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 }
+      depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 },
+      depositAmount: item.deposit_amount || 0
     };
   });
   
@@ -2386,7 +2388,8 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
           rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
-          depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 }
+          depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 },
+          depositAmount: depositAmount
         };
       }
       

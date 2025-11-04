@@ -118,9 +118,8 @@ export default function ClosingPage() {
       const startHour = settings.businessDayStartHour;
       setStartTime(`${String(startHour).padStart(2, '0')}:00`);
       
-      const now = new Date();
-      const timeStr = now.toTimeString().substring(0, 5);
-      setEndTime(timeStr);
+      // Set end time to same as start time (next day's business day start hour)
+      setEndTime(`${String(startHour).padStart(2, '0')}:00`);
 
       // Get previous closing for opening float
       const latestClosing = getLatestClosingDay();
@@ -476,25 +475,34 @@ export default function ClosingPage() {
                     
                     {/* 보증금 몰수 */}
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">{String.fromCharCode(9311 + depositNum - 1)} {itemName} 보증금 몰수</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                        <div>
-                          <span className="text-muted-foreground">현금:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.cash)}</span>
+                      <p className="text-sm font-medium">
+                        {String.fromCharCode(9311 + depositNum - 1)} {itemName} 보증금 몰수
+                        {data.depositAmount === 0 && (
+                          <span className="ml-2 text-xs text-muted-foreground">(없음)</span>
+                        )}
+                      </p>
+                      {data.depositAmount > 0 ? (
+                        <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                          <div>
+                            <span className="text-muted-foreground">현금:</span>
+                            <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.cash)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">카드:</span>
+                            <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.card)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">이체:</span>
+                            <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.transfer)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">합계:</span>
+                            <span className="ml-1 font-semibold">{formatKoreanCurrency(data.depositForfeited.total)}</span>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">카드:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.card)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">이체:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.transfer)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">합계:</span>
-                          <span className="ml-1 font-semibold">{formatKoreanCurrency(data.depositForfeited.total)}</span>
-                        </div>
-                      </div>
+                      ) : (
+                        <div className="text-sm pl-2 text-muted-foreground">보증금 없음</div>
+                      )}
                     </div>
                   </div>
                 );
