@@ -52,12 +52,29 @@ interface AdditionalFeeEvent {
   createdAt: string;
 }
 
+interface RentalTransaction {
+  id: string;
+  lockerLogId: string;
+  lockerNumber: number;
+  itemId: string;
+  itemName: string;
+  rentalFee: number;
+  depositAmount: number;
+  depositStatus: 'received' | 'refunded' | 'forfeited';
+  rentalTime: string;
+  returnTime: string;
+  businessDay: string;
+  paymentMethod: 'card' | 'cash' | 'transfer';
+  revenue: number;
+}
+
 export default function LogsPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [additionalFeeEvents, setAdditionalFeeEvents] = useState<AdditionalFeeEvent[]>([]);
+  const [rentalTransactions, setRentalTransactions] = useState<RentalTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
@@ -73,19 +90,23 @@ export default function LogsPage() {
     try {
       let result: LogEntry[];
       let feeEvents: AdditionalFeeEvent[];
+      let rentalTxns: RentalTransaction[];
       
       if (startDate && endDate) {
         result = localDb.getEntriesByDateRange(startDate, endDate);
         feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, endDate);
+        rentalTxns = localDb.getRentalTransactionsByDateRange(startDate, endDate);
       } else if (startDate) {
         result = localDb.getEntriesByDateRange(startDate, startDate);
         feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, startDate);
+        rentalTxns = localDb.getRentalTransactionsByDateRange(startDate, startDate);
       } else {
         // Get all entries by using a wide date range
         const today = new Date().toISOString().split('T')[0];
         const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         result = localDb.getEntriesByDateRange(oneYearAgo, today);
         feeEvents = localDb.getAdditionalFeeEventsByDateRange(oneYearAgo, today);
+        rentalTxns = localDb.getRentalTransactionsByDateRange(oneYearAgo, today);
       }
       
       // Attach additional fees for each log entry
@@ -100,10 +121,12 @@ export default function LogsPage() {
       
       setLogs(logsWithFees);
       setAdditionalFeeEvents(feeEvents);
+      setRentalTransactions(rentalTxns);
     } catch (error) {
       console.error('Error loading logs:', error);
       setLogs([]);
       setAdditionalFeeEvents([]);
+      setRentalTransactions([]);
     } finally {
       setIsLoading(false);
     }
@@ -523,18 +546,18 @@ export default function LogsPage() {
         </ScrollArea>
       </div>
 
-      {/* Additional Fee Events Section - 추가매출 */}
+      {/* Additional Fee Events Section - 추가매출 (초과시간) */}
       {additionalFeeEvents.length > 0 && (
         <div className="border rounded-lg p-6 bg-card">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-lg font-semibold">추가매출 (초과시간 퇴실)</h2>
+              <h2 className="text-lg font-semibold">추가요금 (초과시간 퇴실)</h2>
               <p className="text-xs text-muted-foreground mt-1">
                 정산시간 이후 퇴실한 추가요금 - {additionalFeeEvents.length}건
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted-foreground">총 추가매출</p>
+              <p className="text-xs text-muted-foreground">총 추가요금</p>
               <p className="text-2xl font-bold text-destructive">
                 {additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0).toLocaleString()}원
               </p>
@@ -567,6 +590,79 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {event.paymentMethod === 'card' ? '카드' : event.paymentMethod === 'cash' ? '현금' : event.paymentMethod === 'transfer' ? '이체' : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        </div>
+      )}
+
+      {/* Rental Transactions Section - 대여 거래 */}
+      {rentalTransactions.length > 0 && (
+        <div className="border rounded-lg p-6 bg-card">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">대여 거래 (담요/롱타올 등)</h2>
+              <p className="text-xs text-muted-foreground mt-1">
+                대여 물품 거래 내역 - {rentalTransactions.length}건
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground">총 대여 매출</p>
+              <p className="text-2xl font-bold text-primary">
+                {rentalTransactions.reduce((sum, txn) => sum + txn.revenue, 0).toLocaleString()}원
+              </p>
+            </div>
+          </div>
+
+          <ScrollArea className="h-[300px]">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">날짜</TableHead>
+                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
+                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">항목</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여비</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금</TableHead>
+                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">보증금 상태</TableHead>
+                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">매출</TableHead>
+                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rentalTransactions.map((txn) => (
+                  <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
+                    <TableCell className="text-sm">
+                      {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                    </TableCell>
+                    <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
+                    <TableCell className="text-sm">
+                      {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {new Date(txn.returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </TableCell>
+                    <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
+                    <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
+                    <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
+                    <TableCell className="text-sm">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
+                        txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
+                        'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
+                      }`}>
+                        {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환불' : '미반환'}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-semibold text-base text-primary">
+                      {txn.revenue.toLocaleString()}원
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : txn.paymentMethod === 'transfer' ? '이체' : '-'}
                     </TableCell>
                   </TableRow>
                 ))}
