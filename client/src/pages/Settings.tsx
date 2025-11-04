@@ -649,16 +649,14 @@ export default function Settings() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        {item.is_default === 0 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteRevenueItem(item.id)}
-                            data-testid={`button-delete-revenue-${item.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteRevenueItem(item.id)}
+                          data-testid={`button-delete-revenue-${item.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -944,7 +942,16 @@ export default function Settings() {
       </Dialog>
 
       {/* Revenue Item Dialog */}
-      <Dialog open={isRevenueItemDialogOpen} onOpenChange={setIsRevenueItemDialogOpen}>
+      <Dialog 
+        open={isRevenueItemDialogOpen} 
+        onOpenChange={(open) => {
+          setIsRevenueItemDialogOpen(open);
+          if (!open) {
+            // Reload items when dialog closes
+            loadRevenueItems();
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -974,7 +981,13 @@ export default function Settings() {
                   id="rental-fee"
                   type="number"
                   value={revenueItemFormData.rentalFee}
-                  onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, rentalFee: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setRevenueItemFormData({ 
+                      ...revenueItemFormData, 
+                      rentalFee: isNaN(parsed) ? 0 : parsed 
+                    });
+                  }}
                   data-testid="input-rental-fee"
                 />
               </div>
@@ -984,7 +997,13 @@ export default function Settings() {
                   id="deposit-amount"
                   type="number"
                   value={revenueItemFormData.depositAmount}
-                  onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, depositAmount: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => {
+                    const parsed = parseInt(e.target.value, 10);
+                    setRevenueItemFormData({ 
+                      ...revenueItemFormData, 
+                      depositAmount: isNaN(parsed) ? 0 : parsed 
+                    });
+                  }}
                   data-testid="input-deposit-amount"
                 />
               </div>
