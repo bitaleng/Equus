@@ -2266,3 +2266,168 @@ export function confirmClosingDay(businessDay: string) {
   
   saveDatabase();
 }
+
+// Get detailed sales breakdown by business day
+export function getDetailedSalesByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Get base entry sales (입실 기본요금) by payment method
+  const entryResult = db.exec(
+    `SELECT 
+      payment_method,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN final_price ELSE 0 END), 0) as total
+     FROM locker_logs
+     WHERE business_day = ? AND payment_method IS NOT NULL
+     GROUP BY payment_method`,
+    [businessDay]
+  );
+  
+  const entrySales = {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    total: 0
+  };
+  
+  if (entryResult.length > 0 && entryResult[0].values.length > 0) {
+    entryResult[0].values.forEach((row: any) => {
+      const method = row[0] as string;
+      const amount = row[1] as number;
+      if (method === 'cash') entrySales.cash = amount;
+      else if (method === 'card') entrySales.card = amount;
+      else if (method === 'transfer') entrySales.transfer = amount;
+      entrySales.total += amount;
+    });
+  }
+  
+  // Get additional fee sales (추가요금) by payment method
+  const additionalResult = db.exec(
+    `SELECT 
+      payment_method,
+      COALESCE(SUM(fee_amount), 0) as total
+     FROM additional_fee_events
+     WHERE business_day = ? AND payment_method IS NOT NULL
+     GROUP BY payment_method`,
+    [businessDay]
+  );
+  
+  const additionalSales = {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    total: 0
+  };
+  
+  if (additionalResult.length > 0 && additionalResult[0].values.length > 0) {
+    additionalResult[0].values.forEach((row: any) => {
+      const method = row[0] as string;
+      const amount = row[1] as number;
+      if (method === 'cash') additionalSales.cash = amount;
+      else if (method === 'card') additionalSales.card = amount;
+      else if (method === 'transfer') additionalSales.transfer = amount;
+      additionalSales.total += amount;
+    });
+  }
+  
+  return {
+    entrySales,
+    additionalSales,
+    totalEntrySales: {
+      cash: entrySales.cash + additionalSales.cash,
+      card: entrySales.card + additionalSales.card,
+      transfer: entrySales.transfer + additionalSales.transfer,
+      total: entrySales.total + additionalSales.total
+    }
+  };
+}
+
+// Get rental revenue breakdown by business day
+export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Get all rental items
+  const items = getAdditionalRevenueItems();
+  
+  const breakdown: {
+    [itemName: string]: {
+      rentalFee: { cash: number; card: number; transfer: number; total: number };
+      depositForfeited: { cash: number; card: number; transfer: number; total: number };
+    }
+  } = {};
+  
+  items.forEach(item => {
+    breakdown[item.name] = {
+      rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
+      depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 }
+    };
+  });
+  
+  // Get rental transactions for this business day
+  const result = db.exec(
+    `SELECT 
+      item_name,
+      payment_method,
+      rental_fee,
+      deposit_amount,
+      deposit_status
+     FROM rental_transactions
+     WHERE business_day = ? AND payment_method IS NOT NULL`,
+    [businessDay]
+  );
+  
+  if (result.length > 0 && result[0].values.length > 0) {
+    result[0].values.forEach((row: any) => {
+      const itemName = row[0] as string;
+      const paymentMethod = row[1] as 'cash' | 'card' | 'transfer';
+      const rentalFee = row[2] as number;
+      const depositAmount = row[3] as number;
+      const depositStatus = row[4] as string;
+      
+      if (!breakdown[itemName]) {
+        breakdown[itemName] = {
+          rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
+          depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 }
+        };
+      }
+      
+      // Add rental fee
+      breakdown[itemName].rentalFee[paymentMethod] += rentalFee;
+      breakdown[itemName].rentalFee.total += rentalFee;
+      
+      // Add deposit if forfeited
+      if (depositStatus === 'forfeited') {
+        breakdown[itemName].depositForfeited[paymentMethod] += depositAmount;
+        breakdown[itemName].depositForfeited.total += depositAmount;
+      }
+    });
+  }
+  
+  // Calculate totals
+  const totals = {
+    rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
+    depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 },
+    grandTotal: { cash: 0, card: 0, transfer: 0, total: 0 }
+  };
+  
+  Object.values(breakdown).forEach(item => {
+    totals.rentalFee.cash += item.rentalFee.cash;
+    totals.rentalFee.card += item.rentalFee.card;
+    totals.rentalFee.transfer += item.rentalFee.transfer;
+    totals.rentalFee.total += item.rentalFee.total;
+    
+    totals.depositForfeited.cash += item.depositForfeited.cash;
+    totals.depositForfeited.card += item.depositForfeited.card;
+    totals.depositForfeited.transfer += item.depositForfeited.transfer;
+    totals.depositForfeited.total += item.depositForfeited.total;
+  });
+  
+  totals.grandTotal.cash = totals.rentalFee.cash + totals.depositForfeited.cash;
+  totals.grandTotal.card = totals.rentalFee.card + totals.depositForfeited.card;
+  totals.grandTotal.transfer = totals.rentalFee.transfer + totals.depositForfeited.transfer;
+  totals.grandTotal.total = totals.rentalFee.total + totals.depositForfeited.total;
+  
+  return {
+    breakdown,
+    totals
+  };
+}
