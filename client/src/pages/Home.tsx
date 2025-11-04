@@ -266,6 +266,8 @@ export default function Home() {
     if (!selectedEntry) return;
 
     const now = new Date();
+    const entryBusinessDay = selectedEntry.businessDay;
+    const checkoutBusinessDay = getBusinessDay(now, businessDayStartHour);
     
     // Calculate additional fee if any
     const isCurrentlyForeigner = selectedEntry.optionType === 'foreigner';
@@ -279,17 +281,23 @@ export default function Home() {
       foreignerPrice
     );
     
+    // If checking out on a different business day, set finalPrice to 0
+    // (already included in entry day's revenue)
+    let finalPriceForCheckout = selectedEntry.finalPrice;
+    if (entryBusinessDay !== checkoutBusinessDay) {
+      finalPriceForCheckout = 0;
+    }
+    
     // Update locker log to checked_out status
     localDb.updateEntry(selectedEntry.id, { 
       status: 'checked_out',
       exitTime: now,
       paymentMethod: paymentMethod,
+      finalPrice: finalPriceForCheckout,
     });
     
     // If there's additional fee, create a separate event record
     if (additionalFeeInfo.additionalFee > 0) {
-      const checkoutBusinessDay = getBusinessDay(now, businessDayStartHour);
-      
       localDb.createAdditionalFeeEvent({
         lockerLogId: selectedEntry.id,
         lockerNumber: selectedEntry.lockerNumber,
