@@ -38,6 +38,7 @@ interface LogEntry {
   paymentMethod?: 'card' | 'cash' | 'transfer';
   cancelled: boolean;
   notes?: string;
+  additionalFees?: number; // Total additional fees from checkout
 }
 
 export default function LogsPage() {
@@ -71,7 +72,17 @@ export default function LogsPage() {
         result = localDb.getEntriesByDateRange(oneYearAgo, today);
       }
       
-      setLogs(result);
+      // Attach additional fees for each log entry
+      const logsWithFees = result.map(log => {
+        const additionalFeeEvents = localDb.getAdditionalFeeEventsByLockerLog(log.id);
+        const totalAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+        return {
+          ...log,
+          additionalFees: totalAdditionalFees
+        };
+      });
+      
+      setLogs(logsWithFees);
     } catch (error) {
       console.error('Error loading logs:', error);
       setLogs([]);
@@ -138,6 +149,7 @@ export default function LogsPage() {
       '옵션': getOptionText(log),
       '옵션금액': log.optionAmount || '-',
       '최종요금': log.finalPrice,
+      '추가요금': log.additionalFees || '-',
       '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
       '입실취소': log.cancelled ? 'O' : '-',
       '비고': log.notes || '-'
@@ -179,12 +191,13 @@ export default function LogsPage() {
       getOptionText(log),
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
       log.finalPrice.toLocaleString(),
+      log.additionalFees ? log.additionalFees.toLocaleString() : '-',
       log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
       log.cancelled ? 'O' : '-',
     ]);
 
     autoTable(doc, {
-      head: [['날짜', '락커', '입실', '퇴실', '주/야간', '기본요금', '옵션', '옵션금액', '최종요금', '지불', '취소']],
+      head: [['날짜', '락커', '입실', '퇴실', '주/야간', '기본요금', '옵션', '옵션금액', '최종요금', '추가요금', '지불', '취소']],
       body: tableData,
       startY: 25,
       styles: { fontSize: 8, font: 'helvetica' },
@@ -405,6 +418,7 @@ export default function LogsPage() {
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">옵션금액</TableHead>
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
                 <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
@@ -413,13 +427,13 @@ export default function LogsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-sm">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12 text-sm">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : displayedLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={12} className="text-center text-muted-foreground py-12 text-sm">
+                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12 text-sm">
                     {startDate && endDate
                       ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
                       : startDate
@@ -460,6 +474,15 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell className="font-semibold text-base">
                       {log.finalPrice.toLocaleString()}원
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.additionalFees && log.additionalFees > 0 ? (
+                        <span className="text-destructive font-medium">
+                          {log.additionalFees.toLocaleString()}원
+                        </span>
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">
                       {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-'}
