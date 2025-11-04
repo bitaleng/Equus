@@ -644,6 +644,9 @@ export default function LockerOptionsDialog({
                     const isChecked = selectedRentalItems.has(itemId);
                     const depositStatus = depositStatuses.get(itemId);
                     
+                    // Check if this specific item is already rented
+                    const isAlreadyRented = currentRentalTransactions.some(txn => txn.itemId === itemId);
+                    
                     return (
                       <div key={itemId} className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -655,22 +658,26 @@ export default function LockerOptionsDialog({
                                 const newSelected = new Set(selectedRentalItems);
                                 if (checked) {
                                   newSelected.add(itemId);
-                                  // Automatically set depositStatus based on deposit amount
+                                  // Automatically set depositStatus based on deposit amount and rental status
                                   const newStatuses = new Map(depositStatuses);
                                   if (item.depositAmount === 0) {
                                     // No deposit - set to 'none'
                                     newStatuses.set(itemId, 'none');
-                                  } else {
-                                    // Has deposit - set to 'received' by default
+                                  } else if (!isAlreadyRented) {
+                                    // New rental (not already rented) - set to 'received' by default
                                     newStatuses.set(itemId, 'received');
                                   }
+                                  // If already rented, keep existing status (from currentRentalTransactions)
                                   setDepositStatuses(newStatuses);
                                 } else {
                                   newSelected.delete(itemId);
-                                  // Remove deposit status
-                                  const newStatuses = new Map(depositStatuses);
-                                  newStatuses.delete(itemId);
-                                  setDepositStatuses(newStatuses);
+                                  // Remove deposit status only if NOT already rented
+                                  // (keep status for already rented items)
+                                  if (!isAlreadyRented) {
+                                    const newStatuses = new Map(depositStatuses);
+                                    newStatuses.delete(itemId);
+                                    setDepositStatuses(newStatuses);
+                                  }
                                 }
                                 setSelectedRentalItems(newSelected);
                               }}
@@ -687,7 +694,7 @@ export default function LockerOptionsDialog({
                           <div className="ml-6 space-y-2">
                             <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
                               보증금 처리
-                              {item.depositAmount > 0 && depositStatus === 'received' && !isInUse && (
+                              {item.depositAmount > 0 && depositStatus === 'received' && (!isInUse || !isAlreadyRented) && (
                                 <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
                                   ⚠ 보증금 받음
                                 </span>
@@ -709,13 +716,18 @@ export default function LockerOptionsDialog({
                                 <SelectValue placeholder="보증금 처리를 선택하세요" />
                               </SelectTrigger>
                               <SelectContent>
+                                {/* 보증금 없음 */}
                                 {item.depositAmount === 0 && (
                                   <SelectItem value="none">없음 (보증금 없음)</SelectItem>
                                 )}
-                                {item.depositAmount > 0 && !isInUse && (
+                                
+                                {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
+                                {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
                                   <SelectItem value="received">받음 (입실 시)</SelectItem>
                                 )}
-                                {isInUse && (
+                                
+                                {/* 보증금 있음 - '환급'/'몰수' 옵션 (이미 대여 중인 항목만) */}
+                                {item.depositAmount > 0 && isInUse && isAlreadyRented && (
                                   <>
                                     <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
                                     <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
@@ -725,7 +737,7 @@ export default function LockerOptionsDialog({
                             </Select>
                             {!depositStatus && (
                               <p className="text-xs text-orange-600 dark:text-orange-400">
-                                {isInUse ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
+                                {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
                               </p>
                             )}
                           </div>
