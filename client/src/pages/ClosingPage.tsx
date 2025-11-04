@@ -114,6 +114,10 @@ export default function ClosingPage() {
       setIsConfirmed(existingClosing.isConfirmed);
     } else {
       // Initialize with default values
+      const settings = getSettings();
+      const startHour = settings.businessDayStartHour;
+      setStartTime(`${String(startHour).padStart(2, '0')}:00`);
+      
       const now = new Date();
       const timeStr = now.toTimeString().substring(0, 5);
       setEndTime(timeStr);

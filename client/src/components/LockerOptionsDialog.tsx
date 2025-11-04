@@ -655,7 +655,12 @@ export default function LockerOptionsDialog({
                                 const newSelected = new Set(selectedRentalItems);
                                 if (checked) {
                                   newSelected.add(itemId);
-                                  // Do NOT set default deposit status - require explicit selection
+                                  // If deposit amount is 0, automatically set depositStatus to 'received'
+                                  if (item.depositAmount === 0) {
+                                    const newStatuses = new Map(depositStatuses);
+                                    newStatuses.set(itemId, 'received');
+                                    setDepositStatuses(newStatuses);
+                                  }
                                 } else {
                                   newSelected.delete(itemId);
                                   // Remove deposit status
@@ -673,8 +678,8 @@ export default function LockerOptionsDialog({
                           </div>
                         </div>
                         
-                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시 */}
-                        {isChecked && (
+                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시, 보증금이 0이 아닐 때만 표시 */}
+                        {isChecked && item.depositAmount > 0 && (
                           <div className="ml-6 space-y-2">
                             <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
                               보증금 상태
@@ -711,6 +716,13 @@ export default function LockerOptionsDialog({
                                 {isInUse ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
                               </p>
                             )}
+                          </div>
+                        )}
+                        {/* 보증금이 0인 경우 "없음" 표시 */}
+                        {isChecked && item.depositAmount === 0 && (
+                          <div className="ml-6 space-y-1">
+                            <Label className="text-xs text-muted-foreground">보증금 상태</Label>
+                            <p className="text-sm text-muted-foreground">없음</p>
                           </div>
                         )}
                       </div>
