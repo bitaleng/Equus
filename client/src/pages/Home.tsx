@@ -1,8 +1,19 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { getBusinessDay, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
@@ -43,8 +54,10 @@ interface LockerGroup {
 }
 
 export default function Home() {
+  const [, setLocation] = useLocation();
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
   const [todayAllEntries, setTodayAllEntries] = useState<LockerLog[]>([]);
@@ -68,6 +81,43 @@ export default function Home() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Check for settlement reminder
+  useEffect(() => {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinutes = now.getMinutes();
+    
+    // Calculate total minutes from midnight for current time and target time
+    const currentTotalMinutes = currentHour * 60 + currentMinutes;
+    const targetTotalMinutes = businessDayStartHour * 60;
+    
+    // Check if current time is within 30 minutes of business day start hour
+    // Handle wrap-around for midnight cases (e.g., 23:30 to 00:30 when target is 0:00)
+    let minutesDiff = currentTotalMinutes - targetTotalMinutes;
+    if (minutesDiff > 12 * 60) {
+      minutesDiff -= 24 * 60; // Wrap backward (e.g., 23:30 when target is 0:00)
+    } else if (minutesDiff < -12 * 60) {
+      minutesDiff += 24 * 60; // Wrap forward (e.g., 00:30 when target is 23:00)
+    }
+    
+    const isNearSettlementTime = Math.abs(minutesDiff) <= 30;
+    
+    if (isNearSettlementTime) {
+      // Use local date string to avoid UTC drift
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const today = `${year}-${month}-${day}`;
+      
+      const lastReminder = localStorage.getItem('last_settlement_reminder_date');
+      
+      if (lastReminder !== today) {
+        setSettlementReminderOpen(true);
+        localStorage.setItem('last_settlement_reminder_date', today);
+      }
+    }
+  }, [currentTime, businessDayStartHour]);
 
   // Load data on mount and set up refresh interval
   useEffect(() => {
@@ -596,6 +646,32 @@ export default function Home() {
           onCancel={handleCancel}
         />
       )}
+
+      {/* Settlement Reminder Dialog */}
+      <AlertDialog open={settlementReminderOpen} onOpenChange={setSettlementReminderOpen}>
+        <AlertDialogContent data-testid="dialog-settlement-reminder">
+          <AlertDialogHeader>
+            <AlertDialogTitle>정산 시간 알림</AlertDialogTitle>
+            <AlertDialogDescription>
+              오늘 {businessDayStartHour}시 정산 시간입니다.
+              <br />
+              어제 영업 내역을 확인하고 정산을 완료해주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-reminder-later">나중에</AlertDialogCancel>
+            <AlertDialogAction 
+              data-testid="button-go-closing"
+              onClick={() => {
+                setSettlementReminderOpen(false);
+                setLocation('/closing');
+              }}
+            >
+              정산하기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
