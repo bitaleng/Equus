@@ -31,6 +31,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
+interface RentalItemInfo {
+  itemId: string;
+  itemName: string;
+  rentalFee: number;
+  depositAmount: number;
+  depositStatus: 'received' | 'refunded' | 'forfeited';
+}
+
 interface LockerOptionsDialogProps {
   open: boolean;
   onClose: () => void;
@@ -49,7 +57,7 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer') => void;
-  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer') => void;
+  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
   onCancel: () => void;
 }
 
@@ -285,6 +293,28 @@ export default function LockerOptionsDialog({
     return items.length > 0 ? items.join(', ') : '';
   };
 
+  // Generate rental item info for checkout
+  const generateRentalItemInfo = (): RentalItemInfo[] => {
+    const rentalItems: RentalItemInfo[] = [];
+    
+    selectedRentalItems.forEach(itemId => {
+      const item = availableRentalItems.find(i => i.id === itemId);
+      const depositStatus = depositStatuses.get(itemId);
+      
+      if (item && depositStatus) {
+        rentalItems.push({
+          itemId: item.id,
+          itemName: item.name,
+          rentalFee: item.rental_fee,
+          depositAmount: item.deposit_amount,
+          depositStatus: depositStatus,
+        });
+      }
+    });
+    
+    return rentalItems;
+  };
+
   const handleProcessEntry = () => {
     playClickSound();
     
@@ -343,7 +373,7 @@ export default function LockerOptionsDialog({
     playClickSound();
     
     // Check if there are rental items or additional fees
-    const hasRentalItems = hasBlanket || hasLongTowel;
+    const hasRentalItems = selectedRentalItems.size > 0;
     const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
     
     if ((hasRentalItems || hasAdditionalFee) && !checkoutResolved) {
@@ -351,19 +381,20 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    // Check if there are any notes (rental items)
-    const generatedNotes = generateNotes();
-    if (generatedNotes && generatedNotes.trim()) {
+    // Check if there are any rental items
+    if (selectedRentalItems.size > 0) {
       setShowCheckoutConfirm(true);
     } else {
-      onCheckout(paymentMethod);
+      const rentalItemInfo = generateRentalItemInfo();
+      onCheckout(paymentMethod, rentalItemInfo);
     }
   };
 
   const confirmCheckout = () => {
     playCloseSound(); // Use a more distinctive sound for checkout
     setShowCheckoutConfirm(false);
-    onCheckout(paymentMethod);
+    const rentalItemInfo = generateRentalItemInfo();
+    onCheckout(paymentMethod, rentalItemInfo);
   };
 
   const handleWarningResolved = () => {

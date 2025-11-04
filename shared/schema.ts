@@ -78,14 +78,16 @@ export const rentalTransactions = pgTable("rental_transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   lockerLogId: varchar("locker_log_id").notNull(), // 락커 로그 ID (외래키)
   itemId: varchar("item_id").notNull(), // 추가매출 항목 ID
+  itemName: varchar("item_name").notNull(), // 항목명 (예: "롱타올대여")
   lockerNumber: integer("locker_number").notNull(), // 락커 번호
-  rentalDate: date("rental_date").notNull(), // 대여 날짜 (business day)
-  rentalTime: timestamp("rental_time", { withTimezone: true }).notNull(), // 대여 시간
+  rentalTime: timestamp("rental_time", { withTimezone: true }).notNull(), // 대여 시간 (입실 시간)
+  returnTime: timestamp("return_time", { withTimezone: true }).notNull(), // 반납 시간 (퇴실 시간)
+  businessDay: date("business_day").notNull(), // 영업일 (매출 집계 기준일)
   rentalFee: integer("rental_fee").notNull(), // 대여비
   depositAmount: integer("deposit_amount").notNull(), // 보증금
   paymentMethod: paymentMethodEnum("payment_method").notNull(), // 지급방식
   depositStatus: depositStatusEnum("deposit_status").notNull().default('received'), // 보증금 상태
-  depositRevenue: integer("deposit_revenue").notNull().default(0), // 보증금 매출 (받음=보증금, 환급=0, 몰수=보증금)
+  revenue: integer("revenue").notNull().default(0), // 총 매출 (대여비 + 보증금 상태에 따른 매출)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
