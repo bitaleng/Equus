@@ -82,6 +82,7 @@ export default function LogsPage() {
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [additionalFeeFilter, setAdditionalFeeFilter] = useState<string>("all");
   
   // Rental transaction filters
   const [showRentalFilters, setShowRentalFilters] = useState(false);
@@ -168,9 +169,10 @@ export default function LogsPage() {
     setCancelledFilter("all");
     setTimeTypeFilter("all");
     setPaymentMethodFilter("all");
+    setAdditionalFeeFilter("all");
   };
 
-  const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all";
+  const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all" || additionalFeeFilter !== "all";
 
   // Apply filters to logs
   let displayedLogs = [...logs];
@@ -193,6 +195,12 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'cash' || !log.paymentMethod);
   } else if (paymentMethodFilter === "transfer") {
     displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'transfer');
+  }
+
+  if (additionalFeeFilter === "with_fee") {
+    displayedLogs = displayedLogs.filter(log => log.additionalFees && log.additionalFees > 0);
+  } else if (additionalFeeFilter === "without_fee") {
+    displayedLogs = displayedLogs.filter(log => !log.additionalFees || log.additionalFees === 0);
   }
 
   const getOptionText = (log: LogEntry) => {
@@ -447,6 +455,17 @@ export default function LogsPage() {
                 </SelectContent>
               </Select>
               
+              <Select value={additionalFeeFilter} onValueChange={setAdditionalFeeFilter}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-additional-fee-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체</SelectItem>
+                  <SelectItem value="with_fee">추가요금 있음</SelectItem>
+                  <SelectItem value="without_fee">추가요금 없음</SelectItem>
+                </SelectContent>
+              </Select>
+              
               {hasActiveFilters && (
                 <Button 
                   variant="ghost" 
@@ -477,6 +496,11 @@ export default function LogsPage() {
                     {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}: 총 {displayedLogs.length}건
                   </span>
                 )}
+                {additionalFeeFilter !== "all" && (
+                  <span data-testid="text-additional-fee-filter-count">
+                    {additionalFeeFilter === "with_fee" ? "추가요금 있음" : "추가요금 없음"}: 총 {displayedLogs.length}건
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -497,8 +521,8 @@ export default function LogsPage() {
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">기본</TableHead>
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">옵션금액</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
                 <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
@@ -552,9 +576,6 @@ export default function LogsPage() {
                     <TableCell className="text-sm">
                       {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
                     </TableCell>
-                    <TableCell className="font-semibold text-base">
-                      {log.finalPrice.toLocaleString()}원
-                    </TableCell>
                     <TableCell className="text-sm">
                       {log.additionalFees && log.additionalFees > 0 ? (
                         <span className="text-destructive font-medium">
@@ -563,6 +584,9 @@ export default function LogsPage() {
                       ) : (
                         '-'
                       )}
+                    </TableCell>
+                    <TableCell className="font-semibold text-base">
+                      {log.finalPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-sm">
                       {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-'}
