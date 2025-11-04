@@ -761,12 +761,27 @@ export default function LockerOptionsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-orange-600">⚠️ 확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              {(hasBlanket || hasLongTowel) && (
-                <div className="p-3 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800">
-                  <p className="font-semibold text-orange-700 dark:text-orange-300 mb-1">대여 물품:</p>
-                  <p className="text-sm text-orange-600 dark:text-orange-400">
-                    {[hasBlanket && '담요', hasLongTowel && '롱타올'].filter(Boolean).join(', ')}
-                  </p>
+              {currentRentalTransactions.length > 0 && (
+                <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
+                  <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
+                  {currentRentalTransactions.map((txn) => {
+                    const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
+                    return (
+                      <div key={txn.id} className="flex items-start gap-2">
+                        <span className="text-2xl">📦</span>
+                        <div className="flex-1">
+                          <p className="font-medium text-orange-700 dark:text-orange-300">
+                            {txn.itemName} 회수하세요
+                          </p>
+                          <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
+                            {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
+                            {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
+                            {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
               {additionalFeeInfo.additionalFee > 0 && (
@@ -777,9 +792,6 @@ export default function LockerOptionsDialog({
                   </p>
                 </div>
               )}
-              <p className="text-sm text-muted-foreground mt-2">
-                위 내용을 확인하고 해결하셨으면 '해결' 버튼을 눌러주세요.
-              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
