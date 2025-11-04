@@ -116,6 +116,13 @@ export default function LockerOptionsDialog({
       
       console.log('[LockerOptionsDialog] Dialog opened:', { isInUse, currentLockerLogId });
       
+      // Reset checkoutResolved only when opening a different locker
+      if (previousLockerRef.current !== lockerNumber) {
+        console.log('[LockerOptionsDialog] Different locker detected, resetting checkoutResolved');
+        setCheckoutResolved(false);
+        previousLockerRef.current = lockerNumber;
+      }
+      
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
@@ -135,6 +142,34 @@ export default function LockerOptionsDialog({
         console.log('[LockerOptionsDialog] Setting selected items:', Array.from(newSelected));
         setSelectedRentalItems(newSelected);
         setDepositStatuses(newStatuses);
+        
+        // Auto-show warning alert if there are rental items or additional fees
+        // This runs AFTER rentals are loaded
+        if (!checkoutResolved && entryTime) {
+          const hasRentalItems = rentals.length > 0;
+          
+          // Calculate additional fee to check if there are additional charges
+          const isCurrentlyForeigner = currentOptionType === 'foreigner';
+          const additionalFeeCalc = calculateAdditionalFee(
+            entryTime, 
+            timeType, 
+            dayPrice, 
+            nightPrice, 
+            new Date(), 
+            isCurrentlyForeigner, 
+            foreignerPrice
+          );
+          const hasAdditionalFee = additionalFeeCalc.additionalFee > 0;
+          
+          if (hasRentalItems || hasAdditionalFee) {
+            console.log('[LockerOptionsDialog] Showing warning alert for rental items or additional fees');
+            // Play emergency alert sound
+            playEmergencySound();
+            
+            // Delay to allow dialog to fully open first
+            setTimeout(() => setShowWarningAlert(true), 300);
+          }
+        }
       } else {
         console.log('[LockerOptionsDialog] Clearing rental selections (not in use or no locker log ID)');
         setCurrentRentalTransactions([]);
@@ -142,7 +177,7 @@ export default function LockerOptionsDialog({
         setDepositStatuses(new Map());
       }
     }
-  }, [open, isInUse, currentLockerLogId]);
+  }, [open, isInUse, currentLockerLogId, lockerNumber, checkoutResolved, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType]);
 
   // Play click sound
   const playClickSound = () => {
@@ -218,12 +253,6 @@ export default function LockerOptionsDialog({
   // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
-      // Reset checkoutResolved only when opening a different locker
-      if (previousLockerRef.current !== lockerNumber) {
-        setCheckoutResolved(false);
-        previousLockerRef.current = lockerNumber;
-      }
-      
       setPaymentMethod(currentPaymentMethod);
       
       // Parse rental items from notes (legacy)
@@ -231,20 +260,6 @@ export default function LockerOptionsDialog({
       const towelPresent = currentNotes?.includes('롱타올') || false;
       setHasBlanket(blanketPresent);
       setHasLongTowel(towelPresent);
-      
-      // Auto-show warning alert if there are rental items or additional fees (only if not resolved yet)
-      if (isInUse && !checkoutResolved) {
-        const hasRentalItems = currentRentalTransactions.length > 0;
-        const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
-        
-        if (hasRentalItems || hasAdditionalFee) {
-          // Play emergency alert sound
-          playEmergencySound();
-          
-          // Delay to allow dialog to fully open first
-          setTimeout(() => setShowWarningAlert(true), 300);
-        }
-      }
       
       // Initialize option states based on current optionType
       if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {

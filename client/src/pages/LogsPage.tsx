@@ -72,6 +72,7 @@ interface RentalTransaction {
 export default function LogsPage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [useTimeFilter, setUseTimeFilter] = useState(false);
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [additionalFeeEvents, setAdditionalFeeEvents] = useState<AdditionalFeeEvent[]>([]);
@@ -91,7 +92,7 @@ export default function LogsPage() {
 
   useEffect(() => {
     loadLogs();
-  }, [startDate, endDate]);
+  }, [startDate, endDate, useTimeFilter]);
 
   const loadLogs = () => {
     setIsLoading(true);
@@ -100,7 +101,25 @@ export default function LogsPage() {
       let feeEvents: AdditionalFeeEvent[];
       let rentalTxns: RentalTransaction[];
       
-      if (startDate && endDate) {
+      if (useTimeFilter && startDate && endDate) {
+        // Time-based filtering: Convert datetime-local to ISO strings for UTC comparison
+        const startISO = new Date(startDate).toISOString();
+        const endISO = new Date(endDate).toISOString();
+        result = localDb.getEntriesByDateTimeRange(startISO, endISO);
+        feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
+        rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+      } else if (useTimeFilter && startDate) {
+        // Single datetime point - convert to ISO and set end of day
+        const start = new Date(startDate);
+        const startISO = start.toISOString();
+        const endOfDay = new Date(start);
+        endOfDay.setHours(23, 59, 59, 999);
+        const endISO = endOfDay.toISOString();
+        result = localDb.getEntriesByDateTimeRange(startISO, endISO);
+        feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
+        rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+      } else if (startDate && endDate) {
+        // Date-based filtering (YYYY-MM-DD format)
         result = localDb.getEntriesByDateRange(startDate, endDate);
         feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, endDate);
         rentalTxns = localDb.getRentalTransactionsByDateRange(startDate, endDate);
@@ -326,29 +345,41 @@ export default function LogsPage() {
               </Button>
             ) : (
               <div className="flex items-center gap-3">
+                <Button
+                  variant={useTimeFilter ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setUseTimeFilter(!useTimeFilter);
+                    setStartDate("");
+                    setEndDate("");
+                  }}
+                  data-testid="button-toggle-time-filter"
+                >
+                  {useTimeFilter ? "날짜+시간" : "날짜만"}
+                </Button>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="start-date" className="text-sm whitespace-nowrap">
-                    시작일
+                    {useTimeFilter ? "시작" : "시작일"}
                   </Label>
                   <Input
                     id="start-date"
-                    type="date"
+                    type={useTimeFilter ? "datetime-local" : "date"}
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-40"
+                    className={useTimeFilter ? "w-52" : "w-40"}
                     data-testid="input-start-date"
                   />
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor="end-date" className="text-sm whitespace-nowrap">
-                    종료일
+                    {useTimeFilter ? "종료" : "종료일"}
                   </Label>
                   <Input
                     id="end-date"
-                    type="date"
+                    type={useTimeFilter ? "datetime-local" : "date"}
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-40"
+                    className={useTimeFilter ? "w-52" : "w-40"}
                     data-testid="input-end-date"
                   />
                 </div>
