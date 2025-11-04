@@ -24,6 +24,8 @@ import {
   confirmClosingDay,
   getLatestClosingDay,
   getSettings,
+  getDetailedSalesByBusinessDay,
+  getRentalRevenueBreakdownByBusinessDay,
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 import * as localDb from '@/lib/localDb';
@@ -39,7 +41,22 @@ export default function ClosingPage() {
   const [openingFloat, setOpeningFloat] = useState('30000');
   const [targetFloat, setTargetFloat] = useState('30000');
 
-  // Sales summary
+  // Detailed sales breakdown
+  const [entrySales, setEntrySales] = useState({
+    cash: 0, card: 0, transfer: 0, total: 0
+  });
+  const [additionalSales, setAdditionalSales] = useState({
+    cash: 0, card: 0, transfer: 0, total: 0
+  });
+  const [totalEntrySales, setTotalEntrySales] = useState({
+    cash: 0, card: 0, transfer: 0, total: 0
+  });
+  const [rentalBreakdown, setRentalBreakdown] = useState<{
+    breakdown: any;
+    totals: any;
+  } | null>(null);
+
+  // Sales summary (for backward compatibility)
   const [salesSummary, setSalesSummary] = useState({
     cashSales: 0,
     cardSales: 0,
@@ -109,20 +126,28 @@ export default function ClosingPage() {
       }
     }
 
-    // Load sales summary
-    const summary = localDb.getDailySummary(businessDay);
-    if (summary) {
-      const cashSales = Number(summary.cashSales) || 0;
-      const cardSales = Number(summary.cardSales) || 0;
-      const transferSales = Number(summary.transferSales) || 0;
-      
-      setSalesSummary({
-        cashSales,
-        cardSales,
-        transferSales,
-        totalSales: Number(summary.totalSales) || 0,
-      });
-    }
+    // Load detailed sales breakdown
+    const detailedSales = getDetailedSalesByBusinessDay(businessDay);
+    setEntrySales(detailedSales.entrySales);
+    setAdditionalSales(detailedSales.additionalSales);
+    setTotalEntrySales(detailedSales.totalEntrySales);
+    
+    // Load rental breakdown
+    const rentalData = getRentalRevenueBreakdownByBusinessDay(businessDay);
+    setRentalBreakdown(rentalData);
+    
+    // Calculate total sales for backward compatibility
+    const totalCashSales = detailedSales.totalEntrySales.cash + rentalData.totals.grandTotal.cash;
+    const totalCardSales = detailedSales.totalEntrySales.card + rentalData.totals.grandTotal.card;
+    const totalTransferSales = detailedSales.totalEntrySales.transfer + rentalData.totals.grandTotal.transfer;
+    const grandTotalSales = totalCashSales + totalCardSales + totalTransferSales;
+    
+    setSalesSummary({
+      cashSales: totalCashSales,
+      cardSales: totalCardSales,
+      transferSales: totalTransferSales,
+      totalSales: grandTotalSales,
+    });
 
     // Load expense summary
     const expenses = localDb.getExpenseSummaryByBusinessDay(businessDay);
@@ -135,7 +160,7 @@ export default function ClosingPage() {
 
     // Calculate expected cash
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + salesSummary.cashSales - expenseSummary.cashExpenses;
+    const expected = openingFloatNum + totalCashSales - Number(expenses.cashTotal);
     setExpectedCash(expected);
   };
 
@@ -238,13 +263,29 @@ export default function ClosingPage() {
           </div>
 
           <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => {
+                const bankDepositAmount = (parseInt(actualCash) || 0) - (parseInt(targetFloat) || 0);
+                toast({
+                  title: '은행입금액 계산',
+                  description: `입금할 금액: ${formatKoreanCurrency(bankDepositAmount)}`,
+                  duration: 5000,
+                });
+              }} 
+              disabled={!actualCash || isConfirmed} 
+              data-testid="button-calculate-bank-deposit"
+            >
+              <Calculator className="h-4 w-4 mr-2" />
+              은행입금액
+            </Button>
             <Button onClick={handleSave} disabled={isConfirmed} data-testid="button-save-closing">
               <Save className="h-4 w-4 mr-2" />
               저장
             </Button>
             <Button onClick={handleConfirm} disabled={isConfirmed} data-testid="button-confirm-closing">
               <CheckCircle className="h-4 w-4 mr-2" />
-              확정
+              정산확정
             </Button>
           </div>
         </div>
@@ -312,36 +353,194 @@ export default function ClosingPage() {
           </CardContent>
         </Card>
 
-        {/* Sales Summary */}
+        {/* Detailed Sales Summary */}
         <Card>
           <CardHeader>
-            <CardTitle>매출 집계</CardTitle>
+            <CardTitle>매출 정보</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">현금 매출</p>
-                <p className="text-xl font-semibold" data-testid="text-cash-sales">
-                  {formatKoreanCurrency(salesSummary.cashSales)}
-                </p>
+          <CardContent className="space-y-6">
+            {/* 입실매출 */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg border-b pb-2">입실매출</h3>
+              
+              {/* ① 일반요금합계 */}
+              <div className="pl-4 space-y-1">
+                <p className="text-sm font-medium">① 일반요금합계</p>
+                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                  <div>
+                    <span className="text-muted-foreground">현금:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(entrySales.cash)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">카드:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(entrySales.card)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">이체:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(entrySales.transfer)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">합계:</span>
+                    <span className="ml-1 font-semibold text-primary">{formatKoreanCurrency(entrySales.total)}</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">카드 매출</p>
-                <p className="text-xl font-semibold" data-testid="text-card-sales">
-                  {formatKoreanCurrency(salesSummary.cardSales)}
-                </p>
+
+              {/* ② 추가요금합계 */}
+              <div className="pl-4 space-y-1">
+                <p className="text-sm font-medium">② 추가요금합계</p>
+                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                  <div>
+                    <span className="text-muted-foreground">현금:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalSales.cash)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">카드:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalSales.card)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">이체:</span>
+                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalSales.transfer)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">합계:</span>
+                    <span className="ml-1 font-semibold text-primary">{formatKoreanCurrency(additionalSales.total)}</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">계좌이체 매출</p>
-                <p className="text-xl font-semibold" data-testid="text-transfer-sales">
-                  {formatKoreanCurrency(salesSummary.transferSales)}
-                </p>
+
+              {/* ③ 총합 */}
+              <div className="pl-4 space-y-1 bg-blue-50 dark:bg-blue-950 p-3 rounded">
+                <p className="text-sm font-semibold">③ 총합 (① + ②)</p>
+                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                  <div>
+                    <span className="text-muted-foreground">현금:</span>
+                    <span className="ml-1 font-bold">{formatKoreanCurrency(totalEntrySales.cash)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">카드:</span>
+                    <span className="ml-1 font-bold">{formatKoreanCurrency(totalEntrySales.card)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">이체:</span>
+                    <span className="ml-1 font-bold">{formatKoreanCurrency(totalEntrySales.transfer)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">합계:</span>
+                    <span className="ml-1 font-bold text-primary">{formatKoreanCurrency(totalEntrySales.total)}</span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">총 매출</p>
-                <p className="text-2xl font-bold text-primary" data-testid="text-total-sales">
-                  {formatKoreanCurrency(salesSummary.totalSales)}
-                </p>
+            </div>
+
+            {/* 추가매출 (대여) */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg border-b pb-2">추가매출</h3>
+              
+              {rentalBreakdown && Object.entries(rentalBreakdown.breakdown).map(([itemName, data]: [string, any], idx) => {
+                const rentalNum = idx * 2 + 4; // ④, ⑥, ⑧...
+                const depositNum = rentalNum + 1; // ⑤, ⑦, ⑨...
+                
+                return (
+                  <div key={itemName} className="pl-4 space-y-2">
+                    {/* 대여비 */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{String.fromCharCode(9311 + rentalNum - 1)} {itemName} 대여비</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                        <div>
+                          <span className="text-muted-foreground">현금:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.rentalFee.cash)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">카드:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.rentalFee.card)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">이체:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.rentalFee.transfer)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">합계:</span>
+                          <span className="ml-1 font-semibold">{formatKoreanCurrency(data.rentalFee.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* 보증금 몰수 */}
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">{String.fromCharCode(9311 + depositNum - 1)} {itemName} 보증금 몰수</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                        <div>
+                          <span className="text-muted-foreground">현금:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.cash)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">카드:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.card)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">이체:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(data.depositForfeited.transfer)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">합계:</span>
+                          <span className="ml-1 font-semibold">{formatKoreanCurrency(data.depositForfeited.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* ⑧ 추가매출 총합 */}
+              {rentalBreakdown && (
+                <div className="pl-4 space-y-1 bg-green-50 dark:bg-green-950 p-3 rounded">
+                  <p className="text-sm font-semibold">⑧ 총합 (모든 대여항목)</p>
+                  <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                    <div>
+                      <span className="text-muted-foreground">현금:</span>
+                      <span className="ml-1 font-bold">{formatKoreanCurrency(rentalBreakdown.totals.grandTotal.cash)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">카드:</span>
+                      <span className="ml-1 font-bold">{formatKoreanCurrency(rentalBreakdown.totals.grandTotal.card)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">이체:</span>
+                      <span className="ml-1 font-bold">{formatKoreanCurrency(rentalBreakdown.totals.grandTotal.transfer)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">합계:</span>
+                      <span className="ml-1 font-bold text-primary">{formatKoreanCurrency(rentalBreakdown.totals.grandTotal.total)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 총매출 */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-lg border-b pb-2">총매출</h3>
+              <div className="pl-4 space-y-1 bg-primary/10 p-4 rounded">
+                <p className="text-base font-bold">⑨ 총매출 (③ + ⑧)</p>
+                <div className="grid grid-cols-4 gap-2 text-base pl-2">
+                  <div>
+                    <span className="text-muted-foreground">현금:</span>
+                    <span className="ml-1 font-bold" data-testid="text-cash-sales">{formatKoreanCurrency(salesSummary.cashSales)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">카드:</span>
+                    <span className="ml-1 font-bold" data-testid="text-card-sales">{formatKoreanCurrency(salesSummary.cardSales)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">이체:</span>
+                    <span className="ml-1 font-bold" data-testid="text-transfer-sales">{formatKoreanCurrency(salesSummary.transferSales)}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">합계:</span>
+                    <span className="ml-1 font-bold text-xl text-primary" data-testid="text-total-sales">{formatKoreanCurrency(salesSummary.totalSales)}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -350,33 +549,28 @@ export default function ClosingPage() {
         {/* Expense Summary */}
         <Card>
           <CardHeader>
-            <CardTitle>지출 집계</CardTitle>
+            <CardTitle>지출합계</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">현금 지출</p>
-                <p className="text-xl font-semibold text-destructive" data-testid="text-cash-expenses">
-                  {formatKoreanCurrency(expenseSummary.cashExpenses)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">카드 지출</p>
-                <p className="text-xl font-semibold text-destructive" data-testid="text-card-expenses">
-                  {formatKoreanCurrency(expenseSummary.cardExpenses)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">계좌이체 지출</p>
-                <p className="text-xl font-semibold text-destructive" data-testid="text-transfer-expenses">
-                  {formatKoreanCurrency(expenseSummary.transferExpenses)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">총 지출</p>
-                <p className="text-2xl font-bold text-destructive" data-testid="text-total-expenses">
-                  {formatKoreanCurrency(expenseSummary.totalExpenses)}
-                </p>
+            <div className="pl-4 space-y-1 bg-destructive/10 p-4 rounded">
+              <p className="text-base font-bold">⑩ 지출총액</p>
+              <div className="grid grid-cols-4 gap-2 text-base pl-2">
+                <div>
+                  <span className="text-muted-foreground">현금:</span>
+                  <span className="ml-1 font-bold text-destructive" data-testid="text-cash-expenses">{formatKoreanCurrency(expenseSummary.cashExpenses)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">카드:</span>
+                  <span className="ml-1 font-bold text-destructive" data-testid="text-card-expenses">{formatKoreanCurrency(expenseSummary.cardExpenses)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">이체:</span>
+                  <span className="ml-1 font-bold text-destructive" data-testid="text-transfer-expenses">{formatKoreanCurrency(expenseSummary.transferExpenses)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">합계:</span>
+                  <span className="ml-1 font-bold text-xl text-destructive" data-testid="text-total-expenses">{formatKoreanCurrency(expenseSummary.totalExpenses)}</span>
+                </div>
               </div>
             </div>
           </CardContent>
