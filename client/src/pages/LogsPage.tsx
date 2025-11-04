@@ -606,7 +606,7 @@ export default function LogsPage() {
       )}
 
       {/* Rental Transactions Section - 추가매출 */}
-      {rentalTransactions.length > 0 && (() => {
+      {(() => {
         // Apply rental filters
         let filteredRentals = [...rentalTransactions];
         
@@ -747,42 +747,50 @@ export default function LogsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRentals.map((txn) => {
-                    // Calculate deposit revenue: only if 'received' or 'forfeited'
-                    const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
-                      ? txn.depositAmount 
-                      : 0;
-                    
-                    return (
-                      <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
-                        <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
-                        <TableCell className="text-sm">
-                          {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                        </TableCell>
-                        <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
-                        <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
-                        <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
-                        <TableCell className="text-sm">
-                          {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : '이체'}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <span className={`px-2 py-1 rounded text-xs ${
-                            txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
-                            txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
-                            'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
-                          }`}>
-                            {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환급' : '몰수'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-semibold text-base text-primary">
-                          {depositRevenue.toLocaleString()}원
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {filteredRentals.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                        대여 거래가 없습니다
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredRentals.map((txn) => {
+                      // Calculate deposit revenue: only if 'received' or 'forfeited'
+                      const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
+                        ? txn.depositAmount 
+                        : 0;
+                      
+                      return (
+                        <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
+                          <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
+                          <TableCell className="text-sm">
+                            {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </TableCell>
+                          <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
+                          <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
+                          <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
+                          <TableCell className="text-sm">
+                            {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : '이체'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
+                              txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
+                              'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
+                            }`}>
+                              {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환급' : '몰수'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-semibold text-base text-primary">
+                            {depositRevenue.toLocaleString()}원
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </ScrollArea>
