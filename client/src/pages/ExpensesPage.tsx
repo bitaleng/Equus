@@ -475,7 +475,7 @@ export default function ExpensesPage() {
           <CardHeader>
             <CardTitle>오늘의 지출 내역 ({businessDay})</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="max-h-[600px] overflow-auto">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
