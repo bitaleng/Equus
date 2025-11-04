@@ -53,6 +53,7 @@ export default function Home() {
   const [newLockerInfo, setNewLockerInfo] = useState<{lockerNumber: number, timeType: '주간' | '야간', basePrice: number} | null>(null);
   const [additionalFeeSales, setAdditionalFeeSales] = useState<number>(0);
   const [rentalRevenue, setRentalRevenue] = useState<number>(0);
+  const [totalExpenses, setTotalExpenses] = useState<number>(0);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -103,6 +104,10 @@ export default function Home() {
       // Get rental revenue for today
       const rentalRev = localDb.getTotalRentalRevenueByBusinessDay(businessDay);
       setRentalRevenue(rentalRev);
+      
+      // Get total expenses for today
+      const expenseSummary = localDb.getExpenseSummaryByBusinessDay(businessDay);
+      setTotalExpenses(Number(expenseSummary.total) || 0);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -494,6 +499,7 @@ export default function Home() {
             nightVisitors={summary?.nightVisitors || 0}
             additionalFeeSales={additionalFeeSales}
             rentalRevenue={rentalRevenue}
+            totalExpenses={totalExpenses}
           />
         </div>
       </div>

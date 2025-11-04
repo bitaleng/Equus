@@ -10,6 +10,7 @@ interface SalesSummaryProps {
   nightVisitors: number;
   additionalFeeSales: number;
   rentalRevenue: number;
+  totalExpenses: number;
 }
 
 export default function SalesSummary({
@@ -22,9 +23,11 @@ export default function SalesSummary({
   nightVisitors,
   additionalFeeSales,
   rentalRevenue,
+  totalExpenses,
 }: SalesSummaryProps) {
   const entrySales = totalSales + additionalFeeSales;
   const grandTotal = entrySales + rentalRevenue;
+  const netProfit = grandTotal - totalExpenses;
   
   return (
     <div className="space-y-4">
@@ -43,38 +46,50 @@ export default function SalesSummary({
               <p className="text-2xl font-semibold" data-testid="text-total-visitors">{totalVisitors}명</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">총 매출</p>
-              <p className="text-2xl font-semibold text-primary" data-testid="text-grand-total">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">총 수입</p>
+              <p className="text-2xl font-semibold text-blue-600 dark:text-blue-400" data-testid="text-grand-total">
                 {grandTotal.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">입실매출 (추가요금 포함)</p>
-              <p className="text-xl font-medium text-blue-600 dark:text-blue-400" data-testid="text-entry-sales">
+              <p className="text-lg font-medium" data-testid="text-entry-sales">
                 {entrySales.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 매출</p>
-              <p className="text-xl font-medium text-green-600 dark:text-green-400" data-testid="text-rental-revenue">
+              <p className="text-lg font-medium" data-testid="text-rental-revenue">
                 {rentalRevenue.toLocaleString()}원
               </p>
             </div>
             <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">총 지출</p>
+              <p className="text-lg font-medium text-red-600 dark:text-red-400" data-testid="text-total-expenses">
+                {totalExpenses.toLocaleString()}원
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">순매출</p>
+              <p className="text-2xl font-semibold text-primary" data-testid="text-net-profit">
+                {netProfit.toLocaleString()}원
+              </p>
+            </div>
+            <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">취소 건수</p>
-              <p className="text-xl font-medium" data-testid="text-cancellations">{cancellations}건</p>
+              <p className="text-lg font-medium" data-testid="text-cancellations">{cancellations}건</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">외국인 수</p>
-              <p className="text-xl font-medium" data-testid="text-foreigner-count">{foreignerCount}명</p>
+              <p className="text-lg font-medium" data-testid="text-foreigner-count">{foreignerCount}명</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">주간 방문수</p>
-              <p className="text-xl font-medium" data-testid="text-day-visitors">{dayVisitors}명</p>
+              <p className="text-lg font-medium" data-testid="text-day-visitors">{dayVisitors}명</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">야간 방문수</p>
-              <p className="text-xl font-medium" data-testid="text-night-visitors">{nightVisitors}명</p>
+              <p className="text-lg font-medium" data-testid="text-night-visitors">{nightVisitors}명</p>
             </div>
           </div>
         </CardContent>
