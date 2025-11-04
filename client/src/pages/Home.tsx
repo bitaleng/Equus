@@ -498,6 +498,7 @@ export default function Home() {
           dayPrice={dayPrice}
           nightPrice={nightPrice}
           isInUse={!!selectedEntry}
+          currentLockerLogId={selectedEntry?.id}
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}

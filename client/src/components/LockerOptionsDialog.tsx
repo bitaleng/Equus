@@ -56,6 +56,7 @@ interface LockerOptionsDialogProps {
   isInUse?: boolean;
   dayPrice?: number;
   nightPrice?: number;
+  currentLockerLogId?: string;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer') => void;
   onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
   onCancel: () => void;
@@ -78,6 +79,7 @@ export default function LockerOptionsDialog({
   isInUse = false,
   dayPrice = 10000,
   nightPrice = 15000,
+  currentLockerLogId,
   onApply,
   onCheckout,
   onCancel,
@@ -100,6 +102,7 @@ export default function LockerOptionsDialog({
   const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
   const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited'>>(new Map());
+  const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   
   // Track previous locker number to reset checkoutResolved only when changing lockers
   const previousLockerRef = useRef<number | null>(null);
@@ -110,8 +113,16 @@ export default function LockerOptionsDialog({
     if (open) {
       const items = localDb.getAdditionalRevenueItems();
       setAvailableRentalItems(items);
+      
+      // Load current rental transactions if locker is in use
+      if (isInUse && currentLockerLogId) {
+        const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
+        setCurrentRentalTransactions(rentals);
+      } else {
+        setCurrentRentalTransactions([]);
+      }
     }
-  }, [open]);
+  }, [open, isInUse, currentLockerLogId]);
 
   // Play click sound
   const playClickSound = () => {
@@ -451,7 +462,16 @@ export default function LockerOptionsDialog({
       <Dialog open={open} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-[425px]" data-testid="dialog-locker-options">
           <DialogHeader>
-            <DialogTitle className="text-xl">락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}</DialogTitle>
+            <DialogTitle className="text-xl">
+              락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
+              {isInUse && currentRentalTransactions.length > 0 && (
+                <span className="text-sm text-orange-600 dark:text-orange-400 ml-2">
+                  ({currentRentalTransactions.map(txn => 
+                    `${txn.itemName} 회수(보증금 ${txn.depositAmount.toLocaleString()}원 있음)`
+                  ).join(', ')})
+                </span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
@@ -613,7 +633,7 @@ export default function LockerOptionsDialog({
                         </div>
                         
                         {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시 */}
-                        {isChecked && isInUse && (
+                        {isChecked && (
                           <div className="ml-6 space-y-2">
                             <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
                               보증금 상태
@@ -634,14 +654,20 @@ export default function LockerOptionsDialog({
                                 <SelectValue placeholder="보증금 상태를 선택하세요" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="received">받음 (매출 기록)</SelectItem>
-                                <SelectItem value="refunded">환불 (매출 없음)</SelectItem>
-                                <SelectItem value="forfeited">미반환 (매출 기록)</SelectItem>
+                                {!isInUse && (
+                                  <SelectItem value="received">받음 (입실 시)</SelectItem>
+                                )}
+                                {isInUse && (
+                                  <>
+                                    <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
+                                    <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
+                                  </>
+                                )}
                               </SelectContent>
                             </Select>
                             {!depositStatus && (
                               <p className="text-xs text-orange-600 dark:text-orange-400">
-                                ⚠️ 퇴실 전에 보증금 상태를 선택해주세요
+                                {isInUse ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
                               </p>
                             )}
                           </div>
@@ -668,10 +694,11 @@ export default function LockerOptionsDialog({
                   className="bg-primary" 
                   data-testid="button-checkout"
                   disabled={(() => {
-                    // Check if any selected rental item has no deposit status
+                    // Check if any selected rental item has invalid deposit status for checkout
                     const hasUnresolvedDeposits = Array.from(selectedRentalItems).some(itemId => {
                       const status = depositStatuses.get(itemId);
-                      return !status; // Require explicit deposit status selection
+                      // For checkout, require 'refunded' or 'forfeited' (not 'received')
+                      return !status || status === 'received';
                     });
                     
                     // Check if there are additional fees or rental items but not resolved yet
