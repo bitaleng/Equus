@@ -106,9 +106,12 @@ export default function LockerOptionsDialog({
 
   // Load rental items from database on mount
   useEffect(() => {
-    const items = localDb.getAdditionalRevenueItems();
-    setAvailableRentalItems(items);
-  }, []);
+    // Reload rental items whenever dialog opens
+    if (open) {
+      const items = localDb.getAdditionalRevenueItems();
+      setAvailableRentalItems(items);
+    }
+  }, [open]);
 
   // Play click sound
   const playClickSound = () => {
@@ -305,8 +308,8 @@ export default function LockerOptionsDialog({
         rentalItems.push({
           itemId: item.id,
           itemName: item.name,
-          rentalFee: item.rental_fee,
-          depositAmount: item.deposit_amount,
+          rentalFee: item.rentalFee || 0,
+          depositAmount: item.depositAmount || 0,
           depositStatus: depositStatus,
         });
       }
@@ -604,7 +607,7 @@ export default function LockerOptionsDialog({
                               data-testid={`checkbox-rental-${itemId}`}
                             />
                             <Label htmlFor={`rental-${itemId}`} className="text-sm cursor-pointer font-normal">
-                              {item.name} (대여비: {item.rental_fee.toLocaleString()}원, 보증금: {item.deposit_amount.toLocaleString()}원)
+                              {item.name} (대여비: {item.rentalFee?.toLocaleString() ?? '0'}원, 보증금: {item.depositAmount?.toLocaleString() ?? '0'}원)
                             </Label>
                           </div>
                         </div>

@@ -595,8 +595,8 @@ export default function Settings() {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground mt-1">
-                          대여비: ₩{item.rental_fee.toLocaleString()} | 
-                          보증금: ₩{item.deposit_amount.toLocaleString()}
+                          대여비: ₩{item.rentalFee?.toLocaleString() ?? '0'} | 
+                          보증금: ₩{item.depositAmount?.toLocaleString() ?? '0'}
                         </p>
                       </div>
                       <div className="flex gap-2">
