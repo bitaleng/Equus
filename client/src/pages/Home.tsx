@@ -267,7 +267,13 @@ export default function Home() {
     loadData();
   };
 
-  const handleCheckout = async (paymentMethod: 'card' | 'cash' | 'transfer') => {
+  const handleCheckout = async (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: Array<{
+    itemId: string;
+    itemName: string;
+    rentalFee: number;
+    depositAmount: number;
+    depositStatus: 'received' | 'refunded' | 'forfeited';
+  }>) => {
     if (!selectedEntry) return;
 
     const now = new Date();
@@ -310,6 +316,33 @@ export default function Home() {
         feeAmount: additionalFeeInfo.additionalFee,
         businessDay: checkoutBusinessDay,
         paymentMethod: paymentMethod,
+      });
+    }
+    
+    // Create rental transaction records for each rented item
+    if (rentalItems && rentalItems.length > 0) {
+      rentalItems.forEach(item => {
+        // Calculate revenue based on deposit status
+        let revenue = item.rentalFee; // Always include rental fee
+        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          revenue += item.depositAmount; // Add deposit amount if received or forfeited
+        }
+        // If refunded, only rental fee is counted (already in revenue variable)
+        
+        localDb.createRentalTransaction({
+          lockerLogId: selectedEntry.id,
+          lockerNumber: selectedEntry.lockerNumber,
+          itemId: item.itemId,
+          itemName: item.itemName,
+          rentalFee: item.rentalFee,
+          depositAmount: item.depositAmount,
+          depositStatus: item.depositStatus,
+          rentalTime: selectedEntry.entryTime,
+          returnTime: now,
+          businessDay: checkoutBusinessDay,
+          paymentMethod: paymentMethod,
+          revenue: revenue,
+        });
       });
     }
     

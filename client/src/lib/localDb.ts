@@ -191,24 +191,113 @@ function migrateDatabase() {
       )
     `);
     
-    // Step 7: Create rental_transactions table (rental records)
-    db.run(`
-      CREATE TABLE IF NOT EXISTS rental_transactions (
-        id TEXT PRIMARY KEY,
-        locker_log_id TEXT NOT NULL,
-        item_id TEXT NOT NULL,
-        locker_number INTEGER NOT NULL,
-        rental_date TEXT NOT NULL,
-        rental_time TEXT NOT NULL,
-        rental_fee INTEGER NOT NULL,
-        deposit_amount INTEGER NOT NULL,
-        payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
-        deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
-        deposit_revenue INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )
+    // Step 7: Migrate rental_transactions table (one-time migration)
+    // Check if migration has already been done
+    const migrationCheck = db.exec(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='rental_transactions'
     `);
+    
+    if (migrationCheck.length > 0) {
+      // Table exists, check if it has the new schema (check for 'revenue' column)
+      const schemaCheck = db.exec(`PRAGMA table_info(rental_transactions)`);
+      const hasRevenueColumn = schemaCheck[0]?.values.some((row: any) => row[1] === 'revenue');
+      
+      if (!hasRevenueColumn) {
+        // Old schema detected, need to migrate
+        // Since SQLite doesn't support easy column rename/restructure, we need to:
+        // 1. Rename old table
+        // 2. Create new table
+        // 3. Copy data (if any)
+        // 4. Drop old table
+        
+        db.run('ALTER TABLE rental_transactions RENAME TO rental_transactions_old');
+        
+        db.run(`
+          CREATE TABLE rental_transactions (
+            id TEXT PRIMARY KEY,
+            locker_log_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            locker_number INTEGER NOT NULL,
+            rental_time TEXT NOT NULL,
+            return_time TEXT NOT NULL,
+            business_day TEXT NOT NULL,
+            rental_fee INTEGER NOT NULL,
+            deposit_amount INTEGER NOT NULL,
+            payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+            deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+            revenue INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+          )
+        `);
+        
+        // Try to migrate existing data (best effort)
+        // Old schema had: id, locker_log_id, item_id, locker_number, rental_date, rental_time, 
+        //                 rental_fee, deposit_amount, payment_method, deposit_status, deposit_revenue
+        // New schema needs: id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time,
+        //                   business_day, rental_fee, deposit_amount, payment_method, deposit_status, revenue
+        let migrationSuccess = false;
+        try {
+          db.run(`
+            INSERT INTO rental_transactions 
+            (id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time, 
+             business_day, rental_fee, deposit_amount, payment_method, deposit_status, revenue, created_at, updated_at)
+            SELECT 
+              id, 
+              locker_log_id, 
+              item_id,
+              '',  -- item_name didn't exist in old schema, use empty string
+              locker_number,
+              rental_time,  -- rental_time existed in old schema
+              rental_date,  -- Use rental_date as return_time (best guess)
+              rental_date,  -- Use rental_date as business_day
+              rental_fee,
+              deposit_amount,
+              payment_method,
+              deposit_status,
+              rental_fee + CASE 
+                WHEN deposit_status IN ('received', 'forfeited') THEN deposit_amount 
+                ELSE 0 
+              END,  -- Calculate revenue from rental_fee and deposit_status
+              created_at,
+              updated_at
+            FROM rental_transactions_old
+          `);
+          migrationSuccess = true;
+        } catch (e) {
+          console.error('Failed to migrate rental transaction data. Old table will be kept as rental_transactions_old for manual recovery:', e);
+          // Don't drop the old table - keep it as rental_transactions_old for manual recovery
+        }
+        
+        // Only drop the old table if migration was successful
+        if (migrationSuccess) {
+          db.run('DROP TABLE rental_transactions_old');
+        }
+      }
+    } else {
+      // Table doesn't exist, create it with new schema
+      db.run(`
+        CREATE TABLE rental_transactions (
+          id TEXT PRIMARY KEY,
+          locker_log_id TEXT NOT NULL,
+          item_id TEXT NOT NULL,
+          item_name TEXT NOT NULL,
+          locker_number INTEGER NOT NULL,
+          rental_time TEXT NOT NULL,
+          return_time TEXT NOT NULL,
+          business_day TEXT NOT NULL,
+          rental_fee INTEGER NOT NULL,
+          deposit_amount INTEGER NOT NULL,
+          payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+          deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+          revenue INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+    }
     
     // Step 8: Initialize default rental items if not exist
     const countResult = db.exec(`SELECT COUNT(*) FROM additional_revenue_items`);
@@ -335,14 +424,16 @@ function createTables() {
       id TEXT PRIMARY KEY,
       locker_log_id TEXT NOT NULL,
       item_id TEXT NOT NULL,
+      item_name TEXT NOT NULL,
       locker_number INTEGER NOT NULL,
-      rental_date TEXT NOT NULL,
       rental_time TEXT NOT NULL,
+      return_time TEXT NOT NULL,
+      business_day TEXT NOT NULL,
       rental_fee INTEGER NOT NULL,
       deposit_amount INTEGER NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
       deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
-      deposit_revenue INTEGER NOT NULL DEFAULT 0,
+      revenue INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -1412,41 +1503,44 @@ export function deleteAdditionalRevenueItem(id: string) {
 export function createRentalTransaction(rental: {
   lockerLogId: string;
   itemId: string;
+  itemName: string;
   lockerNumber: number;
-  rentalDate: string;
+  rentalTime: string | Date;
+  returnTime: string | Date;
+  businessDay: string;
   rentalFee: number;
   depositAmount: number;
   paymentMethod: 'card' | 'cash' | 'transfer';
   depositStatus: 'received' | 'refunded' | 'forfeited';
+  revenue: number;
 }): string {
   if (!db) throw new Error('Database not initialized');
   
   const id = generateId();
   const now = new Date().toISOString();
   
-  // Calculate deposit revenue based on status
-  let depositRevenue = 0;
-  if (rental.depositStatus === 'received' || rental.depositStatus === 'forfeited') {
-    depositRevenue = rental.depositAmount;
-  }
+  const rentalTimeStr = rental.rentalTime instanceof Date ? rental.rentalTime.toISOString() : rental.rentalTime;
+  const returnTimeStr = rental.returnTime instanceof Date ? rental.returnTime.toISOString() : rental.returnTime;
   
   db.run(
     `INSERT INTO rental_transactions 
-     (id, locker_log_id, item_id, locker_number, rental_date, rental_time, 
-      rental_fee, deposit_amount, payment_method, deposit_status, deposit_revenue, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time, business_day,
+      rental_fee, deposit_amount, payment_method, deposit_status, revenue, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       rental.lockerLogId,
       rental.itemId,
+      rental.itemName,
       rental.lockerNumber,
-      rental.rentalDate,
-      now,
+      rentalTimeStr,
+      returnTimeStr,
+      rental.businessDay,
       rental.rentalFee,
       rental.depositAmount,
       rental.paymentMethod,
       rental.depositStatus,
-      depositRevenue,
+      rental.revenue,
       now,
       now
     ]
@@ -1462,23 +1556,26 @@ export function updateRentalTransaction(id: string, updates: {
   if (!db) throw new Error('Database not initialized');
   
   if (updates.depositStatus) {
-    // Get current transaction to calculate new deposit revenue
-    const result = db.exec('SELECT deposit_amount FROM rental_transactions WHERE id = ?', [id]);
+    // Get current transaction to calculate new revenue
+    const result = db.exec('SELECT rental_fee, deposit_amount FROM rental_transactions WHERE id = ?', [id]);
     
     if (result.length === 0 || result[0].values.length === 0) return;
     
-    const depositAmount = result[0].values[0][0] as number;
-    let depositRevenue = 0;
+    const rentalFee = result[0].values[0][0] as number;
+    const depositAmount = result[0].values[0][1] as number;
     
+    // Calculate revenue based on deposit status
+    let revenue = rentalFee; // Always include rental fee
     if (updates.depositStatus === 'received' || updates.depositStatus === 'forfeited') {
-      depositRevenue = depositAmount;
+      revenue += depositAmount; // Add deposit amount if received or forfeited
     }
+    // If refunded, only rental fee is counted (already in revenue variable)
     
     db.run(
       `UPDATE rental_transactions 
-       SET deposit_status = ?, deposit_revenue = ?, updated_at = ?
+       SET deposit_status = ?, revenue = ?, updated_at = ?
        WHERE id = ?`,
-      [updates.depositStatus, depositRevenue, new Date().toISOString(), id]
+      [updates.depositStatus, revenue, new Date().toISOString(), id]
     );
     
     saveDatabase();
@@ -1503,12 +1600,26 @@ export function getRentalTransactionsByDateRange(startDate: string, endDate: str
   
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE rental_date >= ? AND rental_date <= ?
+     WHERE business_day >= ? AND business_day <= ?
      ORDER BY rental_time DESC`,
     [startDate, endDate]
   );
   
-  if (result.length === 0) return [];
+  if (result.length === 0 || result[0].values.length === 0) return [];
   
-  return rowsToObjects(result[0]);
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    itemId: row[2],
+    itemName: row[3],
+    lockerNumber: row[4],
+    rentalTime: row[5],
+    returnTime: row[6],
+    businessDay: row[7],
+    rentalFee: row[8],
+    depositAmount: row[9],
+    paymentMethod: row[10],
+    depositStatus: row[11],
+    revenue: row[12],
+  }));
 }
