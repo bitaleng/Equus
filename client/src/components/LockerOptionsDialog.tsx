@@ -118,8 +118,22 @@ export default function LockerOptionsDialog({
       if (isInUse && currentLockerLogId) {
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
         setCurrentRentalTransactions(rentals);
+        
+        // Auto-select checkboxes for existing rental items
+        const newSelected = new Set<string>();
+        const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
+        
+        rentals.forEach(txn => {
+          newSelected.add(txn.itemId);
+          newStatuses.set(txn.itemId, txn.depositStatus);
+        });
+        
+        setSelectedRentalItems(newSelected);
+        setDepositStatuses(newStatuses);
       } else {
         setCurrentRentalTransactions([]);
+        setSelectedRentalItems(new Set());
+        setDepositStatuses(new Map());
       }
     }
   }, [open, isInUse, currentLockerLogId]);
@@ -694,8 +708,23 @@ export default function LockerOptionsDialog({
                   className="bg-primary" 
                   data-testid="button-checkout"
                   disabled={(() => {
-                    // Check if any selected rental item has invalid deposit status for checkout
-                    const hasUnresolvedDeposits = Array.from(selectedRentalItems).some(itemId => {
+                    // Check if any existing rental transaction needs deposit resolution
+                    const hasUnresolvedExistingRentals = currentRentalTransactions.some(txn => {
+                      // If transaction is in 'received' state, must be updated to 'refunded' or 'forfeited'
+                      if (txn.depositStatus === 'received') {
+                        // Check if this item is selected and has a valid new status
+                        const newStatus = depositStatuses.get(txn.itemId);
+                        return !newStatus || newStatus === 'received';
+                      }
+                      return false;
+                    });
+                    
+                    // Check if any newly selected rental item has invalid deposit status for checkout
+                    const hasUnresolvedNewRentals = Array.from(selectedRentalItems).some(itemId => {
+                      // Skip items that are already in currentRentalTransactions
+                      if (currentRentalTransactions.some(txn => txn.itemId === itemId)) {
+                        return false;
+                      }
                       const status = depositStatuses.get(itemId);
                       // For checkout, require 'refunded' or 'forfeited' (not 'received')
                       return !status || status === 'received';
@@ -704,7 +733,7 @@ export default function LockerOptionsDialog({
                     // Check if there are additional fees or rental items but not resolved yet
                     const hasIssues = selectedRentalItems.size > 0 || additionalFeeInfo.additionalFee > 0;
                     
-                    return (hasIssues && !checkoutResolved) || hasUnresolvedDeposits;
+                    return (hasIssues && !checkoutResolved) || hasUnresolvedExistingRentals || hasUnresolvedNewRentals;
                   })()}
                 >
                   퇴실
