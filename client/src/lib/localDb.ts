@@ -207,11 +207,16 @@ function migrateDatabase() {
     `);
     
     if (migrationCheck.length > 0) {
-      // Table exists, check if it has the new schema (check for 'revenue' column)
+      // Table exists, check if it has the new schema
       const schemaCheck = db.exec(`PRAGMA table_info(rental_transactions)`);
       const hasRevenueColumn = schemaCheck[0]?.values.some((row: any) => row[1] === 'revenue');
       
-      if (!hasRevenueColumn) {
+      // Check if return_time is nullable (notnull = 0 means nullable, notnull = 1 means NOT NULL)
+      const returnTimeInfo = schemaCheck[0]?.values.find((row: any) => row[1] === 'return_time');
+      const isReturnTimeNullable = returnTimeInfo && returnTimeInfo[3] === 0; // row[3] is the 'notnull' field
+      
+      // Need migration if missing revenue column OR return_time is not nullable
+      if (!hasRevenueColumn || !isReturnTimeNullable) {
         // Old schema detected, need to migrate
         // Since SQLite doesn't support easy column rename/restructure, we need to:
         // 1. Rename old table
@@ -229,7 +234,7 @@ function migrateDatabase() {
             item_name TEXT NOT NULL,
             locker_number INTEGER NOT NULL,
             rental_time TEXT NOT NULL,
-            return_time TEXT NOT NULL,
+            return_time TEXT,
             business_day TEXT NOT NULL,
             rental_fee INTEGER NOT NULL,
             deposit_amount INTEGER NOT NULL,
@@ -294,7 +299,7 @@ function migrateDatabase() {
           item_name TEXT NOT NULL,
           locker_number INTEGER NOT NULL,
           rental_time TEXT NOT NULL,
-          return_time TEXT NOT NULL,
+          return_time TEXT,
           business_day TEXT NOT NULL,
           rental_fee INTEGER NOT NULL,
           deposit_amount INTEGER NOT NULL,
