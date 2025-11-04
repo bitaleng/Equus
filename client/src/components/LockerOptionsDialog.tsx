@@ -114,9 +114,12 @@ export default function LockerOptionsDialog({
       const items = localDb.getAdditionalRevenueItems();
       setAvailableRentalItems(items);
       
+      console.log('[LockerOptionsDialog] Dialog opened:', { isInUse, currentLockerLogId });
+      
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
+        console.log('[LockerOptionsDialog] Loaded rental transactions:', rentals);
         setCurrentRentalTransactions(rentals);
         
         // Auto-select checkboxes for existing rental items
@@ -124,13 +127,16 @@ export default function LockerOptionsDialog({
         const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
         
         rentals.forEach(txn => {
+          console.log('[LockerOptionsDialog] Adding to selection:', { itemId: txn.itemId, depositStatus: txn.depositStatus });
           newSelected.add(txn.itemId);
           newStatuses.set(txn.itemId, txn.depositStatus);
         });
         
+        console.log('[LockerOptionsDialog] Setting selected items:', Array.from(newSelected));
         setSelectedRentalItems(newSelected);
         setDepositStatuses(newStatuses);
       } else {
+        console.log('[LockerOptionsDialog] Clearing rental selections (not in use or no locker log ID)');
         setCurrentRentalTransactions([]);
         setSelectedRentalItems(new Set());
         setDepositStatuses(new Map());
