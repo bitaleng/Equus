@@ -30,6 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
+import { useToast } from "@/hooks/use-toast";
 
 interface RentalItemInfo {
   itemId: string;
@@ -48,6 +49,9 @@ interface LockerOptionsDialogProps {
   entryTime?: string;
   currentNotes?: string;
   currentPaymentMethod?: 'card' | 'cash' | 'transfer';
+  currentPaymentCash?: number;
+  currentPaymentCard?: number;
+  currentPaymentTransfer?: number;
   currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   currentOptionAmount?: number;
   currentFinalPrice?: number;
@@ -57,8 +61,8 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   currentLockerLogId?: string;
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
-  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[]) => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number) => void;
+  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number) => void;
   onCancel: () => void;
 }
 
@@ -71,6 +75,9 @@ export default function LockerOptionsDialog({
   entryTime,
   currentNotes = "",
   currentPaymentMethod = 'cash',
+  currentPaymentCash,
+  currentPaymentCard,
+  currentPaymentTransfer,
   currentOptionType = 'none',
   currentOptionAmount,
   currentFinalPrice,
@@ -90,6 +97,9 @@ export default function LockerOptionsDialog({
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentPaymentMethod);
+  const [paymentCash, setPaymentCash] = useState<string>("");
+  const [paymentCard, setPaymentCard] = useState<string>("");
+  const [paymentTransfer, setPaymentTransfer] = useState<string>("");
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
@@ -107,6 +117,7 @@ export default function LockerOptionsDialog({
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
   const previousLockerRef = useRef<number | null>(null);
+  const { toast } = useToast();
 
   // Reset checkoutResolved when dialog opens
   useEffect(() => {
@@ -116,6 +127,46 @@ export default function LockerOptionsDialog({
       initialOpenRef.current = true;
     }
   }, [open]);
+  
+  // Initialize payment fields when dialog opens
+  useEffect(() => {
+    if (open) {
+      // Load existing payment data if available (check for undefined, not truthy)
+      // This allows 0 values to be preserved
+      const hasExistingData = currentPaymentCash !== undefined || 
+                             currentPaymentCard !== undefined || 
+                             currentPaymentTransfer !== undefined;
+      
+      if (hasExistingData) {
+        setPaymentCash(currentPaymentCash !== undefined ? String(currentPaymentCash) : "");
+        setPaymentCard(currentPaymentCard !== undefined ? String(currentPaymentCard) : "");
+        setPaymentTransfer(currentPaymentTransfer !== undefined ? String(currentPaymentTransfer) : "");
+      } else {
+        // Auto-fill the active payment method with finalPrice for new entries
+        // This makes single-method payments frictionless
+        if (finalPrice > 0) {
+          if (paymentMethod === 'cash') {
+            setPaymentCash(String(finalPrice));
+            setPaymentCard("");
+            setPaymentTransfer("");
+          } else if (paymentMethod === 'card') {
+            setPaymentCash("");
+            setPaymentCard(String(finalPrice));
+            setPaymentTransfer("");
+          } else if (paymentMethod === 'transfer') {
+            setPaymentCash("");
+            setPaymentCard("");
+            setPaymentTransfer(String(finalPrice));
+          }
+        } else {
+          // Clear all fields if no final price
+          setPaymentCash("");
+          setPaymentCard("");
+          setPaymentTransfer("");
+        }
+      }
+    }
+  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, finalPrice, paymentMethod]);
 
   // Load rental items from database on mount
   useEffect(() => {
@@ -375,6 +426,37 @@ export default function LockerOptionsDialog({
     
     return rentalItems;
   };
+  
+  // Validate mixed payment amounts match final price
+  const validateMixedPayment = (targetAmount: number): boolean => {
+    // Treat empty strings and NaN as 0
+    const cashVal = parseInt(paymentCash) || 0;
+    const cardVal = parseInt(paymentCard) || 0;
+    const transferVal = parseInt(paymentTransfer) || 0;
+    
+    // Check for invalid negative values
+    if (cashVal < 0 || cardVal < 0 || transferVal < 0) {
+      toast({
+        title: "결제 금액 오류",
+        description: "결제 금액은 0 이상이어야 합니다.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    const total = cashVal + cardVal + transferVal;
+    
+    if (total !== targetAmount) {
+      toast({
+        title: "결제 금액 오류",
+        description: `결제 금액 합계(${total.toLocaleString()}원)가 최종 요금(${targetAmount.toLocaleString()}원)과 일치하지 않습니다.\n\n현금: ${cashVal.toLocaleString()}원\n카드: ${cardVal.toLocaleString()}원\n이체: ${transferVal.toLocaleString()}원`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    return true;
+  };
 
   const handleProcessEntry = () => {
     playClickSound();
@@ -394,10 +476,21 @@ export default function LockerOptionsDialog({
       optionType = 'custom';
       optionAmount = parseInt(discountInputAmount);
     }
+    
+    // Validate mixed payment amounts
+    if (!validateMixedPayment(finalPrice)) {
+      return;
+    }
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo);
+    
+    // Get payment breakdown
+    const cashVal = parseInt(paymentCash) || undefined;
+    const cardVal = parseInt(paymentCard) || undefined;
+    const transferVal = parseInt(paymentTransfer) || undefined;
+    
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     setDialogOpen(false);
   };
 
@@ -419,10 +512,21 @@ export default function LockerOptionsDialog({
       optionType = 'custom';
       optionAmount = parseInt(discountInputAmount);
     }
+    
+    // Validate mixed payment amounts
+    if (!validateMixedPayment(finalPrice)) {
+      return;
+    }
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo);
+    
+    // Get payment breakdown
+    const cashVal = parseInt(paymentCash) || undefined;
+    const cardVal = parseInt(paymentCard) || undefined;
+    const transferVal = parseInt(paymentTransfer) || undefined;
+    
+    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     
     // Mark as resolved to prevent warning on next open
     setCheckoutResolved(true);
@@ -444,12 +548,24 @@ export default function LockerOptionsDialog({
       return;
     }
     
+    // Validate mixed payment amounts against final price (including base price and additional fees)
+    const checkoutFinalPrice = finalPrice + additionalFeeInfo.additionalFee;
+    if (!validateMixedPayment(checkoutFinalPrice)) {
+      return;
+    }
+    
     // Check if there are any rental items
     if (selectedRentalItems.size > 0) {
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      onCheckout(paymentMethod, rentalItemInfo);
+      
+      // Get payment breakdown
+      const cashVal = parseInt(paymentCash) || undefined;
+      const cardVal = parseInt(paymentCard) || undefined;
+      const transferVal = parseInt(paymentTransfer) || undefined;
+      
+      onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     }
   };
 
@@ -457,7 +573,13 @@ export default function LockerOptionsDialog({
     playCloseSound(); // Use a more distinctive sound for checkout
     setShowCheckoutConfirm(false);
     const rentalItemInfo = generateRentalItemInfo();
-    onCheckout(paymentMethod, rentalItemInfo);
+    
+    // Get payment breakdown
+    const cashVal = parseInt(paymentCash) || undefined;
+    const cardVal = parseInt(paymentCard) || undefined;
+    const transferVal = parseInt(paymentTransfer) || undefined;
+    
+    onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
   };
 
   const handleWarningResolved = () => {
@@ -635,19 +757,60 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 지불방식 Select */}
+            {/* 지불방식 - 혼합 결제 */}
             <div className="space-y-3">
-              <Label className="text-sm font-semibold">지불방식</Label>
-              <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash' | 'transfer')}>
-                <SelectTrigger data-testid="select-payment-method">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="card">카드</SelectItem>
-                  <SelectItem value="cash">현금</SelectItem>
-                  <SelectItem value="transfer">이체</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label className="text-sm font-semibold">지불방식 (혼합 결제 가능)</Label>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">현금</Label>
+                  <Input
+                    id="payment-cash"
+                    type="number"
+                    placeholder="0"
+                    value={paymentCash}
+                    onChange={(e) => setPaymentCash(e.target.value)}
+                    data-testid="input-payment-cash"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="payment-card" className="text-xs text-muted-foreground">카드</Label>
+                  <Input
+                    id="payment-card"
+                    type="number"
+                    placeholder="0"
+                    value={paymentCard}
+                    onChange={(e) => setPaymentCard(e.target.value)}
+                    data-testid="input-payment-card"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="payment-transfer" className="text-xs text-muted-foreground">이체</Label>
+                  <Input
+                    id="payment-transfer"
+                    type="number"
+                    placeholder="0"
+                    value={paymentTransfer}
+                    onChange={(e) => setPaymentTransfer(e.target.value)}
+                    data-testid="input-payment-transfer"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+              {(() => {
+                const cashVal = parseInt(paymentCash) || 0;
+                const cardVal = parseInt(paymentCard) || 0;
+                const transferVal = parseInt(paymentTransfer) || 0;
+                const total = cashVal + cardVal + transferVal;
+                
+                return (
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <span className="text-sm font-semibold">합계</span>
+                    <span className="text-lg font-bold">{total.toLocaleString()}원</span>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}

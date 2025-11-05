@@ -25,6 +25,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as localDb from "@/lib/localDb";
+import { formatPaymentMethod } from "@/lib/utils";
 
 interface LogEntry {
   id: string;
@@ -37,6 +38,9 @@ interface LogEntry {
   optionAmount?: number;
   finalPrice: number;
   paymentMethod?: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   cancelled: boolean;
   notes?: string;
   additionalFees?: number; // Total additional fees from checkout
@@ -50,6 +54,9 @@ interface AdditionalFeeEvent {
   feeAmount: number;
   businessDay: string;
   paymentMethod: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   createdAt: string;
 }
 
@@ -66,6 +73,9 @@ interface RentalTransaction {
   returnTime: string;
   businessDay: string;
   paymentMethod: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   revenue: number;
 }
 
@@ -229,7 +239,7 @@ export default function LogsPage() {
       '옵션금액': log.optionAmount || '-',
       '추가요금': log.additionalFees || '-',
       '최종요금': log.finalPrice,
-      '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
+      '지불방식': formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       '취소': log.cancelled ? 'O' : '-',
       '비고': log.notes || '-'
     }));
@@ -274,7 +284,7 @@ export default function LogsPage() {
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
       log.additionalFees ? log.additionalFees.toLocaleString() : '-',
       log.finalPrice.toLocaleString(),
-      log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
+      formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       log.cancelled ? 'O' : '-',
       log.notes || '-',
     ]);
@@ -603,7 +613,7 @@ export default function LogsPage() {
                       {log.finalPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-sm">
-                      {log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-'}
+                      {formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer)}
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${
@@ -805,7 +815,7 @@ export default function LogsPage() {
                           <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
                           <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
                           <TableCell className="text-sm">
-                            {txn.paymentMethod === 'card' ? '카드' : txn.paymentMethod === 'cash' ? '현금' : '이체'}
+                            {formatPaymentMethod(txn.paymentMethod, txn.paymentCash, txn.paymentCard, txn.paymentTransfer)}
                           </TableCell>
                           <TableCell className="text-sm">
                             <span className={`px-2 py-1 rounded text-xs ${

@@ -171,6 +171,137 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 4.5: Add mixed payment columns to all tables
+    // locker_logs
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN payment_cash INTEGER`);
+      console.log('Added payment_cash column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN payment_card INTEGER`);
+      console.log('Added payment_card column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN payment_transfer INTEGER`);
+      console.log('Added payment_transfer column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+    // additional_fee_events
+    try {
+      db.run(`ALTER TABLE additional_fee_events ADD COLUMN payment_cash INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE additional_fee_events ADD COLUMN payment_card INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE additional_fee_events ADD COLUMN payment_transfer INTEGER`);
+    } catch (e) {}
+    
+    // rental_transactions
+    try {
+      db.run(`ALTER TABLE rental_transactions ADD COLUMN payment_cash INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE rental_transactions ADD COLUMN payment_card INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE rental_transactions ADD COLUMN payment_transfer INTEGER`);
+    } catch (e) {}
+    
+    // expenses
+    try {
+      db.run(`ALTER TABLE expenses ADD COLUMN payment_cash INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE expenses ADD COLUMN payment_card INTEGER`);
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE expenses ADD COLUMN payment_transfer INTEGER`);
+    } catch (e) {}
+    
+    // Step 4.6: Backfill existing records with mixed payment data based on legacy payment_method
+    console.log('[Migration] Backfilling mixed payment columns for existing records...');
+    
+    // Backfill locker_logs
+    try {
+      db.run(`
+        UPDATE locker_logs
+        SET payment_cash = CASE 
+              WHEN payment_method = 'cash' THEN final_price 
+              WHEN payment_method IS NULL AND final_price > 0 THEN final_price
+              ELSE NULL 
+            END,
+            payment_card = CASE WHEN payment_method = 'card' THEN final_price ELSE NULL END,
+            payment_transfer = CASE WHEN payment_method = 'transfer' THEN final_price ELSE NULL END
+        WHERE payment_cash IS NULL AND payment_card IS NULL AND payment_transfer IS NULL
+      `);
+      console.log('[Migration] Backfilled locker_logs');
+    } catch (e) {
+      console.error('[Migration] Failed to backfill locker_logs:', e);
+    }
+    
+    // Backfill additional_fee_events
+    try {
+      db.run(`
+        UPDATE additional_fee_events
+        SET payment_cash = CASE 
+              WHEN payment_method = 'cash' THEN fee_amount 
+              WHEN payment_method IS NULL AND fee_amount > 0 THEN fee_amount
+              ELSE NULL 
+            END,
+            payment_card = CASE WHEN payment_method = 'card' THEN fee_amount ELSE NULL END,
+            payment_transfer = CASE WHEN payment_method = 'transfer' THEN fee_amount ELSE NULL END
+        WHERE payment_cash IS NULL AND payment_card IS NULL AND payment_transfer IS NULL
+      `);
+      console.log('[Migration] Backfilled additional_fee_events');
+    } catch (e) {
+      console.error('[Migration] Failed to backfill additional_fee_events:', e);
+    }
+    
+    // Backfill rental_transactions
+    try {
+      db.run(`
+        UPDATE rental_transactions
+        SET payment_cash = CASE 
+              WHEN payment_method = 'cash' THEN revenue 
+              WHEN payment_method IS NULL AND revenue > 0 THEN revenue
+              ELSE NULL 
+            END,
+            payment_card = CASE WHEN payment_method = 'card' THEN revenue ELSE NULL END,
+            payment_transfer = CASE WHEN payment_method = 'transfer' THEN revenue ELSE NULL END
+        WHERE payment_cash IS NULL AND payment_card IS NULL AND payment_transfer IS NULL
+      `);
+      console.log('[Migration] Backfilled rental_transactions');
+    } catch (e) {
+      console.error('[Migration] Failed to backfill rental_transactions:', e);
+    }
+    
+    // Backfill expenses
+    try {
+      db.run(`
+        UPDATE expenses
+        SET payment_cash = CASE 
+              WHEN payment_method = 'cash' THEN amount 
+              WHEN payment_method IS NULL AND amount > 0 THEN amount
+              ELSE NULL 
+            END,
+            payment_card = CASE WHEN payment_method = 'card' THEN amount ELSE NULL END,
+            payment_transfer = CASE WHEN payment_method = 'transfer' THEN amount ELSE NULL END
+        WHERE payment_cash IS NULL AND payment_card IS NULL AND payment_transfer IS NULL
+      `);
+      console.log('[Migration] Backfilled expenses');
+    } catch (e) {
+      console.error('[Migration] Failed to backfill expenses:', e);
+    }
+    
+    console.log('[Migration] Backfill complete');
+    
     // Step 5: Create additional_fee_events table (Stage 1 migration)
     db.run(`
       CREATE TABLE IF NOT EXISTS additional_fee_events (
@@ -422,6 +553,9 @@ function createTables() {
       cancelled INTEGER NOT NULL DEFAULT 0,
       notes TEXT,
       payment_method TEXT CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      payment_cash INTEGER,
+      payment_card INTEGER,
+      payment_transfer INTEGER,
       rental_items TEXT
     )
   `);
@@ -470,6 +604,9 @@ function createTables() {
       fee_amount INTEGER NOT NULL,
       business_day TEXT NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      payment_cash INTEGER,
+      payment_card INTEGER,
+      payment_transfer INTEGER,
       created_at TEXT NOT NULL
     )
   `);
@@ -502,6 +639,9 @@ function createTables() {
       rental_fee INTEGER NOT NULL,
       deposit_amount INTEGER NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      payment_cash INTEGER,
+      payment_card INTEGER,
+      payment_transfer INTEGER,
       deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
       revenue INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -519,6 +659,9 @@ function createTables() {
       amount INTEGER NOT NULL,
       quantity INTEGER DEFAULT 1,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+      payment_cash INTEGER,
+      payment_card INTEGER,
+      payment_transfer INTEGER,
       business_day TEXT NOT NULL,
       notes TEXT,
       created_at TEXT NOT NULL
@@ -620,6 +763,9 @@ export function createEntry(entry: {
   optionAmount?: number;
   notes?: string;
   paymentMethod?: string;
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   rentalItems?: string[];
 }): string {
   if (!db) throw new Error('Database not initialized');
@@ -633,8 +779,9 @@ export function createEntry(entry: {
   db.run(
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
-     option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
+     option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+     payment_cash, payment_card, payment_transfer, rental_items)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -647,6 +794,9 @@ export function createEntry(entry: {
       entry.finalPrice,
       entry.notes || null,
       entry.paymentMethod || null,
+      entry.paymentCash || null,
+      entry.paymentCard || null,
+      entry.paymentTransfer || null,
       rentalItemsJson
     ]
   );
@@ -683,6 +833,18 @@ export function updateEntry(id: string, updates: any) {
   if (updates.paymentMethod !== undefined) {
     sets.push('payment_method = ?');
     values.push(updates.paymentMethod);
+  }
+  if (updates.paymentCash !== undefined) {
+    sets.push('payment_cash = ?');
+    values.push(updates.paymentCash);
+  }
+  if (updates.paymentCard !== undefined) {
+    sets.push('payment_card = ?');
+    values.push(updates.paymentCard);
+  }
+  if (updates.paymentTransfer !== undefined) {
+    sets.push('payment_transfer = ?');
+    values.push(updates.paymentTransfer);
   }
   if (updates.status !== undefined) {
     sets.push('status = ?');
@@ -1445,6 +1607,9 @@ export function createAdditionalFeeEvent(event: {
   feeAmount: number;
   businessDay: string;
   paymentMethod: string;
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
 }): string {
   if (!db) throw new Error('Database not initialized');
   
@@ -1454,9 +1619,11 @@ export function createAdditionalFeeEvent(event: {
   
   db.run(
     `INSERT INTO additional_fee_events 
-    (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, event.lockerLogId, event.lockerNumber, checkoutTimeStr, event.feeAmount, event.businessDay, event.paymentMethod, createdAt]
+    (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, 
+     payment_cash, payment_card, payment_transfer, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, event.lockerLogId, event.lockerNumber, checkoutTimeStr, event.feeAmount, event.businessDay, event.paymentMethod, 
+     event.paymentCash || null, event.paymentCard || null, event.paymentTransfer || null, createdAt]
   );
   
   saveDatabase();
@@ -1710,6 +1877,9 @@ export function createRentalTransaction(rental: {
   rentalFee: number;
   depositAmount: number;
   paymentMethod: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   revenue: number;
 }): string {
@@ -1724,8 +1894,9 @@ export function createRentalTransaction(rental: {
   db.run(
     `INSERT INTO rental_transactions 
      (id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time, business_day,
-      rental_fee, deposit_amount, payment_method, deposit_status, revenue, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rental_fee, deposit_amount, payment_method, payment_cash, payment_card, payment_transfer, 
+      deposit_status, revenue, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       rental.lockerLogId,
@@ -1738,6 +1909,9 @@ export function createRentalTransaction(rental: {
       rental.rentalFee,
       rental.depositAmount,
       rental.paymentMethod,
+      rental.paymentCash || null,
+      rental.paymentCard || null,
+      rental.paymentTransfer || null,
       rental.depositStatus,
       rental.revenue,
       now,
@@ -1874,6 +2048,9 @@ export function createExpense(data: {
   amount: number;
   quantity?: number;
   paymentMethod: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   businessDay: string;
   notes?: string;
 }) {
@@ -1883,8 +2060,9 @@ export function createExpense(data: {
   const now = new Date().toISOString();
   
   db.run(
-    `INSERT INTO expenses (id, date, time, category, amount, quantity, payment_method, business_day, notes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO expenses (id, date, time, category, amount, quantity, payment_method, 
+     payment_cash, payment_card, payment_transfer, business_day, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.date,
@@ -1893,6 +2071,9 @@ export function createExpense(data: {
       data.amount,
       data.quantity || 1,
       data.paymentMethod,
+      data.paymentCash || null,
+      data.paymentCard || null,
+      data.paymentTransfer || null,
       data.businessDay,
       data.notes || null,
       now
@@ -2277,14 +2458,14 @@ export function confirmClosingDay(businessDay: string) {
 export function getDetailedSalesByBusinessDay(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
   
-  // Get base entry sales (입실 기본요금) by payment method
+  // Get base entry sales (입실 기본요금) - use mixed payment columns
   const entryResult = db.exec(
     `SELECT 
-      payment_method,
-      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN final_price ELSE 0 END), 0) as total
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
      FROM locker_logs
-     WHERE business_day = ? AND payment_method IS NOT NULL
-     GROUP BY payment_method`,
+     WHERE business_day = ?`,
     [businessDay]
   );
   
@@ -2296,24 +2477,21 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
   };
   
   if (entryResult.length > 0 && entryResult[0].values.length > 0) {
-    entryResult[0].values.forEach((row: any) => {
-      const method = row[0] as string;
-      const amount = row[1] as number;
-      if (method === 'cash') entrySales.cash = amount;
-      else if (method === 'card') entrySales.card = amount;
-      else if (method === 'transfer') entrySales.transfer = amount;
-      entrySales.total += amount;
-    });
+    const row = entryResult[0].values[0];
+    entrySales.cash = row[0] as number || 0;
+    entrySales.card = row[1] as number || 0;
+    entrySales.transfer = row[2] as number || 0;
+    entrySales.total = entrySales.cash + entrySales.card + entrySales.transfer;
   }
   
-  // Get additional fee sales (추가요금) by payment method
+  // Get additional fee sales (추가요금) - use mixed payment columns
   const additionalResult = db.exec(
     `SELECT 
-      payment_method,
-      COALESCE(SUM(fee_amount), 0) as total
+      COALESCE(SUM(COALESCE(payment_cash, 0)), 0) as cash_total,
+      COALESCE(SUM(COALESCE(payment_card, 0)), 0) as card_total,
+      COALESCE(SUM(COALESCE(payment_transfer, 0)), 0) as transfer_total
      FROM additional_fee_events
-     WHERE business_day = ? AND payment_method IS NOT NULL
-     GROUP BY payment_method`,
+     WHERE business_day = ?`,
     [businessDay]
   );
   
@@ -2325,14 +2503,11 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
   };
   
   if (additionalResult.length > 0 && additionalResult[0].values.length > 0) {
-    additionalResult[0].values.forEach((row: any) => {
-      const method = row[0] as string;
-      const amount = row[1] as number;
-      if (method === 'cash') additionalSales.cash = amount;
-      else if (method === 'card') additionalSales.card = amount;
-      else if (method === 'transfer') additionalSales.transfer = amount;
-      additionalSales.total += amount;
-    });
+    const row = additionalResult[0].values[0];
+    additionalSales.cash = row[0] as number || 0;
+    additionalSales.card = row[1] as number || 0;
+    additionalSales.transfer = row[2] as number || 0;
+    additionalSales.total = additionalSales.cash + additionalSales.card + additionalSales.transfer;
   }
   
   return {
@@ -2370,26 +2545,30 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
     };
   });
   
-  // Get rental transactions for this business day
+  // Get rental transactions for this business day - use mixed payment columns
   const result = db.exec(
     `SELECT 
       item_name,
-      payment_method,
       rental_fee,
       deposit_amount,
-      deposit_status
+      deposit_status,
+      COALESCE(payment_cash, 0) as payment_cash,
+      COALESCE(payment_card, 0) as payment_card,
+      COALESCE(payment_transfer, 0) as payment_transfer
      FROM rental_transactions
-     WHERE business_day = ? AND payment_method IS NOT NULL`,
+     WHERE business_day = ?`,
     [businessDay]
   );
   
   if (result.length > 0 && result[0].values.length > 0) {
     result[0].values.forEach((row: any) => {
       const itemName = row[0] as string;
-      const paymentMethod = row[1] as 'cash' | 'card' | 'transfer';
-      const rentalFee = row[2] as number;
-      const depositAmount = row[3] as number;
-      const depositStatus = row[4] as string;
+      const rentalFee = row[1] as number;
+      const depositAmount = row[2] as number;
+      const depositStatus = row[3] as string;
+      const paymentCash = row[4] as number;
+      const paymentCard = row[5] as number;
+      const paymentTransfer = row[6] as number;
       
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
@@ -2399,13 +2578,21 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         };
       }
       
-      // Add rental fee
-      breakdown[itemName].rentalFee[paymentMethod] += rentalFee;
+      // Add rental fee by payment method
+      // payment_cash/card/transfer already represent the actual amounts paid for this rental
+      breakdown[itemName].rentalFee.cash += paymentCash;
+      breakdown[itemName].rentalFee.card += paymentCard;
+      breakdown[itemName].rentalFee.transfer += paymentTransfer;
       breakdown[itemName].rentalFee.total += rentalFee;
       
-      // Add deposit if forfeited
+      // Add deposit if forfeited - use same payment ratio
       if (depositStatus === 'forfeited') {
-        breakdown[itemName].depositForfeited[paymentMethod] += depositAmount;
+        const totalPayment = paymentCash + paymentCard + paymentTransfer;
+        if (totalPayment > 0) {
+          breakdown[itemName].depositForfeited.cash += depositAmount * (paymentCash / totalPayment);
+          breakdown[itemName].depositForfeited.card += depositAmount * (paymentCard / totalPayment);
+          breakdown[itemName].depositForfeited.transfer += depositAmount * (paymentTransfer / totalPayment);
+        }
         breakdown[itemName].depositForfeited.total += depositAmount;
       }
     });
