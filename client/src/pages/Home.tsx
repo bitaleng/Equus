@@ -20,6 +20,7 @@ import {
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
+import { combinePayments } from "@/lib/utils";
 
 interface LockerLog {
   id: string;
@@ -451,7 +452,14 @@ export default function Home() {
     }>,
     paymentCash?: number,
     paymentCard?: number,
-    paymentTransfer?: number
+    paymentTransfer?: number,
+    additionalFeePayment?: {
+      method: 'card' | 'cash' | 'transfer';
+      cash?: number;
+      card?: number;
+      transfer?: number;
+      discount?: number;
+    }
   ) => {
     if (!selectedEntry) return;
 
@@ -476,43 +484,89 @@ export default function Home() {
     // (basePrice and discount already included in entry day's revenue)
     // Formula: finalPrice = basePrice - optionAmount + additionalFee
     if (entryBusinessDay !== checkoutBusinessDay) {
+      // Different business day - only record additional fee payment
+      const addFeePayment = additionalFeePayment || {
+        method: paymentMethod,
+        cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
+        card: paymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
+        transfer: paymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
+      };
+      
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        paymentMethod: paymentMethod,
-        paymentCash,
-        paymentCard,
-        paymentTransfer,
+        paymentMethod: addFeePayment.method,
+        paymentCash: addFeePayment.cash,
+        paymentCard: addFeePayment.card,
+        paymentTransfer: addFeePayment.transfer,
         basePrice: 0,
         optionAmount: 0,
         finalPrice: additionalFeeInfo.additionalFee,
       });
     } else {
-      // Same business day checkout: include basePrice - optionAmount + additionalFee
+      // Same business day checkout - combine base and additional fee payments
+      let finalPaymentCash = paymentCash;
+      let finalPaymentCard = paymentCard;
+      let finalPaymentTransfer = paymentTransfer;
+      let finalPaymentMethod = paymentMethod;
+      
+      if (additionalFeeInfo.additionalFee > 0 && additionalFeePayment) {
+        // Combine base price payment with additional fee payment
+        const basePayment = {
+          cash: paymentCash,
+          card: paymentCard,
+          transfer: paymentTransfer,
+        };
+        const addPayment = {
+          cash: additionalFeePayment.cash,
+          card: additionalFeePayment.card,
+          transfer: additionalFeePayment.transfer,
+        };
+        
+        const combined = combinePayments(basePayment, addPayment);
+        finalPaymentCash = combined.cash;
+        finalPaymentCard = combined.card;
+        finalPaymentTransfer = combined.transfer;
+        finalPaymentMethod = combined.cash ? 'cash' : (combined.card ? 'card' : 'transfer');
+      }
+      
       const finalPriceWithAdditionalFee = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        paymentMethod: paymentMethod,
-        paymentCash,
-        paymentCard,
-        paymentTransfer,
+        paymentMethod: finalPaymentMethod,
+        paymentCash: finalPaymentCash,
+        paymentCard: finalPaymentCard,
+        paymentTransfer: finalPaymentTransfer,
         finalPrice: finalPriceWithAdditionalFee,
       });
     }
     
     // If there's additional fee, create a separate event record
     if (additionalFeeInfo.additionalFee > 0) {
+      const addFeePayment = additionalFeePayment || {
+        method: paymentMethod,
+        cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
+        card: paymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
+        transfer: paymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
+      };
+      
+      // Apply discount if provided
+      const originalAmount = additionalFeeInfo.additionalFee + (addFeePayment.discount || 0);
+      const discountAmount = addFeePayment.discount || 0;
+      
       localDb.createAdditionalFeeEvent({
         lockerLogId: selectedEntry.id,
         lockerNumber: selectedEntry.lockerNumber,
         checkoutTime: now,
         feeAmount: additionalFeeInfo.additionalFee,
+        originalFeeAmount: discountAmount > 0 ? originalAmount : undefined,
+        discountAmount: discountAmount,
         businessDay: checkoutBusinessDay,
-        paymentMethod: paymentMethod,
-        paymentCash,
-        paymentCard,
-        paymentTransfer,
+        paymentMethod: addFeePayment.method,
+        paymentCash: addFeePayment.cash,
+        paymentCard: addFeePayment.card,
+        paymentTransfer: addFeePayment.transfer,
       });
     }
     
