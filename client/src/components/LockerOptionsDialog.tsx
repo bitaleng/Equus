@@ -28,7 +28,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { useToast } from "@/hooks/use-toast";
 import { calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
@@ -85,7 +84,6 @@ export default function LockerOptionsDialog({
   onCheckout,
   onCancel,
 }: LockerOptionsDialogProps) {
-  const { toast } = useToast();
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
@@ -130,29 +128,6 @@ export default function LockerOptionsDialog({
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
         console.log('[LockerOptionsDialog] Loaded rental transactions:', rentals);
         setCurrentRentalTransactions(rentals);
-        
-        // Show toast notification for rental items
-        if (rentals.length > 0) {
-          const rentalInfo = rentals.map(txn => {
-            if (txn.depositAmount > 0) {
-              return `${txn.itemName} 회수하세요. 보증금 ${txn.depositAmount.toLocaleString()}원 ${
-                txn.depositStatus === 'received' ? '환급하세요' : 
-                txn.depositStatus === 'refunded' ? '환급함' : 
-                txn.depositStatus === 'forfeited' ? '몰수함' : 
-                '처리하세요'
-              }`;
-            } else {
-              return `${txn.itemName} 회수하세요`;
-            }
-          }).join('\n');
-          
-          toast({
-            title: "대여 물품 확인",
-            description: rentalInfo,
-            variant: "default",
-            duration: 5000,
-          });
-        }
         
         // Auto-select checkboxes for existing rental items
         const newSelected = new Set<string>();
@@ -530,13 +505,6 @@ export default function LockerOptionsDialog({
           <DialogHeader>
             <DialogTitle className="text-xl">
               락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
-              {isInUse && currentRentalTransactions.length > 0 && (
-                <span className="text-sm text-orange-600 dark:text-orange-400 ml-2">
-                  ({currentRentalTransactions.map(txn => 
-                    `${txn.itemName} 회수(보증금 ${txn.depositAmount.toLocaleString()}원 있음)`
-                  ).join(', ')})
-                </span>
-              )}
             </DialogTitle>
           </DialogHeader>
           
@@ -570,6 +538,21 @@ export default function LockerOptionsDialog({
                 <div className="flex justify-between text-sm bg-orange-50 dark:bg-orange-950 p-2 rounded">
                   <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
                   <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
+                </div>
+              )}
+              
+              {/* 대여 물품 안내 */}
+              {isInUse && currentRentalTransactions.length > 0 && (
+                <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
+                  <span className="text-red-700 dark:text-red-300 font-semibold">
+                    {currentRentalTransactions.map(txn => {
+                      if (txn.depositAmount > 0) {
+                        return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
+                      } else {
+                        return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 없음)`;
+                      }
+                    }).join(', ')}
+                  </span>
                 </div>
               )}
               
@@ -847,7 +830,7 @@ export default function LockerOptionsDialog({
       <AlertDialog open={showWarningAlert} onOpenChange={setShowWarningAlert}>
         <AlertDialogContent data-testid="dialog-warning-alert">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-orange-600">⚠️ 확인 필요</AlertDialogTitle>
+            <AlertDialogTitle className="text-orange-600">확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               {currentRentalTransactions.length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
