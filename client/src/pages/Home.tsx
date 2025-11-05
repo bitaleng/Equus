@@ -422,10 +422,10 @@ export default function Home() {
             rentalTime: selectedEntry.entryTime,
             returnTime: null,
             businessDay: businessDay,
-            paymentMethod: paymentMethod || 'cash',
-            paymentCash,
-            paymentCard,
-            paymentTransfer,
+            paymentMethod: item.paymentMethod || 'cash',
+            paymentCash: undefined,
+            paymentCard: undefined,
+            paymentTransfer: undefined,
             revenue: revenue,
           });
         } else {
@@ -528,7 +528,6 @@ export default function Home() {
           localDb.updateRentalTransaction(existingItem.id, {
             depositStatus: item.depositStatus,
             returnTime: now,
-            paymentMethod: paymentMethod,
             businessDay: checkoutBusinessDay,
           });
         } else {
@@ -549,10 +548,10 @@ export default function Home() {
             rentalTime: selectedEntry.entryTime,
             returnTime: now,
             businessDay: checkoutBusinessDay,
-            paymentMethod: paymentMethod,
-            paymentCash,
-            paymentCard,
-            paymentTransfer,
+            paymentMethod: 'cash',
+            paymentCash: undefined,
+            paymentCard: undefined,
+            paymentTransfer: undefined,
             revenue: revenue,
           });
         }
