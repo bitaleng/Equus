@@ -781,7 +781,12 @@ export default function LockerOptionsDialog({
                   data-testid="button-checkout"
                   disabled={(() => {
                     // Check if any existing rental transaction with deposit needs deposit resolution
+                    // ONLY check items that are still selected
                     const hasUnresolvedExistingRentals = currentRentalTransactions.some(txn => {
+                      // Skip if item is not selected anymore (user unchecked it)
+                      if (!selectedRentalItems.has(txn.itemId)) {
+                        return false;
+                      }
                       // Skip items with zero deposit
                       if (txn.depositAmount === 0) {
                         return false;
