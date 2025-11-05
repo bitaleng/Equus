@@ -992,6 +992,8 @@ export default function LockerOptionsDialog({
                                   newSelected.add(itemId);
                                   // Automatically set depositStatus based on deposit amount and rental status
                                   const newStatuses = new Map(depositStatuses);
+                                  const newPaymentMethods = new Map(rentalPaymentMethods);
+                                  
                                   if (item.depositAmount === 0) {
                                     // No deposit - set to 'none'
                                     newStatuses.set(itemId, 'none');
@@ -1003,17 +1005,28 @@ export default function LockerOptionsDialog({
                                     const existingTransaction = currentRentalTransactions.find(txn => txn.itemId === itemId);
                                     if (existingTransaction) {
                                       newStatuses.set(itemId, existingTransaction.depositStatus);
+                                      newPaymentMethods.set(itemId, existingTransaction.paymentMethod || 'cash');
                                     }
                                   }
+                                  
+                                  // Set default payment method if not already set
+                                  if (!newPaymentMethods.has(itemId)) {
+                                    newPaymentMethods.set(itemId, 'cash');
+                                  }
+                                  
                                   setDepositStatuses(newStatuses);
+                                  setRentalPaymentMethods(newPaymentMethods);
                                 } else {
                                   newSelected.delete(itemId);
-                                  // Remove deposit status only if NOT already rented
+                                  // Remove deposit status and payment method only if NOT already rented
                                   // (keep status for already rented items)
                                   if (!isAlreadyRented) {
                                     const newStatuses = new Map(depositStatuses);
+                                    const newPaymentMethods = new Map(rentalPaymentMethods);
                                     newStatuses.delete(itemId);
+                                    newPaymentMethods.delete(itemId);
                                     setDepositStatuses(newStatuses);
+                                    setRentalPaymentMethods(newPaymentMethods);
                                   }
                                 }
                                 setSelectedRentalItems(newSelected);
