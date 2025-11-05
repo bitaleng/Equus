@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import PatternLockDialog from "@/components/PatternLockDialog";
 import * as localDb from "@/lib/localDb";
 
 interface Settings {
@@ -107,6 +113,10 @@ export default function Settings() {
   
   // Database regeneration confirmation dialog
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
+
+  // Data management section collapsible states
+  const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
+  const [showDataManagementAuth, setShowDataManagementAuth] = useState(false);
 
   // Cash register (시재금) states
   const [cashRegister, setCashRegister] = useState({
@@ -784,16 +794,41 @@ export default function Settings() {
 
           {/* 데이터 관리 */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                데이터 관리
-              </CardTitle>
-              <CardDescription>
-                입실 기록과 매출 정보를 관리합니다
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <Collapsible 
+              open={isDataManagementOpen} 
+              onOpenChange={(open) => {
+                if (open && !isDataManagementOpen) {
+                  // Trying to open - require authentication
+                  setShowDataManagementAuth(true);
+                } else {
+                  // Closing - no authentication needed
+                  setIsDataManagementOpen(false);
+                }
+              }}
+            >
+              <CardHeader>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between cursor-pointer hover-elevate active-elevate-2 rounded-md p-2 -m-2">
+                    <div className="flex items-center gap-2">
+                      <Database className="h-5 w-5" />
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          데이터 관리
+                          <Lock className="h-4 w-4 text-muted-foreground" />
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          입실 기록과 매출 정보를 관리합니다 (보안 잠금)
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <ChevronDown 
+                      className={`h-5 w-5 text-muted-foreground transition-transform ${isDataManagementOpen ? 'transform rotate-180' : ''}`}
+                    />
+                  </div>
+                </CollapsibleTrigger>
+              </CardHeader>
+              <CollapsibleContent>
+                <CardContent className="space-y-4">
               <div className="p-4 border border-primary/50 rounded-lg bg-primary/5">
                 <div className="flex items-start gap-3">
                   <Database className="h-5 w-5 text-primary mt-0.5" />
@@ -869,7 +904,9 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 💡 참고: 1년 이상 된 데이터는 자동으로 삭제됩니다.
               </p>
-            </CardContent>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
 
           {/* Save Button */}
@@ -1092,6 +1129,19 @@ export default function Settings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Data Management Authentication Dialog */}
+      <PatternLockDialog
+        open={showDataManagementAuth}
+        onOpenChange={setShowDataManagementAuth}
+        onPatternCorrect={() => {
+          setIsDataManagementOpen(true);
+          setShowDataManagementAuth(false);
+        }}
+        title="데이터 관리 잠금 해제"
+        description="데이터 관리 기능을 사용하려면 인증이 필요합니다."
+        testId="dialog-data-management-auth"
+      />
     </div>
   );
 }

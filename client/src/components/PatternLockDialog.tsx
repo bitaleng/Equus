@@ -39,12 +39,14 @@ export default function PatternLockDialog({
       try {
         return JSON.parse(saved);
       } catch {
-        // Default pattern: Z shape (0-1-2-5-8)
-        return [0, 1, 2, 5, 8];
+        // Default pattern: Z shape (0-1-2-4-6)
+        // 0 (top-left) -> 2 (top-right) -> 6 (bottom-left)
+        // Auto-filled: 1 (between 0-2), 4 (between 2-6)
+        return [0, 1, 2, 4, 6];
       }
     }
-    // Default pattern: Z shape (0-1-2-5-8)
-    return [0, 1, 2, 5, 8];
+    // Default pattern: Z shape (0-1-2-4-6)
+    return [0, 1, 2, 4, 6];
   };
 
   const handlePatternComplete = (pattern: number[]) => {
@@ -161,7 +163,7 @@ export default function PatternLockDialog({
               )}
 
               <div className="text-xs text-muted-foreground text-center">
-                기본 패턴: Z 모양 (좌상단 → 우상단 → 중앙 → 우하단)
+                기본 패턴: Z 모양 (좌상단 → 우상단 → 좌하단)
               </div>
             </div>
 
