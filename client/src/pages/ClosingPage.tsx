@@ -121,11 +121,35 @@ export default function ClosingPage() {
       // Set end time to same as start time (next day's business day start hour)
       setEndTime(`${String(startHour).padStart(2, '0')}:00`);
 
-      // Get previous closing for opening float
+      // Load cash register from localStorage and calculate total
+      let initialFloat = 30000; // Default fallback
+      try {
+        const savedCashRegister = localStorage.getItem('cash_register');
+        if (savedCashRegister) {
+          const cashRegister = JSON.parse(savedCashRegister);
+          const cashTotal = (
+            (cashRegister.count50000 || 0) * 50000 +
+            (cashRegister.count10000 || 0) * 10000 +
+            (cashRegister.count5000 || 0) * 5000 +
+            (cashRegister.count1000 || 0) * 1000
+          );
+          if (cashTotal > 0) {
+            initialFloat = cashTotal;
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load cash register:', error);
+      }
+
+      // Get previous closing for opening float (if cash register not set)
       const latestClosing = getLatestClosingDay();
       if (latestClosing && latestClosing.targetFloat) {
         setOpeningFloat(latestClosing.targetFloat.toString());
         setTargetFloat(latestClosing.targetFloat.toString());
+      } else {
+        // Use cash register total as default
+        setOpeningFloat(initialFloat.toString());
+        setTargetFloat(initialFloat.toString());
       }
     }
 
