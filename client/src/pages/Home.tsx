@@ -250,7 +250,10 @@ export default function Home() {
       rentalFee: number;
       depositAmount: number;
       depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
-    }>
+    }>,
+    paymentCash?: number,
+    paymentCard?: number,
+    paymentTransfer?: number
   ) => {
     // Handle new locker entry
     if (newLockerInfo) {
@@ -286,6 +289,9 @@ export default function Home() {
         optionAmount,
         notes,
         paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
       });
 
       // Create rental transaction records for each rented item (at check-in)
@@ -309,6 +315,9 @@ export default function Home() {
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: paymentMethod || 'cash',
+            paymentCash,
+            paymentCard,
+            paymentTransfer,
             revenue: revenue,
           });
         });
@@ -349,7 +358,10 @@ export default function Home() {
       optionAmount, 
       finalPrice, 
       notes, 
-      paymentMethod 
+      paymentMethod,
+      paymentCash,
+      paymentCard,
+      paymentTransfer
     });
     
     // Handle rental items for existing entry (if saving changes)
@@ -381,6 +393,9 @@ export default function Home() {
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: paymentMethod || 'cash',
+            paymentCash,
+            paymentCard,
+            paymentTransfer,
             revenue: revenue,
           });
         } else {
@@ -395,13 +410,19 @@ export default function Home() {
     loadData();
   };
 
-  const handleCheckout = async (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: Array<{
-    itemId: string;
-    itemName: string;
-    rentalFee: number;
-    depositAmount: number;
-    depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
-  }>) => {
+  const handleCheckout = async (
+    paymentMethod: 'card' | 'cash' | 'transfer', 
+    rentalItems?: Array<{
+      itemId: string;
+      itemName: string;
+      rentalFee: number;
+      depositAmount: number;
+      depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
+    }>,
+    paymentCash?: number,
+    paymentCard?: number,
+    paymentTransfer?: number
+  ) => {
     if (!selectedEntry) return;
 
     const now = new Date();
@@ -429,6 +450,9 @@ export default function Home() {
         status: 'checked_out',
         exitTime: now,
         paymentMethod: paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
         basePrice: 0,
         optionAmount: 0,
         finalPrice: additionalFeeInfo.additionalFee,
@@ -440,6 +464,9 @@ export default function Home() {
         status: 'checked_out',
         exitTime: now,
         paymentMethod: paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
         finalPrice: finalPriceWithAdditionalFee,
       });
     }
@@ -453,6 +480,9 @@ export default function Home() {
         feeAmount: additionalFeeInfo.additionalFee,
         businessDay: checkoutBusinessDay,
         paymentMethod: paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
       });
     }
     
@@ -490,6 +520,9 @@ export default function Home() {
             returnTime: now,
             businessDay: checkoutBusinessDay,
             paymentMethod: paymentMethod,
+            paymentCash,
+            paymentCard,
+            paymentTransfer,
             revenue: revenue,
           });
         }
@@ -642,6 +675,9 @@ export default function Home() {
           entryTime={selectedEntry?.entryTime}
           currentNotes={selectedEntry?.notes}
           currentPaymentMethod={selectedEntry?.paymentMethod}
+          currentPaymentCash={selectedEntry?.paymentCash}
+          currentPaymentCard={selectedEntry?.paymentCard}
+          currentPaymentTransfer={selectedEntry?.paymentTransfer}
           currentOptionType={selectedEntry?.optionType}
           currentOptionAmount={selectedEntry?.optionAmount}
           currentFinalPrice={selectedEntry?.finalPrice}

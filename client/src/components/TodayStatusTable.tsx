@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { X, Filter } from "lucide-react";
+import { formatPaymentMethod } from "@/lib/utils";
 
 interface LockerEntry {
   lockerNumber: number;
@@ -29,6 +30,9 @@ interface LockerEntry {
   cancelled: boolean;
   notes?: string;
   paymentMethod?: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
 }
 
 interface TodayStatusTableProps {
@@ -266,7 +270,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     </TableCell>
                     <TableCell className="text-sm">{entry.option}</TableCell>
                     <TableCell className="text-sm">
-                      {entry.paymentMethod === 'card' ? '카드' : entry.paymentMethod === 'transfer' ? '이체' : '현금'}
+                      {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
                     <TableCell className="font-semibold text-base">{entry.finalPrice.toLocaleString()}원</TableCell>
                     <TableCell>
