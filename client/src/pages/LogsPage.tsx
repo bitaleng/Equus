@@ -723,7 +723,7 @@ export default function LogsPage() {
                     </p>
                   </div>
                 </div>
-                {isRentalSectionOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                {isRentalSectionOpen ? <ChevronDown className="h-5 w-5" /> : <ChevronUp className="h-5 w-5" />}
               </div>
             </CollapsibleTrigger>
             

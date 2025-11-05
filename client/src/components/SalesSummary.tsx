@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Receipt, Plus } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Receipt, Plus, ChevronDown, ChevronUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createExpense, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
@@ -59,6 +60,7 @@ export default function SalesSummary({
   const grandTotal = entrySales + rentalRevenue;
   const netProfit = grandTotal - totalExpenses;
   
+  const [isSalesOpen, setIsSalesOpen] = useState(true);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [category, setCategory] = useState('');
   const [customCategory, setCustomCategory] = useState('');
@@ -124,20 +126,25 @@ export default function SalesSummary({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">매출 집계</h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setExpenseDialogOpen(true)}
-          data-testid="button-quick-add-expense"
-        >
-          <Receipt className="h-4 w-4 mr-2" />
-          지출입력
-        </Button>
-      </div>
-      
-      <Card>
+      <Collapsible open={isSalesOpen} onOpenChange={setIsSalesOpen}>
+        <div className="flex items-center justify-between">
+          <CollapsibleTrigger className="flex items-center gap-2 hover-elevate px-2 py-1 rounded-md cursor-pointer" data-testid="button-toggle-sales">
+            <h2 className="text-lg font-semibold">매출 집계</h2>
+            {isSalesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </CollapsibleTrigger>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExpenseDialogOpen(true)}
+            data-testid="button-quick-add-expense"
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            지출입력
+          </Button>
+        </div>
+        
+        <CollapsibleContent>
+          <Card className="mt-4">
         <CardHeader className="pb-3">
           <CardTitle className="text-base font-medium text-muted-foreground">
             {date}
@@ -198,6 +205,8 @@ export default function SalesSummary({
           </div>
         </CardContent>
       </Card>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Quick Expense Input Dialog */}
       <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
