@@ -131,6 +131,9 @@ export default function LockerOptionsDialog({
   // Initialize payment fields when dialog opens
   useEffect(() => {
     if (open) {
+      // Calculate final price for auto-fill
+      const computedFinalPrice = currentFinalPrice || basePrice;
+      
       // Load existing payment data if available (check for undefined, not truthy)
       // This allows 0 values to be preserved
       const hasExistingData = currentPaymentCash !== undefined || 
@@ -144,19 +147,19 @@ export default function LockerOptionsDialog({
       } else {
         // Auto-fill the active payment method with finalPrice for new entries
         // This makes single-method payments frictionless
-        if (finalPrice > 0) {
+        if (computedFinalPrice > 0) {
           if (paymentMethod === 'cash') {
-            setPaymentCash(String(finalPrice));
+            setPaymentCash(String(computedFinalPrice));
             setPaymentCard("");
             setPaymentTransfer("");
           } else if (paymentMethod === 'card') {
             setPaymentCash("");
-            setPaymentCard(String(finalPrice));
+            setPaymentCard(String(computedFinalPrice));
             setPaymentTransfer("");
           } else if (paymentMethod === 'transfer') {
             setPaymentCash("");
             setPaymentCard("");
-            setPaymentTransfer(String(finalPrice));
+            setPaymentTransfer(String(computedFinalPrice));
           }
         } else {
           // Clear all fields if no final price
@@ -166,7 +169,7 @@ export default function LockerOptionsDialog({
         }
       }
     }
-  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, finalPrice, paymentMethod]);
+  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice, paymentMethod]);
 
   // Load rental items from database on mount
   useEffect(() => {
@@ -478,7 +481,8 @@ export default function LockerOptionsDialog({
     }
     
     // Validate mixed payment amounts
-    if (!validateMixedPayment(finalPrice)) {
+    const computedFinalPrice = calculateFinalPrice();
+    if (!validateMixedPayment(computedFinalPrice)) {
       return;
     }
 
@@ -514,7 +518,8 @@ export default function LockerOptionsDialog({
     }
     
     // Validate mixed payment amounts
-    if (!validateMixedPayment(finalPrice)) {
+    const computedFinalPrice = calculateFinalPrice();
+    if (!validateMixedPayment(computedFinalPrice)) {
       return;
     }
 
@@ -549,7 +554,8 @@ export default function LockerOptionsDialog({
     }
     
     // Validate mixed payment amounts against final price (including base price and additional fees)
-    const checkoutFinalPrice = finalPrice + additionalFeeInfo.additionalFee;
+    const computedFinalPrice = calculateFinalPrice();
+    const checkoutFinalPrice = computedFinalPrice + additionalFeeInfo.additionalFee;
     if (!validateMixedPayment(checkoutFinalPrice)) {
       return;
     }
