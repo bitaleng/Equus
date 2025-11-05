@@ -1155,9 +1155,10 @@ export function updateSettings(settings: any) {
 export function clearAllData() {
   if (!db) throw new Error('Database not initialized');
   
-  // Delete all locker logs and daily summaries (but keep locker groups and system metadata)
+  // Delete all locker logs, daily summaries, and rental transactions (but keep locker groups and system metadata)
   db.run('DELETE FROM locker_logs');
   db.run('DELETE FROM locker_daily_summaries');
+  db.run('DELETE FROM rental_transactions');
   
   saveDatabase();
 }

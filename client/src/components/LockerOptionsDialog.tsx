@@ -967,8 +967,13 @@ export default function LockerOptionsDialog({
                                   } else if (!isAlreadyRented) {
                                     // New rental (not already rented) - set to 'received' by default
                                     newStatuses.set(itemId, 'received');
+                                  } else {
+                                    // If already rented, keep existing status from currentRentalTransactions
+                                    const existingTransaction = currentRentalTransactions.find(txn => txn.itemId === itemId);
+                                    if (existingTransaction) {
+                                      newStatuses.set(itemId, existingTransaction.depositStatus);
+                                    }
                                   }
-                                  // If already rented, keep existing status (from currentRentalTransactions)
                                   setDepositStatuses(newStatuses);
                                 } else {
                                   newSelected.delete(itemId);
