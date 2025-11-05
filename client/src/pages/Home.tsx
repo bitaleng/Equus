@@ -278,6 +278,7 @@ export default function Home() {
       rentalFee: number;
       depositAmount: number;
       depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
+      paymentMethod: 'cash' | 'card' | 'transfer';
     }>,
     paymentCash?: number,
     paymentCard?: number,
@@ -331,6 +332,7 @@ export default function Home() {
             revenue += item.depositAmount;
           }
           
+          // Use individual rental item payment method (not entry payment method)
           localDb.createRentalTransaction({
             lockerLogId: lockerLogId,
             lockerNumber: newLockerInfo.lockerNumber,
@@ -342,10 +344,10 @@ export default function Home() {
             rentalTime: currentTime,
             returnTime: null,
             businessDay: businessDay,
-            paymentMethod: paymentMethod || 'cash',
-            paymentCash,
-            paymentCard,
-            paymentTransfer,
+            paymentMethod: item.paymentMethod || 'cash',
+            paymentCash: undefined,
+            paymentCard: undefined,
+            paymentTransfer: undefined,
             revenue: revenue,
           });
         });
