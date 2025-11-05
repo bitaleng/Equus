@@ -17,14 +17,7 @@ import { initDatabase, deleteOldData, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import PatternLockDialog from "@/components/PatternLockDialog";
 
 function Router() {
   return (
@@ -41,49 +34,26 @@ function Router() {
 
 function MainLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-
-  const handleMenuClick = () => {
-    console.log('handleMenuClick - isSidebarOpen:', isSidebarOpen);
-    if (isSidebarOpen) {
-      // Sidebar is open, close it without password
-      console.log('Closing sidebar without password');
-      setIsSidebarOpen(false);
-    } else {
-      // Sidebar is closed, require password to open
-      console.log('Opening password dialog to open sidebar');
-      setShowPasswordDialog(true);
-      setPasswordInput("");
-      setPasswordError("");
-    }
-  };
+  const [showPatternDialog, setShowPatternDialog] = useState(false);
 
   const handleSidebarOpenChange = (open: boolean) => {
-    // Allow closing without password, but opening requires password
-    if (!open) {
+    console.log('handleSidebarOpenChange called - requested open:', open, 'current isSidebarOpen:', isSidebarOpen);
+    
+    if (open && !isSidebarOpen) {
+      // Trying to open from closed state - show pattern dialog
+      console.log('Requesting to open sidebar - showing pattern dialog');
+      setShowPatternDialog(true);
+      // Don't change sidebar state yet, wait for pattern verification
+    } else if (!open && isSidebarOpen) {
+      // Closing from open state - allow without pattern
+      console.log('Closing sidebar without pattern');
       setIsSidebarOpen(false);
-    } else if (!isSidebarOpen) {
-      // Trying to open - show password dialog
-      setShowPasswordDialog(true);
-      setPasswordInput("");
-      setPasswordError("");
     }
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const savedPassword = localStorage.getItem("staff_password") || "1234";
-    
-    if (passwordInput === savedPassword) {
-      setShowPasswordDialog(false);
-      setPasswordInput("");
-      setPasswordError("");
-      setIsSidebarOpen(true);
-    } else {
-      setPasswordError("비밀번호가 올바르지 않습니다.");
-    }
+  const handlePatternCorrect = () => {
+    console.log('Pattern verified - opening sidebar');
+    setIsSidebarOpen(true);
   };
 
   return (
@@ -95,7 +65,10 @@ function MainLayout() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={handleMenuClick}
+              onClick={() => {
+                console.log('Toggle button clicked - current state:', isSidebarOpen);
+                handleSidebarOpenChange(!isSidebarOpen);
+              }}
               data-testid="button-sidebar-toggle"
             >
               <Menu className="h-4 w-4" />
@@ -107,49 +80,14 @@ function MainLayout() {
         </div>
       </div>
 
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent data-testid="dialog-menu-password">
-          <DialogHeader>
-            <DialogTitle>비밀번호 확인</DialogTitle>
-            <DialogDescription>
-              메뉴에 접근하려면 비밀번호를 입력하세요.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handlePasswordSubmit} className="space-y-4">
-            <div>
-              <Input
-                type="password"
-                placeholder="비밀번호 입력"
-                value={passwordInput}
-                onChange={(e) => {
-                  setPasswordInput(e.target.value);
-                  setPasswordError("");
-                }}
-                data-testid="input-menu-password"
-                autoFocus
-              />
-              {passwordError && (
-                <p className="text-sm text-destructive mt-2" data-testid="text-password-error">
-                  {passwordError}
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowPasswordDialog(false)}
-                data-testid="button-cancel-password"
-              >
-                취소
-              </Button>
-              <Button type="submit" data-testid="button-submit-password">
-                확인
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <PatternLockDialog
+        open={showPatternDialog}
+        onOpenChange={setShowPatternDialog}
+        onPatternCorrect={handlePatternCorrect}
+        title="메뉴 잠금 해제"
+        description="패턴을 그려서 메뉴에 접근하세요."
+        testId="dialog-menu-pattern"
+      />
     </SidebarProvider>
   );
 }
