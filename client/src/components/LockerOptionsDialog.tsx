@@ -104,8 +104,18 @@ export default function LockerOptionsDialog({
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   
-  // Track previous locker number to reset checkoutResolved only when changing lockers
+  // Track if this is initial open (to show warning once per dialog open)
+  const initialOpenRef = useRef(false);
   const previousLockerRef = useRef<number | null>(null);
+
+  // Reset checkoutResolved when dialog opens
+  useEffect(() => {
+    if (open) {
+      console.log('[LockerOptionsDialog] Dialog opened, resetting checkoutResolved');
+      setCheckoutResolved(false);
+      initialOpenRef.current = true;
+    }
+  }, [open]);
 
   // Load rental items from database on mount
   useEffect(() => {
@@ -115,11 +125,6 @@ export default function LockerOptionsDialog({
       setAvailableRentalItems(items);
       
       console.log('[LockerOptionsDialog] Dialog opened:', { isInUse, currentLockerLogId });
-      
-      // Always reset checkoutResolved when dialog opens (even for same locker)
-      console.log('[LockerOptionsDialog] Resetting checkoutResolved on dialog open');
-      setCheckoutResolved(false);
-      previousLockerRef.current = lockerNumber;
       
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
@@ -142,8 +147,8 @@ export default function LockerOptionsDialog({
         setDepositStatuses(newStatuses);
         
         // Auto-show warning alert if there are rental items or additional fees
-        // This runs AFTER rentals are loaded
-        if (!checkoutResolved && entryTime) {
+        // Only show once when dialog first opens
+        if (initialOpenRef.current && !checkoutResolved && entryTime) {
           const hasRentalItems = rentals.length > 0;
           
           // Calculate additional fee to check if there are additional charges
@@ -165,7 +170,12 @@ export default function LockerOptionsDialog({
             playEmergencySound();
             
             // Delay to allow dialog to fully open first
-            setTimeout(() => setShowWarningAlert(true), 300);
+            setTimeout(() => {
+              setShowWarningAlert(true);
+              initialOpenRef.current = false; // Mark as shown
+            }, 300);
+          } else {
+            initialOpenRef.current = false;
           }
         }
       } else {
@@ -175,7 +185,7 @@ export default function LockerOptionsDialog({
         setDepositStatuses(new Map());
       }
     }
-  }, [open, isInUse, currentLockerLogId, lockerNumber, checkoutResolved, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType]);
+  }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, checkoutResolved]);
 
   // Play click sound
   const playClickSound = () => {
