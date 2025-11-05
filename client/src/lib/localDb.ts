@@ -302,6 +302,20 @@ function migrateDatabase() {
     
     console.log('[Migration] Backfill complete');
     
+    // Step 4.7: Add discount fields to additional_fee_events
+    try {
+      db.run(`ALTER TABLE additional_fee_events ADD COLUMN original_fee_amount INTEGER`);
+      console.log('Added original_fee_amount column to additional_fee_events');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE additional_fee_events ADD COLUMN discount_amount INTEGER DEFAULT 0`);
+      console.log('Added discount_amount column to additional_fee_events');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
     // Step 5: Create additional_fee_events table (Stage 1 migration)
     db.run(`
       CREATE TABLE IF NOT EXISTS additional_fee_events (
@@ -310,8 +324,13 @@ function migrateDatabase() {
         locker_number INTEGER NOT NULL,
         checkout_time TEXT NOT NULL,
         fee_amount INTEGER NOT NULL,
+        original_fee_amount INTEGER,
+        discount_amount INTEGER DEFAULT 0,
         business_day TEXT NOT NULL,
         payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
+        payment_cash INTEGER,
+        payment_card INTEGER,
+        payment_transfer INTEGER,
         created_at TEXT NOT NULL
       )
     `);
@@ -602,6 +621,8 @@ function createTables() {
       locker_number INTEGER NOT NULL,
       checkout_time TEXT NOT NULL,
       fee_amount INTEGER NOT NULL,
+      original_fee_amount INTEGER,
+      discount_amount INTEGER DEFAULT 0,
       business_day TEXT NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
       payment_cash INTEGER,
@@ -1609,6 +1630,8 @@ export function createAdditionalFeeEvent(event: {
   lockerNumber: number;
   checkoutTime: Date;
   feeAmount: number;
+  originalFeeAmount?: number;
+  discountAmount?: number;
   businessDay: string;
   paymentMethod: string;
   paymentCash?: number;
@@ -1623,10 +1646,11 @@ export function createAdditionalFeeEvent(event: {
   
   db.run(
     `INSERT INTO additional_fee_events 
-    (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, 
-     payment_cash, payment_card, payment_transfer, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, event.lockerLogId, event.lockerNumber, checkoutTimeStr, event.feeAmount, event.businessDay, event.paymentMethod, 
+    (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
+     business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, event.lockerLogId, event.lockerNumber, checkoutTimeStr, event.feeAmount, 
+     event.originalFeeAmount || null, event.discountAmount || 0, event.businessDay, event.paymentMethod, 
      event.paymentCash || null, event.paymentCard || null, event.paymentTransfer || null, createdAt]
   );
   
