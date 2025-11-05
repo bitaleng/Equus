@@ -100,6 +100,7 @@ export default function LockerOptionsDialog({
   const [paymentCash, setPaymentCash] = useState<string>("");
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
+  const [useSplitPayment, setUseSplitPayment] = useState(false);
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
@@ -141,35 +142,26 @@ export default function LockerOptionsDialog({
                              currentPaymentTransfer !== undefined;
       
       if (hasExistingData) {
+        // Check if this is a split payment (multiple payment methods used)
+        const paymentCount = [
+          currentPaymentCash && currentPaymentCash > 0,
+          currentPaymentCard && currentPaymentCard > 0,
+          currentPaymentTransfer && currentPaymentTransfer > 0,
+        ].filter(Boolean).length;
+        
+        setUseSplitPayment(paymentCount > 1);
         setPaymentCash(currentPaymentCash !== undefined ? String(currentPaymentCash) : "");
         setPaymentCard(currentPaymentCard !== undefined ? String(currentPaymentCard) : "");
         setPaymentTransfer(currentPaymentTransfer !== undefined ? String(currentPaymentTransfer) : "");
       } else {
-        // Auto-fill the active payment method with finalPrice for new entries
-        // This makes single-method payments frictionless
-        if (computedFinalPrice > 0) {
-          if (paymentMethod === 'cash') {
-            setPaymentCash(String(computedFinalPrice));
-            setPaymentCard("");
-            setPaymentTransfer("");
-          } else if (paymentMethod === 'card') {
-            setPaymentCash("");
-            setPaymentCard(String(computedFinalPrice));
-            setPaymentTransfer("");
-          } else if (paymentMethod === 'transfer') {
-            setPaymentCash("");
-            setPaymentCard("");
-            setPaymentTransfer(String(computedFinalPrice));
-          }
-        } else {
-          // Clear all fields if no final price
-          setPaymentCash("");
-          setPaymentCard("");
-          setPaymentTransfer("");
-        }
+        // For new entries, default to single payment method (no split payment)
+        setUseSplitPayment(false);
+        setPaymentCash("");
+        setPaymentCard("");
+        setPaymentTransfer("");
       }
     }
-  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice, paymentMethod]);
+  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice]);
 
   // Load rental items from database on mount
   useEffect(() => {
@@ -480,19 +472,40 @@ export default function LockerOptionsDialog({
       optionAmount = parseInt(discountInputAmount);
     }
     
-    // Validate mixed payment amounts
     const computedFinalPrice = calculateFinalPrice();
-    if (!validateMixedPayment(computedFinalPrice)) {
-      return;
+    
+    // Get payment breakdown
+    let cashVal: number | undefined;
+    let cardVal: number | undefined;
+    let transferVal: number | undefined;
+    
+    if (useSplitPayment) {
+      // Validate mixed payment amounts for split payment
+      if (!validateMixedPayment(computedFinalPrice)) {
+        return;
+      }
+      cashVal = parseInt(paymentCash) || undefined;
+      cardVal = parseInt(paymentCard) || undefined;
+      transferVal = parseInt(paymentTransfer) || undefined;
+    } else {
+      // Single payment method - automatically assign full amount
+      if (paymentMethod === 'cash') {
+        cashVal = computedFinalPrice;
+        cardVal = undefined;
+        transferVal = undefined;
+      } else if (paymentMethod === 'card') {
+        cashVal = undefined;
+        cardVal = computedFinalPrice;
+        transferVal = undefined;
+      } else if (paymentMethod === 'transfer') {
+        cashVal = undefined;
+        cardVal = undefined;
+        transferVal = computedFinalPrice;
+      }
     }
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    
-    // Get payment breakdown
-    const cashVal = parseInt(paymentCash) || undefined;
-    const cardVal = parseInt(paymentCard) || undefined;
-    const transferVal = parseInt(paymentTransfer) || undefined;
     
     onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     setDialogOpen(false);
@@ -517,19 +530,40 @@ export default function LockerOptionsDialog({
       optionAmount = parseInt(discountInputAmount);
     }
     
-    // Validate mixed payment amounts
     const computedFinalPrice = calculateFinalPrice();
-    if (!validateMixedPayment(computedFinalPrice)) {
-      return;
+    
+    // Get payment breakdown
+    let cashVal: number | undefined;
+    let cardVal: number | undefined;
+    let transferVal: number | undefined;
+    
+    if (useSplitPayment) {
+      // Validate mixed payment amounts for split payment
+      if (!validateMixedPayment(computedFinalPrice)) {
+        return;
+      }
+      cashVal = parseInt(paymentCash) || undefined;
+      cardVal = parseInt(paymentCard) || undefined;
+      transferVal = parseInt(paymentTransfer) || undefined;
+    } else {
+      // Single payment method - automatically assign full amount
+      if (paymentMethod === 'cash') {
+        cashVal = computedFinalPrice;
+        cardVal = undefined;
+        transferVal = undefined;
+      } else if (paymentMethod === 'card') {
+        cashVal = undefined;
+        cardVal = computedFinalPrice;
+        transferVal = undefined;
+      } else if (paymentMethod === 'transfer') {
+        cashVal = undefined;
+        cardVal = undefined;
+        transferVal = computedFinalPrice;
+      }
     }
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    
-    // Get payment breakdown
-    const cashVal = parseInt(paymentCash) || undefined;
-    const cardVal = parseInt(paymentCard) || undefined;
-    const transferVal = parseInt(paymentTransfer) || undefined;
     
     onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     
@@ -556,8 +590,35 @@ export default function LockerOptionsDialog({
     // Validate mixed payment amounts against final price (including base price and additional fees)
     const computedFinalPrice = calculateFinalPrice();
     const checkoutFinalPrice = computedFinalPrice + additionalFeeInfo.additionalFee;
-    if (!validateMixedPayment(checkoutFinalPrice)) {
-      return;
+    
+    // Get payment breakdown
+    let cashVal: number | undefined;
+    let cardVal: number | undefined;
+    let transferVal: number | undefined;
+    
+    if (useSplitPayment) {
+      // Validate mixed payment amounts for split payment
+      if (!validateMixedPayment(checkoutFinalPrice)) {
+        return;
+      }
+      cashVal = parseInt(paymentCash) || undefined;
+      cardVal = parseInt(paymentCard) || undefined;
+      transferVal = parseInt(paymentTransfer) || undefined;
+    } else {
+      // Single payment method - automatically assign full amount
+      if (paymentMethod === 'cash') {
+        cashVal = checkoutFinalPrice;
+        cardVal = undefined;
+        transferVal = undefined;
+      } else if (paymentMethod === 'card') {
+        cashVal = undefined;
+        cardVal = checkoutFinalPrice;
+        transferVal = undefined;
+      } else if (paymentMethod === 'transfer') {
+        cashVal = undefined;
+        cardVal = undefined;
+        transferVal = checkoutFinalPrice;
+      }
     }
     
     // Check if there are any rental items
@@ -565,12 +626,6 @@ export default function LockerOptionsDialog({
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      
-      // Get payment breakdown
-      const cashVal = parseInt(paymentCash) || undefined;
-      const cardVal = parseInt(paymentCard) || undefined;
-      const transferVal = parseInt(paymentTransfer) || undefined;
-      
       onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     }
   };
@@ -580,10 +635,34 @@ export default function LockerOptionsDialog({
     setShowCheckoutConfirm(false);
     const rentalItemInfo = generateRentalItemInfo();
     
+    const computedFinalPrice = calculateFinalPrice();
+    const checkoutFinalPrice = computedFinalPrice + additionalFeeInfo.additionalFee;
+    
     // Get payment breakdown
-    const cashVal = parseInt(paymentCash) || undefined;
-    const cardVal = parseInt(paymentCard) || undefined;
-    const transferVal = parseInt(paymentTransfer) || undefined;
+    let cashVal: number | undefined;
+    let cardVal: number | undefined;
+    let transferVal: number | undefined;
+    
+    if (useSplitPayment) {
+      cashVal = parseInt(paymentCash) || undefined;
+      cardVal = parseInt(paymentCard) || undefined;
+      transferVal = parseInt(paymentTransfer) || undefined;
+    } else {
+      // Single payment method - automatically assign full amount
+      if (paymentMethod === 'cash') {
+        cashVal = checkoutFinalPrice;
+        cardVal = undefined;
+        transferVal = undefined;
+      } else if (paymentMethod === 'card') {
+        cashVal = undefined;
+        cardVal = checkoutFinalPrice;
+        transferVal = undefined;
+      } else if (paymentMethod === 'transfer') {
+        cashVal = undefined;
+        cardVal = undefined;
+        transferVal = checkoutFinalPrice;
+      }
+    }
     
     onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
   };
@@ -763,60 +842,97 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 지불방식 - 혼합 결제 */}
+            {/* 지불방식 */}
             <div className="space-y-3">
-              <Label className="text-sm font-semibold">지불방식 (혼합 결제 가능)</Label>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">현금</Label>
-                  <Input
-                    id="payment-cash"
-                    type="number"
-                    placeholder="0"
-                    value={paymentCash}
-                    onChange={(e) => setPaymentCash(e.target.value)}
-                    data-testid="input-payment-cash"
-                    className="mt-1"
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">지불방식</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="split-payment" 
+                    checked={useSplitPayment}
+                    onCheckedChange={(checked) => {
+                      setUseSplitPayment(checked as boolean);
+                      // When switching to split payment, clear all fields
+                      if (checked) {
+                        setPaymentCash("");
+                        setPaymentCard("");
+                        setPaymentTransfer("");
+                      }
+                    }}
+                    data-testid="checkbox-split-payment"
                   />
-                </div>
-                <div>
-                  <Label htmlFor="payment-card" className="text-xs text-muted-foreground">카드</Label>
-                  <Input
-                    id="payment-card"
-                    type="number"
-                    placeholder="0"
-                    value={paymentCard}
-                    onChange={(e) => setPaymentCard(e.target.value)}
-                    data-testid="input-payment-card"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="payment-transfer" className="text-xs text-muted-foreground">이체</Label>
-                  <Input
-                    id="payment-transfer"
-                    type="number"
-                    placeholder="0"
-                    value={paymentTransfer}
-                    onChange={(e) => setPaymentTransfer(e.target.value)}
-                    data-testid="input-payment-transfer"
-                    className="mt-1"
-                  />
+                  <Label htmlFor="split-payment" className="text-sm cursor-pointer font-normal">
+                    분리결제
+                  </Label>
                 </div>
               </div>
-              {(() => {
-                const cashVal = parseInt(paymentCash) || 0;
-                const cardVal = parseInt(paymentCard) || 0;
-                const transferVal = parseInt(paymentTransfer) || 0;
-                const total = cashVal + cardVal + transferVal;
-                
-                return (
-                  <div className="flex items-center justify-between pt-2 border-t">
-                    <span className="text-sm font-semibold">합계</span>
-                    <span className="text-lg font-bold">{total.toLocaleString()}원</span>
+
+              {useSplitPayment ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">현금</Label>
+                      <Input
+                        id="payment-cash"
+                        type="number"
+                        placeholder="0"
+                        value={paymentCash}
+                        onChange={(e) => setPaymentCash(e.target.value)}
+                        data-testid="input-payment-cash"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="payment-card" className="text-xs text-muted-foreground">카드</Label>
+                      <Input
+                        id="payment-card"
+                        type="number"
+                        placeholder="0"
+                        value={paymentCard}
+                        onChange={(e) => setPaymentCard(e.target.value)}
+                        data-testid="input-payment-card"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="payment-transfer" className="text-xs text-muted-foreground">이체</Label>
+                      <Input
+                        id="payment-transfer"
+                        type="number"
+                        placeholder="0"
+                        value={paymentTransfer}
+                        onChange={(e) => setPaymentTransfer(e.target.value)}
+                        data-testid="input-payment-transfer"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
-                );
-              })()}
+                  {(() => {
+                    const cashVal = parseInt(paymentCash) || 0;
+                    const cardVal = parseInt(paymentCard) || 0;
+                    const transferVal = parseInt(paymentTransfer) || 0;
+                    const total = cashVal + cardVal + transferVal;
+                    
+                    return (
+                      <div className="flex items-center justify-between pt-2 border-t">
+                        <span className="text-sm font-semibold">합계</span>
+                        <span className="text-lg font-bold">{total.toLocaleString()}원</span>
+                      </div>
+                    );
+                  })()}
+                </>
+              ) : (
+                <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash' | 'transfer')}>
+                  <SelectTrigger data-testid="select-payment-method">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">현금</SelectItem>
+                    <SelectItem value="card">카드</SelectItem>
+                    <SelectItem value="transfer">계좌이체</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}
