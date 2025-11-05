@@ -216,14 +216,20 @@ function migrateDatabase() {
       const returnTimeInfo = columns.find((row: any) => row[1] === 'return_time');
       const isReturnTimeNullable = returnTimeInfo ? returnTimeInfo[3] === 0 : false; // row[3] is the 'notnull' field
       
+      // Check if deposit_status CHECK constraint includes 'none'
+      const tableCheck = db.exec(`SELECT sql FROM sqlite_master WHERE type='table' AND name='rental_transactions'`);
+      const tableSql = tableCheck.length > 0 && tableCheck[0].values.length > 0 ? tableCheck[0].values[0][0] as string : '';
+      const hasNoneDepositStatus = tableSql.includes("'none'");
+      
       console.log('[Migration] rental_transactions check:', { 
         hasRevenueColumn, 
         isReturnTimeNullable,
+        hasNoneDepositStatus,
         returnTimeInfo: returnTimeInfo ? `notnull=${returnTimeInfo[3]}` : 'not found'
       });
       
-      // Need migration if missing revenue column OR return_time is not nullable
-      if (!hasRevenueColumn || !isReturnTimeNullable) {
+      // Need migration if missing revenue column OR return_time is not nullable OR missing 'none' deposit status
+      if (!hasRevenueColumn || !isReturnTimeNullable || !hasNoneDepositStatus) {
         console.log('[Migration] Starting rental_transactions migration...');
         // Old schema detected, need to migrate
         // Since SQLite doesn't support easy column rename/restructure, we need to:
@@ -247,7 +253,7 @@ function migrateDatabase() {
             rental_fee INTEGER NOT NULL,
             deposit_amount INTEGER NOT NULL,
             payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
-            deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+            deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
             revenue INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -318,7 +324,7 @@ function migrateDatabase() {
           rental_fee INTEGER NOT NULL,
           deposit_amount INTEGER NOT NULL,
           payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
-          deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+          deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
           revenue INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -496,7 +502,7 @@ function createTables() {
       rental_fee INTEGER NOT NULL,
       deposit_amount INTEGER NOT NULL,
       payment_method TEXT NOT NULL CHECK(payment_method IN ('card', 'cash', 'transfer')),
-      deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited')),
+      deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
       revenue INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
