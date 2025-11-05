@@ -4,6 +4,10 @@ import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { Menu, X } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +18,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getBusinessDay, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
@@ -29,6 +41,9 @@ interface LockerLog {
   finalPrice: number;
   notes?: string;
   paymentMethod?: 'card' | 'cash' | 'transfer';
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
 }
@@ -55,6 +70,7 @@ interface LockerGroup {
 
 export default function Home() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
@@ -67,6 +83,11 @@ export default function Home() {
   const [additionalFeeSales, setAdditionalFeeSales] = useState<number>(0);
   const [rentalRevenue, setRentalRevenue] = useState<number>(0);
   const [totalExpenses, setTotalExpenses] = useState<number>(0);
+  
+  // Panel collapse state
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -75,6 +96,33 @@ export default function Home() {
   const nightPrice = settings.nightPrice;
   const discountAmount = settings.discountAmount;
   const foreignerPrice = settings.foreignerPrice;
+  const appPassword = localStorage.getItem("staff_password") || "1234";
+  
+  // Toggle panel visibility
+  const handleTogglePanel = () => {
+    if (isPanelCollapsed) {
+      // Expanding panel - require password
+      setShowPasswordDialog(true);
+    } else {
+      // Collapsing panel - no password required
+      setIsPanelCollapsed(true);
+    }
+  };
+  
+  // Verify password and expand panel
+  const handlePasswordSubmit = () => {
+    if (passwordInput === appPassword) {
+      setIsPanelCollapsed(false);
+      setShowPasswordDialog(false);
+      setPasswordInput("");
+    } else {
+      toast({
+        variant: "destructive",
+        title: "비밀번호 오류",
+        description: "비밀번호가 일치하지 않습니다.",
+      });
+    }
+  };
 
   // Update current time every minute
   useEffect(() => {
@@ -566,41 +614,53 @@ export default function Home() {
 
   return (
     <div className="h-full w-full flex bg-background">
-      {/* Left Panel */}
-      <div className="w-[40%] border-r flex flex-col">
-        {/* Today Status */}
-        <div className="flex-[3] border-b overflow-hidden">
-          <TodayStatusTable
-            entries={todayEntries}
-            onRowClick={(entry) => {
-              setSelectedLocker(entry.lockerNumber);
-              setDialogOpen(true);
-            }}
-          />
-        </div>
+      {/* Left Panel - Collapsible */}
+      {!isPanelCollapsed && (
+        <div className="w-[40%] border-r flex flex-col">
+          {/* Today Status */}
+          <div className="flex-[3] border-b overflow-hidden">
+            <TodayStatusTable
+              entries={todayEntries}
+              onRowClick={(entry) => {
+                setSelectedLocker(entry.lockerNumber);
+                setDialogOpen(true);
+              }}
+            />
+          </div>
 
-        {/* Sales Summary */}
-        <div className="flex-[2] p-6 overflow-auto">
-          <SalesSummary
-            date={getBusinessDay(currentTime, businessDayStartHour)}
-            totalVisitors={summary?.totalVisitors || 0}
-            totalSales={summary?.totalSales || 0}
-            cancellations={summary?.cancellations || 0}
-            foreignerCount={summary?.foreignerCount || 0}
-            dayVisitors={summary?.dayVisitors || 0}
-            nightVisitors={summary?.nightVisitors || 0}
-            additionalFeeSales={additionalFeeSales}
-            rentalRevenue={rentalRevenue}
-            totalExpenses={totalExpenses}
-            onExpenseAdded={loadData}
-          />
+          {/* Sales Summary */}
+          <div className="flex-[2] p-6 overflow-auto">
+            <SalesSummary
+              date={getBusinessDay(currentTime, businessDayStartHour)}
+              totalVisitors={summary?.totalVisitors || 0}
+              totalSales={summary?.totalSales || 0}
+              cancellations={summary?.cancellations || 0}
+              foreignerCount={summary?.foreignerCount || 0}
+              dayVisitors={summary?.dayVisitors || 0}
+              nightVisitors={summary?.nightVisitors || 0}
+              additionalFeeSales={additionalFeeSales}
+              rentalRevenue={rentalRevenue}
+              totalExpenses={totalExpenses}
+              onExpenseAdded={loadData}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Right Panel - Locker Grid */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="p-6 border-b flex items-center justify-between">
+          {/* Hamburger Menu Button */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleTogglePanel}
+            data-testid="button-toggle-panel"
+            className="mr-2"
+          >
+            {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+          </Button>
           <div>
             <h1 className="text-2xl font-semibold">입실 관리</h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -718,6 +778,49 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Password Dialog for Panel Expansion */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent data-testid="dialog-panel-password">
+          <DialogHeader>
+            <DialogTitle>비밀번호 입력</DialogTitle>
+            <DialogDescription>
+              오늘현황 및 매출집계 패널을 열려면 비밀번호를 입력하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="password"
+            placeholder="비밀번호 입력"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter') {
+                handlePasswordSubmit();
+              }
+            }}
+            data-testid="input-panel-password"
+            autoFocus
+          />
+          <DialogFooter>
+            <Button 
+              variant="ghost" 
+              onClick={() => {
+                setShowPasswordDialog(false);
+                setPasswordInput("");
+              }}
+              data-testid="button-password-cancel"
+            >
+              취소
+            </Button>
+            <Button 
+              onClick={handlePasswordSubmit}
+              data-testid="button-password-submit"
+            >
+              확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

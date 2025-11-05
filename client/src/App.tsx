@@ -40,15 +40,36 @@ function Router() {
 }
 
 function MainLayout() {
-  const { toggleSidebar } = useSidebar();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
   const handleMenuClick = () => {
-    setShowPasswordDialog(true);
-    setPasswordInput("");
-    setPasswordError("");
+    console.log('handleMenuClick - isSidebarOpen:', isSidebarOpen);
+    if (isSidebarOpen) {
+      // Sidebar is open, close it without password
+      console.log('Closing sidebar without password');
+      setIsSidebarOpen(false);
+    } else {
+      // Sidebar is closed, require password to open
+      console.log('Opening password dialog to open sidebar');
+      setShowPasswordDialog(true);
+      setPasswordInput("");
+      setPasswordError("");
+    }
+  };
+
+  const handleSidebarOpenChange = (open: boolean) => {
+    // Allow closing without password, but opening requires password
+    if (!open) {
+      setIsSidebarOpen(false);
+    } else if (!isSidebarOpen) {
+      // Trying to open - show password dialog
+      setShowPasswordDialog(true);
+      setPasswordInput("");
+      setPasswordError("");
+    }
   };
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -59,14 +80,14 @@ function MainLayout() {
       setShowPasswordDialog(false);
       setPasswordInput("");
       setPasswordError("");
-      toggleSidebar();
+      setIsSidebarOpen(true);
     } else {
       setPasswordError("비밀번호가 올바르지 않습니다.");
     }
   };
 
   return (
-    <>
+    <SidebarProvider open={isSidebarOpen} onOpenChange={handleSidebarOpenChange}>
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1">
@@ -129,7 +150,7 @@ function MainLayout() {
           </form>
         </DialogContent>
       </Dialog>
-    </>
+    </SidebarProvider>
   );
 }
 
@@ -191,9 +212,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider>
-          <MainLayout />
-        </SidebarProvider>
+        <MainLayout />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
