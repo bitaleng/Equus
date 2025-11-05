@@ -637,7 +637,7 @@ export default function LockerOptionsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] grid grid-rows-[auto_minmax(0,1fr)_auto]" data-testid="dialog-locker-options">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] grid grid-rows-[auto_minmax(0,1fr)_auto]" data-testid="dialog-locker-options">
           <DialogHeader>
             <DialogTitle className="text-xl">
               락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}

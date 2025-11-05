@@ -5,7 +5,6 @@ import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Menu, X } from "lucide-react";
 import {
@@ -18,14 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
@@ -86,8 +78,7 @@ export default function Home() {
   
   // Panel collapse state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
-  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
+  const [showPatternDialog, setShowPatternDialog] = useState(false);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -96,32 +87,21 @@ export default function Home() {
   const nightPrice = settings.nightPrice;
   const discountAmount = settings.discountAmount;
   const foreignerPrice = settings.foreignerPrice;
-  const appPassword = localStorage.getItem("staff_password") || "1234";
   
   // Toggle panel visibility
   const handleTogglePanel = () => {
     if (isPanelCollapsed) {
-      // Expanding panel - require password
-      setShowPasswordDialog(true);
+      // Expanding panel - require pattern
+      setShowPatternDialog(true);
     } else {
-      // Collapsing panel - no password required
+      // Collapsing panel - no pattern required
       setIsPanelCollapsed(true);
     }
   };
   
-  // Verify password and expand panel
-  const handlePasswordSubmit = () => {
-    if (passwordInput === appPassword) {
-      setIsPanelCollapsed(false);
-      setShowPasswordDialog(false);
-      setPasswordInput("");
-    } else {
-      toast({
-        variant: "destructive",
-        title: "비밀번호 오류",
-        description: "비밀번호가 일치하지 않습니다.",
-      });
-    }
+  // Pattern verified, expand panel
+  const handlePatternCorrect = () => {
+    setIsPanelCollapsed(false);
   };
 
   // Update current time every minute
@@ -779,48 +759,15 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Password Dialog for Panel Expansion */}
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent data-testid="dialog-panel-password">
-          <DialogHeader>
-            <DialogTitle>비밀번호 입력</DialogTitle>
-            <DialogDescription>
-              오늘현황 및 매출집계 패널을 열려면 비밀번호를 입력하세요.
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="password"
-            placeholder="비밀번호 입력"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter') {
-                handlePasswordSubmit();
-              }
-            }}
-            data-testid="input-panel-password"
-            autoFocus
-          />
-          <DialogFooter>
-            <Button 
-              variant="ghost" 
-              onClick={() => {
-                setShowPasswordDialog(false);
-                setPasswordInput("");
-              }}
-              data-testid="button-password-cancel"
-            >
-              취소
-            </Button>
-            <Button 
-              onClick={handlePasswordSubmit}
-              data-testid="button-password-submit"
-            >
-              확인
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Pattern Lock Dialog for Panel Expansion */}
+      <PatternLockDialog
+        open={showPatternDialog}
+        onOpenChange={setShowPatternDialog}
+        onPatternCorrect={handlePatternCorrect}
+        title="패널 잠금 해제"
+        description="패턴을 그려서 오늘현황 및 매출집계 패널을 열어주세요."
+        testId="dialog-panel-pattern"
+      />
     </div>
   );
 }
