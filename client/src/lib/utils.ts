@@ -33,16 +33,31 @@ export function formatPaymentMethod(
 ): string {
   const parts: string[] = [];
   
-  // If mixed payment values exist, use them
-  if (paymentCash || paymentCard || paymentTransfer) {
-    if (paymentCash) {
+  // If mixed payment values exist (check for undefined, not truthy), use them
+  const hasMixedPaymentData = paymentCash !== undefined || 
+                              paymentCard !== undefined || 
+                              paymentTransfer !== undefined;
+  
+  if (hasMixedPaymentData) {
+    // Include payment method even if 0 (but skip if undefined)
+    if (paymentCash !== undefined && paymentCash > 0) {
       parts.push(`현${formatKoreanAmount(paymentCash)}`);
     }
-    if (paymentCard) {
+    if (paymentCard !== undefined && paymentCard > 0) {
       parts.push(`카${formatKoreanAmount(paymentCard)}`);
     }
-    if (paymentTransfer) {
+    if (paymentTransfer !== undefined && paymentTransfer > 0) {
       parts.push(`이${formatKoreanAmount(paymentTransfer)}`);
+    }
+    
+    // If all are 0, show "무료" or fallback to legacy method
+    if (parts.length === 0) {
+      // If all payments are explicitly 0, this is a free entry
+      if ((paymentCash === 0 || paymentCash === undefined) &&
+          (paymentCard === 0 || paymentCard === undefined) &&
+          (paymentTransfer === 0 || paymentTransfer === undefined)) {
+        return '무료';
+      }
     }
     
     return parts.join('/');
