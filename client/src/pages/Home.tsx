@@ -324,7 +324,6 @@ export default function Home() {
 
       // Create rental transaction records for each rented item (at check-in)
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
-        console.log('[Home.handleApply] Creating rental transactions:', rentalItems);
         rentalItems.forEach(item => {
           // Revenue calculation: rental fee + deposit (only if received or forfeited)
           let revenue = item.rentalFee;
@@ -332,7 +331,7 @@ export default function Home() {
             revenue += item.depositAmount;
           }
           
-          const transactionData = {
+          localDb.createRentalTransaction({
             lockerLogId: lockerLogId,
             lockerNumber: newLockerInfo.lockerNumber,
             itemId: item.itemId,
@@ -348,10 +347,7 @@ export default function Home() {
             paymentCard,
             paymentTransfer,
             revenue: revenue,
-          };
-          
-          console.log('[Home.handleApply] Creating transaction with data:', transactionData);
-          localDb.createRentalTransaction(transactionData);
+          });
         });
       }
 

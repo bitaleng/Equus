@@ -408,33 +408,17 @@ export default function LockerOptionsDialog({
       const item = availableRentalItems.find(i => i.id === itemId);
       const depositStatus = depositStatuses.get(itemId);
       
-      console.log('[generateRentalItemInfo] Processing item:', {
-        itemId,
-        item,
-        depositStatus,
-        depositStatuses: Array.from(depositStatuses.entries()),
-      });
-      
       if (item && depositStatus) {
-        const rentalItemInfo = {
+        rentalItems.push({
           itemId: item.id,
           itemName: item.name,
           rentalFee: item.rentalFee || 0,
           depositAmount: item.depositAmount || 0,
           depositStatus: depositStatus,
-        };
-        console.log('[generateRentalItemInfo] Adding rental item:', rentalItemInfo);
-        rentalItems.push(rentalItemInfo);
-      } else {
-        console.warn('[generateRentalItemInfo] Skipping item - missing item or depositStatus:', {
-          itemId,
-          hasItem: !!item,
-          hasDepositStatus: !!depositStatus,
         });
       }
     });
     
-    console.log('[generateRentalItemInfo] Final rentalItems:', rentalItems);
     return rentalItems;
   };
   
@@ -893,7 +877,23 @@ export default function LockerOptionsDialog({
                         type="number"
                         placeholder="0"
                         value={paymentCash}
-                        onChange={(e) => setPaymentCash(e.target.value)}
+                        onChange={(e) => {
+                          const newCash = e.target.value;
+                          setPaymentCash(newCash);
+                          
+                          // Auto-fill card with remaining amount
+                          const computedFinalPrice = calculateFinalPrice();
+                          const cashVal = parseInt(newCash) || 0;
+                          const remaining = computedFinalPrice - cashVal;
+                          
+                          if (remaining > 0) {
+                            setPaymentCard(String(remaining));
+                            setPaymentTransfer("");
+                          } else if (remaining === 0) {
+                            setPaymentCard("");
+                            setPaymentTransfer("");
+                          }
+                        }}
                         data-testid="input-payment-cash"
                         className="mt-1"
                       />
@@ -905,7 +905,22 @@ export default function LockerOptionsDialog({
                         type="number"
                         placeholder="0"
                         value={paymentCard}
-                        onChange={(e) => setPaymentCard(e.target.value)}
+                        onChange={(e) => {
+                          const newCard = e.target.value;
+                          setPaymentCard(newCard);
+                          
+                          // Auto-fill transfer with remaining amount
+                          const computedFinalPrice = calculateFinalPrice();
+                          const cashVal = parseInt(paymentCash) || 0;
+                          const cardVal = parseInt(newCard) || 0;
+                          const remaining = computedFinalPrice - cashVal - cardVal;
+                          
+                          if (remaining > 0) {
+                            setPaymentTransfer(String(remaining));
+                          } else if (remaining === 0) {
+                            setPaymentTransfer("");
+                          }
+                        }}
                         data-testid="input-payment-card"
                         className="mt-1"
                       />
