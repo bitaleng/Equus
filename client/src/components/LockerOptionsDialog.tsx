@@ -116,12 +116,10 @@ export default function LockerOptionsDialog({
       
       console.log('[LockerOptionsDialog] Dialog opened:', { isInUse, currentLockerLogId });
       
-      // Reset checkoutResolved only when opening a different locker
-      if (previousLockerRef.current !== lockerNumber) {
-        console.log('[LockerOptionsDialog] Different locker detected, resetting checkoutResolved');
-        setCheckoutResolved(false);
-        previousLockerRef.current = lockerNumber;
-      }
+      // Always reset checkoutResolved when dialog opens (even for same locker)
+      console.log('[LockerOptionsDialog] Resetting checkoutResolved on dialog open');
+      setCheckoutResolved(false);
+      previousLockerRef.current = lockerNumber;
       
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
