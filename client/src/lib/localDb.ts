@@ -2004,8 +2004,11 @@ export function getRentalTransactionsByDateRange(startDate: string, endDate: str
     rentalFee: row[8],
     depositAmount: row[9],
     paymentMethod: row[10],
-    depositStatus: row[11],
-    revenue: row[12],
+    paymentCash: row[11],
+    paymentCard: row[12],
+    paymentTransfer: row[13],
+    depositStatus: row[14],
+    revenue: row[15],
   }));
 }
 
