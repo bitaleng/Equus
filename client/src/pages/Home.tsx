@@ -249,7 +249,7 @@ export default function Home() {
       itemName: string;
       rentalFee: number;
       depositAmount: number;
-      depositStatus: 'received' | 'refunded' | 'forfeited';
+      depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
     }>
   ) => {
     // Handle new locker entry
@@ -400,7 +400,7 @@ export default function Home() {
     itemName: string;
     rentalFee: number;
     depositAmount: number;
-    depositStatus: 'received' | 'refunded' | 'forfeited';
+    depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   }>) => {
     if (!selectedEntry) return;
 
@@ -420,20 +420,29 @@ export default function Home() {
       foreignerPrice
     );
     
-    // If checking out on a different business day, set finalPrice to 0
-    // (already included in entry day's revenue)
-    let finalPriceForCheckout = selectedEntry.finalPrice;
+    // If checking out on a different business day (after settlement time):
+    // Set basePrice=0, optionAmount=0, finalPrice=additionalFee only
+    // (basePrice and discount already included in entry day's revenue)
+    // Formula: finalPrice = basePrice - optionAmount + additionalFee
     if (entryBusinessDay !== checkoutBusinessDay) {
-      finalPriceForCheckout = 0;
+      localDb.updateEntry(selectedEntry.id, { 
+        status: 'checked_out',
+        exitTime: now,
+        paymentMethod: paymentMethod,
+        basePrice: 0,
+        optionAmount: 0,
+        finalPrice: additionalFeeInfo.additionalFee,
+      });
+    } else {
+      // Same business day checkout: include basePrice - optionAmount + additionalFee
+      const finalPriceWithAdditionalFee = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
+      localDb.updateEntry(selectedEntry.id, { 
+        status: 'checked_out',
+        exitTime: now,
+        paymentMethod: paymentMethod,
+        finalPrice: finalPriceWithAdditionalFee,
+      });
     }
-    
-    // Update locker log to checked_out status
-    localDb.updateEntry(selectedEntry.id, { 
-      status: 'checked_out',
-      exitTime: now,
-      paymentMethod: paymentMethod,
-      finalPrice: finalPriceForCheckout,
-    });
     
     // If there's additional fee, create a separate event record
     if (additionalFeeInfo.additionalFee > 0) {

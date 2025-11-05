@@ -1710,7 +1710,7 @@ export function createRentalTransaction(rental: {
   rentalFee: number;
   depositAmount: number;
   paymentMethod: 'card' | 'cash' | 'transfer';
-  depositStatus: 'received' | 'refunded' | 'forfeited';
+  depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   revenue: number;
 }): string {
   if (!db) throw new Error('Database not initialized');
@@ -1750,7 +1750,7 @@ export function createRentalTransaction(rental: {
 }
 
 export function updateRentalTransaction(id: string, updates: {
-  depositStatus?: 'received' | 'refunded' | 'forfeited';
+  depositStatus?: 'received' | 'refunded' | 'forfeited' | 'none';
   returnTime?: Date;
   paymentMethod?: 'card' | 'cash' | 'transfer';
   businessDay?: string;
