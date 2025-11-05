@@ -716,14 +716,14 @@ export default function LockerOptionsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] grid grid-rows-[auto_minmax(0,1fr)_auto]" data-testid="dialog-locker-options">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="dialog-locker-options">
           <DialogHeader>
             <DialogTitle className="text-xl">
               락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-4 py-4 min-h-0 overflow-y-auto">
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
               {/* 입실 날짜/시간 표시 (사용중일 때만) */}
               {isInUse && entryDateTime && (
