@@ -408,17 +408,33 @@ export default function LockerOptionsDialog({
       const item = availableRentalItems.find(i => i.id === itemId);
       const depositStatus = depositStatuses.get(itemId);
       
+      console.log('[generateRentalItemInfo] Processing item:', {
+        itemId,
+        item,
+        depositStatus,
+        depositStatuses: Array.from(depositStatuses.entries()),
+      });
+      
       if (item && depositStatus) {
-        rentalItems.push({
+        const rentalItemInfo = {
           itemId: item.id,
           itemName: item.name,
           rentalFee: item.rentalFee || 0,
           depositAmount: item.depositAmount || 0,
           depositStatus: depositStatus,
+        };
+        console.log('[generateRentalItemInfo] Adding rental item:', rentalItemInfo);
+        rentalItems.push(rentalItemInfo);
+      } else {
+        console.warn('[generateRentalItemInfo] Skipping item - missing item or depositStatus:', {
+          itemId,
+          hasItem: !!item,
+          hasDepositStatus: !!depositStatus,
         });
       }
     });
     
+    console.log('[generateRentalItemInfo] Final rentalItems:', rentalItems);
     return rentalItems;
   };
   
