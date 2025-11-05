@@ -61,7 +61,7 @@ interface RentalTransaction {
   itemName: string;
   rentalFee: number;
   depositAmount: number;
-  depositStatus: 'received' | 'refunded' | 'forfeited';
+  depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   rentalTime: string;
   returnTime: string;
   businessDay: string;
@@ -609,59 +609,6 @@ export default function LogsPage() {
         </ScrollArea>
       </div>
 
-      {/* Additional Fee Events Section - 추가매출 (초과시간) */}
-      {additionalFeeEvents.length > 0 && (
-        <div className="border rounded-lg p-6 bg-card">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-lg font-semibold">추가요금 (초과시간 퇴실)</h2>
-              <p className="text-xs text-muted-foreground mt-1">
-                정산시간 이후 퇴실한 추가요금 - {additionalFeeEvents.length}건
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">총 추가요금</p>
-              <p className="text-2xl font-bold text-destructive">
-                {additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0).toLocaleString()}원
-              </p>
-            </div>
-          </div>
-
-          <ScrollArea className="h-[300px]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">날짜</TableHead>
-                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                  <TableHead className="w-24 text-sm font-bold whitespace-nowrap">퇴실시간</TableHead>
-                  <TableHead className="w-28 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
-                  <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {additionalFeeEvents.map((event) => (
-                  <TableRow key={event.id} data-testid={`row-additional-fee-${event.id}`}>
-                    <TableCell className="text-sm">
-                      {new Date(event.checkoutTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                    </TableCell>
-                    <TableCell className="font-semibold text-base">{event.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">
-                      {new Date(event.checkoutTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                    </TableCell>
-                    <TableCell className="font-semibold text-base text-destructive">
-                      {event.feeAmount.toLocaleString()}원
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {event.paymentMethod === 'card' ? '카드' : event.paymentMethod === 'cash' ? '현금' : event.paymentMethod === 'transfer' ? '이체' : '-'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </ScrollArea>
-        </div>
-      )}
-
       {/* Rental Transactions Section - 추가매출 */}
       {(() => {
         // Apply rental filters
@@ -681,6 +628,8 @@ export default function LogsPage() {
           filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'refunded');
         } else if (rentalDepositFilter === "forfeited") {
           filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'forfeited');
+        } else if (rentalDepositFilter === "none") {
+          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'none');
         }
         
         // Calculate cash totals
@@ -774,6 +723,7 @@ export default function LogsPage() {
                       <SelectItem value="received">보증금 받음</SelectItem>
                       <SelectItem value="refunded">보증금 환급</SelectItem>
                       <SelectItem value="forfeited">보증금 몰수</SelectItem>
+                      <SelectItem value="none">보증금 없음</SelectItem>
                     </SelectContent>
                   </Select>
                   
@@ -847,9 +797,13 @@ export default function LogsPage() {
                             <span className={`px-2 py-1 rounded text-xs ${
                               txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
                               txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
-                              'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300'
+                              txn.depositStatus === 'forfeited' ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' :
+                              'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
                             }`}>
-                              {txn.depositStatus === 'received' ? '받음' : txn.depositStatus === 'refunded' ? '환급' : '몰수'}
+                              {txn.depositStatus === 'received' ? '받음' : 
+                               txn.depositStatus === 'refunded' ? '환급' : 
+                               txn.depositStatus === 'forfeited' ? '몰수' : 
+                               '없음'}
                             </span>
                           </TableCell>
                           <TableCell className="font-semibold text-base text-primary">

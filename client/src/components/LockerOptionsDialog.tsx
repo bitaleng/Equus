@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 
@@ -84,6 +85,7 @@ export default function LockerOptionsDialog({
   onCheckout,
   onCancel,
 }: LockerOptionsDialogProps) {
+  const { toast } = useToast();
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
@@ -128,6 +130,29 @@ export default function LockerOptionsDialog({
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
         console.log('[LockerOptionsDialog] Loaded rental transactions:', rentals);
         setCurrentRentalTransactions(rentals);
+        
+        // Show toast notification for rental items
+        if (rentals.length > 0) {
+          const rentalInfo = rentals.map(txn => {
+            if (txn.depositAmount > 0) {
+              return `${txn.itemName} 회수하세요. 보증금 ${txn.depositAmount.toLocaleString()}원 ${
+                txn.depositStatus === 'received' ? '환급하세요' : 
+                txn.depositStatus === 'refunded' ? '환급함' : 
+                txn.depositStatus === 'forfeited' ? '몰수함' : 
+                '처리하세요'
+              }`;
+            } else {
+              return `${txn.itemName} 회수하세요`;
+            }
+          }).join('\n');
+          
+          toast({
+            title: "대여 물품 확인",
+            description: rentalInfo,
+            variant: "default",
+            duration: 5000,
+          });
+        }
         
         // Auto-select checkboxes for existing rental items
         const newSelected = new Set<string>();
