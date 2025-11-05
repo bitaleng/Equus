@@ -101,9 +101,28 @@ export default function LogsPage() {
   const [rentalDepositFilter, setRentalDepositFilter] = useState<string>("all");
   const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
 
+  // Load data on mount and when filters change
   useEffect(() => {
     loadLogs();
   }, [startDate, endDate, useTimeFilter]);
+  
+  // Auto-refresh when component mounts (navigating to this page)
+  useEffect(() => {
+    // Refresh data every time this page is shown
+    loadLogs();
+  }, []);
+  
+  // Auto-refresh when page becomes visible (browser tab focus)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadLogs();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   const loadLogs = () => {
     setIsLoading(true);
