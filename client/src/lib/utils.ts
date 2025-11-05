@@ -23,6 +23,33 @@ function formatKoreanAmount(amount: number): string {
   return result || `${amount}`;
 }
 
+// Combine two payment sets by summing matching payment methods
+// Example: base (cash=10000, card=5000) + additional (card=5000) = (cash=10000, card=10000)
+export function combinePayments(
+  payment1: { cash?: number; card?: number; transfer?: number },
+  payment2: { cash?: number; card?: number; transfer?: number }
+): { cash?: number; card?: number; transfer?: number } {
+  const cash1 = payment1.cash ?? 0;
+  const card1 = payment1.card ?? 0;
+  const transfer1 = payment1.transfer ?? 0;
+  
+  const cash2 = payment2.cash ?? 0;
+  const card2 = payment2.card ?? 0;
+  const transfer2 = payment2.transfer ?? 0;
+  
+  const result: { cash?: number; card?: number; transfer?: number } = {};
+  
+  const totalCash = cash1 + cash2;
+  const totalCard = card1 + card2;
+  const totalTransfer = transfer1 + transfer2;
+  
+  if (totalCash > 0) result.cash = totalCash;
+  if (totalCard > 0) result.card = totalCard;
+  if (totalTransfer > 0) result.transfer = totalTransfer;
+  
+  return result;
+}
+
 // Format payment method for display
 // Returns format like "현1만/카5천" for mixed payments
 // For rental items (single payment), returns simple text like "현금", "카드", "이체"
