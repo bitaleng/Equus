@@ -25,45 +25,44 @@ function formatKoreanAmount(amount: number): string {
 
 // Format payment method for display
 // Returns format like "현1만/카5천" for mixed payments
+// For rental items (single payment), returns simple text like "현금", "카드", "이체"
 export function formatPaymentMethod(
   paymentMethod?: 'card' | 'cash' | 'transfer',
-  paymentCash?: number,
-  paymentCard?: number,
-  paymentTransfer?: number
+  paymentCash?: number | null,
+  paymentCard?: number | null,
+  paymentTransfer?: number | null
 ): string {
   const parts: string[] = [];
   
-  // If mixed payment values exist (check for undefined, not truthy), use them
-  const hasMixedPaymentData = paymentCash !== undefined || 
-                              paymentCard !== undefined || 
-                              paymentTransfer !== undefined;
+  // Check if this is actually mixed payment data (has positive values)
+  // Treat null and undefined the same way
+  const cashVal = paymentCash ?? 0;
+  const cardVal = paymentCard ?? 0;
+  const transferVal = paymentTransfer ?? 0;
+  
+  const hasMixedPaymentData = cashVal > 0 || cardVal > 0 || transferVal > 0;
   
   if (hasMixedPaymentData) {
-    // Include payment method even if 0 (but skip if undefined)
-    if (paymentCash !== undefined && paymentCash > 0) {
-      parts.push(`현${formatKoreanAmount(paymentCash)}`);
+    // Include payment method with amounts for mixed payments
+    if (cashVal > 0) {
+      parts.push(`현${formatKoreanAmount(cashVal)}`);
     }
-    if (paymentCard !== undefined && paymentCard > 0) {
-      parts.push(`카${formatKoreanAmount(paymentCard)}`);
+    if (cardVal > 0) {
+      parts.push(`카${formatKoreanAmount(cardVal)}`);
     }
-    if (paymentTransfer !== undefined && paymentTransfer > 0) {
-      parts.push(`이${formatKoreanAmount(paymentTransfer)}`);
+    if (transferVal > 0) {
+      parts.push(`이${formatKoreanAmount(transferVal)}`);
     }
     
-    // If all are 0, show "무료" or fallback to legacy method
+    // If all are 0, this is a free entry
     if (parts.length === 0) {
-      // If all payments are explicitly 0, this is a free entry
-      if ((paymentCash === 0 || paymentCash === undefined) &&
-          (paymentCard === 0 || paymentCard === undefined) &&
-          (paymentTransfer === 0 || paymentTransfer === undefined)) {
-        return '무료';
-      }
+      return '무료';
     }
     
     return parts.join('/');
   }
   
-  // Fallback to legacy single payment method
+  // Single payment method - return simple text
   switch (paymentMethod) {
     case 'cash': return '현금';
     case 'card': return '카드';
