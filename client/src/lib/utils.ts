@@ -67,9 +67,11 @@ export function formatPaymentMethod(
   const cardVal = paymentCard ?? 0;
   const transferVal = paymentTransfer ?? 0;
   
-  const hasMixedPaymentData = cashVal > 0 || cardVal > 0 || transferVal > 0;
+  // Count how many payment methods are used
+  const paymentMethodsCount = [cashVal > 0, cardVal > 0, transferVal > 0].filter(Boolean).length;
   
-  if (hasMixedPaymentData) {
+  // If 2 or more payment methods are used, it's a mixed payment - show amounts
+  if (paymentMethodsCount >= 2) {
     // Include payment method with amounts for mixed payments
     if (cashVal > 0) {
       parts.push(`현${formatKoreanAmount(cashVal)}`);
@@ -81,15 +83,16 @@ export function formatPaymentMethod(
       parts.push(`이${formatKoreanAmount(transferVal)}`);
     }
     
-    // If all are 0, this is a free entry
-    if (parts.length === 0) {
-      return '무료';
-    }
-    
     return parts.join('/');
   }
   
-  // Single payment method - return simple text
+  // Single payment method - return simple text only
+  // Determine which method was used from the values
+  if (cashVal > 0) return '현금';
+  if (cardVal > 0) return '카드';
+  if (transferVal > 0) return '이체';
+  
+  // Fallback to paymentMethod parameter if no amounts
   switch (paymentMethod) {
     case 'cash': return '현금';
     case 'card': return '카드';
