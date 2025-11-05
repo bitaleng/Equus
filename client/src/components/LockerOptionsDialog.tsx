@@ -38,6 +38,7 @@ interface RentalItemInfo {
   rentalFee: number;
   depositAmount: number;
   depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
+  paymentMethod: 'cash' | 'card' | 'transfer';
 }
 
 interface LockerOptionsDialogProps {
@@ -113,6 +114,7 @@ export default function LockerOptionsDialog({
   const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
   const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
+  const [rentalPaymentMethods, setRentalPaymentMethods] = useState<Map<string, 'cash' | 'card' | 'transfer'>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   
   // Track if this is initial open (to show warning once per dialog open)
@@ -123,7 +125,6 @@ export default function LockerOptionsDialog({
   // Reset checkoutResolved when dialog opens
   useEffect(() => {
     if (open) {
-      console.log('[LockerOptionsDialog] Dialog opened, resetting checkoutResolved');
       setCheckoutResolved(false);
       initialOpenRef.current = true;
     }
@@ -170,27 +171,25 @@ export default function LockerOptionsDialog({
       const items = localDb.getAdditionalRevenueItems();
       setAvailableRentalItems(items);
       
-      console.log('[LockerOptionsDialog] Dialog opened:', { isInUse, currentLockerLogId });
-      
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
-        console.log('[LockerOptionsDialog] Loaded rental transactions:', rentals);
         setCurrentRentalTransactions(rentals);
         
         // Auto-select checkboxes for existing rental items
         const newSelected = new Set<string>();
         const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
+        const newPaymentMethods = new Map<string, 'cash' | 'card' | 'transfer'>();
         
         rentals.forEach(txn => {
-          console.log('[LockerOptionsDialog] Adding to selection:', { itemId: txn.itemId, depositStatus: txn.depositStatus });
           newSelected.add(txn.itemId);
           newStatuses.set(txn.itemId, txn.depositStatus);
+          newPaymentMethods.set(txn.itemId, txn.paymentMethod || 'cash');
         });
         
-        console.log('[LockerOptionsDialog] Setting selected items:', Array.from(newSelected));
         setSelectedRentalItems(newSelected);
         setDepositStatuses(newStatuses);
+        setRentalPaymentMethods(newPaymentMethods);
         
         // Auto-show warning alert if there are rental items or additional fees
         // Only show once when dialog first opens
@@ -211,7 +210,6 @@ export default function LockerOptionsDialog({
           const hasAdditionalFee = additionalFeeCalc.additionalFee > 0;
           
           if (hasRentalItems || hasAdditionalFee) {
-            console.log('[LockerOptionsDialog] Showing warning alert for rental items or additional fees');
             // Play emergency alert sound
             playEmergencySound();
             
@@ -225,10 +223,10 @@ export default function LockerOptionsDialog({
           }
         }
       } else {
-        console.log('[LockerOptionsDialog] Clearing rental selections (not in use or no locker log ID)');
         setCurrentRentalTransactions([]);
         setSelectedRentalItems(new Set());
         setDepositStatuses(new Map());
+        setRentalPaymentMethods(new Map());
       }
     }
   }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, checkoutResolved]);
@@ -407,6 +405,7 @@ export default function LockerOptionsDialog({
     selectedRentalItems.forEach(itemId => {
       const item = availableRentalItems.find(i => i.id === itemId);
       const depositStatus = depositStatuses.get(itemId);
+      const rentalPaymentMethod = rentalPaymentMethods.get(itemId) || 'cash'; // Default to cash if not set
       
       if (item && depositStatus) {
         rentalItems.push({
@@ -415,6 +414,7 @@ export default function LockerOptionsDialog({
           rentalFee: item.rentalFee || 0,
           depositAmount: item.depositAmount || 0,
           depositStatus: depositStatus,
+          paymentMethod: rentalPaymentMethod,
         });
       }
     });
@@ -1026,57 +1026,87 @@ export default function LockerOptionsDialog({
                           </div>
                         </div>
                         
-                        {/* 보증금 상태 드롭다운 - 체크박스 선택된 경우에만 표시 */}
+                        {/* 대여 물품 옵션 - 체크박스 선택된 경우에만 표시 */}
                         {isChecked && (
-                          <div className="ml-6 space-y-2">
-                            <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
-                              보증금 처리
-                              {item.depositAmount > 0 && depositStatus === 'received' && (!isInUse || !isAlreadyRented) && (
-                                <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
-                                  ⚠ 보증금 받음
-                                </span>
-                              )}
-                            </Label>
-                            <Select 
-                              value={depositStatus} 
-                              onValueChange={(value) => {
-                                const newStatuses = new Map(depositStatuses);
-                                newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited' | 'none');
-                                setDepositStatuses(newStatuses);
-                              }}
-                            >
-                              <SelectTrigger 
-                                id={`deposit-status-${itemId}`} 
-                                data-testid={`select-deposit-${itemId}`}
-                                className={!depositStatus ? 'border-orange-500' : ''}
+                          <div className="ml-6 space-y-3">
+                            {/* 보증금 처리 */}
+                            <div className="space-y-2">
+                              <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
+                                보증금 처리
+                                {item.depositAmount > 0 && depositStatus === 'received' && (!isInUse || !isAlreadyRented) && (
+                                  <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                                    ⚠ 보증금 받음
+                                  </span>
+                                )}
+                              </Label>
+                              <Select 
+                                value={depositStatus} 
+                                onValueChange={(value) => {
+                                  const newStatuses = new Map(depositStatuses);
+                                  newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited' | 'none');
+                                  setDepositStatuses(newStatuses);
+                                }}
                               >
-                                <SelectValue placeholder="보증금 처리를 선택하세요" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {/* 보증금 없음 */}
-                                {item.depositAmount === 0 && (
-                                  <SelectItem value="none">없음 (보증금 없음)</SelectItem>
-                                )}
-                                
-                                {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
-                                {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
-                                  <SelectItem value="received">받음 (입실 시)</SelectItem>
-                                )}
-                                
-                                {/* 보증금 있음 - '환급'/'몰수' 옵션 (이미 대여 중인 항목만) */}
-                                {item.depositAmount > 0 && isInUse && isAlreadyRented && (
-                                  <>
-                                    <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
-                                    <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
-                                  </>
-                                )}
-                              </SelectContent>
-                            </Select>
-                            {!depositStatus && (
-                              <p className="text-xs text-orange-600 dark:text-orange-400">
-                                {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
-                              </p>
-                            )}
+                                <SelectTrigger 
+                                  id={`deposit-status-${itemId}`} 
+                                  data-testid={`select-deposit-${itemId}`}
+                                  className={!depositStatus ? 'border-orange-500' : ''}
+                                >
+                                  <SelectValue placeholder="보증금 처리를 선택하세요" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {/* 보증금 없음 */}
+                                  {item.depositAmount === 0 && (
+                                    <SelectItem value="none">없음 (보증금 없음)</SelectItem>
+                                  )}
+                                  
+                                  {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
+                                  {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
+                                    <SelectItem value="received">받음 (입실 시)</SelectItem>
+                                  )}
+                                  
+                                  {/* 보증금 있음 - '환급'/'몰수' 옵션 (이미 대여 중인 항목만) */}
+                                  {item.depositAmount > 0 && isInUse && isAlreadyRented && (
+                                    <>
+                                      <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
+                                      <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
+                                    </>
+                                  )}
+                                </SelectContent>
+                              </Select>
+                              {!depositStatus && (
+                                <p className="text-xs text-orange-600 dark:text-orange-400">
+                                  {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* 결제방식 */}
+                            <div className="space-y-2">
+                              <Label htmlFor={`rental-payment-${itemId}`} className="text-xs text-muted-foreground">
+                                결제방식
+                              </Label>
+                              <Select 
+                                value={rentalPaymentMethods.get(itemId) || 'cash'} 
+                                onValueChange={(value) => {
+                                  const newMethods = new Map(rentalPaymentMethods);
+                                  newMethods.set(itemId, value as 'cash' | 'card' | 'transfer');
+                                  setRentalPaymentMethods(newMethods);
+                                }}
+                              >
+                                <SelectTrigger 
+                                  id={`rental-payment-${itemId}`} 
+                                  data-testid={`select-rental-payment-${itemId}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cash">현금</SelectItem>
+                                  <SelectItem value="card">카드</SelectItem>
+                                  <SelectItem value="transfer">계좌이체</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         )}
                       </div>
