@@ -726,7 +726,7 @@ export function getActiveLockers() {
   if (!db) throw new Error('Database not initialized');
 
   const result = db.exec(
-    `SELECT * FROM locker_logs WHERE status = 'in_use' ORDER BY entry_time DESC`
+    `SELECT * FROM locker_logs WHERE status = 'in_use' ORDER BY COALESCE(exit_time, entry_time) DESC`
   );
 
   if (result.length === 0) return [];
@@ -740,7 +740,7 @@ export function getTodayEntries(businessDay: string) {
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE business_day = ? 
-     ORDER BY entry_time DESC`,
+     ORDER BY COALESCE(exit_time, entry_time) DESC`,
     [businessDay]
   );
 
@@ -755,7 +755,7 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE business_day >= ? AND business_day <= ?
-     ORDER BY entry_time DESC`,
+     ORDER BY COALESCE(exit_time, entry_time) DESC`,
     [startDate, endDate]
   );
 
@@ -770,7 +770,7 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE entry_time >= ? AND entry_time <= ?
-     ORDER BY entry_time DESC`,
+     ORDER BY COALESCE(exit_time, entry_time) DESC`,
     [startDateTime, endDateTime]
   );
 

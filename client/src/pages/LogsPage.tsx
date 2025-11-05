@@ -214,20 +214,23 @@ export default function LogsPage() {
 
   const exportToExcel = () => {
     const exportData = logs.map((log) => ({
-      '날짜': new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       '락커번호': log.lockerNumber,
+      '입실날짜': new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       '입실시간': new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      '퇴실날짜': log.exitTime 
+        ? new Date(log.exitTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        : '-',
       '퇴실시간': log.exitTime 
         ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
         : '-',
-      '주/야간': log.timeType,
-      '기본요금': log.basePrice,
+      '주야': log.timeType,
+      '기본': log.basePrice,
       '옵션': getOptionText(log),
       '옵션금액': log.optionAmount || '-',
-      '최종요금': log.finalPrice,
       '추가요금': log.additionalFees || '-',
+      '최종요금': log.finalPrice,
       '지불방식': log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
-      '입실취소': log.cancelled ? 'O' : '-',
+      '취소': log.cancelled ? 'O' : '-',
       '비고': log.notes || '-'
     }));
 
@@ -256,9 +259,12 @@ export default function LogsPage() {
     doc.text(title, 14, 15);
     
     const tableData = logs.map((log) => [
-      new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       log.lockerNumber.toString(),
+      new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+      log.exitTime 
+        ? new Date(log.exitTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+        : '-',
       log.exitTime 
         ? new Date(log.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
         : '-',
@@ -266,14 +272,15 @@ export default function LogsPage() {
       log.basePrice.toLocaleString(),
       getOptionText(log),
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
-      log.finalPrice.toLocaleString(),
       log.additionalFees ? log.additionalFees.toLocaleString() : '-',
+      log.finalPrice.toLocaleString(),
       log.paymentMethod === 'card' ? '카드' : log.paymentMethod === 'cash' ? '현금' : log.paymentMethod === 'transfer' ? '이체' : '-',
       log.cancelled ? 'O' : '-',
+      log.notes || '-',
     ]);
 
     autoTable(doc, {
-      head: [['날짜', '락커', '입실', '퇴실', '주/야간', '기본요금', '옵션', '옵션금액', '최종요금', '추가요금', '지불', '취소']],
+      head: [['락커번호', '입실날짜', '입실시간', '퇴실날짜', '퇴실시간', '주야', '기본', '옵션', '옵션금액', '추가요금', '최종요금', '지불방식', '취소', '비고']],
       body: tableData,
       startY: 25,
       styles: { fontSize: 8, font: 'helvetica' },
@@ -513,17 +520,18 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">날짜</TableHead>
-                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">입실</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">퇴실</TableHead>
+                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커번호</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">입실날짜</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">입실시간</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">퇴실날짜</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">퇴실시간</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">주야</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">기본</TableHead>
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">옵션금액</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종요금</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불방식</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
                 <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
               </TableRow>
@@ -531,13 +539,13 @@ export default function LogsPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12 text-sm">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground py-12 text-sm">
                     로딩중...
                   </TableCell>
                 </TableRow>
               ) : displayedLogs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="text-center text-muted-foreground py-12 text-sm">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground py-12 text-sm">
                     {startDate && endDate
                       ? `${startDate} ~ ${endDate} 기간에 기록된 데이터가 없습니다`
                       : startDate
@@ -551,12 +559,18 @@ export default function LogsPage() {
               ) : (
                 displayedLogs.map((log) => (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
+                    <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
                     <TableCell className="text-sm">
                       {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                     </TableCell>
-                    <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
                     <TableCell className="text-sm">
                       {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {log.exitTime 
+                        ? new Date(log.exitTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                        : '-'
+                      }
                     </TableCell>
                     <TableCell className="text-sm">
                       {log.exitTime 
