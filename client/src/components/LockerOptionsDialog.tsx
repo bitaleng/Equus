@@ -63,7 +63,20 @@ interface LockerOptionsDialogProps {
   nightPrice?: number;
   currentLockerLogId?: string;
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number) => void;
-  onCheckout: (paymentMethod: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number) => void;
+  onCheckout: (
+    paymentMethod: 'card' | 'cash' | 'transfer', 
+    rentalItems?: RentalItemInfo[], 
+    paymentCash?: number, 
+    paymentCard?: number, 
+    paymentTransfer?: number,
+    additionalFeePayment?: {
+      method: 'card' | 'cash' | 'transfer';
+      cash?: number;
+      card?: number;
+      transfer?: number;
+      discount?: number;
+    }
+  ) => void;
   onCancel: () => void;
 }
 
@@ -102,6 +115,14 @@ export default function LockerOptionsDialog({
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
   const [useSplitPayment, setUseSplitPayment] = useState(false);
+  
+  // Additional fee payment states
+  const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
+  const [additionalFeePaymentCash, setAdditionalFeePaymentCash] = useState<string>("");
+  const [additionalFeePaymentCard, setAdditionalFeePaymentCard] = useState<string>("");
+  const [additionalFeePaymentTransfer, setAdditionalFeePaymentTransfer] = useState<string>("");
+  const [useAdditionalFeeSplitPayment, setUseAdditionalFeeSplitPayment] = useState(false);
+  const [additionalFeeDiscount, setAdditionalFeeDiscount] = useState<string>("");
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
@@ -621,12 +642,21 @@ export default function LockerOptionsDialog({
       }
     }
     
+    // Prepare additional fee payment info (if there's an additional fee)
+    const additionalFeePayment = additionalFeeInfo.additionalFee > 0 ? {
+      method: useAdditionalFeeSplitPayment ? additionalFeePaymentMethod : additionalFeePaymentMethod,
+      cash: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCash) || undefined) : (additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined),
+      card: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCard) || undefined) : (additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined),
+      transfer: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentTransfer) || undefined) : (additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined),
+      discount: parseInt(additionalFeeDiscount) || undefined,
+    } : undefined;
+    
     // Check if there are any rental items
     if (selectedRentalItems.size > 0) {
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+      onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
     }
   };
 
@@ -664,7 +694,16 @@ export default function LockerOptionsDialog({
       }
     }
     
-    onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    // Prepare additional fee payment info
+    const additionalFeePayment = additionalFeeInfo.additionalFee > 0 ? {
+      method: useAdditionalFeeSplitPayment ? additionalFeePaymentMethod : additionalFeePaymentMethod,
+      cash: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCash) || undefined) : (additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined),
+      card: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCard) || undefined) : (additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined),
+      transfer: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentTransfer) || undefined) : (additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined),
+      discount: parseInt(additionalFeeDiscount) || undefined,
+    } : undefined;
+    
+    onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
   };
 
   const handleWarningResolved = () => {
