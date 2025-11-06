@@ -340,17 +340,6 @@ export default function Home() {
         const lockerFeeAmount = finalPrice;
         const totalAmount = lockerFeeAmount + totalRentalAmount;
         
-        console.log('[CHECK-IN DEBUG] Payment distribution:', {
-          totalEntryPayment,
-          lockerFeeAmount,
-          totalRentalAmount,
-          totalAmount,
-          paymentCash,
-          paymentCard,
-          paymentTransfer,
-          rentalItemsCount: rentalItems.length
-        });
-        
         rentalItems.forEach(item => {
           // Revenue calculation: rental fee + deposit (only if received or forfeited)
           let revenue = item.rentalFee;
@@ -368,15 +357,6 @@ export default function Home() {
             itemPaymentCash = Math.round((paymentCash || 0) * ratio);
             itemPaymentCard = Math.round((paymentCard || 0) * ratio);
             itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
-            
-            console.log(`[CHECK-IN DEBUG] Item: ${item.itemName}`, {
-              revenue,
-              ratio,
-              paymentCashInput: paymentCash,
-              calculatedCash: itemPaymentCash,
-              calculatedCard: itemPaymentCard,
-              calculatedTransfer: itemPaymentTransfer
-            });
           }
           
           // Use individual rental item payment method (not entry payment method)
