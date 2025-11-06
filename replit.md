@@ -29,6 +29,12 @@ Preferred communication style: Simple, everyday language.
   - **Removed ratio-based distribution**: Eliminated totalRentalAmount/totalAmount aggregation that was incorrectly applying locker payment ratios to rental items
   - **Accurate financial reporting**: Closing page correctly sums independent entry and rental totals by payment method without mixing revenue sources
 
+- **Added expense category management UI in Settings page**: Implemented complete CRUD interface for user-managed expense categories:
+  - **Settings page integration**: New "지출 카테고리 관리" section with Receipt icon and category list
+  - **Full CRUD operations**: Create, read, update, and delete expense categories with validation and toast notifications
+  - **UI features**: Add/edit dialog with name input, edit/delete buttons for each category, empty state message
+  - **Data protection**: Default categories (like "보증금환급") cannot be deleted to maintain system integrity
+
 ## System Architecture
 
 ### Frontend
