@@ -159,18 +159,12 @@ export default function LogsPage() {
         feeEvents = localDb.getAdditionalFeeEventsByDateRange(startDate, startDate);
         rentalTxns = localDb.getRentalTransactionsByDateRange(startDate, startDate);
       } else {
-        // Default: show today's business day entries (filtered by entry_time to match sales calculation)
+        // Default: show today's business day entries (already filtered by entry_time)
         const settings = localDb.getSettings();
         const currentBusinessDay = getBusinessDay(new Date(), settings.businessDayStartHour);
-        const { start, end } = getBusinessDayRange(new Date(currentBusinessDay + 'T12:00:00'), settings.businessDayStartHour);
         
-        // Get all entries in business day range, then filter by entry_time
-        const allEntriesInRange = localDb.getEntriesByBusinessDayRange(currentBusinessDay, settings.businessDayStartHour);
-        result = allEntriesInRange.filter(e => {
-          const entryTime = new Date(e.entryTime);
-          return entryTime >= start && entryTime <= end;
-        });
-        
+        // getEntriesByBusinessDayRange already filters by entry_time, no need to filter again
+        result = localDb.getEntriesByBusinessDayRange(currentBusinessDay, settings.businessDayStartHour);
         feeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(currentBusinessDay, settings.businessDayStartHour);
         rentalTxns = localDb.getRentalTransactionsByBusinessDayRange(currentBusinessDay, settings.businessDayStartHour);
       }
