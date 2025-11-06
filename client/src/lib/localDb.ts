@@ -1095,11 +1095,17 @@ export function getTodayEntries(businessDay: string) {
 export function getEntriesByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
 
+  // Convert dates to datetime range in local timezone, then to ISO for storage comparison
+  const startDateTime = new Date(startDate + 'T00:00:00').toISOString();
+  const endDateTime = new Date(endDate + 'T23:59:59.999').toISOString();
+
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE business_day >= ? AND business_day <= ?
+     WHERE (entry_time >= ? AND entry_time <= ?)
+        OR (exit_time >= ? AND exit_time <= ?)
+        OR (entry_time < ? AND (exit_time IS NULL OR exit_time > ?))
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startDate, endDate]
+    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
   );
 
   if (result.length === 0) return [];
@@ -1113,9 +1119,10 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE (entry_time >= ? AND entry_time <= ?)
-        OR (exit_time >= ? AND exit_time <= ? AND additional_fee > 0)
+        OR (exit_time >= ? AND exit_time <= ?)
+        OR (entry_time < ? AND (exit_time IS NULL OR exit_time > ?))
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startDateTime, endDateTime, startDateTime, endDateTime]
+    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
   );
 
   if (result.length === 0) return [];
@@ -1125,6 +1132,7 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
 
 /**
  * 특정 비즈니스 데이의 모든 입실 기록 조회
+ * 영업일 범위와 겹치는 모든 기록 반환 (interval overlap 로직)
  * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
  * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
  */
@@ -1140,9 +1148,11 @@ export function getEntriesByBusinessDayRange(businessDay: string, businessDaySta
   
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?
+     WHERE (strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?)
+        OR (strftime('%s', exit_time) >= ? AND strftime('%s', exit_time) <= ?)
+        OR (strftime('%s', entry_time) < ? AND (exit_time IS NULL OR strftime('%s', exit_time) > ?))
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startUnix.toString(), endUnix.toString()]
+    [startUnix.toString(), endUnix.toString(), startUnix.toString(), endUnix.toString(), startUnix.toString(), endUnix.toString()]
   );
 
   if (result.length === 0) return [];
@@ -1961,11 +1971,15 @@ export function getTotalAdditionalFeesByBusinessDay(businessDay: string): number
 export function getAdditionalFeeEventsByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
   
+  // Convert dates to datetime range in local timezone, then to ISO for storage comparison
+  const startDateTime = new Date(startDate + 'T00:00:00').toISOString();
+  const endDateTime = new Date(endDate + 'T23:59:59.999').toISOString();
+  
   const result = db.exec(
     `SELECT * FROM additional_fee_events 
-     WHERE business_day >= ? AND business_day <= ?
+     WHERE checkout_time >= ? AND checkout_time <= ?
      ORDER BY checkout_time DESC`,
-    [startDate, endDate]
+    [startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) {
@@ -2281,11 +2295,17 @@ export function getRentalTransactionsByLockerLog(lockerLogId: string) {
 export function getRentalTransactionsByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
   
+  // Convert dates to datetime range in local timezone, then to ISO for storage comparison
+  const startDateTime = new Date(startDate + 'T00:00:00').toISOString();
+  const endDateTime = new Date(endDate + 'T23:59:59.999').toISOString();
+  
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE business_day >= ? AND business_day <= ?
+     WHERE (rental_time >= ? AND rental_time <= ?)
+        OR (return_time >= ? AND return_time <= ?)
+        OR (rental_time < ? AND (return_time IS NULL OR return_time > ?))
      ORDER BY rental_time DESC`,
-    [startDate, endDate]
+    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
@@ -2315,9 +2335,11 @@ export function getRentalTransactionsByDateTimeRange(startDateTime: string, endD
   
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE rental_time >= ? AND rental_time <= ?
+     WHERE (rental_time >= ? AND rental_time <= ?)
+        OR (return_time >= ? AND return_time <= ?)
+        OR (rental_time < ? AND (return_time IS NULL OR return_time > ?))
      ORDER BY rental_time DESC`,
-    [startDateTime, endDateTime]
+    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
