@@ -626,59 +626,29 @@ export default function Home() {
     
     // Update rental transaction records for each rented item
     if (rentalItems && rentalItems.length > 0) {
-      // Calculate total rental amount to determine payment distribution
-      const totalRentalAmount = rentalItems.reduce((sum, item) => {
-        let itemTotal = item.rentalFee;
-        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-          itemTotal += item.depositAmount;
-        }
-        return sum + itemTotal;
-      }, 0);
-      
-      // Total payment amount for the entire checkout
-      const totalCheckoutPayment = (paymentCash || 0) + (paymentCard || 0) + (paymentTransfer || 0);
-      
       rentalItems.forEach(item => {
         // Find existing rental transaction for this item
         const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        // Calculate this item's portion of the total payment
+        // Calculate this item's revenue
         let itemRevenue = item.rentalFee;
         if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
           itemRevenue += item.depositAmount;
         }
         
-        // Distribute payment proportionally if there's a total payment
-        let itemPaymentCash = 0;
-        let itemPaymentCard = 0;
-        let itemPaymentTransfer = 0;
-        
-        if (totalCheckoutPayment > 0 && totalRentalAmount > 0) {
-          const ratio = itemRevenue / totalRentalAmount;
-          itemPaymentCash = Math.round((paymentCash || 0) * ratio);
-          itemPaymentCard = Math.round((paymentCard || 0) * ratio);
-          itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
-        } else if (itemRevenue > 0) {
-          // Fallback: Use the main payment method
-          if (paymentMethod === 'cash') itemPaymentCash = itemRevenue;
-          else if (paymentMethod === 'card') itemPaymentCard = itemRevenue;
-          else if (paymentMethod === 'transfer') itemPaymentTransfer = itemRevenue;
-        }
-        
         if (existingItem) {
-          // Update existing rental transaction with all checkout details
+          // Update existing rental transaction - only update deposit status and return time
+          // DO NOT update payment fields - they were already set correctly at check-in
           localDb.updateRentalTransaction(existingItem.id, {
             depositStatus: item.depositStatus,
             returnTime: now,
             businessDay: checkoutBusinessDay,
-            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
-            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
-            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: itemRevenue,
           });
         } else {
           // Fallback: Create new rental transaction if not found (defensive coding)
+          // This should rarely happen - payment info will be missing
           localDb.createRentalTransaction({
             lockerLogId: selectedEntry.id,
             lockerNumber: selectedEntry.lockerNumber,
@@ -691,9 +661,6 @@ export default function Home() {
             returnTime: now,
             businessDay: checkoutBusinessDay,
             paymentMethod: paymentMethod,
-            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
-            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
-            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: itemRevenue,
           });
         }

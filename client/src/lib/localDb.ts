@@ -2599,7 +2599,8 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       deposit_status,
       COALESCE(payment_cash, 0) as payment_cash,
       COALESCE(payment_card, 0) as payment_card,
-      COALESCE(payment_transfer, 0) as payment_transfer
+      COALESCE(payment_transfer, 0) as payment_transfer,
+      payment_method
      FROM rental_transactions
      WHERE business_day = ?`,
     [businessDay]
@@ -2614,6 +2615,7 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       const paymentCash = row[4] as number;
       const paymentCard = row[5] as number;
       const paymentTransfer = row[6] as number;
+      const paymentMethod = row[7] as string | null;
       
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
@@ -2649,8 +2651,31 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
           breakdown[itemName].depositForfeited.transfer += paymentTransfer * depositRatio;
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
+      } else if (totalRevenue > 0 && paymentMethod) {
+        // Legacy data fallback: Use payment_method to allocate revenue
+        // This handles old data where payment_cash/card/transfer weren't populated
+        if (paymentMethod === 'cash') {
+          breakdown[itemName].rentalFee.cash += rentalFee;
+          if (depositStatus === 'forfeited') {
+            breakdown[itemName].depositForfeited.cash += depositAmount;
+          }
+        } else if (paymentMethod === 'card') {
+          breakdown[itemName].rentalFee.card += rentalFee;
+          if (depositStatus === 'forfeited') {
+            breakdown[itemName].depositForfeited.card += depositAmount;
+          }
+        } else if (paymentMethod === 'transfer') {
+          breakdown[itemName].rentalFee.transfer += rentalFee;
+          if (depositStatus === 'forfeited') {
+            breakdown[itemName].depositForfeited.transfer += depositAmount;
+          }
+        }
+        breakdown[itemName].rentalFee.total += rentalFee;
+        if (depositStatus === 'forfeited') {
+          breakdown[itemName].depositForfeited.total += depositAmount;
+        }
       } else {
-        // Fallback: if no payment info, just add totals
+        // Last resort fallback: just add totals without payment method breakdown
         breakdown[itemName].rentalFee.total += rentalFee;
         if (depositStatus === 'forfeited') {
           breakdown[itemName].depositForfeited.total += depositAmount;
