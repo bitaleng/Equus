@@ -1131,8 +1131,8 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
 }
 
 /**
- * 특정 비즈니스 데이의 모든 입실 기록 조회
- * 영업일에 입실한 기록만 반환 (entry_time 기준)
+ * 특정 비즈니스 데이의 모든 입실 기록 조회 (interval overlap 로직)
+ * 영업일 범위와 겹치는 모든 기록 반환 - 사용 중인 락커 조회용
  * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
  * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
  */
@@ -1146,7 +1146,38 @@ export function getEntriesByBusinessDayRange(businessDay: string, businessDaySta
   const startUnix = Math.floor(start.getTime() / 1000);
   const endUnix = Math.floor(end.getTime() / 1000);
   
-  // Filter by entry_time only - to match sales calculation and visitor count logic
+  // Interval overlap logic: includes entries that overlap with the business day range
+  const result = db.exec(
+    `SELECT * FROM locker_logs 
+     WHERE (strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?)
+        OR (strftime('%s', exit_time) >= ? AND strftime('%s', exit_time) <= ?)
+        OR (strftime('%s', entry_time) < ? AND (exit_time IS NULL OR strftime('%s', exit_time) > ?))
+     ORDER BY COALESCE(exit_time, entry_time) DESC`,
+    [startUnix.toString(), endUnix.toString(), startUnix.toString(), endUnix.toString(), startUnix.toString(), endUnix.toString()]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
+/**
+ * 특정 비즈니스 데이에 입실한 기록만 조회 (entry_time 기준)
+ * 방문자 수 및 입실 매출 계산용
+ * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
+ * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
+ */
+export function getEntriesByEntryTime(businessDay: string, businessDayStartHour: number = 10) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
+  
+  // Filter by entry_time only
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?
