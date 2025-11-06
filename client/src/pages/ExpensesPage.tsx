@@ -35,18 +35,9 @@ import {
   updateExpense,
   deleteExpense,
   getSettings,
+  getExpenseCategories,
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
-
-const EXPENSE_CATEGORIES = [
-  '인건비',
-  '공과금',
-  '식자재',
-  '소모품',
-  '수리비',
-  '통신비',
-  '기타',
-];
 
 const PAYMENT_METHODS = [
   { value: 'cash', label: '현금' },
@@ -72,6 +63,7 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState({ cashTotal: 0, cardTotal: 0, transferTotal: 0, total: 0 });
   const [businessDay, setBusinessDay] = useState('');
+  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
 
   // Form state
   const [date, setDate] = useState('');
@@ -103,6 +95,10 @@ export default function ExpensesPage() {
     const settings = getSettings();
     const currentBusinessDay = getBusinessDay(new Date(), settings.businessDayStartHour);
     setBusinessDay(currentBusinessDay);
+    
+    // Load expense categories from database
+    const categories = getExpenseCategories();
+    setExpenseCategories(categories.map((cat: any) => cat.name));
 
     const now = new Date();
     const kstNow = formatInTimeZone(now, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
@@ -189,7 +185,7 @@ export default function ExpensesPage() {
     setEditTime(expense.time);
     
     // Check if category is one of predefined categories
-    if (EXPENSE_CATEGORIES.includes(expense.category)) {
+    if (expenseCategories.includes(expense.category)) {
       setEditCategory(expense.category);
       setEditCustomCategory('');
     } else {
@@ -385,12 +381,11 @@ export default function ExpensesPage() {
                     <SelectValue placeholder="선택" />
                   </SelectTrigger>
                   <SelectContent>
-                    {EXPENSE_CATEGORIES.map((cat) => (
+                    {expenseCategories.map((cat) => (
                       <SelectItem key={cat} value={cat}>
                         {cat}
                       </SelectItem>
                     ))}
-                    <SelectItem value="custom">직접 입력</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -590,12 +585,11 @@ export default function ExpensesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {EXPENSE_CATEGORIES.map((cat) => (
+                  {expenseCategories.map((cat) => (
                     <SelectItem key={cat} value={cat}>
                       {cat}
                     </SelectItem>
                   ))}
-                  <SelectItem value="custom">직접 입력</SelectItem>
                 </SelectContent>
               </Select>
             </div>
