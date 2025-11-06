@@ -434,37 +434,6 @@ export default function Home() {
       const businessDay = getBusinessDay(currentTime, businessDayStartHour);
       const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
       
-      // Calculate total amount for payment distribution
-      // Must consider cross-day refunds when calculating total
-      const totalRentalAmount = rentalItems.reduce((sum, item) => {
-        let itemTotal = item.rentalFee;
-        
-        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-          itemTotal += item.depositAmount;
-        } else if (item.depositStatus === 'refunded') {
-          // Check if cross-day refund using actual return timestamp
-          const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
-          if (existingItem) {
-            // Use existing returnTime if set, otherwise current time (for pending refunds)
-            const returnTimestamp = existingItem.returnTime ? new Date(existingItem.returnTime) : new Date();
-            const rentalBusinessDay = existingItem.businessDay;
-            const returnBusinessDay = getBusinessDay(returnTimestamp, businessDayStartHour);
-            const isCrossDayRefund = (rentalBusinessDay !== returnBusinessDay);
-            
-            if (isCrossDayRefund) {
-              // Cross-day refund: include deposit in total
-              itemTotal += item.depositAmount;
-            }
-            // Same-day refund: don't include deposit
-          }
-        }
-        
-        return sum + itemTotal;
-      }, 0);
-      
-      const lockerFeeAmount = finalPrice;
-      const totalAmount = lockerFeeAmount + totalRentalAmount;
-      
       rentalItems.forEach(item => {
         // Check if rental transaction already exists for this item
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
@@ -498,16 +467,19 @@ export default function Home() {
         if (!existingItem) {
           // Create new rental transaction if it doesn't exist
           // rentalTime = 대여품목 체크박스 선택 시점 (현재 시간)
-          // For new items, distribute payment proportionally from locker fee
+          // Each rental item's revenue is allocated 100% to its own payment method
+          const itemPaymentMethod = item.paymentMethod || 'cash';
           let itemPaymentCash = 0;
           let itemPaymentCard = 0;
           let itemPaymentTransfer = 0;
           
-          if (totalAmount > 0 && revenue > 0) {
-            const ratio = revenue / totalAmount;
-            itemPaymentCash = Math.round((paymentCash || 0) * ratio);
-            itemPaymentCard = Math.round((paymentCard || 0) * ratio);
-            itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+          // Allocate 100% of revenue to the selected payment method
+          if (itemPaymentMethod === 'cash') {
+            itemPaymentCash = revenue;
+          } else if (itemPaymentMethod === 'card') {
+            itemPaymentCard = revenue;
+          } else if (itemPaymentMethod === 'transfer') {
+            itemPaymentTransfer = revenue;
           }
           
           localDb.createRentalTransaction({
@@ -521,7 +493,7 @@ export default function Home() {
             rentalTime: new Date(),
             returnTime: null,
             businessDay: businessDay,
-            paymentMethod: item.paymentMethod || 'cash',
+            paymentMethod: itemPaymentMethod,
             paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
             paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
             paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,

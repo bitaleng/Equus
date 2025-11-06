@@ -23,6 +23,12 @@ Preferred communication style: Simple, everyday language.
   - **Timestamp precision**: Both `totalRentalAmount` and per-item `revenue` calculations now use each transaction's recorded `returnTime` (or pending timestamp) instead of current save time for cross-day detection
   - **Accounting accuracy**: Prevents same-day refunded deposits from re-inflating the payment distribution base when editing entries on subsequent days, ensuring new rental items inherit correct cash/card/transfer ratios
 
+- **Completely separated entry sales from additional sales**: Fixed fundamental business logic error where rental item payments were incorrectly tied to locker entry payment ratios:
+  - **Independent revenue streams**: Entry sales (locker fees) and additional sales (rental items) are now completely separate with no cross-contamination
+  - **100% payment allocation**: Each rental item's full revenue (rental fee + deposit if received/forfeited) is allocated to its designated payment method (cash/card/transfer)
+  - **Removed ratio-based distribution**: Eliminated totalRentalAmount/totalAmount aggregation that was incorrectly applying locker payment ratios to rental items
+  - **Accurate financial reporting**: Closing page correctly sums independent entry and rental totals by payment method without mixing revenue sources
+
 ## System Architecture
 
 ### Frontend
