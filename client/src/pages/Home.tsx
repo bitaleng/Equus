@@ -245,7 +245,7 @@ export default function Home() {
       
       setSummary({
         businessDay,
-        totalVisitors,
+        totalVisitors: entriesCheckedInToday.filter(e => !e.cancelled).length,
         totalSales: activeSales,
         cancellations,
         totalDiscount: 0,
