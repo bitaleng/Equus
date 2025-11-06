@@ -18,6 +18,11 @@ Preferred communication style: Simple, everyday language.
   - Payment method breakdown now correctly displays cash/card/transfer amounts for both rental fees and forfeited deposits
   - Added Math.round() to all ratio-based calculations to eliminate decimal amounts in reporting
 
+- **Fixed rental item payment preservation and timestamp precision**: Resolved critical accounting inconsistencies when editing entries after business day rollover:
+  - **Payment preservation**: Existing rental items now retain their original payment allocation; only newly added items receive proportional tender splits from locker fee payments
+  - **Timestamp precision**: Both `totalRentalAmount` and per-item `revenue` calculations now use each transaction's recorded `returnTime` (or pending timestamp) instead of current save time for cross-day detection
+  - **Accounting accuracy**: Prevents same-day refunded deposits from re-inflating the payment distribution base when editing entries on subsequent days, ensuring new rental items inherit correct cash/card/transfer ratios
+
 ## System Architecture
 
 ### Frontend
