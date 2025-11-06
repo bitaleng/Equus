@@ -8,6 +8,16 @@ This Progressive Web App (PWA) digitizes manual ledger processes for rest hotels
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+### November 6, 2025
+- **Fixed payment method breakdown in closing page**: Corrected critical bug where rental item payments were incorrectly distributed by combining locker entry payment with rental item revenue. Entry sales (locker fees) and additional sales (rental items) are now completely separate revenue streams:
+  - **Entry sales**: Locker entrance fee only, using payment amounts entered at check-in
+  - **Additional sales**: Rental items (blankets/towels) with deposits, using each item's individual payment method
+  - Each rental item's full revenue (rental fee + deposit if received/forfeited) is allocated to its designated payment method
+  - Payment method breakdown now correctly displays cash/card/transfer amounts for both rental fees and forfeited deposits
+  - Added Math.round() to all ratio-based calculations to eliminate decimal amounts in reporting
+
 ## System Architecture
 
 ### Frontend
