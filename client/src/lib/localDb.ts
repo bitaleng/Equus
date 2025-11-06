@@ -1190,6 +1190,19 @@ export function getEntriesByEntryTime(businessDay: string, businessDayStartHour:
   return rowsToObjects(result[0]);
 }
 
+/**
+ * 모든 입실 기록 조회 (전체)
+ */
+export function getAllEntries() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT * FROM locker_logs ORDER BY entry_time DESC');
+  
+  if (result.length === 0) return [];
+  
+  return rowsToObjects(result[0]);
+}
+
 export function getDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
@@ -1960,29 +1973,6 @@ export function getAdditionalFeeEventsByLockerLog(lockerLogId: string) {
   }));
 }
 
-export function getAllAdditionalFeeEvents() {
-  if (!db) throw new Error('Database not initialized');
-  
-  const result = db.exec(
-    `SELECT * FROM additional_fee_events ORDER BY checkout_time DESC`
-  );
-  
-  if (result.length === 0 || result[0].values.length === 0) {
-    return [];
-  }
-  
-  return result[0].values.map((row: any) => ({
-    id: row[0],
-    lockerLogId: row[1],
-    lockerNumber: row[2],
-    checkoutTime: row[3],
-    feeAmount: row[4],
-    businessDay: row[5],
-    paymentMethod: row[6],
-    createdAt: row[7],
-  }));
-}
-
 export function getTotalAdditionalFeesByBusinessDay(businessDay: string): number {
   if (!db) throw new Error('Database not initialized');
   
@@ -2059,6 +2049,35 @@ export function getAdditionalFeeEventsByDateTimeRange(startDateTime: string, end
  * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
  * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
  */
+/**
+ * 모든 추가요금 이벤트 조회 (전체)
+ */
+export function getAllAdditionalFeeEvents() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT * FROM additional_fee_events ORDER BY checkout_time DESC');
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    originalFeeAmount: row[5],
+    discountAmount: row[6],
+    businessDay: row[7],
+    paymentMethod: row[8],
+    paymentCash: row[9],
+    paymentCard: row[10],
+    paymentTransfer: row[11],
+    createdAt: row[12],
+  }));
+}
+
 export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
@@ -2399,6 +2418,36 @@ export function getRentalTransactionsByDateTimeRange(startDateTime: string, endD
  * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
  * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
  */
+/**
+ * 모든 렌탈 거래 조회 (전체)
+ */
+export function getAllRentalTransactions() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT * FROM rental_transactions ORDER BY rental_time DESC');
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    itemId: row[2],
+    itemName: row[3],
+    lockerNumber: row[4],
+    rentalTime: row[5],
+    returnTime: row[6],
+    businessDay: row[7],
+    rentalFee: row[8],
+    depositAmount: row[9],
+    paymentMethod: row[10],
+    paymentCash: row[11],
+    paymentCard: row[12],
+    paymentTransfer: row[13],
+    depositStatus: row[14],
+    revenue: row[15],
+  }));
+}
+
 export function getRentalTransactionsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   

@@ -191,7 +191,7 @@ export default function Home() {
       if (locker45) console.log('락커 45번 데이터:', locker45);
       
       // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
-      const entries = localDb.getEntriesByBusinessDayRange(businessDay, businessDayStartHour);
+      const entries = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
       
       // Get additional fee events for today (추가요금 퇴실만, 입실은 이전 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
