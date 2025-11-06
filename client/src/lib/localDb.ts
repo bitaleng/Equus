@@ -2617,17 +2617,6 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       const paymentTransfer = row[6] as number;
       const paymentMethod = row[7] as string | null;
       
-      console.log(`[DEBUG] Rental Transaction:`, {
-        itemName,
-        rentalFee,
-        depositAmount,
-        depositStatus,
-        paymentCash,
-        paymentCard,
-        paymentTransfer,
-        paymentMethod
-      });
-      
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
           rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
@@ -2654,17 +2643,17 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       if (totalRevenue > 0 && totalPayment > 0) {
         // Calculate rental fee portion
         const rentalFeeRatio = rentalFee / totalRevenue;
-        breakdown[itemName].rentalFee.cash += paymentCash * rentalFeeRatio;
-        breakdown[itemName].rentalFee.card += paymentCard * rentalFeeRatio;
-        breakdown[itemName].rentalFee.transfer += paymentTransfer * rentalFeeRatio;
+        breakdown[itemName].rentalFee.cash += Math.round(paymentCash * rentalFeeRatio);
+        breakdown[itemName].rentalFee.card += Math.round(paymentCard * rentalFeeRatio);
+        breakdown[itemName].rentalFee.transfer += Math.round(paymentTransfer * rentalFeeRatio);
         breakdown[itemName].rentalFee.total += rentalFee;
         
         // Calculate deposit forfeited portion
         if (depositStatus === 'forfeited') {
           const depositRatio = depositAmount / totalRevenue;
-          breakdown[itemName].depositForfeited.cash += paymentCash * depositRatio;
-          breakdown[itemName].depositForfeited.card += paymentCard * depositRatio;
-          breakdown[itemName].depositForfeited.transfer += paymentTransfer * depositRatio;
+          breakdown[itemName].depositForfeited.cash += Math.round(paymentCash * depositRatio);
+          breakdown[itemName].depositForfeited.card += Math.round(paymentCard * depositRatio);
+          breakdown[itemName].depositForfeited.transfer += Math.round(paymentTransfer * depositRatio);
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       } else if (totalRevenue > 0 && paymentMethod) {
