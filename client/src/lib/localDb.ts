@@ -2683,19 +2683,25 @@ export function confirmClosingDay(businessDay: string) {
   saveDatabase();
 }
 
-// Get detailed sales breakdown by business day
+// Get detailed sales breakdown by business day (using business day RANGE for accurate aggregation)
 export function getDetailedSalesByBusinessDay(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
   
-  // Get base entry sales (입실 기본요금) - use mixed payment columns
+  // Get UTC start/end timestamps for the business day range
+  const settings = getSettings();
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
+  const startISO = start.toISOString();
+  const endISO = end.toISOString();
+  
+  // Get base entry sales (입실 기본요금) - filter by entry_time within business day range
   const entryResult = db.exec(
     `SELECT 
       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
      FROM locker_logs
-     WHERE business_day = ?`,
-    [businessDay]
+     WHERE entry_time >= ? AND entry_time <= ?`,
+    [startISO, endISO]
   );
   
   const entrySales = {
@@ -2713,15 +2719,15 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
     entrySales.total = entrySales.cash + entrySales.card + entrySales.transfer;
   }
   
-  // Get additional fee sales (추가요금) - use mixed payment columns
+  // Get additional fee sales (추가요금) - filter by checkout_time within business day range
   const additionalResult = db.exec(
     `SELECT 
       COALESCE(SUM(COALESCE(payment_cash, 0)), 0) as cash_total,
       COALESCE(SUM(COALESCE(payment_card, 0)), 0) as card_total,
       COALESCE(SUM(COALESCE(payment_transfer, 0)), 0) as transfer_total
      FROM additional_fee_events
-     WHERE business_day = ?`,
-    [businessDay]
+     WHERE checkout_time >= ? AND checkout_time <= ?`,
+    [startISO, endISO]
   );
   
   const additionalSales = {
@@ -2774,7 +2780,13 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
     };
   });
   
-  // Get rental transactions for this business day - use mixed payment columns
+  // Get UTC start/end timestamps for the business day range
+  const settings = getSettings();
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
+  const startISO = start.toISOString();
+  const endISO = end.toISOString();
+  
+  // Get rental transactions for this business day - filter by rental_time within business day range
   const result = db.exec(
     `SELECT 
       item_name,
@@ -2786,8 +2798,8 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       COALESCE(payment_transfer, 0) as payment_transfer,
       payment_method
      FROM rental_transactions
-     WHERE business_day = ?`,
-    [businessDay]
+     WHERE rental_time >= ? AND rental_time <= ?`,
+    [startISO, endISO]
   );
   
   if (result.length > 0 && result[0].values.length > 0) {
