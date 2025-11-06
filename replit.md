@@ -35,6 +35,13 @@ Preferred communication style: Simple, everyday language.
   - **UI features**: Add/edit dialog with name input, edit/delete buttons for each category, empty state message
   - **Data protection**: Default categories (like "보증금환급") cannot be deleted to maintain system integrity
 
+- **Fixed critical business day calculation bug**: Resolved issue where entry business_day was calculated using stale currentTime state variable:
+  - **Root cause**: currentTime updated only every 60 seconds, causing incorrect business_day assignment when entries were created between minute boundaries
+  - **Impact**: Many entries stored with wrong business_day (e.g., entries at 10:01 stored as previous day if currentTime still at 09:58)
+  - **Solution**: Changed all business_day calculations to use real-time `new Date()` instead of stale `currentTime` state
+  - **Affected locations**: Home.tsx lines 311, 438 for entry creation/modification
+  - **Added recalculation tool**: New "영업일 재계산" button in Settings → 데이터 관리 to fix existing data by recalculating all business_day values based on entry_time/rental_time/checkout_time
+
 ## System Architecture
 
 ### Frontend

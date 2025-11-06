@@ -305,7 +305,8 @@ export default function Home() {
   ) => {
     // Handle new locker entry
     if (newLockerInfo) {
-      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      const now = new Date();
+      const businessDay = getBusinessDay(now, businessDayStartHour);
       let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
       let finalPrice = newLockerInfo.basePrice;
       let optionAmount: number | undefined;
@@ -376,7 +377,7 @@ export default function Home() {
             rentalFee: item.rentalFee,
             depositAmount: item.depositAmount,
             depositStatus: item.depositStatus,
-            rentalTime: currentTime,
+            rentalTime: now,
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: itemPaymentMethod,
@@ -431,7 +432,7 @@ export default function Home() {
     
     // Handle rental items for existing entry (if saving changes)
     if (rentalItems && rentalItems.length > 0) {
-      const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      const businessDay = getBusinessDay(new Date(), businessDayStartHour);
       const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
       
       rentalItems.forEach(item => {

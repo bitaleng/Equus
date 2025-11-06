@@ -309,6 +309,22 @@ export default function Settings() {
     }
   };
 
+  const handleRecalculateBusinessDays = () => {
+    try {
+      const updatedCount = localDb.recalculateAllBusinessDays();
+      toast({
+        title: "영업일 재계산 완료",
+        description: `${updatedCount}개의 기록이 재계산되었습니다. 정산 페이지에서 확인하세요.`,
+      });
+    } catch (error) {
+      toast({
+        title: "재계산 실패",
+        description: "영업일 재계산 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleRegenerateDatabase = () => {
     try {
       const success = localDb.forceRegenerateDatabase();
@@ -991,6 +1007,30 @@ export default function Settings() {
                     >
                       <Plus className="h-4 w-4 mr-2" />
                       테스트 데이터 생성
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-4 border border-blue-500/50 rounded-lg bg-blue-500/5">
+                <div className="flex items-start gap-3">
+                  <Calculator className="h-5 w-5 text-blue-500 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-blue-600 dark:text-blue-400 mb-1">영업일 재계산</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      모든 입실/대여 기록의 영업일을 입실시각 기준으로 재계산합니다.
+                      <br />
+                      <span className="text-xs">
+                        정산 금액이 실제와 맞지 않을 때 사용하세요. 기록은 삭제되지 않으며 영업일만 재계산됩니다.
+                      </span>
+                    </p>
+                    <Button
+                      onClick={handleRecalculateBusinessDays}
+                      data-testid="button-recalculate-business-days"
+                      className="bg-blue-500 hover:bg-blue-600 text-white"
+                    >
+                      <Calculator className="h-4 w-4 mr-2" />
+                      영업일 재계산 실행
                     </Button>
                   </div>
                 </div>
