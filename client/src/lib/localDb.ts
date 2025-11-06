@@ -1,5 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
-import { getTimeType } from '@shared/businessDay';
+import { getTimeType, getBusinessDayRange } from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -1011,6 +1011,29 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
   return rowsToObjects(result[0]);
 }
 
+/**
+ * 특정 비즈니스 데이의 모든 입실 기록 조회
+ * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
+ * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
+ */
+export function getEntriesByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // 비즈니스 데이 범위 계산
+  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  
+  const result = db.exec(
+    `SELECT * FROM locker_logs 
+     WHERE entry_time >= ? AND entry_time <= ?
+     ORDER BY COALESCE(exit_time, entry_time) DESC`,
+    [start.toISOString(), end.toISOString()]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 export function getDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
@@ -1871,6 +1894,40 @@ export function getAdditionalFeeEventsByDateTimeRange(startDateTime: string, end
   }));
 }
 
+/**
+ * 특정 비즈니스 데이의 모든 추가요금 이벤트 조회
+ * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
+ * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
+ */
+export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // 비즈니스 데이 범위 계산
+  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  
+  const result = db.exec(
+    `SELECT * FROM additional_fee_events 
+     WHERE checkout_time >= ? AND checkout_time <= ?
+     ORDER BY checkout_time DESC`,
+    [start.toISOString(), end.toISOString()]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return [];
+  }
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  }));
+}
+
 export function getTotalRentalRevenueByBusinessDay(businessDay: string): number {
   if (!db) throw new Error('Database not initialized');
   
@@ -2152,8 +2209,51 @@ export function getRentalTransactionsByDateTimeRange(startDateTime: string, endD
     rentalFee: row[8],
     depositAmount: row[9],
     paymentMethod: row[10],
-    depositStatus: row[11],
-    revenue: row[12],
+    paymentCash: row[11],
+    paymentCard: row[12],
+    paymentTransfer: row[13],
+    depositStatus: row[14],
+    revenue: row[15],
+  }));
+}
+
+/**
+ * 특정 비즈니스 데이의 모든 렌탈 거래 조회
+ * @param businessDay YYYY-MM-DD 형식의 비즈니스 데이
+ * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
+ */
+export function getRentalTransactionsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // 비즈니스 데이 범위 계산
+  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  
+  const result = db.exec(
+    `SELECT * FROM rental_transactions 
+     WHERE rental_time >= ? AND rental_time <= ?
+     ORDER BY rental_time DESC`,
+    [start.toISOString(), end.toISOString()]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) return [];
+  
+  return result[0].values.map((row: any) => ({
+    id: row[0],
+    lockerLogId: row[1],
+    itemId: row[2],
+    itemName: row[3],
+    lockerNumber: row[4],
+    rentalTime: row[5],
+    returnTime: row[6],
+    businessDay: row[7],
+    rentalFee: row[8],
+    depositAmount: row[9],
+    paymentMethod: row[10],
+    paymentCash: row[11],
+    paymentCard: row[12],
+    paymentTransfer: row[13],
+    depositStatus: row[14],
+    revenue: row[15],
   }));
 }
 
