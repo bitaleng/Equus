@@ -78,6 +78,7 @@ export default function ClosingPage() {
   const [discrepancy, setDiscrepancy] = useState(0);
   const [bankDeposit, setBankDeposit] = useState('');
   const [notes, setNotes] = useState('');
+  const [memo, setMemo] = useState('');
 
   // Confirmation dialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
@@ -111,6 +112,7 @@ export default function ClosingPage() {
       setActualCash(existingClosing.actualCash ? String(Number(existingClosing.actualCash)) : '');
       setBankDeposit(existingClosing.bankDeposit ? String(Number(existingClosing.bankDeposit)) : '');
       setNotes(String(existingClosing.notes || ''));
+      setMemo(String(existingClosing.memo || ''));
       setIsConfirmed(existingClosing.isConfirmed);
     } else {
       // Initialize with default values
@@ -131,6 +133,10 @@ export default function ClosingPage() {
         setOpeningFloat('0');
         setTargetFloat('0');
       }
+      
+      // Load memo from localStorage for new closing
+      const dailyMemo = localStorage.getItem('daily_memo') || '';
+      setMemo(dailyMemo);
     }
 
     // Load detailed sales breakdown
@@ -217,6 +223,7 @@ export default function ClosingPage() {
       discrepancy,
       bankDeposit: bankDeposit ? parseInt(bankDeposit) : undefined,
       notes: notes.trim() || undefined,
+      memo: memo.trim() || undefined,
     };
 
     if (existingClosing) {
@@ -243,6 +250,9 @@ export default function ClosingPage() {
   const confirmClosing = () => {
     handleSave(); // Save first
     confirmClosingDay(businessDay);
+    
+    // Clear daily memo from localStorage after closing is confirmed
+    localStorage.removeItem('daily_memo');
 
     toast({
       title: '정산 확정 완료',
@@ -689,8 +699,17 @@ export default function ClosingPage() {
               </div>
             </div>
 
+            {memo && (
+              <div className="mt-6 space-y-2">
+                <Label>일일 메모 (오늘 현황에서 작성)</Label>
+                <div className="p-3 bg-muted rounded-md text-sm" data-testid="text-daily-memo-display">
+                  {memo}
+                </div>
+              </div>
+            )}
+            
             <div className="mt-6 space-y-2">
-              <Label htmlFor="notes">메모</Label>
+              <Label htmlFor="notes">정산 메모</Label>
               <Textarea
                 id="notes"
                 value={notes}
