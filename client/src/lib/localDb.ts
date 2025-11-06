@@ -1133,11 +1133,15 @@ export function getEntriesByBusinessDayRange(businessDay: string, businessDaySta
   // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
+  
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE entry_time >= ? AND entry_time <= ?
+     WHERE strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [start.toISOString(), end.toISOString()]
+    [startUnix.toString(), endUnix.toString()]
   );
 
   if (result.length === 0) return [];
@@ -2016,11 +2020,15 @@ export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, bu
   // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
+  
   const result = db.exec(
     `SELECT * FROM additional_fee_events 
-     WHERE checkout_time >= ? AND checkout_time <= ?
+     WHERE strftime('%s', checkout_time) >= ? AND strftime('%s', checkout_time) <= ?
      ORDER BY checkout_time DESC`,
-    [start.toISOString(), end.toISOString()]
+    [startUnix.toString(), endUnix.toString()]
   );
   
   if (result.length === 0 || result[0].values.length === 0) {
@@ -2339,11 +2347,15 @@ export function getRentalTransactionsByBusinessDayRange(businessDay: string, bus
   // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
+  
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE rental_time >= ? AND rental_time <= ?
+     WHERE strftime('%s', rental_time) >= ? AND strftime('%s', rental_time) <= ?
      ORDER BY rental_time DESC`,
-    [start.toISOString(), end.toISOString()]
+    [startUnix.toString(), endUnix.toString()]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
@@ -2801,8 +2813,10 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
   // Get UTC start/end timestamps for the business day range
   const settings = getSettings();
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
-  const startISO = start.toISOString();
-  const endISO = end.toISOString();
+  
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
   
   // Get base entry sales (입실 기본요금) - filter by entry_time within business day range
   const entryResult = db.exec(
@@ -2811,8 +2825,8 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
      FROM locker_logs
-     WHERE entry_time >= ? AND entry_time <= ?`,
-    [startISO, endISO]
+     WHERE strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
   );
   
   const entrySales = {
@@ -2837,8 +2851,8 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
       COALESCE(SUM(COALESCE(payment_card, 0)), 0) as card_total,
       COALESCE(SUM(COALESCE(payment_transfer, 0)), 0) as transfer_total
      FROM additional_fee_events
-     WHERE checkout_time >= ? AND checkout_time <= ?`,
-    [startISO, endISO]
+     WHERE strftime('%s', checkout_time) >= ? AND strftime('%s', checkout_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
   );
   
   const additionalSales = {
@@ -2894,8 +2908,10 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
   // Get UTC start/end timestamps for the business day range
   const settings = getSettings();
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
-  const startISO = start.toISOString();
-  const endISO = end.toISOString();
+  
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
   
   // Get rental transactions for this business day - filter by rental_time within business day range
   const result = db.exec(
@@ -2909,8 +2925,8 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       COALESCE(payment_transfer, 0) as payment_transfer,
       payment_method
      FROM rental_transactions
-     WHERE rental_time >= ? AND rental_time <= ?`,
-    [startISO, endISO]
+     WHERE strftime('%s', rental_time) >= ? AND strftime('%s', rental_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
   );
   
   if (result.length > 0 && result[0].values.length > 0) {
