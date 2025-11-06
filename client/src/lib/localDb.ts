@@ -2824,11 +2824,59 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
 export function getExpenseCategories() {
   if (!db) throw new Error('Database not initialized');
   
+  // Ensure expense_categories table exists
+  ensureExpenseCategoriesTable();
+  
   const result = db.exec('SELECT * FROM expense_categories ORDER BY sort_order ASC, name ASC');
   
   if (result.length === 0) return [];
   
   return rowsToObjects(result[0]);
+}
+
+// Helper function to ensure expense_categories table exists
+function ensureExpenseCategoriesTable() {
+  if (!db) return;
+  
+  // Create table if not exists
+  db.run(`
+    CREATE TABLE IF NOT EXISTS expense_categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 999,
+      created_at TEXT NOT NULL
+    )
+  `);
+  
+  // Check if table has any records
+  const countResult = db.exec(`SELECT COUNT(*) FROM expense_categories`);
+  const categoryCount = countResult.length > 0 && countResult[0].values.length > 0 ? countResult[0].values[0][0] : 0;
+  
+  // Initialize default categories if empty
+  if (categoryCount === 0) {
+    const now = new Date().toISOString();
+    const defaultCategories = [
+      { name: '인건비', sortOrder: 0 },
+      { name: '공과금', sortOrder: 1 },
+      { name: '식자재', sortOrder: 2 },
+      { name: '소모품', sortOrder: 3 },
+      { name: '수리비', sortOrder: 4 },
+      { name: '통신비', sortOrder: 5 },
+      { name: '보증금환급', sortOrder: 6 },
+      { name: '기타', sortOrder: 999 }
+    ];
+    
+    for (const category of defaultCategories) {
+      const id = crypto.randomUUID();
+      db.run(`
+        INSERT INTO expense_categories (id, name, is_default, sort_order, created_at)
+        VALUES (?, ?, 1, ?, ?)
+      `, [id, category.name, category.sortOrder, now]);
+    }
+    
+    saveDatabase();
+  }
 }
 
 export function createExpenseCategory(category: {
