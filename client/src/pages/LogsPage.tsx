@@ -241,13 +241,17 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => !log.additionalFees || log.additionalFees === 0);
   }
 
-  // Calculate total amount for filtered results
+  // Calculate total amount for filtered results (입실요금 + 추가요금)
   const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
+  const filteredAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+  const filteredTotalWithAdditional = filteredTotalAmount + filteredAdditionalFees;
   
   // Calculate overall totals (excluding cancelled entries)
   const activeLogs = logs.filter(log => !log.cancelled);
   const overallTotalCount = activeLogs.length;
   const overallTotalAmount = activeLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
+  const overallAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+  const overallTotalWithAdditional = overallTotalAmount + overallAdditionalFees;
 
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
@@ -478,7 +482,7 @@ export default function LogsPage() {
                 <span className="text-sm text-muted-foreground">총합계 (취소건 제외):</span>
                 <span className="text-base font-bold">{overallTotalCount}건</span>
                 <span className="text-sm text-muted-foreground">|</span>
-                <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
+                <span className="text-lg font-bold text-primary">₩{overallTotalWithAdditional.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -555,7 +559,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
                   </div>
                 )}
                 {timeTypeFilter !== "all" && (
@@ -565,7 +569,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
                   </div>
                 )}
                 {paymentMethodFilter !== "all" && (
@@ -575,7 +579,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
                   </div>
                 )}
                 {additionalFeeFilter !== "all" && (
@@ -585,7 +589,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
                   </div>
                 )}
               </div>

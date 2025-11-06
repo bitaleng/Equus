@@ -243,10 +243,14 @@ export default function Home() {
       const dayVisitors = entriesCheckedInToday.filter(e => e.timeType === '주간' && !e.cancelled).length;
       const nightVisitors = entriesCheckedInToday.filter(e => e.timeType === '야간' && !e.cancelled).length;
       
+      // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
+      const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+      setAdditionalFeeSales(additionalFees);
+      
       setSummary({
         businessDay,
         totalVisitors: entriesCheckedInToday.filter(e => !e.cancelled).length,
-        totalSales: activeSales,
+        totalSales: activeSales + additionalFees, // 오늘 입실 요금 + 오늘 퇴실 추가요금
         cancellations,
         totalDiscount: 0,
         foreignerCount,
@@ -255,10 +259,6 @@ export default function Home() {
         nightVisitors
       });
       setLockerGroups(localDb.getLockerGroups());
-      
-      // Calculate additional fee sales from the already-fetched events
-      const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
-      setAdditionalFeeSales(additionalFees);
       
       // Get rental revenue for today (비즈니스 데이 범위 기준)
       const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, businessDayStartHour);
