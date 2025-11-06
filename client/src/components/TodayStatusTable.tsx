@@ -16,7 +16,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { X, Filter } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { X, Filter, FileText } from "lucide-react";
 import { formatPaymentMethod } from "@/lib/utils";
 
 interface LockerEntry {
@@ -47,6 +56,12 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  
+  // Memo state
+  const [memoDialogOpen, setMemoDialogOpen] = useState(false);
+  const [memo, setMemo] = useState(() => {
+    return localStorage.getItem('daily_memo') || '';
+  });
 
   const handleLockerUsageFilter = () => {
     const num = parseInt(lockerNumberInput);
@@ -64,6 +79,12 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
   };
 
   const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all";
+  
+  // Save memo to localStorage
+  const handleSaveMemo = () => {
+    localStorage.setItem('daily_memo', memo);
+    setMemoDialogOpen(false);
+  };
 
   // Filter entries based on all filters
   let displayedEntries = filteredLockerNumber !== null
@@ -99,9 +120,18 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
   return (
     <div className="h-full flex flex-col p-6">
       <div className="flex flex-col gap-3 mb-4">
-        {/* 첫 번째 줄: 제목만 */}
-        <div>
+        {/* 첫 번째 줄: 제목과 메모 버튼 */}
+        <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">오늘 현황</h2>
+          <Button
+            size="sm"
+            variant={memo ? "default" : "outline"}
+            onClick={() => setMemoDialogOpen(true)}
+            data-testid="button-daily-memo"
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            메모
+          </Button>
         </div>
         
         {/* 두 번째 줄: 총 방문수와 필터링 결과 */}
@@ -285,6 +315,37 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
           </TableBody>
         </Table>
       </div>
+      
+      {/* Memo Dialog */}
+      <Dialog open={memoDialogOpen} onOpenChange={setMemoDialogOpen}>
+        <DialogContent data-testid="dialog-daily-memo">
+          <DialogHeader>
+            <DialogTitle>일일 메모</DialogTitle>
+            <DialogDescription>
+              오늘 영업과 관련된 특이사항을 메모하세요. 정산 시 함께 저장됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="특이사항을 입력하세요..."
+            className="min-h-[120px]"
+            data-testid="textarea-memo"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMemoDialogOpen(false)}
+              data-testid="button-cancel-memo"
+            >
+              취소
+            </Button>
+            <Button onClick={handleSaveMemo} data-testid="button-save-memo">
+              저장
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
