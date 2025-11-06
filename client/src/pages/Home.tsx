@@ -432,13 +432,33 @@ export default function Home() {
     // Handle rental items for existing entry (if saving changes)
     if (rentalItems && rentalItems.length > 0) {
       const businessDay = getBusinessDay(currentTime, businessDayStartHour);
+      const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
       
       // Calculate total amount for payment distribution
+      // Must consider cross-day refunds when calculating total
       const totalRentalAmount = rentalItems.reduce((sum, item) => {
         let itemTotal = item.rentalFee;
+        
         if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
           itemTotal += item.depositAmount;
+        } else if (item.depositStatus === 'refunded') {
+          // Check if cross-day refund using actual return timestamp
+          const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
+          if (existingItem) {
+            // Use existing returnTime if set, otherwise current time (for pending refunds)
+            const returnTimestamp = existingItem.returnTime ? new Date(existingItem.returnTime) : new Date();
+            const rentalBusinessDay = existingItem.businessDay;
+            const returnBusinessDay = getBusinessDay(returnTimestamp, businessDayStartHour);
+            const isCrossDayRefund = (rentalBusinessDay !== returnBusinessDay);
+            
+            if (isCrossDayRefund) {
+              // Cross-day refund: include deposit in total
+              itemTotal += item.depositAmount;
+            }
+            // Same-day refund: don't include deposit
+          }
         }
+        
         return sum + itemTotal;
       }, 0);
       
@@ -447,29 +467,49 @@ export default function Home() {
       
       rentalItems.forEach(item => {
         // Check if rental transaction already exists for this item
-        const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        // Revenue calculation: rental fee + deposit (only if received or forfeited)
+        // Revenue calculation: 
+        // - received/forfeited: rental fee + deposit
+        // - refunded (cross-day): rental fee + deposit (보증금을 대여일 수익으로 계산, 반납일에 지출 생성)
+        // - refunded (same-day): rental fee only (보증금을 받았다가 돌려줌)
+        // - none: rental fee only
         let revenue = item.rentalFee;
+        let isCrossDayRefund = false;
+        
         if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
           revenue += item.depositAmount;
-        }
-        
-        // Distribute payment proportionally
-        let itemPaymentCash = 0;
-        let itemPaymentCard = 0;
-        let itemPaymentTransfer = 0;
-        
-        if (totalAmount > 0 && revenue > 0) {
-          const ratio = revenue / totalAmount;
-          itemPaymentCash = Math.round((paymentCash || 0) * ratio);
-          itemPaymentCard = Math.round((paymentCard || 0) * ratio);
-          itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+        } else if (item.depositStatus === 'refunded' && existingItem) {
+          // Determine return timestamp: use existing returnTime if set, otherwise current time
+          const returnTimestamp = existingItem.returnTime ? new Date(existingItem.returnTime) : new Date();
+          
+          // Check if cross-day refund using actual/expected return timestamp
+          const rentalBusinessDay = existingItem.businessDay;
+          const returnBusinessDay = getBusinessDay(returnTimestamp, businessDayStartHour);
+          isCrossDayRefund = (rentalBusinessDay !== returnBusinessDay);
+          
+          if (isCrossDayRefund) {
+            // Cross-day refund: include deposit in rental day revenue
+            revenue += item.depositAmount;
+          }
+          // Same-day refund: don't include deposit (revenue = rental fee only)
         }
         
         if (!existingItem) {
           // Create new rental transaction if it doesn't exist
+          // rentalTime = 대여품목 체크박스 선택 시점 (현재 시간)
+          // For new items, distribute payment proportionally from locker fee
+          let itemPaymentCash = 0;
+          let itemPaymentCard = 0;
+          let itemPaymentTransfer = 0;
+          
+          if (totalAmount > 0 && revenue > 0) {
+            const ratio = revenue / totalAmount;
+            itemPaymentCash = Math.round((paymentCash || 0) * ratio);
+            itemPaymentCard = Math.round((paymentCard || 0) * ratio);
+            itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+          }
+          
           localDb.createRentalTransaction({
             lockerLogId: selectedEntry.id,
             lockerNumber: selectedEntry.lockerNumber,
@@ -478,7 +518,7 @@ export default function Home() {
             rentalFee: item.rentalFee,
             depositAmount: item.depositAmount,
             depositStatus: item.depositStatus,
-            rentalTime: selectedEntry.entryTime,
+            rentalTime: new Date(),
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: item.paymentMethod || 'cash',
@@ -489,13 +529,53 @@ export default function Home() {
           });
         } else {
           // Update existing rental transaction
-          localDb.updateRentalTransaction(existingItem.id, {
+          // DO NOT recalculate payment - keep existing payment info
+          // Only update deposit status, revenue, and return time
+          const updateData: any = {
             depositStatus: item.depositStatus,
-            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
-            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
-            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: revenue,
-          });
+          };
+          
+          // If deposit status changed to refunded/forfeited and returnTime is not set, set it now
+          const isStatusChanging = (item.depositStatus === 'refunded' || item.depositStatus === 'forfeited') && !existingItem.returnTime;
+          if (isStatusChanging) {
+            updateData.returnTime = new Date();
+            
+            // 보증금 환급 처리: 영업일 비교 후 지출 자동 생성
+            if (item.depositStatus === 'refunded' && item.depositAmount > 0) {
+              const rentalBusinessDay = existingItem.businessDay;
+              const returnBusinessDay = getBusinessDay(updateData.returnTime, businessDayStartHour);
+              
+              // 다른 날 환급: 지출 자동 생성
+              if (rentalBusinessDay !== returnBusinessDay) {
+                const refundTime = new Date(updateData.returnTime);
+                const timeStr = refundTime.toTimeString().slice(0, 5); // HH:MM
+                
+                // 보증금환급 카테고리 찾기
+                const categories = localDb.getExpenseCategories();
+                const refundCategory = categories.find(c => c.name === '보증금환급');
+                
+                if (refundCategory) {
+                  // 지출 자동 생성
+                  localDb.createExpense({
+                    date: returnBusinessDay,
+                    time: timeStr,
+                    category: refundCategory.name,
+                    amount: item.depositAmount,
+                    quantity: 1,
+                    paymentMethod: item.paymentMethod || 'cash',
+                    paymentCash: item.paymentMethod === 'cash' ? item.depositAmount : undefined,
+                    paymentCard: item.paymentMethod === 'card' ? item.depositAmount : undefined,
+                    paymentTransfer: item.paymentMethod === 'transfer' ? item.depositAmount : undefined,
+                    businessDay: returnBusinessDay,
+                    notes: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
+                  });
+                }
+              }
+            }
+          }
+          
+          localDb.updateRentalTransaction(existingItem.id, updateData);
         }
       });
     }
