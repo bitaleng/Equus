@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { calculateAdditionalFee } from "@shared/businessDay";
+import { calculateAdditionalFee, getBusinessDay } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
 
@@ -405,6 +405,33 @@ export default function LockerOptionsDialog({
     }
     
     return basePrice;
+  };
+
+  /**
+   * 최종 요금 계산 (기본요금 + 추가요금)
+   * 규칙: 기본요금과 추가요금의 영업일이 다르면 기본요금을 0으로 처리
+   */
+  const calculateTotalPriceWithAdditionalFee = () => {
+    const baseFinalPrice = calculateFinalPrice();
+    
+    // 추가요금이 없으면 기본요금만 반환
+    if (!isInUse || additionalFeeInfo.additionalFee === 0) {
+      return baseFinalPrice;
+    }
+    
+    // 입실시간과 현재시간의 영업일 비교
+    if (entryTime) {
+      const entryBusinessDay = getBusinessDay(new Date(entryTime));
+      const currentBusinessDay = getBusinessDay(new Date());
+      
+      // 영업일이 다르면 기본요금을 0으로 처리 (추가요금만 청구)
+      if (entryBusinessDay !== currentBusinessDay) {
+        return additionalFeeInfo.additionalFee;
+      }
+    }
+    
+    // 영업일이 같으면 기본요금 + 추가요금
+    return baseFinalPrice + additionalFeeInfo.additionalFee;
   };
 
   // Generate notes from rental items
@@ -1186,7 +1213,7 @@ export default function LockerOptionsDialog({
             {/* 최종 요금 - 구분선 아래 */}
             <div className="flex justify-between text-base pt-4 border-t-2">
               <span className="font-semibold">최종 요금</span>
-              <span className="font-bold text-xl text-primary">{calculateFinalPrice().toLocaleString()}원</span>
+              <span className="font-bold text-xl text-primary">{calculateTotalPriceWithAdditionalFee().toLocaleString()}원</span>
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}
