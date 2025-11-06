@@ -38,8 +38,8 @@ export default function ClosingPage() {
   // Basic information
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [openingFloat, setOpeningFloat] = useState('30000');
-  const [targetFloat, setTargetFloat] = useState('30000');
+  const [openingFloat, setOpeningFloat] = useState('0');
+  const [targetFloat, setTargetFloat] = useState('0');
 
   // Detailed sales breakdown
   const [entrySales, setEntrySales] = useState({
@@ -121,35 +121,15 @@ export default function ClosingPage() {
       // Set end time to same as start time (next day's business day start hour)
       setEndTime(`${String(startHour).padStart(2, '0')}:00`);
 
-      // Load cash register from localStorage and calculate total
-      let initialFloat = 30000; // Default fallback
-      try {
-        const savedCashRegister = localStorage.getItem('cash_register');
-        if (savedCashRegister) {
-          const cashRegister = JSON.parse(savedCashRegister);
-          const cashTotal = (
-            (cashRegister.count50000 || 0) * 50000 +
-            (cashRegister.count10000 || 0) * 10000 +
-            (cashRegister.count5000 || 0) * 5000 +
-            (cashRegister.count1000 || 0) * 1000
-          );
-          if (cashTotal > 0) {
-            initialFloat = cashTotal;
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load cash register:', error);
-      }
-
-      // Get previous closing for opening float (if cash register not set)
+      // Get previous closing for opening float
       const latestClosing = getLatestClosingDay();
       if (latestClosing && latestClosing.targetFloat) {
         setOpeningFloat(latestClosing.targetFloat.toString());
         setTargetFloat(latestClosing.targetFloat.toString());
       } else {
-        // Use cash register total as default
-        setOpeningFloat(initialFloat.toString());
-        setTargetFloat(initialFloat.toString());
+        // Default to 0 if no previous closing exists
+        setOpeningFloat('0');
+        setTargetFloat('0');
       }
     }
 
@@ -363,7 +343,7 @@ export default function ClosingPage() {
                   value={openingFloat}
                   onChange={(e) => setOpeningFloat(e.target.value)}
                   disabled={isConfirmed}
-                  placeholder="30000"
+                  placeholder="0"
                   data-testid="input-opening-float"
                 />
               </div>
@@ -376,7 +356,7 @@ export default function ClosingPage() {
                   value={targetFloat}
                   onChange={(e) => setTargetFloat(e.target.value)}
                   disabled={isConfirmed}
-                  placeholder="30000"
+                  placeholder="0"
                   data-testid="input-target-float"
                 />
               </div>
