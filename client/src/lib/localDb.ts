@@ -2720,24 +2720,41 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         totalRevenue += depositAmount;
       }
       
-      // payment_cash/card/transfer represent the total payment for rental fee + deposit
-      // We need to distribute it proportionally
-      const totalPayment = paymentCash + paymentCard + paymentTransfer;
+      // For refunded deposits, exclude deposit from payment calculation
+      // payment_cash/card/transfer may include deposit that was refunded, so we need to subtract it
+      let effectivePaymentCash = paymentCash;
+      let effectivePaymentCard = paymentCard;
+      let effectivePaymentTransfer = paymentTransfer;
+      
+      if (depositStatus === 'refunded') {
+        // Original payment included deposit, but it was refunded
+        // So we need to subtract deposit from the total payment to get only rental fee payment
+        const totalPayment = paymentCash + paymentCard + paymentTransfer;
+        if (totalPayment > 0 && depositAmount > 0) {
+          // Proportionally reduce each payment method by deposit amount
+          const depositRatio = depositAmount / totalPayment;
+          effectivePaymentCash = Math.round(paymentCash * (1 - depositRatio));
+          effectivePaymentCard = Math.round(paymentCard * (1 - depositRatio));
+          effectivePaymentTransfer = Math.round(paymentTransfer * (1 - depositRatio));
+        }
+      }
+      
+      const totalPayment = effectivePaymentCash + effectivePaymentCard + effectivePaymentTransfer;
       
       if (totalRevenue > 0 && totalPayment > 0) {
         // Calculate rental fee portion
         const rentalFeeRatio = rentalFee / totalRevenue;
-        breakdown[itemName].rentalFee.cash += Math.round(paymentCash * rentalFeeRatio);
-        breakdown[itemName].rentalFee.card += Math.round(paymentCard * rentalFeeRatio);
-        breakdown[itemName].rentalFee.transfer += Math.round(paymentTransfer * rentalFeeRatio);
+        breakdown[itemName].rentalFee.cash += Math.round(effectivePaymentCash * rentalFeeRatio);
+        breakdown[itemName].rentalFee.card += Math.round(effectivePaymentCard * rentalFeeRatio);
+        breakdown[itemName].rentalFee.transfer += Math.round(effectivePaymentTransfer * rentalFeeRatio);
         breakdown[itemName].rentalFee.total += rentalFee;
         
         // Calculate deposit portion (both received and forfeited count as revenue)
         if (depositStatus === 'received' || depositStatus === 'forfeited') {
           const depositRatio = depositAmount / totalRevenue;
-          breakdown[itemName].depositForfeited.cash += Math.round(paymentCash * depositRatio);
-          breakdown[itemName].depositForfeited.card += Math.round(paymentCard * depositRatio);
-          breakdown[itemName].depositForfeited.transfer += Math.round(paymentTransfer * depositRatio);
+          breakdown[itemName].depositForfeited.cash += Math.round(effectivePaymentCash * depositRatio);
+          breakdown[itemName].depositForfeited.card += Math.round(effectivePaymentCard * depositRatio);
+          breakdown[itemName].depositForfeited.transfer += Math.round(effectivePaymentTransfer * depositRatio);
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       } else if (totalRevenue > 0 && paymentMethod) {
