@@ -1110,8 +1110,6 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
 export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: string) {
   if (!db) throw new Error('Database not initialized');
 
-  console.log('[getEntriesByDateTimeRange] Query params:', { startDateTime, endDateTime });
-
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE (entry_time >= ? AND entry_time <= ?)
@@ -1119,8 +1117,6 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
     [startDateTime, endDateTime, startDateTime, endDateTime]
   );
-
-  console.log('[getEntriesByDateTimeRange] Result count:', result.length > 0 ? result[0].values.length : 0);
 
   if (result.length === 0) return [];
 

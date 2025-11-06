@@ -137,7 +137,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         {/* 두 번째 줄: 총 방문수와 필터링 결과 */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            총 방문: {entries.length}명 (사용중: {entries.filter(e => e.status === 'in_use' && !e.cancelled).length}개)
+            총 방문: {entries.length}명 (사용중: {entries.filter(e => (e.status === 'in_use' || e.timeType === '추가요금') && !e.cancelled).length}개)
           </span>
           {filteredLockerNumber !== null && (
             <span className="text-sm font-semibold text-primary">
