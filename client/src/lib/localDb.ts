@@ -1956,11 +1956,15 @@ export function updateRentalTransaction(id: string, updates: {
   returnTime?: Date;
   paymentMethod?: 'card' | 'cash' | 'transfer';
   businessDay?: string;
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
+  revenue?: number;
 }) {
   if (!db) throw new Error('Database not initialized');
   
   // Get current transaction to calculate new revenue and prepare updates
-  const result = db.exec('SELECT rental_fee, deposit_amount, deposit_status, return_time, payment_method, business_day FROM rental_transactions WHERE id = ?', [id]);
+  const result = db.exec('SELECT rental_fee, deposit_amount, deposit_status, return_time, payment_method, business_day, payment_cash, payment_card, payment_transfer FROM rental_transactions WHERE id = ?', [id]);
   
   if (result.length === 0 || result[0].values.length === 0) return;
   
@@ -1970,25 +1974,35 @@ export function updateRentalTransaction(id: string, updates: {
   const currentReturnTime = result[0].values[0][3];
   const currentPaymentMethod = result[0].values[0][4];
   const currentBusinessDay = result[0].values[0][5];
+  const currentPaymentCash = result[0].values[0][6];
+  const currentPaymentCard = result[0].values[0][7];
+  const currentPaymentTransfer = result[0].values[0][8];
   
   // Determine final values
   const finalDepositStatus = updates.depositStatus || currentDepositStatus;
   const finalReturnTime = updates.returnTime ? updates.returnTime.toISOString() : currentReturnTime;
   const finalPaymentMethod = updates.paymentMethod || currentPaymentMethod;
   const finalBusinessDay = updates.businessDay || currentBusinessDay;
+  const finalPaymentCash = updates.paymentCash !== undefined ? updates.paymentCash : currentPaymentCash;
+  const finalPaymentCard = updates.paymentCard !== undefined ? updates.paymentCard : currentPaymentCard;
+  const finalPaymentTransfer = updates.paymentTransfer !== undefined ? updates.paymentTransfer : currentPaymentTransfer;
   
-  // Calculate revenue based on deposit status
-  let revenue = rentalFee; // Always include rental fee
-  if (finalDepositStatus === 'received' || finalDepositStatus === 'forfeited') {
-    revenue += depositAmount; // Add deposit amount if received or forfeited
+  // Calculate revenue based on deposit status (use provided revenue or calculate)
+  let revenue = updates.revenue !== undefined ? updates.revenue : rentalFee;
+  if (updates.revenue === undefined) {
+    if (finalDepositStatus === 'received' || finalDepositStatus === 'forfeited') {
+      revenue += depositAmount; // Add deposit amount if received or forfeited
+    }
   }
   // If refunded, only rental fee is counted (already in revenue variable)
   
   db.run(
     `UPDATE rental_transactions 
-     SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, updated_at = ?
+     SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
+         payment_cash = ?, payment_card = ?, payment_transfer = ?, updated_at = ?
      WHERE id = ?`,
-    [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, new Date().toISOString(), id]
+    [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
+     finalPaymentCash, finalPaymentCard, finalPaymentTransfer, new Date().toISOString(), id]
   );
   
   saveDatabase();
