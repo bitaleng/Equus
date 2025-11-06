@@ -30,8 +30,8 @@ import { formatPaymentMethod } from "@/lib/utils";
 
 interface LockerEntry {
   lockerNumber: number;
-  entryTime: string;
-  timeType: '주간' | '야간';
+  entryTime: string | null;
+  timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
   option: string;
   finalPrice: number;
@@ -282,6 +282,8 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                   ? 'bg-primary/10 text-primary' 
                   : 'bg-muted text-muted-foreground';
                 
+                const isAdditionalFeeOnly = entry.timeType === '추가요금';
+                
                 return (
                   <TableRow
                     key={index}
@@ -290,10 +292,12 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     data-testid={`row-entry-${entry.lockerNumber}`}
                   >
                     <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">{entry.entryTime}</TableCell>
+                    <TableCell className="text-sm">{entry.entryTime || '-'}</TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
+                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                        entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                        'bg-accent text-accent-foreground'
                       }`}>
                         {entry.timeType}
                       </span>
@@ -302,7 +306,11 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     <TableCell className="text-sm">
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
-                    <TableCell className="font-semibold text-base">{entry.finalPrice.toLocaleString()}원</TableCell>
+                    <TableCell className={`font-semibold text-base ${
+                      isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''
+                    }`}>
+                      {entry.finalPrice.toLocaleString()}원
+                    </TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${statusColor}`}>
                         {statusText}
