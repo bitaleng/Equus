@@ -1113,7 +1113,7 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
   const result = db.exec(
     `SELECT * FROM locker_logs 
      WHERE (entry_time >= ? AND entry_time <= ?)
-        OR (exit_time >= ? AND exit_time <= ?)
+        OR (exit_time >= ? AND exit_time <= ? AND additional_fee > 0)
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
     [startDateTime, endDateTime, startDateTime, endDateTime]
   );
