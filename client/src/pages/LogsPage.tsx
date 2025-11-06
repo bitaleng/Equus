@@ -234,6 +234,11 @@ export default function LogsPage() {
 
   // Calculate total amount for filtered results
   const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
+  
+  // Calculate overall totals (excluding cancelled entries)
+  const activeLogs = logs.filter(log => !log.cancelled);
+  const overallTotalCount = activeLogs.length;
+  const overallTotalAmount = activeLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
 
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
@@ -455,6 +460,20 @@ export default function LogsPage() {
             )}
           </div>
         </div>
+        
+        {/* 총합계 표시 (필터 없을 때 또는 항상 표시) */}
+        {!hasActiveFilters && logs.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2" data-testid="text-overall-total">
+                <span className="text-sm text-muted-foreground">총합계 (취소건 제외):</span>
+                <span className="text-base font-bold">{overallTotalCount}건</span>
+                <span className="text-sm text-muted-foreground">|</span>
+                <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* 필터 옵션 */}
         {showFilters && (
