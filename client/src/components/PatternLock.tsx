@@ -55,8 +55,8 @@ export default function PatternLock({
         Math.pow(canvasX - pos.x, 2) + Math.pow(canvasY - pos.y, 2)
       );
 
-      // Find the closest dot within a larger radius
-      if (distance < spacing * 0.6 && distance < minDistance) {
+      // Find the closest dot within a smaller radius (reduced from 0.6 to 0.35 for less magnetic effect)
+      if (distance < spacing * 0.35 && distance < minDistance) {
         closestDot = i;
         minDistance = distance;
       }
