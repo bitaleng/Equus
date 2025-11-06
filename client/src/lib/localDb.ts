@@ -545,6 +545,14 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 11: Add memo column to closing_days table for daily notes
+    try {
+      db.run(`ALTER TABLE closing_days ADD COLUMN memo TEXT`);
+      console.log('Added memo column to closing_days');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -2335,6 +2343,7 @@ export function createClosingDay(data: {
   discrepancy?: number;
   bankDeposit?: number;
   notes?: string;
+  memo?: string;
 }) {
   if (!db) throw new Error('Database not initialized');
   
@@ -2344,8 +2353,8 @@ export function createClosingDay(data: {
   db.run(
     `INSERT INTO closing_days 
      (id, business_day, start_time, end_time, opening_float, target_float, 
-      actual_cash, expected_cash, discrepancy, bank_deposit, notes, is_confirmed, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      actual_cash, expected_cash, discrepancy, bank_deposit, notes, memo, is_confirmed, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
     [
       id,
       data.businessDay,
@@ -2358,6 +2367,7 @@ export function createClosingDay(data: {
       data.discrepancy || 0,
       data.bankDeposit || null,
       data.notes || null,
+      data.memo || null,
       now,
       now
     ]
@@ -2390,10 +2400,11 @@ export function getClosingDay(businessDay: string) {
     discrepancy: row[8],
     bankDeposit: row[9],
     notes: row[10],
-    isConfirmed: row[11] === 1,
-    confirmedAt: row[12],
-    createdAt: row[13],
-    updatedAt: row[14],
+    memo: row[11],
+    isConfirmed: row[12] === 1,
+    confirmedAt: row[13],
+    createdAt: row[14],
+    updatedAt: row[15],
   };
 }
 
@@ -2445,10 +2456,11 @@ export function getLatestClosingDay() {
     discrepancy: row[8],
     bankDeposit: row[9],
     notes: row[10],
-    isConfirmed: row[11] === 1,
-    confirmedAt: row[12],
-    createdAt: row[13],
-    updatedAt: row[14],
+    memo: row[11],
+    isConfirmed: row[12] === 1,
+    confirmedAt: row[13],
+    createdAt: row[14],
+    updatedAt: row[15],
   };
 }
 
@@ -2460,6 +2472,7 @@ export function updateClosingDay(businessDay: string, updates: {
   discrepancy?: number;
   bankDeposit?: number;
   notes?: string;
+  memo?: string;
 }) {
   if (!db) throw new Error('Database not initialized');
   
@@ -2493,6 +2506,10 @@ export function updateClosingDay(businessDay: string, updates: {
   if (updates.notes !== undefined) {
     fields.push('notes = ?');
     values.push(updates.notes);
+  }
+  if (updates.memo !== undefined) {
+    fields.push('memo = ?');
+    values.push(updates.memo);
   }
   
   if (fields.length === 0) return;
