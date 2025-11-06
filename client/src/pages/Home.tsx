@@ -228,20 +228,14 @@ export default function Home() {
       const allEntries = [...entries, ...additionalFeeEntries];
       setTodayAllEntries(allEntries);
       
-      // Calculate summary from entries that were CHECKED IN today (excluding additional fee entries)
-      // Only count entries where entry_time is within business day range
-      const { start: rangeStart, end: rangeEnd } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
-      const entriesCheckedInToday = entries.filter(e => {
-        const entryTime = new Date(e.entryTime);
-        return entryTime >= rangeStart && entryTime <= rangeEnd;
-      });
-      
-      const activeSales = entriesCheckedInToday.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
-      const totalVisitors = entriesCheckedInToday.filter(e => !e.cancelled).length;
-      const cancellations = entriesCheckedInToday.filter(e => e.cancelled).length;
-      const foreignerCount = entriesCheckedInToday.filter(e => e.optionType === 'foreigner' && !e.cancelled).length;
-      const dayVisitors = entriesCheckedInToday.filter(e => e.timeType === '주간' && !e.cancelled).length;
-      const nightVisitors = entriesCheckedInToday.filter(e => e.timeType === '야간' && !e.cancelled).length;
+      // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
+      // No need to filter again - getEntriesByBusinessDayRange already filters by entry_time
+      const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
+      const totalVisitors = entries.filter(e => !e.cancelled).length;
+      const cancellations = entries.filter(e => e.cancelled).length;
+      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled).length;
+      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled).length;
+      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled).length;
       
       // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
       const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
@@ -249,7 +243,7 @@ export default function Home() {
       
       setSummary({
         businessDay,
-        totalVisitors: entriesCheckedInToday.filter(e => !e.cancelled).length,
+        totalVisitors,
         totalSales: activeSales + additionalFees, // 오늘 입실 요금 + 오늘 퇴실 추가요금
         cancellations,
         totalDiscount: 0,
