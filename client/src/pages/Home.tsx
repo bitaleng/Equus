@@ -80,6 +80,7 @@ export default function Home() {
   // Panel collapse state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
+  const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -109,6 +110,23 @@ export default function Home() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Keyboard shortcut: H key for overview mode
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // H key (shift+H or h) toggles overview mode
+      if ((e.key === 'h' || e.key === 'H') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // Don't trigger if typing in an input field
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        
+        setOverviewMode(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
   // Check for settlement reminder
@@ -777,12 +795,17 @@ export default function Home() {
           ) : (
             <div className="space-y-8">
               {lockerGroups.map((group) => (
-                <div key={group.id} className={isPanelCollapsed ? "flex flex-col items-center" : ""}>
-                  <h3 className={`text-lg font-semibold mb-3 ${isPanelCollapsed ? "text-center" : ""}`}>{group.name}</h3>
+                <div key={group.id} className={isPanelCollapsed && !overviewMode ? "flex flex-col items-center" : ""}>
+                  <h3 className={`text-lg font-semibold mb-3 ${isPanelCollapsed && !overviewMode ? "text-center" : ""}`}>
+                    {group.name}
+                    {overviewMode && <span className="ml-2 text-xs text-muted-foreground">(전체보기: H)</span>}
+                  </h3>
                   <div className={`grid gap-2 ${
-                    isPanelCollapsed 
-                      ? "grid-cols-10 max-w-7xl" 
-                      : "grid-cols-8 max-w-4xl"
+                    overviewMode 
+                      ? "grid-cols-12 max-w-full" 
+                      : isPanelCollapsed 
+                        ? "grid-cols-8" 
+                        : "grid-cols-8 max-w-4xl"
                   }`}>
                     {Array.from(
                       { length: group.endNumber - group.startNumber + 1 },
@@ -795,6 +818,7 @@ export default function Home() {
                         additionalFeeCount={additionalFeeCounts[num] || 0}
                         timeType={lockerTimeTypes[num] || 'day'}
                         onClick={() => handleLockerClick(num)}
+                        isExpanded={isPanelCollapsed && !overviewMode}
                       />
                     ))}
                   </div>
