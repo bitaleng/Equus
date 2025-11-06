@@ -608,48 +608,83 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    // Validate mixed payment amounts against final price (including base price and additional fees)
+    // 기본요금과 추가요금을 독립적으로 처리
     const computedFinalPrice = calculateFinalPrice();
-    const checkoutFinalPrice = computedFinalPrice + additionalFeeInfo.additionalFee;
     
-    // Get payment breakdown
+    // 기본요금 결제 검증 및 할당 (기본요금만)
     let cashVal: number | undefined;
     let cardVal: number | undefined;
     let transferVal: number | undefined;
     
     if (useSplitPayment) {
-      // Validate mixed payment amounts for split payment
-      if (!validateMixedPayment(checkoutFinalPrice)) {
+      // Validate mixed payment amounts for split payment (기본요금만)
+      if (!validateMixedPayment(computedFinalPrice)) {
         return;
       }
       cashVal = parseInt(paymentCash) || undefined;
       cardVal = parseInt(paymentCard) || undefined;
       transferVal = parseInt(paymentTransfer) || undefined;
     } else {
-      // Single payment method - automatically assign full amount
+      // Single payment method - automatically assign full amount (기본요금만)
       if (paymentMethod === 'cash') {
-        cashVal = checkoutFinalPrice;
+        cashVal = computedFinalPrice;
         cardVal = undefined;
         transferVal = undefined;
       } else if (paymentMethod === 'card') {
         cashVal = undefined;
-        cardVal = checkoutFinalPrice;
+        cardVal = computedFinalPrice;
         transferVal = undefined;
       } else if (paymentMethod === 'transfer') {
         cashVal = undefined;
         cardVal = undefined;
-        transferVal = checkoutFinalPrice;
+        transferVal = computedFinalPrice;
       }
     }
     
-    // Prepare additional fee payment info (if there's an additional fee)
-    const additionalFeePayment = additionalFeeInfo.additionalFee > 0 ? {
-      method: useAdditionalFeeSplitPayment ? additionalFeePaymentMethod : additionalFeePaymentMethod,
-      cash: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCash) || undefined) : (additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined),
-      card: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCard) || undefined) : (additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined),
-      transfer: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentTransfer) || undefined) : (additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined),
-      discount: parseInt(additionalFeeDiscount) || undefined,
-    } : undefined;
+    // Prepare and validate additional fee payment info (if there's an additional fee)
+    let additionalFeePayment: typeof additionalFeeInfo.additionalFee extends 0 ? undefined : {
+      method: 'card' | 'cash' | 'transfer';
+      cash?: number;
+      card?: number;
+      transfer?: number;
+      discount?: number;
+    } | undefined = undefined;
+    
+    if (additionalFeeInfo.additionalFee > 0) {
+      if (useAdditionalFeeSplitPayment) {
+        // 추가요금 분리결제 검증
+        const addCashVal = parseInt(additionalFeePaymentCash) || 0;
+        const addCardVal = parseInt(additionalFeePaymentCard) || 0;
+        const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
+        const addTotal = addCashVal + addCardVal + addTransferVal;
+        
+        if (addTotal !== additionalFeeInfo.additionalFee) {
+          toast({
+            title: "결제 금액 오류",
+            description: `추가요금 분리결제 합계(${addTotal.toLocaleString()}원)가 추가요금(${additionalFeeInfo.additionalFee.toLocaleString()}원)과 일치하지 않습니다.`,
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        additionalFeePayment = {
+          method: additionalFeePaymentMethod,
+          cash: addCashVal > 0 ? addCashVal : undefined,
+          card: addCardVal > 0 ? addCardVal : undefined,
+          transfer: addTransferVal > 0 ? addTransferVal : undefined,
+          discount: parseInt(additionalFeeDiscount) || undefined,
+        };
+      } else {
+        // 추가요금 단일결제
+        additionalFeePayment = {
+          method: additionalFeePaymentMethod,
+          cash: additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
+          discount: parseInt(additionalFeeDiscount) || undefined,
+        };
+      }
+    }
     
     // Check if there are any rental items
     if (selectedRentalItems.size > 0) {
@@ -665,10 +700,10 @@ export default function LockerOptionsDialog({
     setShowCheckoutConfirm(false);
     const rentalItemInfo = generateRentalItemInfo();
     
+    // 기본요금과 추가요금을 독립적으로 처리
     const computedFinalPrice = calculateFinalPrice();
-    const checkoutFinalPrice = computedFinalPrice + additionalFeeInfo.additionalFee;
     
-    // Get payment breakdown
+    // 기본요금 결제 할당 (기본요금만)
     let cashVal: number | undefined;
     let cardVal: number | undefined;
     let transferVal: number | undefined;
@@ -678,30 +713,56 @@ export default function LockerOptionsDialog({
       cardVal = parseInt(paymentCard) || undefined;
       transferVal = parseInt(paymentTransfer) || undefined;
     } else {
-      // Single payment method - automatically assign full amount
+      // Single payment method - automatically assign full amount (기본요금만)
       if (paymentMethod === 'cash') {
-        cashVal = checkoutFinalPrice;
+        cashVal = computedFinalPrice;
         cardVal = undefined;
         transferVal = undefined;
       } else if (paymentMethod === 'card') {
         cashVal = undefined;
-        cardVal = checkoutFinalPrice;
+        cardVal = computedFinalPrice;
         transferVal = undefined;
       } else if (paymentMethod === 'transfer') {
         cashVal = undefined;
         cardVal = undefined;
-        transferVal = checkoutFinalPrice;
+        transferVal = computedFinalPrice;
       }
     }
     
-    // Prepare additional fee payment info
-    const additionalFeePayment = additionalFeeInfo.additionalFee > 0 ? {
-      method: useAdditionalFeeSplitPayment ? additionalFeePaymentMethod : additionalFeePaymentMethod,
-      cash: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCash) || undefined) : (additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined),
-      card: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentCard) || undefined) : (additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined),
-      transfer: useAdditionalFeeSplitPayment ? (parseInt(additionalFeePaymentTransfer) || undefined) : (additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined),
-      discount: parseInt(additionalFeeDiscount) || undefined,
-    } : undefined;
+    // Prepare and validate additional fee payment info (if there's an additional fee)
+    let additionalFeePayment: typeof additionalFeeInfo.additionalFee extends 0 ? undefined : {
+      method: 'card' | 'cash' | 'transfer';
+      cash?: number;
+      card?: number;
+      transfer?: number;
+      discount?: number;
+    } | undefined = undefined;
+    
+    if (additionalFeeInfo.additionalFee > 0) {
+      if (useAdditionalFeeSplitPayment) {
+        // 추가요금 분리결제
+        const addCashVal = parseInt(additionalFeePaymentCash) || 0;
+        const addCardVal = parseInt(additionalFeePaymentCard) || 0;
+        const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
+        
+        additionalFeePayment = {
+          method: additionalFeePaymentMethod,
+          cash: addCashVal > 0 ? addCashVal : undefined,
+          card: addCardVal > 0 ? addCardVal : undefined,
+          transfer: addTransferVal > 0 ? addTransferVal : undefined,
+          discount: parseInt(additionalFeeDiscount) || undefined,
+        };
+      } else {
+        // 추가요금 단일결제
+        additionalFeePayment = {
+          method: additionalFeePaymentMethod,
+          cash: additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
+          discount: parseInt(additionalFeeDiscount) || undefined,
+        };
+      }
+    }
     
     onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
   };
@@ -763,6 +824,7 @@ export default function LockerOptionsDialog({
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* 입실 정보 섹션 */}
             <div className="space-y-2">
               {/* 입실 날짜/시간 표시 (사용중일 때만) */}
               {isInUse && entryDateTime && (
@@ -787,14 +849,6 @@ export default function LockerOptionsDialog({
                 <span className="font-semibold">{basePrice.toLocaleString()}원</span>
               </div>
               
-              {/* 추가요금 표시 */}
-              {isInUse && additionalFeeInfo.additionalFee > 0 && (
-                <div className="flex justify-between text-sm bg-orange-50 dark:bg-orange-950 p-2 rounded">
-                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
-                  <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
-                </div>
-              )}
-              
               {/* 대여 물품 안내 */}
               {isInUse && currentRentalTransactions.length > 0 && (
                 <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
@@ -809,11 +863,6 @@ export default function LockerOptionsDialog({
                   </span>
                 </div>
               )}
-              
-              <div className="flex justify-between text-base pt-2 border-t">
-                <span className="font-medium">최종 요금</span>
-                <span className="font-bold text-lg text-primary">{calculateFinalPrice().toLocaleString()}원</span>
-              </div>
             </div>
 
             {/* 요금직접입력 체크박스 */}
@@ -1003,6 +1052,141 @@ export default function LockerOptionsDialog({
                   </SelectContent>
                 </Select>
               )}
+            </div>
+
+            {/* 추가요금 섹션 - 추가요금이 있을 때만 표시 */}
+            {isInUse && additionalFeeInfo.additionalFee > 0 && (
+              <div className="space-y-3 p-4 border rounded-lg bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
+                <div className="flex justify-between text-sm">
+                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
+                  <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
+                </div>
+
+                {/* 추가요금 지불방식 */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold text-orange-700 dark:text-orange-300">지불방식</Label>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="additional-fee-split-payment" 
+                        checked={useAdditionalFeeSplitPayment}
+                        onCheckedChange={(checked) => {
+                          setUseAdditionalFeeSplitPayment(checked as boolean);
+                          if (checked) {
+                            setAdditionalFeePaymentCash("");
+                            setAdditionalFeePaymentCard("");
+                            setAdditionalFeePaymentTransfer("");
+                          }
+                        }}
+                        data-testid="checkbox-additional-fee-split-payment"
+                      />
+                      <Label htmlFor="additional-fee-split-payment" className="text-xs cursor-pointer font-normal text-orange-700 dark:text-orange-300">
+                        분리결제
+                      </Label>
+                    </div>
+                  </div>
+
+                  {useAdditionalFeeSplitPayment ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <Label htmlFor="additional-fee-payment-cash" className="text-xs text-muted-foreground">현금</Label>
+                          <Input
+                            id="additional-fee-payment-cash"
+                            type="number"
+                            placeholder="0"
+                            value={additionalFeePaymentCash}
+                            onChange={(e) => {
+                              const newCash = e.target.value;
+                              setAdditionalFeePaymentCash(newCash);
+                              
+                              const cashVal = parseInt(newCash) || 0;
+                              const remaining = additionalFeeInfo.additionalFee - cashVal;
+                              
+                              if (remaining > 0) {
+                                setAdditionalFeePaymentCard(String(remaining));
+                                setAdditionalFeePaymentTransfer("");
+                              } else if (remaining === 0) {
+                                setAdditionalFeePaymentCard("");
+                                setAdditionalFeePaymentTransfer("");
+                              }
+                            }}
+                            data-testid="input-additional-fee-payment-cash"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="additional-fee-payment-card" className="text-xs text-muted-foreground">카드</Label>
+                          <Input
+                            id="additional-fee-payment-card"
+                            type="number"
+                            placeholder="0"
+                            value={additionalFeePaymentCard}
+                            onChange={(e) => {
+                              const newCard = e.target.value;
+                              setAdditionalFeePaymentCard(newCard);
+                              
+                              const cashVal = parseInt(additionalFeePaymentCash) || 0;
+                              const cardVal = parseInt(newCard) || 0;
+                              const remaining = additionalFeeInfo.additionalFee - cashVal - cardVal;
+                              
+                              if (remaining > 0) {
+                                setAdditionalFeePaymentTransfer(String(remaining));
+                              } else if (remaining === 0) {
+                                setAdditionalFeePaymentTransfer("");
+                              }
+                            }}
+                            data-testid="input-additional-fee-payment-card"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="additional-fee-payment-transfer" className="text-xs text-muted-foreground">이체</Label>
+                          <Input
+                            id="additional-fee-payment-transfer"
+                            type="number"
+                            placeholder="0"
+                            value={additionalFeePaymentTransfer}
+                            onChange={(e) => setAdditionalFeePaymentTransfer(e.target.value)}
+                            data-testid="input-additional-fee-payment-transfer"
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                      {(() => {
+                        const cashVal = parseInt(additionalFeePaymentCash) || 0;
+                        const cardVal = parseInt(additionalFeePaymentCard) || 0;
+                        const transferVal = parseInt(additionalFeePaymentTransfer) || 0;
+                        const total = cashVal + cardVal + transferVal;
+                        
+                        return (
+                          <div className="flex items-center justify-between pt-2 border-t border-orange-200 dark:border-orange-800">
+                            <span className="text-sm font-semibold text-orange-700 dark:text-orange-300">합계</span>
+                            <span className="text-lg font-bold text-orange-700 dark:text-orange-300">{total.toLocaleString()}원</span>
+                          </div>
+                        );
+                      })()}
+                    </>
+                  ) : (
+                    <Select value={additionalFeePaymentMethod} onValueChange={(value) => setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer')}>
+                      <SelectTrigger data-testid="select-additional-fee-payment-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">현금</SelectItem>
+                        <SelectItem value="card">카드</SelectItem>
+                        <SelectItem value="transfer">계좌이체</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 최종 요금 - 구분선 아래 */}
+            <div className="flex justify-between text-base pt-4 border-t-2">
+              <span className="font-semibold">최종 요금</span>
+              <span className="font-bold text-xl text-primary">{calculateFinalPrice().toLocaleString()}원</span>
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}
