@@ -326,11 +326,37 @@ export default function Home() {
 
       // Create rental transaction records for each rented item (at check-in)
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
+        // Calculate total amount for payment distribution
+        const totalRentalAmount = rentalItems.reduce((sum, item) => {
+          let itemTotal = item.rentalFee;
+          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+            itemTotal += item.depositAmount;
+          }
+          return sum + itemTotal;
+        }, 0);
+        
+        // Total entry payment
+        const totalEntryPayment = (paymentCash || 0) + (paymentCard || 0) + (paymentTransfer || 0);
+        const lockerFeeAmount = finalPrice;
+        const totalAmount = lockerFeeAmount + totalRentalAmount;
+        
         rentalItems.forEach(item => {
           // Revenue calculation: rental fee + deposit (only if received or forfeited)
           let revenue = item.rentalFee;
           if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
             revenue += item.depositAmount;
+          }
+          
+          // Distribute payment proportionally
+          let itemPaymentCash = 0;
+          let itemPaymentCard = 0;
+          let itemPaymentTransfer = 0;
+          
+          if (totalAmount > 0 && revenue > 0) {
+            const ratio = revenue / totalAmount;
+            itemPaymentCash = Math.round((paymentCash || 0) * ratio);
+            itemPaymentCard = Math.round((paymentCard || 0) * ratio);
+            itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
           }
           
           // Use individual rental item payment method (not entry payment method)
@@ -346,9 +372,9 @@ export default function Home() {
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: item.paymentMethod || 'cash',
-            paymentCash: undefined,
-            paymentCard: undefined,
-            paymentTransfer: undefined,
+            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
+            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
+            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: revenue,
           });
         });
@@ -399,19 +425,43 @@ export default function Home() {
     if (rentalItems && rentalItems.length > 0) {
       const businessDay = getBusinessDay(currentTime, businessDayStartHour);
       
+      // Calculate total amount for payment distribution
+      const totalRentalAmount = rentalItems.reduce((sum, item) => {
+        let itemTotal = item.rentalFee;
+        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          itemTotal += item.depositAmount;
+        }
+        return sum + itemTotal;
+      }, 0);
+      
+      const lockerFeeAmount = finalPrice;
+      const totalAmount = lockerFeeAmount + totalRentalAmount;
+      
       rentalItems.forEach(item => {
         // Check if rental transaction already exists for this item
         const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
+        // Revenue calculation: rental fee + deposit (only if received or forfeited)
+        let revenue = item.rentalFee;
+        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          revenue += item.depositAmount;
+        }
+        
+        // Distribute payment proportionally
+        let itemPaymentCash = 0;
+        let itemPaymentCard = 0;
+        let itemPaymentTransfer = 0;
+        
+        if (totalAmount > 0 && revenue > 0) {
+          const ratio = revenue / totalAmount;
+          itemPaymentCash = Math.round((paymentCash || 0) * ratio);
+          itemPaymentCard = Math.round((paymentCard || 0) * ratio);
+          itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+        }
+        
         if (!existingItem) {
           // Create new rental transaction if it doesn't exist
-          // Revenue calculation: rental fee + deposit (only if received or forfeited)
-          let revenue = item.rentalFee;
-          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-            revenue += item.depositAmount;
-          }
-          
           localDb.createRentalTransaction({
             lockerLogId: selectedEntry.id,
             lockerNumber: selectedEntry.lockerNumber,
@@ -424,15 +474,19 @@ export default function Home() {
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: item.paymentMethod || 'cash',
-            paymentCash: undefined,
-            paymentCard: undefined,
-            paymentTransfer: undefined,
+            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
+            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
+            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: revenue,
           });
         } else {
           // Update existing rental transaction
           localDb.updateRentalTransaction(existingItem.id, {
             depositStatus: item.depositStatus,
+            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
+            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
+            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
+            revenue: revenue,
           });
         }
       });
@@ -572,10 +626,45 @@ export default function Home() {
     
     // Update rental transaction records for each rented item
     if (rentalItems && rentalItems.length > 0) {
+      // Calculate total rental amount to determine payment distribution
+      const totalRentalAmount = rentalItems.reduce((sum, item) => {
+        let itemTotal = item.rentalFee;
+        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          itemTotal += item.depositAmount;
+        }
+        return sum + itemTotal;
+      }, 0);
+      
+      // Total payment amount for the entire checkout
+      const totalCheckoutPayment = (paymentCash || 0) + (paymentCard || 0) + (paymentTransfer || 0);
+      
       rentalItems.forEach(item => {
         // Find existing rental transaction for this item
         const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
+        
+        // Calculate this item's portion of the total payment
+        let itemRevenue = item.rentalFee;
+        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          itemRevenue += item.depositAmount;
+        }
+        
+        // Distribute payment proportionally if there's a total payment
+        let itemPaymentCash = 0;
+        let itemPaymentCard = 0;
+        let itemPaymentTransfer = 0;
+        
+        if (totalCheckoutPayment > 0 && totalRentalAmount > 0) {
+          const ratio = itemRevenue / totalRentalAmount;
+          itemPaymentCash = Math.round((paymentCash || 0) * ratio);
+          itemPaymentCard = Math.round((paymentCard || 0) * ratio);
+          itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+        } else if (itemRevenue > 0) {
+          // Fallback: Use the main payment method
+          if (paymentMethod === 'cash') itemPaymentCash = itemRevenue;
+          else if (paymentMethod === 'card') itemPaymentCard = itemRevenue;
+          else if (paymentMethod === 'transfer') itemPaymentTransfer = itemRevenue;
+        }
         
         if (existingItem) {
           // Update existing rental transaction with all checkout details
@@ -583,14 +672,13 @@ export default function Home() {
             depositStatus: item.depositStatus,
             returnTime: now,
             businessDay: checkoutBusinessDay,
+            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
+            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
+            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
+            revenue: itemRevenue,
           });
         } else {
           // Fallback: Create new rental transaction if not found (defensive coding)
-          let revenue = item.rentalFee;
-          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-            revenue += item.depositAmount;
-          }
-          
           localDb.createRentalTransaction({
             lockerLogId: selectedEntry.id,
             lockerNumber: selectedEntry.lockerNumber,
@@ -602,11 +690,11 @@ export default function Home() {
             rentalTime: selectedEntry.entryTime,
             returnTime: now,
             businessDay: checkoutBusinessDay,
-            paymentMethod: 'cash',
-            paymentCash: undefined,
-            paymentCard: undefined,
-            paymentTransfer: undefined,
-            revenue: revenue,
+            paymentMethod: paymentMethod,
+            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
+            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
+            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
+            revenue: itemRevenue,
           });
         }
       });
