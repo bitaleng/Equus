@@ -26,6 +26,42 @@ export function getBusinessDay(date: Date = new Date(), businessDayStartHour: nu
 }
 
 /**
+ * 특정 비즈니스 데이의 시작/종료 시간을 반환 (KST 기준)
+ * 
+ * @param date 기준 날짜 (기본값: 현재)
+ * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
+ * @returns { start: 비즈니스 데이 시작 시각, end: 비즈니스 데이 종료 시각, businessDay: YYYY-MM-DD 문자열 }
+ * 
+ * @example
+ * // 2025-11-06 14:00에 호출하면 (businessDayStartHour = 10)
+ * // start: 2025-11-06 10:00:00
+ * // end: 2025-11-07 09:59:59
+ * // businessDay: '2025-11-06'
+ */
+export function getBusinessDayRange(
+  date: Date = new Date(), 
+  businessDayStartHour: number = 10
+): { start: Date; end: Date; businessDay: string } {
+  const seoulDate = toZonedTime(date, SEOUL_TIMEZONE);
+  const businessDay = getBusinessDay(seoulDate, businessDayStartHour);
+  
+  // 비즈니스 데이 시작: businessDay 날짜의 startHour시
+  const start = new Date(`${businessDay}T${String(businessDayStartHour).padStart(2, '0')}:00:00`);
+  const startSeoul = toZonedTime(start, SEOUL_TIMEZONE);
+  
+  // 비즈니스 데이 종료: 다음날 startHour시 - 1초
+  const end = new Date(startSeoul);
+  end.setDate(end.getDate() + 1);
+  end.setSeconds(end.getSeconds() - 1);
+  
+  return {
+    start: startSeoul,
+    end,
+    businessDay
+  };
+}
+
+/**
  * 현재 시간대가 주간인지 야간인지 판단 (KST 기준)
  */
 export function getTimeType(date: Date = new Date()): '주간' | '야간' {
