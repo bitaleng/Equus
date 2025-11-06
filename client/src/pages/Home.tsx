@@ -786,26 +786,26 @@ export default function Home() {
         </div>
 
         {/* Locker Grid */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className={`flex-1 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}>
           {lockerGroups.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <p>락커 그룹이 설정되지 않았습니다.</p>
               <p className="text-sm mt-2">설정 페이지에서 락커 그룹을 추가해주세요.</p>
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-8 w-full">
               {lockerGroups.map((group) => (
-                <div key={group.id} className={isPanelCollapsed && !overviewMode ? "flex flex-col items-center" : ""}>
+                <div key={group.id} className="w-full">
                   <h3 className={`text-lg font-semibold mb-3 ${isPanelCollapsed && !overviewMode ? "text-center" : ""}`}>
                     {group.name}
                     {overviewMode && <span className="ml-2 text-xs text-muted-foreground">(전체보기: H)</span>}
                   </h3>
-                  <div className={`grid gap-2 ${
+                  <div className={`grid w-full ${
                     overviewMode 
-                      ? "grid-cols-12 max-w-full" 
+                      ? "grid-cols-12 gap-2" 
                       : isPanelCollapsed 
-                        ? "grid-cols-8" 
-                        : "grid-cols-8 max-w-4xl"
+                        ? "grid-cols-8 gap-4" 
+                        : "grid-cols-8 gap-2 max-w-4xl"
                   }`}>
                     {Array.from(
                       { length: group.endNumber - group.startNumber + 1 },
