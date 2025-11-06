@@ -2607,6 +2607,7 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
   );
   
   if (result.length > 0 && result[0].values.length > 0) {
+    console.log('[RENTAL BREAKDOWN DEBUG] Raw database values:');
     result[0].values.forEach((row: any) => {
       const itemName = row[0] as string;
       const rentalFee = row[1] as number;
@@ -2616,6 +2617,16 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       const paymentCard = row[5] as number;
       const paymentTransfer = row[6] as number;
       const paymentMethod = row[7] as string | null;
+      
+      console.log(`  ${itemName}:`, {
+        rentalFee,
+        depositAmount,
+        depositStatus,
+        'DB payment_cash': paymentCash,
+        'DB payment_card': paymentCard,
+        'DB payment_transfer': paymentTransfer,
+        paymentMethod
+      });
       
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
