@@ -42,6 +42,11 @@ Preferred communication style: Simple, everyday language.
   - **Affected locations**: Home.tsx lines 311, 438 for entry creation/modification
   - **Added recalculation tool**: New "영업일 재계산" button in Settings → 데이터 관리 to fix existing data by recalculating all business_day values based on entry_time/rental_time/checkout_time
 
+- **Enhanced filtering statistics in LogsPage**: Added total amount display alongside count when filters are applied:
+  - **Filter result statistics**: Now shows both count and total amount (e.g., "현금: 15건 | ₩213,000")
+  - **Improved UX**: Users no longer need to export to Excel just to see filtered totals
+  - **Supported filters**: Payment method (cash/card/transfer), time type (day/night), cancelled status, additional fee status
+
 ## System Architecture
 
 ### Frontend
