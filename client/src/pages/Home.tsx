@@ -325,41 +325,31 @@ export default function Home() {
       });
 
       // Create rental transaction records for each rented item (at check-in)
+      // NOTE: Rental items are SEPARATE revenue from locker entry fee
+      // Each rental item has its own payment method, independent of locker entry payment
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
-        // Calculate total amount for payment distribution
-        const totalRentalAmount = rentalItems.reduce((sum, item) => {
-          let itemTotal = item.rentalFee;
-          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
-            itemTotal += item.depositAmount;
-          }
-          return sum + itemTotal;
-        }, 0);
-        
-        // Total entry payment
-        const totalEntryPayment = (paymentCash || 0) + (paymentCard || 0) + (paymentTransfer || 0);
-        const lockerFeeAmount = finalPrice;
-        const totalAmount = lockerFeeAmount + totalRentalAmount;
-        
         rentalItems.forEach(item => {
-          // Revenue calculation: rental fee + deposit (only if received or forfeited)
+          // Calculate total revenue for this item (rental fee + deposit if received/forfeited)
           let revenue = item.rentalFee;
           if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
             revenue += item.depositAmount;
           }
           
-          // Distribute payment proportionally
+          // Allocate full revenue to the item's payment method
+          // DO NOT mix with locker entry payment - these are separate revenue streams
+          const itemPaymentMethod = item.paymentMethod || 'cash';
           let itemPaymentCash = 0;
           let itemPaymentCard = 0;
           let itemPaymentTransfer = 0;
           
-          if (totalAmount > 0 && revenue > 0) {
-            const ratio = revenue / totalAmount;
-            itemPaymentCash = Math.round((paymentCash || 0) * ratio);
-            itemPaymentCard = Math.round((paymentCard || 0) * ratio);
-            itemPaymentTransfer = Math.round((paymentTransfer || 0) * ratio);
+          if (itemPaymentMethod === 'cash') {
+            itemPaymentCash = revenue;
+          } else if (itemPaymentMethod === 'card') {
+            itemPaymentCard = revenue;
+          } else if (itemPaymentMethod === 'transfer') {
+            itemPaymentTransfer = revenue;
           }
           
-          // Use individual rental item payment method (not entry payment method)
           localDb.createRentalTransaction({
             lockerLogId: lockerLogId,
             lockerNumber: newLockerInfo.lockerNumber,
@@ -371,10 +361,10 @@ export default function Home() {
             rentalTime: currentTime,
             returnTime: null,
             businessDay: businessDay,
-            paymentMethod: item.paymentMethod || 'cash',
-            paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
-            paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
-            paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
+            paymentMethod: itemPaymentMethod,
+            paymentCash: itemPaymentCash,
+            paymentCard: itemPaymentCard,
+            paymentTransfer: itemPaymentTransfer,
             revenue: revenue,
           });
         });
