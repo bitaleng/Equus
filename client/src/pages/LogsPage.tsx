@@ -795,6 +795,8 @@ export default function LogsPage() {
                     <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
                     <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여날짜</TableHead>
                     <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
+                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납날짜</TableHead>
+                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
                     <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
                     <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여금액</TableHead>
                     <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금액</TableHead>
@@ -807,7 +809,7 @@ export default function LogsPage() {
                 <TableBody>
                   {filteredRentals.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
                         대여 거래가 없습니다
                       </TableCell>
                     </TableRow>
@@ -829,6 +831,16 @@ export default function LogsPage() {
                           </TableCell>
                           <TableCell className="text-sm">
                             {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {txn.returnTime 
+                              ? new Date(txn.returnTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                              : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {txn.returnTime 
+                              ? new Date(txn.returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                              : '-'}
                           </TableCell>
                           <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
                           <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
