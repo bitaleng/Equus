@@ -6,9 +6,10 @@ interface LockerButtonProps {
   additionalFeeCount?: number; // 추가요금 발생 횟수 (0: 없음, 1: 1회, 2+: 2회 이상)
   timeType?: 'day' | 'night'; // 입실 시간대 (주간/야간)
   onClick: () => void;
+  isExpanded?: boolean; // 패널 접힌 상태 (true = 패널 접힘, 버튼 크게)
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', onClick }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', onClick, isExpanded = false }: LockerButtonProps) {
   const getButtonStyles = () => {
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
