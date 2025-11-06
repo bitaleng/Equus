@@ -2623,22 +2623,38 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         };
       }
       
-      // Add rental fee by payment method
-      // payment_cash/card/transfer already represent the actual amounts paid for this rental
-      breakdown[itemName].rentalFee.cash += paymentCash;
-      breakdown[itemName].rentalFee.card += paymentCard;
-      breakdown[itemName].rentalFee.transfer += paymentTransfer;
-      breakdown[itemName].rentalFee.total += rentalFee;
+      // Calculate total revenue for this transaction
+      let totalRevenue = rentalFee;
+      if (depositStatus === 'received' || depositStatus === 'forfeited') {
+        totalRevenue += depositAmount;
+      }
       
-      // Add deposit if forfeited - use same payment ratio
-      if (depositStatus === 'forfeited') {
-        const totalPayment = paymentCash + paymentCard + paymentTransfer;
-        if (totalPayment > 0) {
-          breakdown[itemName].depositForfeited.cash += depositAmount * (paymentCash / totalPayment);
-          breakdown[itemName].depositForfeited.card += depositAmount * (paymentCard / totalPayment);
-          breakdown[itemName].depositForfeited.transfer += depositAmount * (paymentTransfer / totalPayment);
+      // payment_cash/card/transfer represent the total payment for rental fee + deposit
+      // We need to distribute it proportionally
+      const totalPayment = paymentCash + paymentCard + paymentTransfer;
+      
+      if (totalRevenue > 0 && totalPayment > 0) {
+        // Calculate rental fee portion
+        const rentalFeeRatio = rentalFee / totalRevenue;
+        breakdown[itemName].rentalFee.cash += paymentCash * rentalFeeRatio;
+        breakdown[itemName].rentalFee.card += paymentCard * rentalFeeRatio;
+        breakdown[itemName].rentalFee.transfer += paymentTransfer * rentalFeeRatio;
+        breakdown[itemName].rentalFee.total += rentalFee;
+        
+        // Calculate deposit forfeited portion
+        if (depositStatus === 'forfeited') {
+          const depositRatio = depositAmount / totalRevenue;
+          breakdown[itemName].depositForfeited.cash += paymentCash * depositRatio;
+          breakdown[itemName].depositForfeited.card += paymentCard * depositRatio;
+          breakdown[itemName].depositForfeited.transfer += paymentTransfer * depositRatio;
+          breakdown[itemName].depositForfeited.total += depositAmount;
         }
-        breakdown[itemName].depositForfeited.total += depositAmount;
+      } else {
+        // Fallback: if no payment info, just add totals
+        breakdown[itemName].rentalFee.total += rentalFee;
+        if (depositStatus === 'forfeited') {
+          breakdown[itemName].depositForfeited.total += depositAmount;
+        }
       }
     });
   }
