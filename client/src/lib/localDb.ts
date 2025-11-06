@@ -2586,7 +2586,7 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
     breakdown[item.name] = {
       rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
       depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 },
-      depositAmount: item.deposit_amount || 0
+      depositAmount: 0  // Will be set to the max deposit amount found in transactions
     };
   });
   
@@ -2617,12 +2617,28 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       const paymentTransfer = row[6] as number;
       const paymentMethod = row[7] as string | null;
       
+      console.log(`[DEBUG] Rental Transaction:`, {
+        itemName,
+        rentalFee,
+        depositAmount,
+        depositStatus,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
+        paymentMethod
+      });
+      
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
           rentalFee: { cash: 0, card: 0, transfer: 0, total: 0 },
           depositForfeited: { cash: 0, card: 0, transfer: 0, total: 0 },
           depositAmount: depositAmount
         };
+      } else {
+        // Update depositAmount to the maximum found (for display purposes)
+        if (depositAmount > breakdown[itemName].depositAmount) {
+          breakdown[itemName].depositAmount = depositAmount;
+        }
       }
       
       // Calculate total revenue for this transaction
