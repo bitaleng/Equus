@@ -1304,12 +1304,17 @@ export function createTestData() {
     const entryTime = entryDate.toISOString();
     const businessDay = getBusinessDay(entryDate);
     
+    // Set payment columns based on payment method
+    const paymentCash = paymentMethod === 'cash' ? finalPrice : null;
+    const paymentCard = paymentMethod === 'card' ? finalPrice : null;
+    const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : null;
+    
     database.run(
       `INSERT INTO locker_logs 
       (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
-      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 1회', paymentMethod, null]
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?)`,
+      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 1회', paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
     );
     
     totalGenerated++;
@@ -1355,12 +1360,17 @@ export function createTestData() {
     const entryTime = entryDate.toISOString();
     const businessDay = getBusinessDay(entryDate);
     
+    // Set payment columns based on payment method
+    const paymentCash = paymentMethod === 'cash' ? finalPrice : null;
+    const paymentCard = paymentMethod === 'card' ? finalPrice : null;
+    const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : null;
+    
     database.run(
       `INSERT INTO locker_logs 
       (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?)`,
-      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 2회+', paymentMethod, null]
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?)`,
+      [id, lockerNumber, entryTime, null, businessDay, timeType, basePrice, optionType, optionAmount, finalPrice, '테스트: 추가요금 2회+', paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
     );
     
     totalGenerated++;
@@ -1419,6 +1429,11 @@ export function createTestData() {
     // Random payment method
     const paymentMethod = randomElement(paymentMethods);
     
+    // Set payment columns based on payment method
+    const paymentCash = paymentMethod === 'cash' ? finalPrice : null;
+    const paymentCard = paymentMethod === 'card' ? finalPrice : null;
+    const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : null;
+    
     // Most are in_use (today's data)
     const status = 'in_use';
     const exitTime = null;
@@ -1430,8 +1445,8 @@ export function createTestData() {
     database.run(
       `INSERT INTO locker_logs 
       (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         lockerNumber,
@@ -1446,6 +1461,9 @@ export function createTestData() {
         status,
         '테스트 데이터',
         paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
         null
       ]
     );
@@ -1511,6 +1529,11 @@ export function createTestData() {
     // Random payment method
     const paymentMethod = randomElement(paymentMethods);
     
+    // Set payment columns based on payment method
+    const paymentCash = paymentMethod === 'cash' ? finalPrice : null;
+    const paymentCard = paymentMethod === 'card' ? finalPrice : null;
+    const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : null;
+    
     // Most are in_use (today's data)
     const status = 'in_use';
     const exitTime = null;
@@ -1522,8 +1545,8 @@ export function createTestData() {
     database.run(
       `INSERT INTO locker_logs 
       (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-       option_type, option_amount, final_price, status, cancelled, notes, payment_method, rental_items)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
+       option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         lockerNumber,
@@ -1538,6 +1561,9 @@ export function createTestData() {
         status,
         '테스트 데이터',
         paymentMethod,
+        paymentCash,
+        paymentCard,
+        paymentTransfer,
         null
       ]
     );
