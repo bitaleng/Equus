@@ -56,16 +56,17 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       onClick={handleClick}
       disabled={status === 'disabled'}
       className={`
-        aspect-square w-full min-h-[56px] rounded-lg font-semibold text-base
+        aspect-square w-full rounded-lg font-semibold
         transition-all duration-100
         active:scale-95
         flex flex-col items-center justify-center gap-0.5
+        ${isExpanded ? 'min-h-[80px] text-lg' : 'min-h-[56px] text-base'}
         ${getButtonStyles()}
       `}
       data-testid={`locker-${number}`}
     >
-      <span className="text-2xl font-bold">{number}</span>
-      <span className="text-[10px] font-normal opacity-90">{getStatusText()}</span>
+      <span className={isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}>{number}</span>
+      <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>
     </Button>
   );
 }
