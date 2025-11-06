@@ -1130,8 +1130,8 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
 export function getEntriesByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산
-  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
   const result = db.exec(
     `SELECT * FROM locker_logs 
@@ -2013,8 +2013,8 @@ export function getAdditionalFeeEventsByDateTimeRange(startDateTime: string, end
 export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산
-  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
   const result = db.exec(
     `SELECT * FROM additional_fee_events 
@@ -2336,8 +2336,8 @@ export function getRentalTransactionsByDateTimeRange(startDateTime: string, endD
 export function getRentalTransactionsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산
-  const { start, end } = getBusinessDayRange(new Date(businessDay), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   
   const result = db.exec(
     `SELECT * FROM rental_transactions 
