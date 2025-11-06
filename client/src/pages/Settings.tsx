@@ -103,6 +103,12 @@ export default function Settings() {
   
   const [revenueItems, setRevenueItems] = useState<AdditionalRevenueItem[]>([]);
 
+  // Expense categories dialog states
+  const [isExpenseCategoryDialogOpen, setIsExpenseCategoryDialogOpen] = useState(false);
+  const [editingExpenseCategory, setEditingExpenseCategory] = useState<{ id: string; name: string; sortOrder: number } | null>(null);
+  const [expenseCategoryFormData, setExpenseCategoryFormData] = useState({ name: "" });
+  const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; sortOrder: number }[]>([]);
+
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -132,6 +138,7 @@ export default function Settings() {
     setFormData(settings);
     loadLockerGroups();
     loadRevenueItems();
+    loadExpenseCategories();
     
     // Load cash register from localStorage
     const savedCashRegister = localStorage.getItem('cash_register');
@@ -150,6 +157,10 @@ export default function Settings() {
 
   const loadRevenueItems = () => {
     setRevenueItems(localDb.getAdditionalRevenueItems());
+  };
+
+  const loadExpenseCategories = () => {
+    setExpenseCategories(localDb.getExpenseCategories());
   };
 
   const handleSave = () => {
@@ -402,6 +413,74 @@ export default function Settings() {
       toast({
         title: "저장 실패",
         description: "항목 저장 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddExpenseCategory = () => {
+    setEditingExpenseCategory(null);
+    setExpenseCategoryFormData({ name: "" });
+    setIsExpenseCategoryDialogOpen(true);
+  };
+
+  const handleEditExpenseCategory = (category: { id: string; name: string; sortOrder: number }) => {
+    setEditingExpenseCategory(category);
+    setExpenseCategoryFormData({ name: category.name });
+    setIsExpenseCategoryDialogOpen(true);
+  };
+
+  const handleDeleteExpenseCategory = (id: string) => {
+    if (confirm("정말로 이 지출 카테고리를 삭제하시겠습니까?")) {
+      try {
+        localDb.deleteExpenseCategory(id);
+        loadExpenseCategories();
+        toast({
+          title: "카테고리 삭제 완료",
+          description: "지출 카테고리가 삭제되었습니다.",
+        });
+      } catch (error) {
+        toast({
+          title: "카테고리 삭제 실패",
+          description: "카테고리 삭제 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleSaveExpenseCategory = () => {
+    try {
+      if (!expenseCategoryFormData.name.trim()) {
+        toast({
+          title: "저장 실패",
+          description: "카테고리 이름을 입력하세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (editingExpenseCategory) {
+        localDb.updateExpenseCategory(editingExpenseCategory.id, { name: expenseCategoryFormData.name });
+        toast({
+          title: "카테고리 수정 완료",
+          description: "지출 카테고리가 수정되었습니다.",
+        });
+      } else {
+        localDb.createExpenseCategory({ name: expenseCategoryFormData.name });
+        toast({
+          title: "카테고리 생성 완료",
+          description: "새 지출 카테고리가 생성되었습니다.",
+        });
+      }
+      loadExpenseCategories();
+      setIsExpenseCategoryDialogOpen(false);
+      setEditingExpenseCategory(null);
+      setExpenseCategoryFormData({ name: "" });
+    } catch (error) {
+      toast({
+        title: "저장 실패",
+        description: "카테고리 저장 중 오류가 발생했습니다.",
         variant: "destructive",
       });
     }
@@ -664,6 +743,66 @@ export default function Settings() {
                           size="icon"
                           onClick={() => handleDeleteRevenueItem(item.id)}
                           data-testid={`button-delete-revenue-${item.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 지출 카테고리 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Receipt className="h-5 w-5" />
+                    지출 카테고리 관리
+                  </CardTitle>
+                  <CardDescription>
+                    지출 항목의 카테고리를 추가하거나 삭제할 수 있습니다
+                  </CardDescription>
+                </div>
+                <Button onClick={handleAddExpenseCategory} size="sm" data-testid="button-add-expense-category">
+                  <Plus className="h-4 w-4 mr-2" />
+                  카테고리 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {expenseCategories.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  등록된 지출 카테고리가 없습니다
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {expenseCategories.map((category) => (
+                    <div
+                      key={category.id}
+                      className="flex items-center justify-between p-4 border rounded-lg"
+                      data-testid={`expense-category-${category.id}`}
+                    >
+                      <div>
+                        <h4 className="font-medium">{category.name}</h4>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEditExpenseCategory(category)}
+                          data-testid={`button-edit-category-${category.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteExpenseCategory(category.id)}
+                          data-testid={`button-delete-category-${category.id}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1053,6 +1192,50 @@ export default function Settings() {
             </Button>
             <Button onClick={handleSaveRevenueItem} data-testid="button-save-revenue-item">
               {editingRevenueItem ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Expense Category Dialog */}
+      <Dialog 
+        open={isExpenseCategoryDialogOpen} 
+        onOpenChange={(open) => {
+          setIsExpenseCategoryDialogOpen(open);
+          if (!open) {
+            loadExpenseCategories();
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingExpenseCategory ? "카테고리 수정" : "새 지출 카테고리 추가"}
+            </DialogTitle>
+            <DialogDescription>
+              지출 카테고리 이름을 입력하세요
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="category-name">카테고리 이름</Label>
+              <Input
+                id="category-name"
+                value={expenseCategoryFormData.name}
+                onChange={(e) => setExpenseCategoryFormData({ name: e.target.value })}
+                placeholder="예: 수도광열비, 임대료, 소모품"
+                data-testid="input-category-name"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setIsExpenseCategoryDialogOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={handleSaveExpenseCategory} data-testid="button-save-category">
+              {editingExpenseCategory ? "수정" : "추가"}
             </Button>
           </DialogFooter>
         </DialogContent>
