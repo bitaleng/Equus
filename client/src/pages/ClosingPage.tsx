@@ -123,15 +123,39 @@ export default function ClosingPage() {
       // Set end time to same as start time (next day's business day start hour)
       setEndTime(`${String(startHour).padStart(2, '0')}:00`);
 
-      // Get previous closing for opening float
-      const latestClosing = getLatestClosingDay();
-      if (latestClosing && latestClosing.targetFloat) {
-        setOpeningFloat(latestClosing.targetFloat.toString());
-        setTargetFloat(latestClosing.targetFloat.toString());
+      // Get opening float from cash register settings
+      const savedCashRegister = localStorage.getItem('cash_register');
+      let calculatedFloat = 0;
+      
+      if (savedCashRegister) {
+        try {
+          const cashRegister = JSON.parse(savedCashRegister);
+          calculatedFloat = (
+            (cashRegister.count50000 || 0) * 50000 +
+            (cashRegister.count10000 || 0) * 10000 +
+            (cashRegister.count5000 || 0) * 5000 +
+            (cashRegister.count1000 || 0) * 1000
+          );
+        } catch (error) {
+          console.error('Failed to load cash register:', error);
+        }
+      }
+      
+      // If cash register has value, use it; otherwise use previous closing
+      if (calculatedFloat > 0) {
+        setOpeningFloat(calculatedFloat.toString());
+        setTargetFloat(calculatedFloat.toString());
       } else {
-        // Default to 0 if no previous closing exists
-        setOpeningFloat('0');
-        setTargetFloat('0');
+        // Fallback to previous closing
+        const latestClosing = getLatestClosingDay();
+        if (latestClosing && latestClosing.targetFloat) {
+          setOpeningFloat(latestClosing.targetFloat.toString());
+          setTargetFloat(latestClosing.targetFloat.toString());
+        } else {
+          // Default to 0 if no previous closing exists
+          setOpeningFloat('0');
+          setTargetFloat('0');
+        }
       }
       
       // Load memo from localStorage for new closing
@@ -487,10 +511,10 @@ export default function ClosingPage() {
                       </div>
                     </div>
                     
-                    {/* 보증금 몰수 */}
+                    {/* 보증금 (받음+몰수) */}
                     <div className="space-y-1">
                       <p className="text-sm font-medium">
-                        {String.fromCharCode(9311 + depositNum - 1)} {itemName} 보증금 몰수
+                        {String.fromCharCode(9311 + depositNum - 1)} {itemName} 보증금
                         {data.depositAmount === 0 && (
                           <span className="ml-2 text-xs text-muted-foreground">(없음)</span>
                         )}

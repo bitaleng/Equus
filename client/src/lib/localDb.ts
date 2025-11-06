@@ -508,7 +508,48 @@ function migrateDatabase() {
       saveDatabase();
     }
     
-    // Step 9: Create expenses table if not exists
+    // Step 9: Create expense_categories table if not exists
+    db.run(`
+      CREATE TABLE IF NOT EXISTS expense_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 999,
+        created_at TEXT NOT NULL
+      )
+    `);
+    
+    // Step 9.5: Initialize default expense categories if not exist
+    const expenseCategoryCountResult = db.exec(`SELECT COUNT(*) FROM expense_categories`);
+    const categoryCount = expenseCategoryCountResult.length > 0 && expenseCategoryCountResult[0].values.length > 0 ? expenseCategoryCountResult[0].values[0][0] : 0;
+    
+    if (categoryCount === 0) {
+      console.log('Initializing default expense categories...');
+      const now = new Date().toISOString();
+      const defaultCategories = [
+        { name: '인건비', sortOrder: 0 },
+        { name: '공과금', sortOrder: 1 },
+        { name: '식자재', sortOrder: 2 },
+        { name: '소모품', sortOrder: 3 },
+        { name: '수리비', sortOrder: 4 },
+        { name: '통신비', sortOrder: 5 },
+        { name: '보증금환급', sortOrder: 6 },
+        { name: '기타', sortOrder: 999 }
+      ];
+      
+      for (const category of defaultCategories) {
+        const id = crypto.randomUUID();
+        db.run(`
+          INSERT INTO expense_categories (id, name, is_default, sort_order, created_at)
+          VALUES (?, ?, 1, ?, ?)
+        `, [id, category.name, category.sortOrder, now]);
+      }
+      
+      console.log('Default expense categories created');
+      saveDatabase();
+    }
+    
+    // Step 10: Create expenses table if not exists
     db.run(`
       CREATE TABLE IF NOT EXISTS expenses (
         id TEXT PRIMARY KEY,
@@ -524,7 +565,7 @@ function migrateDatabase() {
       )
     `);
     
-    // Step 10: Create closing_days table if not exists
+    // Step 11: Create closing_days table if not exists
     db.run(`
       CREATE TABLE IF NOT EXISTS closing_days (
         id TEXT PRIMARY KEY,
@@ -2691,8 +2732,8 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         breakdown[itemName].rentalFee.transfer += Math.round(paymentTransfer * rentalFeeRatio);
         breakdown[itemName].rentalFee.total += rentalFee;
         
-        // Calculate deposit forfeited portion
-        if (depositStatus === 'forfeited') {
+        // Calculate deposit portion (both received and forfeited count as revenue)
+        if (depositStatus === 'received' || depositStatus === 'forfeited') {
           const depositRatio = depositAmount / totalRevenue;
           breakdown[itemName].depositForfeited.cash += Math.round(paymentCash * depositRatio);
           breakdown[itemName].depositForfeited.card += Math.round(paymentCard * depositRatio);
@@ -2704,28 +2745,28 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         // This handles old data where payment_cash/card/transfer weren't populated
         if (paymentMethod === 'cash') {
           breakdown[itemName].rentalFee.cash += rentalFee;
-          if (depositStatus === 'forfeited') {
+          if (depositStatus === 'received' || depositStatus === 'forfeited') {
             breakdown[itemName].depositForfeited.cash += depositAmount;
           }
         } else if (paymentMethod === 'card') {
           breakdown[itemName].rentalFee.card += rentalFee;
-          if (depositStatus === 'forfeited') {
+          if (depositStatus === 'received' || depositStatus === 'forfeited') {
             breakdown[itemName].depositForfeited.card += depositAmount;
           }
         } else if (paymentMethod === 'transfer') {
           breakdown[itemName].rentalFee.transfer += rentalFee;
-          if (depositStatus === 'forfeited') {
+          if (depositStatus === 'received' || depositStatus === 'forfeited') {
             breakdown[itemName].depositForfeited.transfer += depositAmount;
           }
         }
         breakdown[itemName].rentalFee.total += rentalFee;
-        if (depositStatus === 'forfeited') {
+        if (depositStatus === 'received' || depositStatus === 'forfeited') {
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       } else {
         // Last resort fallback: just add totals without payment method breakdown
         breakdown[itemName].rentalFee.total += rentalFee;
-        if (depositStatus === 'forfeited') {
+        if (depositStatus === 'received' || depositStatus === 'forfeited') {
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       }
@@ -2760,4 +2801,73 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
     breakdown,
     totals
   };
+}
+
+// Expense Categories operations
+export function getExpenseCategories() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec('SELECT * FROM expense_categories ORDER BY sort_order ASC, name ASC');
+  
+  if (result.length === 0) return [];
+  
+  return rowsToObjects(result[0]);
+}
+
+export function createExpenseCategory(category: {
+  name: string;
+  sortOrder?: number;
+}): string {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = generateId();
+  const now = new Date().toISOString();
+  const sortOrder = category.sortOrder ?? 999;
+  
+  db.run(
+    `INSERT INTO expense_categories (id, name, is_default, sort_order, created_at)
+     VALUES (?, ?, 0, ?, ?)`,
+    [id, category.name, sortOrder, now]
+  );
+  
+  saveDatabase();
+  return id;
+}
+
+export function deleteExpenseCategory(id: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Only allow deletion of non-default categories
+  db.run('DELETE FROM expense_categories WHERE id = ? AND is_default = 0', [id]);
+  saveDatabase();
+}
+
+export function updateExpenseCategory(id: string, updates: {
+  name?: string;
+  sortOrder?: number;
+}) {
+  if (!db) throw new Error('Database not initialized');
+  
+  const sets: string[] = [];
+  const values: any[] = [];
+  
+  if (updates.name !== undefined) {
+    sets.push('name = ?');
+    values.push(updates.name);
+  }
+  if (updates.sortOrder !== undefined) {
+    sets.push('sort_order = ?');
+    values.push(updates.sortOrder);
+  }
+  
+  if (sets.length === 0) return;
+  
+  values.push(id);
+  
+  db.run(
+    `UPDATE expense_categories SET ${sets.join(', ')} WHERE id = ?`,
+    values
+  );
+  
+  saveDatabase();
 }
