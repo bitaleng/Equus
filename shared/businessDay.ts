@@ -26,16 +26,16 @@ export function getBusinessDay(date: Date = new Date(), businessDayStartHour: nu
 }
 
 /**
- * 특정 비즈니스 데이의 시작/종료 시간을 반환 (KST 기준)
+ * 특정 비즈니스 데이의 시작/종료 시간을 반환 (KST 기준, UTC로 변환)
  * 
  * @param date 기준 날짜 (기본값: 현재)
  * @param businessDayStartHour 비즈니스 데이 시작 시각 (기본값: 10)
- * @returns { start: 비즈니스 데이 시작 시각, end: 비즈니스 데이 종료 시각, businessDay: YYYY-MM-DD 문자열 }
+ * @returns { start: 비즈니스 데이 시작 시각 (UTC), end: 비즈니스 데이 종료 시각 (UTC), businessDay: YYYY-MM-DD 문자열 }
  * 
  * @example
- * // 2025-11-06 14:00에 호출하면 (businessDayStartHour = 10)
- * // start: 2025-11-06 10:00:00
- * // end: 2025-11-07 09:59:59
+ * // 2025-11-06 14:00 KST에 호출하면 (businessDayStartHour = 10)
+ * // start: 2025-11-06 10:00:00.000 KST (= 2025-11-06 01:00:00.000 UTC)
+ * // end: 2025-11-07 09:59:59.999 KST (= 2025-11-07 00:59:59.999 UTC)
  * // businessDay: '2025-11-06'
  */
 export function getBusinessDayRange(
@@ -45,17 +45,100 @@ export function getBusinessDayRange(
   const seoulDate = toZonedTime(date, SEOUL_TIMEZONE);
   const businessDay = getBusinessDay(seoulDate, businessDayStartHour);
   
-  // 비즈니스 데이 시작: businessDay 날짜의 startHour시
-  const start = new Date(`${businessDay}T${String(businessDayStartHour).padStart(2, '0')}:00:00`);
-  const startSeoul = toZonedTime(start, SEOUL_TIMEZONE);
+  // Parse businessDay string (YYYY-MM-DD)
+  const [year, month, day] = businessDay.split('-').map(Number);
   
-  // 비즈니스 데이 종료: 다음날 startHour시 - 1초
-  const end = new Date(startSeoul);
-  end.setDate(end.getDate() + 1);
-  end.setSeconds(end.getSeconds() - 1);
+  // KST = UTC+9
+  // Convert KST hours to UTC hours
+  const KST_OFFSET_HOURS = 9;
+  
+  // Start: businessDay at businessDayStartHour:00:00 KST
+  // Example: 2025-11-06 10:00:00 KST = 2025-11-06 01:00:00 UTC
+  let startUTCHour = businessDayStartHour - KST_OFFSET_HOURS;
+  let startUTCDay = day;
+  let startUTCMonth = month;
+  let startUTCYear = year;
+  
+  // Handle day boundary crossing
+  if (startUTCHour < 0) {
+    startUTCHour += 24;
+    startUTCDay -= 1;
+    if (startUTCDay < 1) {
+      startUTCMonth -= 1;
+      if (startUTCMonth < 1) {
+        startUTCMonth = 12;
+        startUTCYear -= 1;
+      }
+      // Get last day of previous month (simple approximation)
+      startUTCDay = new Date(startUTCYear, startUTCMonth, 0).getDate();
+    }
+  } else if (startUTCHour >= 24) {
+    startUTCHour -= 24;
+    startUTCDay += 1;
+    // Handle month overflow
+    const daysInMonth = new Date(startUTCYear, startUTCMonth, 0).getDate();
+    if (startUTCDay > daysInMonth) {
+      startUTCDay = 1;
+      startUTCMonth += 1;
+      if (startUTCMonth > 12) {
+        startUTCMonth = 1;
+        startUTCYear += 1;
+      }
+    }
+  }
+  
+  const start = new Date(Date.UTC(startUTCYear, startUTCMonth - 1, startUTCDay, startUTCHour, 0, 0, 0));
+  
+  // End: next day at businessDayStartHour:00:00 KST - 1 millisecond
+  // Example: 2025-11-07 09:59:59.999 KST = 2025-11-07 00:59:59.999 UTC
+  let endUTCHour = businessDayStartHour - KST_OFFSET_HOURS;
+  let endUTCDay = day + 1;
+  let endUTCMonth = month;
+  let endUTCYear = year;
+  
+  // Handle month/year overflow for end day
+  const daysInMonth = new Date(endUTCYear, endUTCMonth, 0).getDate();
+  if (endUTCDay > daysInMonth) {
+    endUTCDay = 1;
+    endUTCMonth += 1;
+    if (endUTCMonth > 12) {
+      endUTCMonth = 1;
+      endUTCYear += 1;
+    }
+  }
+  
+  // Handle hour boundary crossing for end
+  if (endUTCHour < 0) {
+    endUTCHour += 24;
+    endUTCDay -= 1;
+    if (endUTCDay < 1) {
+      endUTCMonth -= 1;
+      if (endUTCMonth < 1) {
+        endUTCMonth = 12;
+        endUTCYear -= 1;
+      }
+      endUTCDay = new Date(endUTCYear, endUTCMonth, 0).getDate();
+    }
+  } else if (endUTCHour >= 24) {
+    endUTCHour -= 24;
+    endUTCDay += 1;
+    const endDaysInMonth = new Date(endUTCYear, endUTCMonth, 0).getDate();
+    if (endUTCDay > endDaysInMonth) {
+      endUTCDay = 1;
+      endUTCMonth += 1;
+      if (endUTCMonth > 12) {
+        endUTCMonth = 1;
+        endUTCYear += 1;
+      }
+    }
+  }
+  
+  const end = new Date(Date.UTC(endUTCYear, endUTCMonth - 1, endUTCDay, endUTCHour, 0, 0, 0));
+  // Subtract 1 millisecond to get 09:59:59.999 instead of 10:00:00.000
+  end.setMilliseconds(end.getMilliseconds() - 1);
   
   return {
-    start: startSeoul,
+    start,
     end,
     businessDay
   };
