@@ -302,6 +302,117 @@ function migrateDatabase() {
     
     console.log('[Migration] Backfill complete');
     
+    // Step 4.65: Normalize all timestamps to ISO-8601 UTC format
+    console.log('[Migration] Normalizing all timestamps to ISO-8601 UTC format...');
+    
+    try {
+      // Check if migration has already been run
+      const migrationCheck = db.exec(`SELECT value FROM system_metadata WHERE key = 'timestamp_normalized'`);
+      const alreadyNormalized = migrationCheck.length > 0 && migrationCheck[0].values.length > 0;
+      
+      if (!alreadyNormalized) {
+        // Normalize locker_logs timestamps
+        db.run(`
+          UPDATE locker_logs
+          SET entry_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(entry_time))
+          WHERE entry_time NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE locker_logs
+          SET exit_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(exit_time))
+          WHERE exit_time IS NOT NULL AND exit_time NOT LIKE '%T%'
+        `);
+        
+        console.log('[Migration] Normalized locker_logs timestamps');
+        
+        // Normalize additional_fee_events timestamps
+        db.run(`
+          UPDATE additional_fee_events
+          SET checkout_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(checkout_time))
+          WHERE checkout_time NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE additional_fee_events
+          SET created_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(created_at))
+          WHERE created_at IS NOT NULL AND created_at NOT LIKE '%T%'
+        `);
+        
+        console.log('[Migration] Normalized additional_fee_events timestamps');
+        
+        // Normalize rental_transactions timestamps
+        db.run(`
+          UPDATE rental_transactions
+          SET rental_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(rental_time))
+          WHERE rental_time NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE rental_transactions
+          SET return_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(return_time))
+          WHERE return_time IS NOT NULL AND return_time NOT LIKE '%T%'
+        `);
+        
+        console.log('[Migration] Normalized rental_transactions timestamps');
+        
+        // Normalize expenses timestamps
+        db.run(`
+          UPDATE expenses
+          SET created_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(created_at))
+          WHERE created_at IS NOT NULL AND created_at NOT LIKE '%T%'
+        `);
+        
+        console.log('[Migration] Normalized expenses timestamps');
+        
+        // Normalize closing_days timestamps
+        db.run(`
+          UPDATE closing_days
+          SET start_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(start_time))
+          WHERE start_time NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE closing_days
+          SET end_time = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(end_time))
+          WHERE end_time NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE closing_days
+          SET created_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(created_at))
+          WHERE created_at IS NOT NULL AND created_at NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE closing_days
+          SET updated_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(updated_at))
+          WHERE updated_at IS NOT NULL AND updated_at NOT LIKE '%T%'
+        `);
+        
+        db.run(`
+          UPDATE closing_days
+          SET confirmed_at = strftime('%Y-%m-%dT%H:%M:%S.000Z', datetime(confirmed_at))
+          WHERE confirmed_at IS NOT NULL AND confirmed_at NOT LIKE '%T%'
+        `);
+        
+        console.log('[Migration] Normalized closing_days timestamps');
+        
+        // Mark migration as complete
+        db.run(`
+          INSERT OR REPLACE INTO system_metadata (key, value)
+          VALUES ('timestamp_normalized', 'true')
+        `);
+        
+        console.log('[Migration] Timestamp normalization complete - all timestamps now in ISO-8601 UTC format');
+        saveDatabase();
+      } else {
+        console.log('[Migration] Timestamp normalization already completed, skipping');
+      }
+    } catch (e) {
+      console.error('[Migration] Failed to normalize timestamps:', e);
+    }
+    
     // Step 4.7: Add discount fields to additional_fee_events
     try {
       db.run(`ALTER TABLE additional_fee_events ADD COLUMN original_fee_amount INTEGER`);
