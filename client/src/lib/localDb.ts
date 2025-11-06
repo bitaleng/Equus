@@ -2888,3 +2888,84 @@ export function updateExpenseCategory(id: string, updates: {
   
   saveDatabase();
 }
+
+// Recalculate business_day for all existing records
+export function recalculateAllBusinessDays() {
+  if (!db) throw new Error('Database not initialized');
+  
+  const settings = getSettings();
+  const businessDayStartHour = settings.businessDayStartHour;
+  
+  // Import getBusinessDay from shared module
+  const { getBusinessDay } = require('@shared/businessDay');
+  
+  let updatedCount = 0;
+  
+  // 1. Update locker_logs based on entry_time
+  const lockerLogs = db.exec('SELECT id, entry_time FROM locker_logs');
+  if (lockerLogs.length > 0 && lockerLogs[0].values.length > 0) {
+    lockerLogs[0].values.forEach((row: any) => {
+      const id = row[0];
+      const entryTime = new Date(row[1]);
+      const correctBusinessDay = getBusinessDay(entryTime, businessDayStartHour);
+      
+      db!.run(
+        'UPDATE locker_logs SET business_day = ? WHERE id = ?',
+        [correctBusinessDay, id]
+      );
+      updatedCount++;
+    });
+  }
+  
+  // 2. Update rental_transactions based on rental_time
+  const rentalTransactions = db.exec('SELECT id, rental_time FROM rental_transactions');
+  if (rentalTransactions.length > 0 && rentalTransactions[0].values.length > 0) {
+    rentalTransactions[0].values.forEach((row: any) => {
+      const id = row[0];
+      const rentalTime = new Date(row[1]);
+      const correctBusinessDay = getBusinessDay(rentalTime, businessDayStartHour);
+      
+      db!.run(
+        'UPDATE rental_transactions SET business_day = ? WHERE id = ?',
+        [correctBusinessDay, id]
+      );
+      updatedCount++;
+    });
+  }
+  
+  // 3. Update additional_fee_events based on checkout_time
+  const additionalFeeEvents = db.exec('SELECT id, checkout_time FROM additional_fee_events');
+  if (additionalFeeEvents.length > 0 && additionalFeeEvents[0].values.length > 0) {
+    additionalFeeEvents[0].values.forEach((row: any) => {
+      const id = row[0];
+      const checkoutTime = new Date(row[1]);
+      const correctBusinessDay = getBusinessDay(checkoutTime, businessDayStartHour);
+      
+      db!.run(
+        'UPDATE additional_fee_events SET business_day = ? WHERE id = ?',
+        [correctBusinessDay, id]
+      );
+      updatedCount++;
+    });
+  }
+  
+  // 4. Recalculate all daily summaries
+  const allBusinessDays = new Set<string>();
+  
+  // Get all unique business days from locker_logs
+  const businessDaysResult = db.exec('SELECT DISTINCT business_day FROM locker_logs');
+  if (businessDaysResult.length > 0 && businessDaysResult[0].values.length > 0) {
+    businessDaysResult[0].values.forEach((row: any) => {
+      allBusinessDays.add(row[0]);
+    });
+  }
+  
+  // Recalculate summary for each business day
+  allBusinessDays.forEach(businessDay => {
+    updateDailySummary(businessDay);
+  });
+  
+  saveDatabase();
+  
+  return updatedCount;
+}
