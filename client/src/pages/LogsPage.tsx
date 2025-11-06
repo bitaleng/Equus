@@ -232,6 +232,9 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => !log.additionalFees || log.additionalFees === 0);
   }
 
+  // Calculate total amount for filtered results
+  const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
+
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
     if (log.optionType === 'foreigner') return '외국인';
@@ -516,26 +519,46 @@ export default function LogsPage() {
             
             {/* 필터 결과 통계 */}
             {hasActiveFilters && (
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex items-center gap-4 text-xs">
                 {cancelledFilter !== "all" && (
-                  <span data-testid="text-cancelled-filter-count">
-                    {cancelledFilter === "cancelled" ? "취소건" : "정상건"}: 총 {displayedLogs.length}건
-                  </span>
+                  <div className="flex items-center gap-2" data-testid="text-cancelled-filter-count">
+                    <span className="text-muted-foreground">
+                      {cancelledFilter === "cancelled" ? "취소건" : "정상건"}:
+                    </span>
+                    <span className="font-semibold">{displayedLogs.length}건</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                  </div>
                 )}
                 {timeTypeFilter !== "all" && (
-                  <span data-testid="text-timetype-filter-count">
-                    {timeTypeFilter === "day" ? "주간" : "야간"}: 총 {displayedLogs.length}건
-                  </span>
+                  <div className="flex items-center gap-2" data-testid="text-timetype-filter-count">
+                    <span className="text-muted-foreground">
+                      {timeTypeFilter === "day" ? "주간" : "야간"}:
+                    </span>
+                    <span className="font-semibold">{displayedLogs.length}건</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                  </div>
                 )}
                 {paymentMethodFilter !== "all" && (
-                  <span data-testid="text-payment-filter-count">
-                    {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}: 총 {displayedLogs.length}건
-                  </span>
+                  <div className="flex items-center gap-2" data-testid="text-payment-filter-count">
+                    <span className="text-muted-foreground">
+                      {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}:
+                    </span>
+                    <span className="font-semibold">{displayedLogs.length}건</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                  </div>
                 )}
                 {additionalFeeFilter !== "all" && (
-                  <span data-testid="text-additional-fee-filter-count">
-                    {additionalFeeFilter === "with_fee" ? "추가요금 있음" : "추가요금 없음"}: 총 {displayedLogs.length}건
-                  </span>
+                  <div className="flex items-center gap-2" data-testid="text-additional-fee-filter-count">
+                    <span className="text-muted-foreground">
+                      {additionalFeeFilter === "with_fee" ? "추가요금 있음" : "추가요금 없음"}:
+                    </span>
+                    <span className="font-semibold">{displayedLogs.length}건</span>
+                    <span className="text-muted-foreground">|</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
+                  </div>
                 )}
               </div>
             )}
