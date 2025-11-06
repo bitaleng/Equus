@@ -192,9 +192,43 @@ export default function Home() {
       
       // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
       const entries = localDb.getEntriesByBusinessDayRange(businessDay, businessDayStartHour);
-      setTodayAllEntries(entries);
       
-      // Calculate summary from actual entries
+      // Get additional fee events for today (추가요금 퇴실만, 입실은 이전 영업일)
+      const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+      
+      // Filter out additional fee events where entry was today (already in entries)
+      const entryLockerIds = new Set(entries.map(e => e.id));
+      const additionalFeeOnlyEvents = additionalFeeEvents.filter(event => 
+        !entryLockerIds.has(event.lockerLogId)
+      );
+      
+      // Create pseudo entries for additional fee checkouts (no entry time, red fee)
+      const additionalFeeEntries = additionalFeeOnlyEvents.map(event => {
+        return {
+          id: `additionalfee_${event.id}`,
+          lockerNumber: event.lockerNumber,
+          entryTime: null, // No entry time - will be displayed empty
+          exitTime: event.checkoutTime,
+          timeType: '추가요금' as any, // Special marker for additional fee
+          basePrice: 0,
+          optionType: 'none' as const,
+          optionAmount: 0,
+          finalPrice: event.feeAmount,
+          status: 'checked_out' as const,
+          cancelled: false,
+          paymentMethod: event.paymentMethod as any,
+          paymentCash: (event as any).paymentCash,
+          paymentCard: (event as any).paymentCard,
+          paymentTransfer: (event as any).paymentTransfer,
+          businessDay: event.businessDay,
+        };
+      });
+      
+      // Combine regular entries with additional fee entries
+      const allEntries = [...entries, ...additionalFeeEntries];
+      setTodayAllEntries(allEntries);
+      
+      // Calculate summary from actual entries (excluding additional fee entries)
       const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
       const totalVisitors = entries.filter(e => !e.cancelled).length;
       const cancellations = entries.filter(e => e.cancelled).length;
@@ -215,8 +249,7 @@ export default function Home() {
       });
       setLockerGroups(localDb.getLockerGroups());
       
-      // Get additional fee sales for today (비즈니스 데이 범위 기준)
-      const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+      // Calculate additional fee sales from the already-fetched events
       const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
       setAdditionalFeeSales(additionalFees);
       
@@ -622,21 +655,12 @@ export default function Home() {
     // (basePrice and discount already included in entry day's revenue)
     // Formula: finalPrice = basePrice - optionAmount + additionalFee
     if (entryBusinessDay !== checkoutBusinessDay) {
-      // Different business day - only record additional fee payment
-      const addFeePayment = additionalFeePayment || {
-        method: paymentMethod,
-        cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
-        card: paymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
-        transfer: paymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
-      };
-      
+      // Different business day - DO NOT update payment fields
+      // (they contain entry payment info and should remain unchanged)
+      // Additional fee payment is recorded separately in additional_fee_events table
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        paymentMethod: addFeePayment.method,
-        paymentCash: addFeePayment.cash,
-        paymentCard: addFeePayment.card,
-        paymentTransfer: addFeePayment.transfer,
         basePrice: 0,
         optionAmount: 0,
         finalPrice: additionalFeeInfo.additionalFee,

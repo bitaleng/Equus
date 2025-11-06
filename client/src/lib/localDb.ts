@@ -1112,9 +1112,10 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
 
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE entry_time >= ? AND entry_time <= ?
+     WHERE (entry_time >= ? AND entry_time <= ?)
+        OR (exit_time >= ? AND exit_time <= ?)
      ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startDateTime, endDateTime]
+    [startDateTime, endDateTime, startDateTime, endDateTime]
   );
 
   if (result.length === 0) return [];
@@ -2041,9 +2042,14 @@ export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, bu
     lockerNumber: row[2],
     checkoutTime: row[3],
     feeAmount: row[4],
-    businessDay: row[5],
-    paymentMethod: row[6],
-    createdAt: row[7],
+    originalFeeAmount: row[5],
+    discountAmount: row[6],
+    businessDay: row[7],
+    paymentMethod: row[8],
+    paymentCash: row[9],
+    paymentCard: row[10],
+    paymentTransfer: row[11],
+    createdAt: row[12],
   }));
 }
 
