@@ -777,9 +777,13 @@ export default function Home() {
           ) : (
             <div className="space-y-8">
               {lockerGroups.map((group) => (
-                <div key={group.id}>
-                  <h3 className="text-lg font-semibold mb-3">{group.name}</h3>
-                  <div className="grid grid-cols-8 gap-2 max-w-4xl">
+                <div key={group.id} className={isPanelCollapsed ? "flex flex-col items-center" : ""}>
+                  <h3 className={`text-lg font-semibold mb-3 ${isPanelCollapsed ? "text-center" : ""}`}>{group.name}</h3>
+                  <div className={`grid gap-2 ${
+                    isPanelCollapsed 
+                      ? "grid-cols-10 max-w-7xl" 
+                      : "grid-cols-8 max-w-4xl"
+                  }`}>
                     {Array.from(
                       { length: group.endNumber - group.startNumber + 1 },
                       (_, i) => group.startNumber + i
