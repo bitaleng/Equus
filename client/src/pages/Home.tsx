@@ -190,16 +190,39 @@ export default function Home() {
       if (locker21) console.log('락커 21번 데이터:', locker21);
       if (locker45) console.log('락커 45번 데이터:', locker45);
       
-      setTodayAllEntries(localDb.getTodayEntries(businessDay));
-      setSummary(localDb.getDailySummary(businessDay));
+      // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
+      const entries = localDb.getEntriesByBusinessDayRange(businessDay, businessDayStartHour);
+      setTodayAllEntries(entries);
+      
+      // Calculate summary from actual entries
+      const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
+      const totalVisitors = entries.filter(e => !e.cancelled).length;
+      const cancellations = entries.filter(e => e.cancelled).length;
+      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled).length;
+      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled).length;
+      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled).length;
+      
+      setSummary({
+        businessDay,
+        totalVisitors,
+        totalSales: activeSales,
+        cancellations,
+        totalDiscount: 0,
+        foreignerCount,
+        foreignerSales: 0,
+        dayVisitors,
+        nightVisitors
+      });
       setLockerGroups(localDb.getLockerGroups());
       
-      // Get additional fee sales for today
-      const additionalFees = localDb.getTotalAdditionalFeesByBusinessDay(businessDay);
+      // Get additional fee sales for today (비즈니스 데이 범위 기준)
+      const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+      const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
       setAdditionalFeeSales(additionalFees);
       
-      // Get rental revenue for today
-      const rentalRev = localDb.getTotalRentalRevenueByBusinessDay(businessDay);
+      // Get rental revenue for today (비즈니스 데이 범위 기준)
+      const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, businessDayStartHour);
+      const rentalRev = rentalTransactions.reduce((sum, txn) => sum + txn.revenue, 0);
       setRentalRevenue(rentalRev);
       
       // Get total expenses for today
