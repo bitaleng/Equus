@@ -11,6 +11,22 @@ Preferred communication style: Simple, everyday language.
 ## Recent Changes
 
 ### November 7, 2025
+- **ClosingPage UI 매출 구조 명확화**: 추가요금과 렌탈 매출을 별도 섹션으로 분리하여 가독성 개선
+  - 상태 변수 구조화: baseEntrySales, additionalFeeSales, entrySales, rentalSales 분리 관리
+  - UI 섹션 번호 체계:
+    - ① 일반요금합계 (입실 기본요금)
+    - ② 추가요금합계 (시간초과 추가요금)
+    - ③ 입실매출 총합 (① + ②)
+    - ④ 추가매출 (대여품목: 렌탈비 + 보증금, 환급 제외)
+    - ⑤ 총매출 (③ + ④)
+  - 사용자 정의 매출 개념 반영: "추가요금" = 시간초과 추가 입장료, "추가매출" = 대여품목 매출
+
+- **환급 보증금 완전 제외 구현**: updateRentalTransaction에서 revenue 전달 여부와 무관하게 payment* 필드 자동 조정
+  - 문제: Home.tsx에서 revenue를 명시적으로 전달하여 payment* 조정 로직 미실행
+  - 해결: localDb.ts에서 payment* 조정 로직을 if (updates.revenue === undefined) 블록 밖으로 이동
+  - 결과: 환급된 보증금이 paymentCash/Card/Transfer 집계에서 완전히 제외되어 정확한 결제수단별 매출 집계
+  - E2E 테스트로 검증 완료: 환급 시 rental fee만 매출 포함, deposit 완전 제외
+
 - **추가요금 매출 기록 및 정렬 개선**: 추가요금은 퇴실 시간(checkout_time) 기준으로 정렬 및 매출 산입
   - 오늘현황/입출기록: 추가요금은 퇴실 시간 기준으로 최신순 정렬
   - 이전 영업일 입실 락커의 추가요금도 오늘 매출에 포함 (입실시간 공란, 금액 빨간색 표시)
@@ -26,7 +42,7 @@ Preferred communication style: Simple, everyday language.
   - 반납 시 '몰수' (같은 영업일): 렌탈비 + 보증금 → 매출
   - 반납 시 '몰수' (다른 영업일): 렌탈비만 → revenue (보증금은 0, 이미 대여일 매출로 계산됨)
   - 반납 시 '환급': 렌탈비만 → revenue (보증금은 지출 처리)
-  - updateRentalItem에서 revenue 변경 시 paymentCash/Card/Transfer도 비례 조정
+  - updateRentalTransaction에서 revenue 변경 시 paymentCash/Card/Transfer도 항상 비례 조정
   - 반올림 오차는 최대 금액 채널에 할당하여 합계 정확성 보장 (±0원)
 
 - **LogsPage 날짜 필터링 정확도 개선**: entry_time 기준 필터링으로 변경
