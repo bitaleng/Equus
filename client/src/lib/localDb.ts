@@ -1887,9 +1887,104 @@ export function createTestData() {
     }
   }
   
+  // 5. 추가품목 생성 (롱타올, 담요)
+  console.log('\n추가품목 생성 중...');
+  
+  // 롱타올과 담요가 이미 있는지 확인
+  const existingItems = db.exec(`SELECT * FROM additional_revenue_items WHERE name IN ('롱타올', '담요')`);
+  
+  if (existingItems.length === 0 || existingItems[0].values.length < 2) {
+    // 롱타올 추가 (대여금 0원, 보증금 5000원)
+    const longTowelId = generateId();
+    db.run(
+      `INSERT OR REPLACE INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+       VALUES (?, '롱타올', 0, 5000, 3, 0, ?, ?)`,
+      [longTowelId, new Date().toISOString(), new Date().toISOString()]
+    );
+    console.log('  롱타올 추가 (대여금: 0원, 보증금: 5000원)');
+    
+    // 담요 추가 (대여금 1000원, 보증금 0원)
+    const blanketId = generateId();
+    db.run(
+      `INSERT OR REPLACE INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
+       VALUES (?, '담요', 1000, 0, 4, 0, ?, ?)`,
+      [blanketId, new Date().toISOString(), new Date().toISOString()]
+    );
+    console.log('  담요 추가 (대여금: 1000원, 보증금: 0원)');
+  }
+  
+  // 6. 랜덤하게 사용중인 락커에 렌탈 아이템 추가 (약 30%)
+  console.log('\n렌탈 아이템 추가 중...');
+  const inUseLogs = db.exec(`SELECT * FROM locker_logs WHERE status = 'in_use' AND locker_number BETWEEN 1 AND 80`);
+  
+  if (inUseLogs.length > 0 && inUseLogs[0].values.length > 0) {
+    const rentalItems = db.exec(`SELECT * FROM additional_revenue_items`);
+    const items = rentalItems.length > 0 && rentalItems[0].values.length > 0 
+      ? rentalItems[0].values.map((row: any) => ({
+          id: row[0],
+          name: row[1],
+          rentalFee: row[2],
+          depositAmount: row[3],
+        }))
+      : [];
+    
+    let rentalCount = 0;
+    inUseLogs[0].values.forEach((row: any) => {
+      // 30% 확률로 렌탈 아이템 추가
+      if (randomBoolean(0.3)) {
+        const logId = row[0];
+        const lockerNumber = row[1];
+        const entryTime = row[2];
+        const businessDay = row[4];
+        const paymentCash = row[14];
+        const paymentCard = row[15];
+        const paymentTransfer = row[16];
+        
+        // 랜덤하게 아이템 선택 (1-2개)
+        const numItems = randomBoolean(0.5) ? 1 : 2;
+        const selectedItems = [];
+        const usedItemIds = new Set();
+        
+        for (let i = 0; i < numItems && i < items.length; i++) {
+          let item;
+          do {
+            item = randomElement(items);
+          } while (usedItemIds.has(item.id) && usedItemIds.size < items.length);
+          
+          usedItemIds.add(item.id);
+          selectedItems.push(item);
+        }
+        
+        // 각 아이템마다 렌탈 트랜잭션 생성
+        selectedItems.forEach(item => {
+          const rentalId = generateId();
+          const itemRevenue = item.rentalFee + item.depositAmount; // 대여시: 렌탈비 + 보증금
+          
+          // 결제 방식은 현금으로 고정
+          database.run(
+            `INSERT INTO rental_transactions 
+            (id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time, business_day, 
+             rental_fee, deposit_amount, payment_method, payment_cash, payment_card, payment_transfer, 
+             deposit_status, revenue, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'cash', ?, ?, ?, 'received', ?, ?, ?)`,
+            [
+              rentalId, logId, item.id, item.name, lockerNumber, entryTime, null, businessDay,
+              item.rentalFee, item.depositAmount, itemRevenue, 0, 0, 'received', itemRevenue,
+              new Date().toISOString(), new Date().toISOString()
+            ]
+          );
+        });
+        
+        rentalCount++;
+      }
+    });
+    
+    console.log(`  ${rentalCount}개 락커에 렌탈 아이템 추가`);
+  }
+  
   saveDatabase();
   
-  console.log(`테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
+  console.log(`\n테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
   console.log(`- 추가요금 1회: ${additionalFee1Count}건 (오렌지)`);
   console.log(`- 추가요금 2회+: ${additionalFee2PlusCount}건 (레드)`);
 }
@@ -2331,21 +2426,24 @@ export function updateRentalTransaction(id: string, updates: {
     // refunded: 렌탈비만
     
     // Adjust payment amounts proportionally to match revenue exactly
-    const originalTotal = (currentPaymentCash || 0) + (currentPaymentCard || 0) + (currentPaymentTransfer || 0);
+    const cashNum = Number(currentPaymentCash) || 0;
+    const cardNum = Number(currentPaymentCard) || 0;
+    const transferNum = Number(currentPaymentTransfer) || 0;
+    const originalTotal = cashNum + cardNum + transferNum;
     if (originalTotal > 0 && revenue !== originalTotal) {
       const ratio = revenue / originalTotal;
       // Floor all channels first
-      adjustedPaymentCash = Math.floor((currentPaymentCash || 0) * ratio);
-      adjustedPaymentCard = Math.floor((currentPaymentCard || 0) * ratio);
-      adjustedPaymentTransfer = Math.floor((currentPaymentTransfer || 0) * ratio);
+      adjustedPaymentCash = Math.floor(cashNum * ratio);
+      adjustedPaymentCard = Math.floor(cardNum * ratio);
+      adjustedPaymentTransfer = Math.floor(transferNum * ratio);
       
       // Calculate remainder and assign to channel with largest original amount
       const remainder = revenue - adjustedPaymentCash - adjustedPaymentCard - adjustedPaymentTransfer;
       if (remainder !== 0) {
         const amounts = [
-          { value: currentPaymentCash || 0, index: 'cash' },
-          { value: currentPaymentCard || 0, index: 'card' },
-          { value: currentPaymentTransfer || 0, index: 'transfer' }
+          { value: cashNum, index: 'cash' as const },
+          { value: cardNum, index: 'card' as const },
+          { value: transferNum, index: 'transfer' as const }
         ];
         const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
         
