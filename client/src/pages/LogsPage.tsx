@@ -838,8 +838,8 @@ export default function LogsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">전체 항목</SelectItem>
-                      <SelectItem value="담요대여">담요대여</SelectItem>
-                      <SelectItem value="롱타올대여">롱타올대여</SelectItem>
+                      <SelectItem value="담요">담요</SelectItem>
+                      <SelectItem value="롱타올">롱타올</SelectItem>
                     </SelectContent>
                   </Select>
                   
