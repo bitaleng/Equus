@@ -185,29 +185,34 @@ export default function ClosingPage() {
     const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, bdStartHour);
     
     // 1) 입실 기본 요금 집계 (결제수단별)
-    // Use payment* fields but normalize to match finalPrice if there's a discrepancy
+    // IMPORTANT: Exclude same-business-day additional_fees from base entry sales
+    // Base entry sales = finalPrice - additional_fees
     let entryCash = 0, entryCard = 0, entryTransfer = 0;
     entries.filter(e => !e.cancelled).forEach(e => {
       const finalPrice = e.finalPrice || 0;
+      const additionalFees = (e as any).additionalFees || 0;
+      const basePriceOnly = finalPrice - additionalFees; // Exclude same-day additional fees
+      
       const cashPayment = e.paymentCash || 0;
       const cardPayment = e.paymentCard || 0;
       const transferPayment = e.paymentTransfer || 0;
       const paymentTotal = cashPayment + cardPayment + transferPayment;
       
-      // If payment fields match finalPrice, use them as-is (supports split payments)
-      if (paymentTotal === finalPrice) {
-        entryCash += cashPayment;
-        entryCard += cardPayment;
-        entryTransfer += transferPayment;
+      // If payment fields match finalPrice, need to split proportionally for basePriceOnly
+      if (paymentTotal === finalPrice && finalPrice > 0) {
+        const ratio = basePriceOnly / finalPrice;
+        entryCash += Math.floor(cashPayment * ratio);
+        entryCard += Math.floor(cardPayment * ratio);
+        entryTransfer += Math.floor(transferPayment * ratio);
       } else if (paymentTotal > 0) {
-        // If there's a mismatch, redistribute finalPrice proportionally with exact rounding
-        const ratio = finalPrice / paymentTotal;
+        // If there's a mismatch, redistribute basePriceOnly proportionally
+        const ratio = basePriceOnly / paymentTotal;
         let normalizedCash = Math.floor(cashPayment * ratio);
         let normalizedCard = Math.floor(cardPayment * ratio);
         let normalizedTransfer = Math.floor(transferPayment * ratio);
         
         // Calculate remainder and assign to largest payment source
-        const remainder = finalPrice - (normalizedCash + normalizedCard + normalizedTransfer);
+        const remainder = basePriceOnly - (normalizedCash + normalizedCard + normalizedTransfer);
         if (remainder !== 0) {
           const amounts = [
             { value: cashPayment, key: 'cash' as const },
@@ -227,14 +232,14 @@ export default function ClosingPage() {
       } else {
         // If no payment data, allocate to primary payment method
         if (e.paymentMethod === 'cash') {
-          entryCash += finalPrice;
+          entryCash += basePriceOnly;
         } else if (e.paymentMethod === 'card') {
-          entryCard += finalPrice;
+          entryCard += basePriceOnly;
         } else if (e.paymentMethod === 'transfer') {
-          entryTransfer += finalPrice;
+          entryTransfer += basePriceOnly;
         } else {
           // Default to cash if no payment method specified
-          entryCash += finalPrice;
+          entryCash += basePriceOnly;
         }
       }
     });
@@ -247,11 +252,47 @@ export default function ClosingPage() {
     });
     
     // 2) 추가요금 집계 (결제수단별)
+    // Include BOTH same-business-day fees (from locker_logs.additional_fees) 
+    // AND different-business-day fees (from additional_fee_events table)
     let additionalCash = 0, additionalCard = 0, additionalTransfer = 0;
+    
+    // Different-business-day additional fees (from additional_fee_events table)
     additionalFeeEvents.forEach(e => {
       additionalCash += (e as any).paymentCash || 0;
       additionalCard += (e as any).paymentCard || 0;
       additionalTransfer += (e as any).paymentTransfer || 0;
+    });
+    
+    // Same-business-day additional fees (from locker_logs.additional_fees column)
+    entries.filter(e => !e.cancelled).forEach(e => {
+      const additionalFees = (e as any).additionalFees || 0;
+      if (additionalFees > 0) {
+        const finalPrice = e.finalPrice || 0;
+        const cashPayment = e.paymentCash || 0;
+        const cardPayment = e.paymentCard || 0;
+        const transferPayment = e.paymentTransfer || 0;
+        const paymentTotal = cashPayment + cardPayment + transferPayment;
+        
+        // Distribute additional fees proportionally based on payment method
+        if (paymentTotal === finalPrice && finalPrice > 0) {
+          const ratio = additionalFees / finalPrice;
+          additionalCash += Math.floor(cashPayment * ratio);
+          additionalCard += Math.floor(cardPayment * ratio);
+          additionalTransfer += Math.floor(transferPayment * ratio);
+        } else if (paymentTotal > 0) {
+          const ratio = additionalFees / paymentTotal;
+          additionalCash += Math.floor(cashPayment * ratio);
+          additionalCard += Math.floor(cardPayment * ratio);
+          additionalTransfer += Math.floor(transferPayment * ratio);
+        } else if (e.paymentMethod) {
+          // Allocate to primary payment method
+          if (e.paymentMethod === 'cash') additionalCash += additionalFees;
+          else if (e.paymentMethod === 'card') additionalCard += additionalFees;
+          else if (e.paymentMethod === 'transfer') additionalTransfer += additionalFees;
+        } else {
+          additionalCash += additionalFees; // Default to cash
+        }
+      }
     });
     
     setAdditionalFeeSales({
