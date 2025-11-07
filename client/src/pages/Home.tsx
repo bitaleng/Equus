@@ -778,6 +778,24 @@ export default function Home() {
             }
             // 다른 영업일: 보증금 제외 (이미 대여일 매출로 계산됨)
           }
+        } else if (item.depositStatus === 'refunded') {
+          // 환급 시 지출 처리: 대여일과 반납일이 다른 경우만
+          const existingItem = localDb.getRentalTransactionsByLockerLog(selectedEntry.id).find(t => t.itemId === item.itemId);
+          if (existingItem) {
+            const rentalBusinessDay = existingItem.businessDay;
+            const returnBusinessDay = checkoutBusinessDay;
+            if (rentalBusinessDay !== returnBusinessDay && item.depositAmount > 0) {
+              // 다른 영업일에 환급: 보증금을 지출로 기록
+              localDb.createExpense({
+                date: now,
+                businessDay: returnBusinessDay,
+                category: '보증금환급',
+                amount: item.depositAmount,
+                description: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
+                paymentMethod: 'cash',
+              });
+            }
+          }
         }
         
         if (existingItem) {
@@ -895,7 +913,12 @@ export default function Home() {
             {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
           </Button>
           <div>
-            <h1 className="text-2xl font-semibold">입실 관리</h1>
+            <h1 className="text-2xl font-semibold">
+              입실 관리 
+              <span className="ml-3 text-base font-normal text-muted-foreground">
+                사용중: {allLogs.filter(log => log.status === 'in_use').length}개
+              </span>
+            </h1>
             <p className="text-sm text-muted-foreground mt-1">
               {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>
