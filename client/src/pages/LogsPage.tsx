@@ -166,12 +166,14 @@ export default function LogsPage() {
       }
       
       // Attach additional fees for each log entry
+      // Combine same-business-day fees (stored in locker_logs.additional_fees column)
+      // with different-business-day fees (stored in additional_fee_events table)
       const logsWithFees = result.map(log => {
         const additionalFeeEvents = localDb.getAdditionalFeeEventsByLockerLog(log.id);
         const totalAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
         return {
           ...log,
-          additionalFees: totalAdditionalFees
+          additionalFees: ((log as any).additionalFees || 0) + totalAdditionalFees
         };
       });
       
