@@ -5,16 +5,26 @@ interface LockerButtonProps {
   status: 'empty' | 'in-use' | 'disabled';
   additionalFeeCount?: number; // 추가요금 발생 횟수 (0: 없음, 1: 1회, 2+: 2회 이상)
   timeType?: 'day' | 'night'; // 입실 시간대 (주간/야간)
+  entryTime?: Date; // 입실 시간
+  businessDayStartHour?: number; // 정산시간 (기본값: 10)
   onClick: () => void;
   isExpanded?: boolean; // 패널 접힌 상태 (true = 패널 접힘, 버튼 크게)
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', onClick, isExpanded = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false }: LockerButtonProps) {
   const getButtonStyles = () => {
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
+      // 입실시간이 정산시간 이전인 경우: 그린색 (이전 영업일)
+      if (entryTime) {
+        const entryHour = entryTime.getHours();
+        if (entryHour < businessDayStartHour) {
+          return "bg-[#22C55E] text-white border-2 border-[#16A34A]";
+        }
+      }
+      
       // 추가요금 있음: 레드 (내외국인, 횟수 무관하게 통일)
       if (additionalFeeCount > 0) {
         return "bg-[#FF4444] text-white border-2 border-[#CC0000]";

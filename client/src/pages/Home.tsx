@@ -276,6 +276,7 @@ export default function Home() {
   const lockerStates: { [key: number]: 'empty' | 'in-use' | 'disabled' } = {};
   const additionalFeeCounts: { [key: number]: number } = {};
   const lockerTimeTypes: { [key: number]: 'day' | 'night' } = {};
+  const lockerEntryTimes: { [key: number]: Date } = {};
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -287,6 +288,7 @@ export default function Home() {
   
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
+    lockerEntryTimes[log.lockerNumber] = new Date(log.entryTime);
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -787,11 +789,12 @@ export default function Home() {
             if (rentalBusinessDay !== returnBusinessDay && item.depositAmount > 0) {
               // 다른 영업일에 환급: 보증금을 지출로 기록
               localDb.createExpense({
-                date: now,
+                date: now.toISOString(),
+                time: now.toISOString(),
                 businessDay: returnBusinessDay,
                 category: '보증금환급',
                 amount: item.depositAmount,
-                description: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
+                notes: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
                 paymentMethod: 'cash',
               });
             }
@@ -916,7 +919,7 @@ export default function Home() {
             <h1 className="text-2xl font-semibold">
               입실 관리 
               <span className="ml-3 text-base font-normal text-muted-foreground">
-                사용중: {allLogs.filter(log => log.status === 'in_use').length}개
+                사용중: {todayAllEntries.filter((log: any) => log.status === 'in_use').length}개
               </span>
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -927,6 +930,10 @@ export default function Home() {
             <div className="flex items-center gap-1.5">
               <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
               <span className="text-xs">빈칸</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
+              <span className="text-xs">이전영업일</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
@@ -975,6 +982,8 @@ export default function Home() {
                         status={lockerStates[num] || 'empty'}
                         additionalFeeCount={additionalFeeCounts[num] || 0}
                         timeType={lockerTimeTypes[num] || 'day'}
+                        entryTime={lockerEntryTimes[num]}
+                        businessDayStartHour={businessDayStartHour}
                         onClick={() => handleLockerClick(num)}
                         isExpanded={isPanelCollapsed && !overviewMode}
                       />
