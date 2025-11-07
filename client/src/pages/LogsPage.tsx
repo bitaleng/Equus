@@ -270,15 +270,27 @@ export default function LogsPage() {
   }
 
   // Calculate total amount for filtered results (입실요금 + 추가요금)
+  // 중복 방지: logs에 포함된 락커의 추가요금 이벤트 제외
+  const filteredLogsInRange = new Set(displayedLogs.map(log => log.id));
+  const filteredAdditionalFeesNotInLogs = additionalFeeEvents.filter(event => 
+    !filteredLogsInRange.has(event.lockerLogId)
+  );
+  
   const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-  const filteredAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+  const filteredAdditionalFees = filteredAdditionalFeesNotInLogs.reduce((sum, event) => sum + event.feeAmount, 0);
   const filteredTotalWithAdditional = filteredTotalAmount + filteredAdditionalFees;
   
   // Calculate overall totals (excluding cancelled entries)
   const activeLogs = logs.filter(log => !log.cancelled);
   const overallTotalCount = activeLogs.length;
+  
+  const activeLogsSet = new Set(activeLogs.map(log => log.id));
+  const overallAdditionalFeesNotInLogs = additionalFeeEvents.filter(event => 
+    !activeLogsSet.has(event.lockerLogId)
+  );
+  
   const overallTotalAmount = activeLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-  const overallAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+  const overallAdditionalFees = overallAdditionalFeesNotInLogs.reduce((sum, event) => sum + event.feeAmount, 0);
   const overallTotalWithAdditional = overallTotalAmount + overallAdditionalFees;
 
   const getOptionText = (log: LogEntry) => {
