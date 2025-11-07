@@ -69,7 +69,7 @@ export default function Home() {
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
-  const [todayAllEntries, setTodayAllEntries] = useState<LockerLog[]>([]);
+  const [todayAllEntries, setTodayAllEntries] = useState<(LockerLog & { additionalFeeOnly?: boolean })[]>([]);
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
   const [newLockerInfo, setNewLockerInfo] = useState<{lockerNumber: number, timeType: '주간' | '야간', basePrice: number} | null>(null);
@@ -853,7 +853,7 @@ export default function Home() {
 
   const todayEntries = todayAllEntries.map(log => ({
     lockerNumber: log.lockerNumber,
-    entryTime: new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
+    entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
     timeType: log.timeType,
     basePrice: log.basePrice,
     option: log.optionType === 'none' ? '없음' : 
@@ -866,6 +866,7 @@ export default function Home() {
     cancelled: log.cancelled,
     notes: log.notes,
     paymentMethod: log.paymentMethod,
+    additionalFeeOnly: log.additionalFeeOnly, // 추가요금만 있는 항목 플래그 전달
   }));
 
   return (
