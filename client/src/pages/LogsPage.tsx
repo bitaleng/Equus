@@ -701,15 +701,22 @@ export default function LogsPage() {
                       }
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        log.timeType === '추가요금' 
-                          ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                          : log.timeType === '주간' 
-                          ? 'bg-primary/10 text-primary' 
-                          : 'bg-accent text-accent-foreground'
-                      }`}>
-                        {log.timeType}
-                      </span>
+                      <div className="flex gap-1 items-center">
+                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                          log.timeType === '추가요금' 
+                            ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                            : log.timeType === '주간' 
+                            ? 'bg-primary/10 text-primary' 
+                            : 'bg-accent text-accent-foreground'
+                        }`}>
+                          {log.timeType}
+                        </span>
+                        {log.additionalFees && log.additionalFees > 0 && log.timeType !== '추가요금' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-red-500/10 text-red-600 dark:text-red-400">
+                            추가
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{log.basePrice.toLocaleString()}원</TableCell>
                     <TableCell className="text-sm">{getOptionText(log)}</TableCell>

@@ -196,6 +196,12 @@ export default function Home() {
       // Get additional fee events for today (추가요금 퇴실만, 입실은 이전 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
       
+      // Create a map of locker log IDs to additional fees for entries with additional fees
+      const additionalFeeMap = new Map<string, number>();
+      additionalFeeEvents.forEach(event => {
+        additionalFeeMap.set(event.lockerLogId, event.feeAmount);
+      });
+      
       // Filter out additional fee events where entry was today (already in entries)
       const entryLockerIds = new Set(entries.map(e => e.id));
       const additionalFeeOnlyEvents = additionalFeeEvents.filter(event => 
@@ -225,9 +231,16 @@ export default function Home() {
         };
       });
       
+      // Add additional fee flags to regular entries
+      const enrichedEntries = entries.map(entry => ({
+        ...entry,
+        hasAdditionalFee: additionalFeeMap.has(entry.id),
+        additionalFeeAmount: additionalFeeMap.get(entry.id) || 0,
+      }));
+      
       // Combine regular entries with additional fee entries and sort by time
       // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
-      const allEntries = [...entries, ...additionalFeeEntries].sort((a, b) => {
+      const allEntries = [...enrichedEntries, ...additionalFeeEntries].sort((a, b) => {
         const timeA = a.exitTime || a.entryTime || '';
         const timeB = b.exitTime || b.entryTime || '';
         return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
@@ -817,6 +830,8 @@ export default function Home() {
     notes: log.notes,
     paymentMethod: log.paymentMethod,
     additionalFeeOnly: log.additionalFeeOnly, // 추가요금만 있는 항목 플래그 전달
+    hasAdditionalFee: (log as any).hasAdditionalFee, // 오늘 입실 + 추가요금 있는 항목 플래그
+    additionalFeeAmount: (log as any).additionalFeeAmount, // 추가요금 금액
   }));
 
   return (
