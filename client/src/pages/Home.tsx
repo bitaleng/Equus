@@ -250,7 +250,7 @@ export default function Home() {
       setSummary({
         businessDay,
         totalVisitors,
-        totalSales: activeSales + additionalFees, // 오늘 입실 요금 + 오늘 퇴실 추가요금
+        totalSales: activeSales, // 오늘 입실 요금만 (추가요금은 additionalFeeSales로 별도 전달)
         cancellations,
         totalDiscount: 0,
         foreignerCount,
