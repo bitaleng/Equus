@@ -705,6 +705,7 @@ export default function Home() {
         paymentCard: finalPaymentCard,
         paymentTransfer: finalPaymentTransfer,
         finalPrice: finalPriceWithAdditionalFee,
+        additionalFees: additionalFeeInfo.additionalFee,
       });
     }
     

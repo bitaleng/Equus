@@ -1046,6 +1046,10 @@ export function updateEntry(id: string, updates: any) {
       : null;
     values.push(rentalItemsJson);
   }
+  if (updates.additionalFees !== undefined) {
+    sets.push('additional_fees = ?');
+    values.push(updates.additionalFees);
+  }
 
   if (sets.length > 0) {
     values.push(id);
