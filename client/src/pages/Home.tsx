@@ -674,19 +674,16 @@ export default function Home() {
     );
     
     // If checking out on a different business day (after settlement time):
-    // Set basePrice=0, optionAmount=0, finalPrice=additionalFee only
-    // (basePrice and discount already included in entry day's revenue)
-    // Formula: finalPrice = basePrice - optionAmount + additionalFee
+    // DO NOT update basePrice, optionAmount, finalPrice, or payment fields
+    // (they should remain as originally set on entry day for accurate entry-day revenue reporting)
+    // Additional fee is recorded separately in additional_fee_events table
     if (entryBusinessDay !== checkoutBusinessDay) {
-      // Different business day - DO NOT update payment fields
-      // (they contain entry payment info and should remain unchanged)
+      // Different business day - only update status and exitTime
+      // Keep original finalPrice intact so entry-day totals remain correct
       // Additional fee payment is recorded separately in additional_fee_events table
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        basePrice: 0,
-        optionAmount: 0,
-        finalPrice: additionalFeeInfo.additionalFee,
       });
     } else {
       // Same business day checkout - combine base and additional fee payments
