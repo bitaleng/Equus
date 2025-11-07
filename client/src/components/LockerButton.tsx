@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { getBusinessDayRange } from "@shared/businessDay";
 
 interface LockerButtonProps {
   number: number;
@@ -22,10 +23,12 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
       }
       
-      // 2순위: 입실시간이 정산시간 이전인 경우 -> 그린색 (이전 영업일)
+      // 2순위: 입실시간이 오늘 영업일 시작 시간보다 이전인 경우 -> 그린색 (이전 영업일)
+      // 어제 저녁 입실도 오늘 오전 10시 이전이므로 그린색으로 표시
       if (entryTime) {
-        const entryHour = entryTime.getHours();
-        if (entryHour < businessDayStartHour) {
+        const now = new Date();
+        const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
+        if (entryTime < businessDayStart) {
           return "bg-[#22C55E] text-white border-2 border-[#16A34A]";
         }
       }

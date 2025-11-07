@@ -221,6 +221,7 @@ export default function Home() {
           paymentCard: (event as any).paymentCard,
           paymentTransfer: (event as any).paymentTransfer,
           businessDay: event.businessDay,
+          additionalFeeOnly: true, // 방문인원 카운트에서 제외하기 위한 플래그
         };
       });
       
@@ -234,9 +235,9 @@ export default function Home() {
       setTodayAllEntries(allEntries);
       
       // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
-      // No need to filter again - getEntriesByBusinessDayRange already filters by entry_time
+      // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
       const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
-      const totalVisitors = entries.filter(e => !e.cancelled).length;
+      const totalVisitors = entries.filter(e => !e.cancelled).length; // 추가요금은 entries에 없으므로 자동 제외
       const cancellations = entries.filter(e => e.cancelled).length;
       const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled).length;
       const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled).length;
