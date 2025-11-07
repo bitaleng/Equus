@@ -192,6 +192,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 4.6: Add additional_fees column to locker_logs (for tracking overtime fees on same business day)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN additional_fees INTEGER DEFAULT 0`);
+      console.log('Added additional_fees column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
     // additional_fee_events
     try {
       db.run(`ALTER TABLE additional_fee_events ADD COLUMN payment_cash INTEGER`);
@@ -735,7 +743,8 @@ function createTables() {
       payment_cash INTEGER,
       payment_card INTEGER,
       payment_transfer INTEGER,
-      rental_items TEXT
+      rental_items TEXT,
+      additional_fees INTEGER DEFAULT 0
     )
   `);
 
