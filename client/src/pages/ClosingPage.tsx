@@ -201,9 +201,28 @@ export default function ClosingPage() {
       // If payment fields match finalPrice, need to split proportionally for basePriceOnly
       if (paymentTotal === finalPrice && finalPrice > 0) {
         const ratio = basePriceOnly / finalPrice;
-        entryCash += Math.floor(cashPayment * ratio);
-        entryCard += Math.floor(cardPayment * ratio);
-        entryTransfer += Math.floor(transferPayment * ratio);
+        let normalizedCash = Math.floor(cashPayment * ratio);
+        let normalizedCard = Math.floor(cardPayment * ratio);
+        let normalizedTransfer = Math.floor(transferPayment * ratio);
+        
+        // Allocate remainder to largest payment channel
+        const remainder = basePriceOnly - (normalizedCash + normalizedCard + normalizedTransfer);
+        if (remainder !== 0) {
+          const amounts = [
+            { value: cashPayment, key: 'cash' as const },
+            { value: cardPayment, key: 'card' as const },
+            { value: transferPayment, key: 'transfer' as const }
+          ];
+          const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
+          
+          if (largest.key === 'cash') normalizedCash += remainder;
+          else if (largest.key === 'card') normalizedCard += remainder;
+          else normalizedTransfer += remainder;
+        }
+        
+        entryCash += normalizedCash;
+        entryCard += normalizedCard;
+        entryTransfer += normalizedTransfer;
       } else if (paymentTotal > 0) {
         // If there's a mismatch, redistribute basePriceOnly proportionally
         const ratio = basePriceOnly / paymentTotal;
@@ -276,14 +295,52 @@ export default function ClosingPage() {
         // Distribute additional fees proportionally based on payment method
         if (paymentTotal === finalPrice && finalPrice > 0) {
           const ratio = additionalFees / finalPrice;
-          additionalCash += Math.floor(cashPayment * ratio);
-          additionalCard += Math.floor(cardPayment * ratio);
-          additionalTransfer += Math.floor(transferPayment * ratio);
+          let normalizedCash = Math.floor(cashPayment * ratio);
+          let normalizedCard = Math.floor(cardPayment * ratio);
+          let normalizedTransfer = Math.floor(transferPayment * ratio);
+          
+          // Allocate remainder to largest payment channel
+          const remainder = additionalFees - (normalizedCash + normalizedCard + normalizedTransfer);
+          if (remainder !== 0) {
+            const amounts = [
+              { value: cashPayment, key: 'cash' as const },
+              { value: cardPayment, key: 'card' as const },
+              { value: transferPayment, key: 'transfer' as const }
+            ];
+            const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
+            
+            if (largest.key === 'cash') normalizedCash += remainder;
+            else if (largest.key === 'card') normalizedCard += remainder;
+            else normalizedTransfer += remainder;
+          }
+          
+          additionalCash += normalizedCash;
+          additionalCard += normalizedCard;
+          additionalTransfer += normalizedTransfer;
         } else if (paymentTotal > 0) {
           const ratio = additionalFees / paymentTotal;
-          additionalCash += Math.floor(cashPayment * ratio);
-          additionalCard += Math.floor(cardPayment * ratio);
-          additionalTransfer += Math.floor(transferPayment * ratio);
+          let normalizedCash = Math.floor(cashPayment * ratio);
+          let normalizedCard = Math.floor(cardPayment * ratio);
+          let normalizedTransfer = Math.floor(transferPayment * ratio);
+          
+          // Allocate remainder to largest payment channel
+          const remainder = additionalFees - (normalizedCash + normalizedCard + normalizedTransfer);
+          if (remainder !== 0) {
+            const amounts = [
+              { value: cashPayment, key: 'cash' as const },
+              { value: cardPayment, key: 'card' as const },
+              { value: transferPayment, key: 'transfer' as const }
+            ];
+            const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
+            
+            if (largest.key === 'cash') normalizedCash += remainder;
+            else if (largest.key === 'card') normalizedCard += remainder;
+            else normalizedTransfer += remainder;
+          }
+          
+          additionalCash += normalizedCash;
+          additionalCard += normalizedCard;
+          additionalTransfer += normalizedTransfer;
         } else if (e.paymentMethod) {
           // Allocate to primary payment method
           if (e.paymentMethod === 'cash') additionalCash += additionalFees;
