@@ -724,8 +724,9 @@ export default function Home() {
       });
     }
     
-    // If there's additional fee, create a separate event record
-    if (additionalFeeInfo.additionalFee > 0) {
+    // Create additional fee event ONLY for different business day checkouts
+    // (same-day checkouts already include the fee in finalPrice)
+    if (additionalFeeInfo.additionalFee > 0 && entryBusinessDay !== checkoutBusinessDay) {
       const addFeePayment = additionalFeePayment || {
         method: paymentMethod,
         cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
