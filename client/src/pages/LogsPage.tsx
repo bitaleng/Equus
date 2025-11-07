@@ -33,7 +33,7 @@ interface LogEntry {
   lockerNumber: number;
   entryTime: string;
   exitTime?: string | null;
-  timeType: '주간' | '야간';
+  timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
   optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
   optionAmount?: number;
@@ -264,34 +264,24 @@ export default function LogsPage() {
   }
 
   if (additionalFeeFilter === "with_fee") {
-    displayedLogs = displayedLogs.filter(log => log.additionalFees && log.additionalFees > 0);
+    displayedLogs = displayedLogs.filter(log => 
+      (log as any).additionalFeeOnly === true || (log.additionalFees && log.additionalFees > 0)
+    );
   } else if (additionalFeeFilter === "without_fee") {
-    displayedLogs = displayedLogs.filter(log => !log.additionalFees || log.additionalFees === 0);
+    displayedLogs = displayedLogs.filter(log => 
+      (log as any).additionalFeeOnly !== true && (!log.additionalFees || log.additionalFees === 0)
+    );
   }
 
-  // Calculate total amount for filtered results (입실요금 + 추가요금)
-  // 중복 방지: logs에 포함된 락커의 추가요금 이벤트 제외
-  const filteredLogsInRange = new Set(displayedLogs.map(log => log.id));
-  const filteredAdditionalFeesNotInLogs = additionalFeeEvents.filter(event => 
-    !filteredLogsInRange.has(event.lockerLogId)
-  );
-  
+  // Calculate total amount for filtered results (입실요금만, 추가요금은 별도 행에 이미 포함)
+  // 중복 방지: additionalFeeOnly 항목은 이미 finalPrice에 추가요금이 포함되어 있으므로 
+  // additionalFeeEvents에서 다시 합산하지 않음
   const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-  const filteredAdditionalFees = filteredAdditionalFeesNotInLogs.reduce((sum, event) => sum + event.feeAmount, 0);
-  const filteredTotalWithAdditional = filteredTotalAmount + filteredAdditionalFees;
   
   // Calculate overall totals (excluding cancelled entries)
   const activeLogs = logs.filter(log => !log.cancelled);
   const overallTotalCount = activeLogs.length;
-  
-  const activeLogsSet = new Set(activeLogs.map(log => log.id));
-  const overallAdditionalFeesNotInLogs = additionalFeeEvents.filter(event => 
-    !activeLogsSet.has(event.lockerLogId)
-  );
-  
   const overallTotalAmount = activeLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-  const overallAdditionalFees = overallAdditionalFeesNotInLogs.reduce((sum, event) => sum + event.feeAmount, 0);
-  const overallTotalWithAdditional = overallTotalAmount + overallAdditionalFees;
 
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
@@ -522,7 +512,7 @@ export default function LogsPage() {
                 <span className="text-sm text-muted-foreground">총합계 (취소건 제외):</span>
                 <span className="text-base font-bold">{overallTotalCount}건</span>
                 <span className="text-sm text-muted-foreground">|</span>
-                <span className="text-lg font-bold text-primary">₩{overallTotalWithAdditional.toLocaleString()}</span>
+                <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -599,7 +589,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
                   </div>
                 )}
                 {timeTypeFilter !== "all" && (
@@ -609,7 +599,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
                   </div>
                 )}
                 {paymentMethodFilter !== "all" && (
@@ -619,7 +609,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
                   </div>
                 )}
                 {additionalFeeFilter !== "all" && (
@@ -629,7 +619,7 @@ export default function LogsPage() {
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalWithAdditional.toLocaleString()}원</span>
+                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
                   </div>
                 )}
               </div>
