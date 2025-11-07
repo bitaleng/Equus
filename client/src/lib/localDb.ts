@@ -2412,8 +2412,8 @@ export function updateRentalTransaction(id: string, updates: {
   let adjustedPaymentCard = finalPaymentCard;
   let adjustedPaymentTransfer = finalPaymentTransfer;
   
+  // Calculate target revenue if not provided
   if (updates.revenue === undefined) {
-    // Calculate target revenue
     if (finalDepositStatus === 'received') {
       revenue += depositAmount; // 대여 시: 렌탈비 + 보증금
     } else if (finalDepositStatus === 'forfeited') {
@@ -2424,33 +2424,35 @@ export function updateRentalTransaction(id: string, updates: {
       // 다른 영업일: 렌탈비만 (보증금은 이미 대여일 매출)
     }
     // refunded: 렌탈비만
+  }
+  
+  // Always adjust payment amounts proportionally to match revenue exactly
+  // (revenue가 명시적으로 전달되어도 payment* 필드 조정)
+  const cashNum = Number(currentPaymentCash) || 0;
+  const cardNum = Number(currentPaymentCard) || 0;
+  const transferNum = Number(currentPaymentTransfer) || 0;
+  const originalTotal = cashNum + cardNum + transferNum;
+  
+  if (originalTotal > 0 && revenue !== originalTotal) {
+    const ratio = revenue / originalTotal;
+    // Floor all channels first
+    adjustedPaymentCash = Math.floor(cashNum * ratio);
+    adjustedPaymentCard = Math.floor(cardNum * ratio);
+    adjustedPaymentTransfer = Math.floor(transferNum * ratio);
     
-    // Adjust payment amounts proportionally to match revenue exactly
-    const cashNum = Number(currentPaymentCash) || 0;
-    const cardNum = Number(currentPaymentCard) || 0;
-    const transferNum = Number(currentPaymentTransfer) || 0;
-    const originalTotal = cashNum + cardNum + transferNum;
-    if (originalTotal > 0 && revenue !== originalTotal) {
-      const ratio = revenue / originalTotal;
-      // Floor all channels first
-      adjustedPaymentCash = Math.floor(cashNum * ratio);
-      adjustedPaymentCard = Math.floor(cardNum * ratio);
-      adjustedPaymentTransfer = Math.floor(transferNum * ratio);
+    // Calculate remainder and assign to channel with largest original amount
+    const remainder = revenue - adjustedPaymentCash - adjustedPaymentCard - adjustedPaymentTransfer;
+    if (remainder !== 0) {
+      const amounts = [
+        { value: cashNum, index: 'cash' as const },
+        { value: cardNum, index: 'card' as const },
+        { value: transferNum, index: 'transfer' as const }
+      ];
+      const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
       
-      // Calculate remainder and assign to channel with largest original amount
-      const remainder = revenue - adjustedPaymentCash - adjustedPaymentCard - adjustedPaymentTransfer;
-      if (remainder !== 0) {
-        const amounts = [
-          { value: cashNum, index: 'cash' as const },
-          { value: cardNum, index: 'card' as const },
-          { value: transferNum, index: 'transfer' as const }
-        ];
-        const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
-        
-        if (largest.index === 'cash') adjustedPaymentCash += remainder;
-        else if (largest.index === 'card') adjustedPaymentCard += remainder;
-        else adjustedPaymentTransfer += remainder;
-      }
+      if (largest.index === 'cash') adjustedPaymentCash += remainder;
+      else if (largest.index === 'card') adjustedPaymentCard += remainder;
+      else adjustedPaymentTransfer += remainder;
     }
   }
   
