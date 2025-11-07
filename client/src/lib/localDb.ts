@@ -2382,8 +2382,12 @@ export function updateRentalTransaction(id: string, updates: {
 }) {
   if (!db) throw new Error('Database not initialized');
   
+  // Get settings for business day calculation
+  const settings = getSettings();
+  const businessDayStartHour = settings.businessDayStartHour || 10;
+  
   // Get current transaction to calculate new revenue and prepare updates
-  const result = db.exec('SELECT rental_fee, deposit_amount, deposit_status, return_time, payment_method, business_day, payment_cash, payment_card, payment_transfer FROM rental_transactions WHERE id = ?', [id]);
+  const result = db.exec('SELECT rental_fee, deposit_amount, deposit_status, return_time, payment_method, business_day, payment_cash, payment_card, payment_transfer, rental_time, item_name, locker_number FROM rental_transactions WHERE id = ?', [id]);
   
   if (result.length === 0 || result[0].values.length === 0) return;
   
@@ -2396,6 +2400,9 @@ export function updateRentalTransaction(id: string, updates: {
   const currentPaymentCash = result[0].values[0][6];
   const currentPaymentCard = result[0].values[0][7];
   const currentPaymentTransfer = result[0].values[0][8];
+  const rentalTime = result[0].values[0][9] as string;
+  const itemName = result[0].values[0][10] as string;
+  const lockerNumber = result[0].values[0][11] as number;
   
   // Determine final values
   const finalDepositStatus = updates.depositStatus || currentDepositStatus;
@@ -2405,6 +2412,10 @@ export function updateRentalTransaction(id: string, updates: {
   const finalPaymentCash = updates.paymentCash !== undefined ? updates.paymentCash : currentPaymentCash;
   const finalPaymentCard = updates.paymentCard !== undefined ? updates.paymentCard : currentPaymentCard;
   const finalPaymentTransfer = updates.paymentTransfer !== undefined ? updates.paymentTransfer : currentPaymentTransfer;
+  
+  // Calculate business days for rental and return times
+  const rentalBusinessDay = getBusinessDay(new Date(rentalTime as string), businessDayStartHour);
+  const returnBusinessDay = finalReturnTime ? getBusinessDay(new Date(finalReturnTime as string), businessDayStartHour) : rentalBusinessDay;
   
   // Calculate revenue based on deposit status
   let revenue = updates.revenue !== undefined ? updates.revenue : rentalFee;
@@ -2417,8 +2428,8 @@ export function updateRentalTransaction(id: string, updates: {
     if (finalDepositStatus === 'received') {
       revenue += depositAmount; // 대여 시: 렌탈비 + 보증금
     } else if (finalDepositStatus === 'forfeited') {
-      // 몰수 시 영업일 비교
-      if (finalBusinessDay === currentBusinessDay) {
+      // 몰수 시 영업일 비교 (rental_time과 return_time의 영업일 비교)
+      if (rentalBusinessDay === returnBusinessDay) {
         revenue += depositAmount; // 같은 영업일: 렌탈비 + 보증금
       }
       // 다른 영업일: 렌탈비만 (보증금은 이미 대여일 매출)
@@ -2453,6 +2464,37 @@ export function updateRentalTransaction(id: string, updates: {
       if (largest.index === 'cash') adjustedPaymentCash += remainder;
       else if (largest.index === 'card') adjustedPaymentCard += remainder;
       else adjustedPaymentTransfer += remainder;
+    }
+  }
+  
+  // Create expense for cross-day refunds (다른 영업일 환급 시 지출 생성)
+  const isRefunding = currentDepositStatus !== 'refunded' && finalDepositStatus === 'refunded';
+  const isCrossDay = rentalBusinessDay !== returnBusinessDay;
+  
+  if (isRefunding && isCrossDay && depositAmount > 0 && finalReturnTime) {
+    // 보증금환급 카테고리 찾기
+    const categories = getExpenseCategories();
+    const refundCategory = categories.find(c => c.name === '보증금환급');
+    
+    if (refundCategory) {
+      const refundTime = new Date(finalReturnTime as string);
+      const timeStr = refundTime.toTimeString().slice(0, 5); // HH:MM
+      const paymentMethodForExpense = (finalPaymentMethod as 'cash' | 'card' | 'transfer') || 'cash';
+      
+      // 지출 자동 생성
+      createExpense({
+        date: returnBusinessDay,
+        time: timeStr,
+        category: refundCategory.name,
+        amount: depositAmount,
+        quantity: 1,
+        paymentMethod: paymentMethodForExpense,
+        paymentCash: paymentMethodForExpense === 'cash' ? depositAmount : undefined,
+        paymentCard: paymentMethodForExpense === 'card' ? depositAmount : undefined,
+        paymentTransfer: paymentMethodForExpense === 'transfer' ? depositAmount : undefined,
+        businessDay: returnBusinessDay,
+        notes: `${itemName} 보증금 환급 (락커 ${lockerNumber})`,
+      });
     }
   }
   
