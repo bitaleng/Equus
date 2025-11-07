@@ -163,31 +163,91 @@ export default function ClosingPage() {
       setMemo(dailyMemo);
     }
 
-    // Load detailed sales breakdown
-    const detailedSales = getDetailedSalesByBusinessDay(businessDay);
-    setEntrySales(detailedSales.entrySales);
-    setAdditionalSales(detailedSales.additionalSales);
-    setTotalEntrySales(detailedSales.totalEntrySales);
+    // ========================================
+    // Home과 동일한 실시간 매출 계산 방식
+    // ========================================
+    const settings = getSettings();
+    const bdStartHour = settings.businessDayStartHour;
     
-    // Load rental breakdown
-    const rentalData = getRentalRevenueBreakdownByBusinessDay(businessDay);
-    setRentalBreakdown(rentalData);
+    // 1. 오늘 입실한 기록 (entry_time 기준)
+    const entries = localDb.getEntriesByEntryTime(businessDay, bdStartHour);
     
-    // Calculate total sales for backward compatibility
-    const rentalCash = rentalData?.totals?.grandTotal?.cash || 0;
-    const rentalCard = rentalData?.totals?.grandTotal?.card || 0;
-    const rentalTransfer = rentalData?.totals?.grandTotal?.transfer || 0;
+    // 2. 오늘 퇴실한 추가요금 (checkout_time 기준)
+    const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, bdStartHour);
     
-    const totalCashSales = detailedSales.totalEntrySales.cash + rentalCash;
-    const totalCardSales = detailedSales.totalEntrySales.card + rentalCard;
-    const totalTransferSales = detailedSales.totalEntrySales.transfer + rentalTransfer;
-    const grandTotalSales = totalCashSales + totalCardSales + totalTransferSales;
+    // 3. 렌탈 거래 (rental_time 기준)
+    const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, bdStartHour);
     
+    // 입실 매출 집계 (결제수단별)
+    let entryCash = 0, entryCard = 0, entryTransfer = 0;
+    entries.filter(e => !e.cancelled).forEach(e => {
+      entryCash += e.paymentCash || 0;
+      entryCard += e.paymentCard || 0;
+      entryTransfer += e.paymentTransfer || 0;
+    });
+    
+    // 추가요금 매출 집계 (결제수단별)
+    let additionalCash = 0, additionalCard = 0, additionalTransfer = 0;
+    additionalFeeEvents.forEach(e => {
+      additionalCash += (e as any).paymentCash || 0;
+      additionalCard += (e as any).paymentCard || 0;
+      additionalTransfer += (e as any).paymentTransfer || 0;
+    });
+    
+    // 렌탈 매출 집계 (결제수단별)
+    let rentalCash = 0, rentalCard = 0, rentalTransfer = 0;
+    rentalTransactions.forEach(r => {
+      rentalCash += r.paymentCash || 0;
+      rentalCard += r.paymentCard || 0;
+      rentalTransfer += r.paymentTransfer || 0;
+    });
+    
+    // 입실 매출 (락커 요금)
+    setEntrySales({
+      cash: Math.round(entryCash),
+      card: Math.round(entryCard),
+      transfer: Math.round(entryTransfer),
+      total: Math.round(entryCash + entryCard + entryTransfer)
+    });
+    
+    // 추가 매출 (추가요금 + 렌탈)
+    setAdditionalSales({
+      cash: Math.round(additionalCash + rentalCash),
+      card: Math.round(additionalCard + rentalCard),
+      transfer: Math.round(additionalTransfer + rentalTransfer),
+      total: Math.round(additionalCash + additionalCard + additionalTransfer + rentalCash + rentalCard + rentalTransfer)
+    });
+    
+    // 총 입실 매출 (입실 + 추가요금 + 렌탈)
+    const totalCash = Math.round(entryCash + additionalCash + rentalCash);
+    const totalCard = Math.round(entryCard + additionalCard + rentalCard);
+    const totalTransfer = Math.round(entryTransfer + additionalTransfer + rentalTransfer);
+    
+    setTotalEntrySales({
+      cash: totalCash,
+      card: totalCard,
+      transfer: totalTransfer,
+      total: totalCash + totalCard + totalTransfer
+    });
+    
+    // 렌탈 상세 분석 (기존 데이터와 호환)
+    setRentalBreakdown({
+      breakdown: {},
+      totals: {
+        grandTotal: {
+          cash: Math.round(rentalCash),
+          card: Math.round(rentalCard),
+          transfer: Math.round(rentalTransfer)
+        }
+      }
+    });
+    
+    // 총 매출 요약
     setSalesSummary({
-      cashSales: totalCashSales,
-      cardSales: totalCardSales,
-      transferSales: totalTransferSales,
-      totalSales: grandTotalSales,
+      cashSales: totalCash,
+      cardSales: totalCard,
+      transferSales: totalTransfer,
+      totalSales: totalCash + totalCard + totalTransfer,
     });
 
     // Load expense summary
