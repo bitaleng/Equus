@@ -185,22 +185,57 @@ export default function ClosingPage() {
     const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, bdStartHour);
     
     // 1) 입실 기본 요금 집계 (결제수단별)
-    // Use finalPrice allocated by paymentMethod for accuracy
+    // Use payment* fields but normalize to match finalPrice if there's a discrepancy
     let entryCash = 0, entryCard = 0, entryTransfer = 0;
     entries.filter(e => !e.cancelled).forEach(e => {
-      const price = e.finalPrice || 0;
-      // Allocate finalPrice to the appropriate payment method
-      if (e.paymentMethod === 'cash') {
-        entryCash += price;
-      } else if (e.paymentMethod === 'card') {
-        entryCard += price;
-      } else if (e.paymentMethod === 'transfer') {
-        entryTransfer += price;
+      const finalPrice = e.finalPrice || 0;
+      const cashPayment = e.paymentCash || 0;
+      const cardPayment = e.paymentCard || 0;
+      const transferPayment = e.paymentTransfer || 0;
+      const paymentTotal = cashPayment + cardPayment + transferPayment;
+      
+      // If payment fields match finalPrice, use them as-is (supports split payments)
+      if (paymentTotal === finalPrice) {
+        entryCash += cashPayment;
+        entryCard += cardPayment;
+        entryTransfer += transferPayment;
+      } else if (paymentTotal > 0) {
+        // If there's a mismatch, redistribute finalPrice proportionally with exact rounding
+        const ratio = finalPrice / paymentTotal;
+        let normalizedCash = Math.floor(cashPayment * ratio);
+        let normalizedCard = Math.floor(cardPayment * ratio);
+        let normalizedTransfer = Math.floor(transferPayment * ratio);
+        
+        // Calculate remainder and assign to largest payment source
+        const remainder = finalPrice - (normalizedCash + normalizedCard + normalizedTransfer);
+        if (remainder !== 0) {
+          const amounts = [
+            { value: cashPayment, key: 'cash' as const },
+            { value: cardPayment, key: 'card' as const },
+            { value: transferPayment, key: 'transfer' as const }
+          ];
+          const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
+          
+          if (largest.key === 'cash') normalizedCash += remainder;
+          else if (largest.key === 'card') normalizedCard += remainder;
+          else normalizedTransfer += remainder;
+        }
+        
+        entryCash += normalizedCash;
+        entryCard += normalizedCard;
+        entryTransfer += normalizedTransfer;
       } else {
-        // Fallback: use payment* fields if paymentMethod is not set
-        entryCash += e.paymentCash || 0;
-        entryCard += e.paymentCard || 0;
-        entryTransfer += e.paymentTransfer || 0;
+        // If no payment data, allocate to primary payment method
+        if (e.paymentMethod === 'cash') {
+          entryCash += finalPrice;
+        } else if (e.paymentMethod === 'card') {
+          entryCard += finalPrice;
+        } else if (e.paymentMethod === 'transfer') {
+          entryTransfer += finalPrice;
+        } else {
+          // Default to cash if no payment method specified
+          entryCash += finalPrice;
+        }
       }
     });
     
