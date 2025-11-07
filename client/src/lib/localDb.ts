@@ -2311,19 +2311,49 @@ export function updateRentalTransaction(id: string, updates: {
   const finalPaymentCard = updates.paymentCard !== undefined ? updates.paymentCard : currentPaymentCard;
   const finalPaymentTransfer = updates.paymentTransfer !== undefined ? updates.paymentTransfer : currentPaymentTransfer;
   
-  // Calculate revenue based on deposit status (use provided revenue or calculate)
+  // Calculate revenue based on deposit status
   let revenue = updates.revenue !== undefined ? updates.revenue : rentalFee;
+  let adjustedPaymentCash = finalPaymentCash;
+  let adjustedPaymentCard = finalPaymentCard;
+  let adjustedPaymentTransfer = finalPaymentTransfer;
+  
   if (updates.revenue === undefined) {
+    // Calculate target revenue
     if (finalDepositStatus === 'received') {
       revenue += depositAmount; // 대여 시: 렌탈비 + 보증금
     } else if (finalDepositStatus === 'forfeited') {
-      // 몰수 시 영업일 비교: 같으면 보증금 포함, 다르면 제외
+      // 몰수 시 영업일 비교
       if (finalBusinessDay === currentBusinessDay) {
         revenue += depositAmount; // 같은 영업일: 렌탈비 + 보증금
       }
       // 다른 영업일: 렌탈비만 (보증금은 이미 대여일 매출)
     }
     // refunded: 렌탈비만
+    
+    // Adjust payment amounts proportionally to match revenue exactly
+    const originalTotal = (currentPaymentCash || 0) + (currentPaymentCard || 0) + (currentPaymentTransfer || 0);
+    if (originalTotal > 0 && revenue !== originalTotal) {
+      const ratio = revenue / originalTotal;
+      // Floor all channels first
+      adjustedPaymentCash = Math.floor((currentPaymentCash || 0) * ratio);
+      adjustedPaymentCard = Math.floor((currentPaymentCard || 0) * ratio);
+      adjustedPaymentTransfer = Math.floor((currentPaymentTransfer || 0) * ratio);
+      
+      // Calculate remainder and assign to channel with largest original amount
+      const remainder = revenue - adjustedPaymentCash - adjustedPaymentCard - adjustedPaymentTransfer;
+      if (remainder !== 0) {
+        const amounts = [
+          { value: currentPaymentCash || 0, index: 'cash' },
+          { value: currentPaymentCard || 0, index: 'card' },
+          { value: currentPaymentTransfer || 0, index: 'transfer' }
+        ];
+        const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
+        
+        if (largest.index === 'cash') adjustedPaymentCash += remainder;
+        else if (largest.index === 'card') adjustedPaymentCard += remainder;
+        else adjustedPaymentTransfer += remainder;
+      }
+    }
   }
   
   db.run(
@@ -2332,7 +2362,7 @@ export function updateRentalTransaction(id: string, updates: {
          payment_cash = ?, payment_card = ?, payment_transfer = ?, updated_at = ?
      WHERE id = ?`,
     [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
-     finalPaymentCash, finalPaymentCard, finalPaymentTransfer, new Date().toISOString(), id]
+     adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, new Date().toISOString(), id]
   );
   
   saveDatabase();
