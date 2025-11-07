@@ -287,7 +287,12 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                   : 'bg-muted text-muted-foreground';
                 
                 const isAdditionalFeeOnly = entry.timeType === '추가요금';
-                const hasAdditionalFee = (entry as any).hasAdditionalFee;
+                const hasAdditionalFee = (entry as any).additionalFees > 0;
+                
+                // Calculate display price: for same-business-day additional fees, show only the additional fee amount
+                const displayPrice = hasAdditionalFee && !isAdditionalFeeOnly 
+                  ? (entry as any).additionalFees 
+                  : entry.finalPrice;
                 
                 return (
                   <TableRow
@@ -319,9 +324,9 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
                     <TableCell className={`font-semibold text-base ${
-                      isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''
+                      (isAdditionalFeeOnly || hasAdditionalFee) ? 'text-red-600 dark:text-red-400' : ''
                     }`}>
-                      {entry.finalPrice.toLocaleString()}원
+                      {displayPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${statusColor}`}>
