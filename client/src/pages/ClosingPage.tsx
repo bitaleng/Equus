@@ -202,20 +202,24 @@ export default function ClosingPage() {
       rentalTransfer += r.paymentTransfer || 0;
     });
     
-    // 입실 매출 (락커 요금)
+    // 입실 매출 (락커 입실요금 + 추가요금)
+    const entryTotalCash = Math.round(entryCash + additionalCash);
+    const entryTotalCard = Math.round(entryCard + additionalCard);
+    const entryTotalTransfer = Math.round(entryTransfer + additionalTransfer);
+    
     setEntrySales({
-      cash: Math.round(entryCash),
-      card: Math.round(entryCard),
-      transfer: Math.round(entryTransfer),
-      total: Math.round(entryCash + entryCard + entryTransfer)
+      cash: entryTotalCash,
+      card: entryTotalCard,
+      transfer: entryTotalTransfer,
+      total: entryTotalCash + entryTotalCard + entryTotalTransfer
     });
     
-    // 추가 매출 (추가요금 + 렌탈)
+    // 추가 매출 (렌탈 대여비 + 보증금 '받음'+'몰수', 환급 제외)
     setAdditionalSales({
-      cash: Math.round(additionalCash + rentalCash),
-      card: Math.round(additionalCard + rentalCard),
-      transfer: Math.round(additionalTransfer + rentalTransfer),
-      total: Math.round(additionalCash + additionalCard + additionalTransfer + rentalCash + rentalCard + rentalTransfer)
+      cash: Math.round(rentalCash),
+      card: Math.round(rentalCard),
+      transfer: Math.round(rentalTransfer),
+      total: Math.round(rentalCash + rentalCard + rentalTransfer)
     });
     
     // 총 입실 매출 (입실 + 추가요금 + 렌탈)
@@ -261,7 +265,7 @@ export default function ClosingPage() {
 
     // Calculate expected cash
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + totalCashSales - Number(expenses.cashTotal);
+    const expected = openingFloatNum + totalCash - Number(expenses.cashTotal);
     setExpectedCash(expected);
   };
 
