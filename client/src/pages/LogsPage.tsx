@@ -741,7 +741,7 @@ export default function LogsPage() {
                     </TableCell>
                   </TableRow>
                   );
-                }))
+                })
               )}
             </TableBody>
           </Table>
