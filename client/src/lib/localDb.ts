@@ -1092,6 +1092,10 @@ export function getTodayEntries(businessDay: string) {
   return rowsToObjects(result[0]);
 }
 
+/**
+ * 날짜 범위로 입실 기록 조회 (entry_time 기준)
+ * 입출기록 페이지의 날짜 필터링용 - 해당 기간에 입실한 기록만 반환
+ */
 export function getEntriesByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
 
@@ -1101,11 +1105,9 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
 
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE (entry_time >= ? AND entry_time <= ?)
-        OR (exit_time >= ? AND exit_time <= ?)
-        OR (entry_time < ? AND (exit_time IS NULL OR exit_time > ?))
-     ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
+     WHERE entry_time >= ? AND entry_time <= ?
+     ORDER BY entry_time DESC`,
+    [startDateTime, endDateTime]
   );
 
   if (result.length === 0) return [];
@@ -1113,16 +1115,18 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
   return rowsToObjects(result[0]);
 }
 
+/**
+ * 시간 범위로 입실 기록 조회 (entry_time 기준)
+ * 입출기록 페이지의 시간 필터링용 - 해당 시간대에 입실한 기록만 반환
+ */
 export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: string) {
   if (!db) throw new Error('Database not initialized');
 
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE (entry_time >= ? AND entry_time <= ?)
-        OR (exit_time >= ? AND exit_time <= ?)
-        OR (entry_time < ? AND (exit_time IS NULL OR exit_time > ?))
-     ORDER BY COALESCE(exit_time, entry_time) DESC`,
-    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
+     WHERE entry_time >= ? AND entry_time <= ?
+     ORDER BY entry_time DESC`,
+    [startDateTime, endDateTime]
   );
 
   if (result.length === 0) return [];
@@ -2341,6 +2345,10 @@ export function getRentalTransactionsByLockerLog(lockerLogId: string) {
   return rowsToObjects(result[0]);
 }
 
+/**
+ * 날짜 범위로 렌탈 거래 조회 (rental_time 기준)
+ * 입출기록 페이지의 날짜 필터링용 - 해당 기간에 대여한 거래만 반환
+ */
 export function getRentalTransactionsByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
   
@@ -2350,11 +2358,9 @@ export function getRentalTransactionsByDateRange(startDate: string, endDate: str
   
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE (rental_time >= ? AND rental_time <= ?)
-        OR (return_time >= ? AND return_time <= ?)
-        OR (rental_time < ? AND (return_time IS NULL OR return_time > ?))
+     WHERE rental_time >= ? AND rental_time <= ?
      ORDER BY rental_time DESC`,
-    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
+    [startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
@@ -2379,16 +2385,18 @@ export function getRentalTransactionsByDateRange(startDate: string, endDate: str
   }));
 }
 
+/**
+ * 시간 범위로 렌탈 거래 조회 (rental_time 기준)
+ * 입출기록 페이지의 시간 필터링용 - 해당 시간대에 대여한 거래만 반환
+ */
 export function getRentalTransactionsByDateTimeRange(startDateTime: string, endDateTime: string) {
   if (!db) throw new Error('Database not initialized');
   
   const result = db.exec(
     `SELECT * FROM rental_transactions 
-     WHERE (rental_time >= ? AND rental_time <= ?)
-        OR (return_time >= ? AND return_time <= ?)
-        OR (rental_time < ? AND (return_time IS NULL OR return_time > ?))
+     WHERE rental_time >= ? AND rental_time <= ?
      ORDER BY rental_time DESC`,
-    [startDateTime, endDateTime, startDateTime, endDateTime, startDateTime, endDateTime]
+    [startDateTime, endDateTime]
   );
   
   if (result.length === 0 || result[0].values.length === 0) return [];
