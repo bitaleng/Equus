@@ -42,6 +42,7 @@ interface LockerEntry {
   paymentCash?: number;
   paymentCard?: number;
   paymentTransfer?: number;
+  additionalFeeOnly?: boolean; // 추가요금만 있는 항목 (방문자 수에서 제외)
 }
 
 interface TodayStatusTableProps {
@@ -112,10 +113,13 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
     displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'transfer');
   }
 
-  // Count usage for filtered locker
+  // Count usage for filtered locker (exclude additional fee only entries)
   const usageCount = filteredLockerNumber !== null
-    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled).length
+    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled && !e.additionalFeeOnly).length
     : 0;
+  
+  // Calculate total visitors (exclude additional fee only entries and cancelled entries)
+  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled).length;
 
   return (
     <div className="h-full flex flex-col p-6">
@@ -137,7 +141,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         {/* 두 번째 줄: 총 방문수와 필터링 결과 */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            총 방문: {entries.length}명
+            총 방문: {totalVisitors}명
           </span>
           {filteredLockerNumber !== null && (
             <span className="text-sm font-semibold text-primary">
