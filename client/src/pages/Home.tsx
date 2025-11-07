@@ -592,39 +592,7 @@ export default function Home() {
           const isStatusChanging = (item.depositStatus === 'refunded' || item.depositStatus === 'forfeited') && !existingItem.returnTime;
           if (isStatusChanging) {
             updateData.returnTime = new Date();
-            
-            // 보증금 환급 처리: 영업일 비교 후 지출 자동 생성
-            if (item.depositStatus === 'refunded' && item.depositAmount > 0) {
-              const rentalBusinessDay = existingItem.businessDay;
-              const returnBusinessDay = getBusinessDay(updateData.returnTime, businessDayStartHour);
-              
-              // 다른 날 환급: 지출 자동 생성
-              if (rentalBusinessDay !== returnBusinessDay) {
-                const refundTime = new Date(updateData.returnTime);
-                const timeStr = refundTime.toTimeString().slice(0, 5); // HH:MM
-                
-                // 보증금환급 카테고리 찾기
-                const categories = localDb.getExpenseCategories();
-                const refundCategory = categories.find(c => c.name === '보증금환급');
-                
-                if (refundCategory) {
-                  // 지출 자동 생성
-                  localDb.createExpense({
-                    date: returnBusinessDay,
-                    time: timeStr,
-                    category: refundCategory.name,
-                    amount: item.depositAmount,
-                    quantity: 1,
-                    paymentMethod: item.paymentMethod || 'cash',
-                    paymentCash: item.paymentMethod === 'cash' ? item.depositAmount : undefined,
-                    paymentCard: item.paymentMethod === 'card' ? item.depositAmount : undefined,
-                    paymentTransfer: item.paymentMethod === 'transfer' ? item.depositAmount : undefined,
-                    businessDay: returnBusinessDay,
-                    notes: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
-                  });
-                }
-              }
-            }
+            // Note: Cross-day refund expense is now automatically created by updateRentalTransaction
           }
           
           localDb.updateRentalTransaction(existingItem.id, updateData);
@@ -782,26 +750,8 @@ export default function Home() {
             }
             // 다른 영업일: 보증금 제외 (이미 대여일 매출로 계산됨)
           }
-        } else if (item.depositStatus === 'refunded') {
-          // 환급 시 지출 처리: 대여일과 반납일이 다른 경우만
-          const existingItem = localDb.getRentalTransactionsByLockerLog(selectedEntry.id).find(t => t.itemId === item.itemId);
-          if (existingItem) {
-            const rentalBusinessDay = existingItem.businessDay;
-            const returnBusinessDay = checkoutBusinessDay;
-            if (rentalBusinessDay !== returnBusinessDay && item.depositAmount > 0) {
-              // 다른 영업일에 환급: 보증금을 지출로 기록
-              localDb.createExpense({
-                date: now.toISOString(),
-                time: now.toISOString(),
-                businessDay: returnBusinessDay,
-                category: '보증금환급',
-                amount: item.depositAmount,
-                notes: `${item.itemName} 보증금 환급 (락커 ${selectedEntry.lockerNumber})`,
-                paymentMethod: 'cash',
-              });
-            }
-          }
         }
+        // Note: Cross-day refund expense is now automatically created by updateRentalTransaction
         
         if (existingItem) {
           // Update existing rental transaction - only update deposit status and return time
