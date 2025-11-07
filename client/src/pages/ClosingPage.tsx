@@ -185,11 +185,23 @@ export default function ClosingPage() {
     const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, bdStartHour);
     
     // 1) 입실 기본 요금 집계 (결제수단별)
+    // Use finalPrice allocated by paymentMethod for accuracy
     let entryCash = 0, entryCard = 0, entryTransfer = 0;
     entries.filter(e => !e.cancelled).forEach(e => {
-      entryCash += e.paymentCash || 0;
-      entryCard += e.paymentCard || 0;
-      entryTransfer += e.paymentTransfer || 0;
+      const price = e.finalPrice || 0;
+      // Allocate finalPrice to the appropriate payment method
+      if (e.paymentMethod === 'cash') {
+        entryCash += price;
+      } else if (e.paymentMethod === 'card') {
+        entryCard += price;
+      } else if (e.paymentMethod === 'transfer') {
+        entryTransfer += price;
+      } else {
+        // Fallback: use payment* fields if paymentMethod is not set
+        entryCash += e.paymentCash || 0;
+        entryCard += e.paymentCard || 0;
+        entryTransfer += e.paymentTransfer || 0;
+      }
     });
     
     setBaseEntrySales({
