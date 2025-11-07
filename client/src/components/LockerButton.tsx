@@ -17,7 +17,12 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
-      // 입실시간이 정산시간 이전인 경우: 그린색 (이전 영업일)
+      // 1순위: 추가요금 있음 -> 무조건 레드
+      if (additionalFeeCount > 0) {
+        return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
+      }
+      
+      // 2순위: 입실시간이 정산시간 이전인 경우 -> 그린색 (이전 영업일)
       if (entryTime) {
         const entryHour = entryTime.getHours();
         if (entryHour < businessDayStartHour) {
@@ -25,11 +30,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         }
       }
       
-      // 추가요금 있음: 레드 (내외국인, 횟수 무관하게 통일)
-      if (additionalFeeCount > 0) {
-        return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
-      }
-      // 추가요금 없음: 주간/야간 구분
+      // 3순위: 추가요금 없음 -> 주간/야간 구분
       if (timeType === 'day') {
         // 주간: 노란색
         return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700]";

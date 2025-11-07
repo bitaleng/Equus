@@ -328,6 +328,9 @@ export default function Home() {
       });
     }
   });
+  
+  // 빈 락커 개수 계산
+  const emptyLockerCount = Object.values(lockerStates).filter(state => state === 'empty').length;
 
   const handleLockerClick = async (lockerNumber: number) => {
     const state = lockerStates[lockerNumber];
@@ -919,7 +922,7 @@ export default function Home() {
             <h1 className="text-2xl font-semibold">
               입실 관리 
               <span className="ml-3 text-base font-normal text-muted-foreground">
-                사용중: {todayAllEntries.filter((log: any) => log.status === 'in_use').length}개
+                빈 락커: {emptyLockerCount}개
               </span>
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
