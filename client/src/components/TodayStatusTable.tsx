@@ -287,6 +287,7 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                   : 'bg-muted text-muted-foreground';
                 
                 const isAdditionalFeeOnly = entry.timeType === '추가요금';
+                const hasAdditionalFee = (entry as any).hasAdditionalFee;
                 
                 return (
                   <TableRow
@@ -298,13 +299,20 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
                     <TableCell className="text-sm">{entry.entryTime || '-'}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
-                        entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
-                        'bg-accent text-accent-foreground'
-                      }`}>
-                        {entry.timeType}
-                      </span>
+                      <div className="flex gap-1 items-center">
+                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                          entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                          entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                          'bg-accent text-accent-foreground'
+                        }`}>
+                          {entry.timeType}
+                        </span>
+                        {hasAdditionalFee && entry.timeType !== '추가요금' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300">
+                            추가
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{entry.option}</TableCell>
                     <TableCell className="text-sm">
