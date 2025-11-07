@@ -175,7 +175,45 @@ export default function LogsPage() {
         };
       });
       
-      setLogs(logsWithFees);
+      // Filter out additional fee events where entry was already included in result
+      const entryLockerIds = new Set(result.map(e => e.id));
+      const additionalFeeOnlyEvents = feeEvents.filter(event => 
+        !entryLockerIds.has(event.lockerLogId)
+      );
+      
+      // Create pseudo entries for additional fee checkouts (no entry time, only exit time)
+      const additionalFeeEntries = additionalFeeOnlyEvents.map(event => {
+        return {
+          id: `additionalfee_${event.id}`,
+          lockerNumber: event.lockerNumber,
+          entryTime: '', // No entry time - will be displayed empty
+          exitTime: event.checkoutTime,
+          timeType: '추가요금' as any, // Special marker for additional fee
+          basePrice: 0,
+          optionType: 'none' as const,
+          optionAmount: 0,
+          finalPrice: event.feeAmount,
+          status: 'checked_out' as const,
+          cancelled: false,
+          paymentMethod: event.paymentMethod as any,
+          paymentCash: 0,
+          paymentCard: 0,
+          paymentTransfer: 0,
+          businessDay: event.businessDay,
+          additionalFees: 0,
+          additionalFeeOnly: true, // Flag to indicate this is an additional fee only entry
+        } as LogEntry;
+      });
+      
+      // Combine regular entries with additional fee entries and sort by time
+      // 입실 기록은 entry_time, 추가요금 기록은 checkout_time(=exit_time) 기준으로 정렬
+      const allLogs = [...logsWithFees, ...additionalFeeEntries].sort((a, b) => {
+        const timeA = a.exitTime || a.entryTime || '';
+        const timeB = b.exitTime || b.entryTime || '';
+        return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+      });
+      
+      setLogs(allLogs);
       setAdditionalFeeEvents(feeEvents);
       setRentalTransactions(rentalTxns);
     } catch (error) {
@@ -631,14 +669,22 @@ export default function LogsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                displayedLogs.map((log) => (
+                displayedLogs.map((log) => {
+                  const isAdditionalFeeOnly = (log as any).additionalFeeOnly === true;
+                  return (
                   <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
                     <TableCell className="font-semibold text-base">{log.lockerNumber}</TableCell>
                     <TableCell className="text-sm">
-                      {new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                      {isAdditionalFeeOnly 
+                        ? '' 
+                        : new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                      }
                     </TableCell>
                     <TableCell className="text-sm">
-                      {new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                      {isAdditionalFeeOnly 
+                        ? '' 
+                        : new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                      }
                     </TableCell>
                     <TableCell className="text-sm">
                       {log.exitTime 
@@ -654,7 +700,11 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        log.timeType === '주간' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'
+                        log.timeType === '추가요금' 
+                          ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                          : log.timeType === '주간' 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-accent text-accent-foreground'
                       }`}>
                         {log.timeType}
                       </span>
@@ -673,7 +723,7 @@ export default function LogsPage() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="font-semibold text-base">
+                    <TableCell className={`font-semibold text-base ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
                       {log.finalPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-sm">
@@ -690,7 +740,8 @@ export default function LogsPage() {
                       {log.notes || '-'}
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                }))
               )}
             </TableBody>
           </Table>
