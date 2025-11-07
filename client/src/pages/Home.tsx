@@ -196,10 +196,15 @@ export default function Home() {
       // Get additional fee events for today (추가요금 퇴실만, 입실은 이전 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
       
-      // Create a map of locker log IDs to additional fees for entries with additional fees
+      // Create a map of locker log IDs to additional fees for ALL entries (not limited by businessDay)
+      // This ensures entries from previous business days that have fees today are also enriched
       const additionalFeeMap = new Map<string, number>();
-      additionalFeeEvents.forEach(event => {
-        additionalFeeMap.set(event.lockerLogId, event.feeAmount);
+      entries.forEach(entry => {
+        const entryAdditionalFees = localDb.getAdditionalFeeEventsByLockerLog(entry.id);
+        const totalFees = entryAdditionalFees.reduce((sum, event) => sum + event.feeAmount, 0);
+        if (totalFees > 0) {
+          additionalFeeMap.set(entry.id, totalFees);
+        }
       });
       
       // Filter out additional fee events where entry was today (already in entries)
