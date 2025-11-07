@@ -224,8 +224,13 @@ export default function Home() {
         };
       });
       
-      // Combine regular entries with additional fee entries
-      const allEntries = [...entries, ...additionalFeeEntries];
+      // Combine regular entries with additional fee entries and sort by time
+      // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
+      const allEntries = [...entries, ...additionalFeeEntries].sort((a, b) => {
+        const timeA = a.exitTime || a.entryTime || '';
+        const timeB = b.exitTime || b.entryTime || '';
+        return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+      });
       setTodayAllEntries(allEntries);
       
       // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
@@ -405,11 +410,13 @@ export default function Home() {
       // Each rental item has its own payment method, independent of locker entry payment
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
         rentalItems.forEach(item => {
-          // Calculate total revenue for this item (rental fee + deposit if received/forfeited)
+          // Calculate total revenue for this item
+          // 입실 시에는 항상 'received' 상태로 시작하므로 렌탈비 + 보증금
           let revenue = item.rentalFee;
-          if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+          if (item.depositStatus === 'received') {
             revenue += item.depositAmount;
           }
+          // 'forfeited'는 반납 시에만 발생하므로 여기서는 처리 불필요
           
           // Allocate full revenue to the item's payment method
           // DO NOT mix with locker entry payment - these are separate revenue streams
@@ -496,16 +503,25 @@ export default function Home() {
         // Check if rental transaction already exists for this item
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        // Revenue calculation: 
-        // - received/forfeited: rental fee + deposit
-        // - refunded (cross-day): rental fee + deposit (보증금을 대여일 수익으로 계산, 반납일에 지출 생성)
-        // - refunded (same-day): rental fee only (보증금을 받았다가 돌려줌)
-        // - none: rental fee only
+        // Revenue calculation:
+        // - received: rental fee + deposit (대여 시)
+        // - forfeited (same-day): rental fee + deposit (같은 영업일 반납)
+        // - forfeited (cross-day): rental fee only (다른 영업일 반납, 보증금은 이미 대여일 매출)
+        // - refunded (cross-day): rental fee only (보증금 환급, 지출 생성)
+        // - refunded (same-day): rental fee only (보증금 환급)
         let revenue = item.rentalFee;
         let isCrossDayRefund = false;
         
-        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+        if (item.depositStatus === 'received') {
           revenue += item.depositAmount;
+        } else if (item.depositStatus === 'forfeited' && existingItem) {
+          // 영업일 비교: 대여일과 현재가 같으면 보증금 포함, 다르면 제외
+          const rentalBusinessDay = existingItem.businessDay;
+          const currentBusinessDay = businessDay;
+          if (rentalBusinessDay === currentBusinessDay) {
+            revenue += item.depositAmount;
+          }
+          // 다른 영업일이면 보증금 제외 (이미 대여일 매출)
         } else if (item.depositStatus === 'refunded' && existingItem) {
           // Determine return timestamp: use existing returnTime if set, otherwise current time
           const returnTimestamp = existingItem.returnTime ? new Date(existingItem.returnTime) : new Date();
@@ -742,8 +758,26 @@ export default function Home() {
         
         // Calculate this item's revenue
         let itemRevenue = item.rentalFee;
-        if (item.depositStatus === 'received' || item.depositStatus === 'forfeited') {
+        
+        // 보증금 매출 처리:
+        // - 'received': 렌탈비 + 보증금
+        // - 'forfeited' (같은 영업일): 렌탈비 + 보증금
+        // - 'forfeited' (다른 영업일): 렌탈비만 (보증금은 이미 대여일 매출로 계산됨)
+        // - 'refunded': 렌탈비만
+        if (item.depositStatus === 'received') {
           itemRevenue += item.depositAmount;
+        } else if (item.depositStatus === 'forfeited') {
+          // 영업일 비교: 대여일과 반납일이 같으면 보증금 포함, 다르면 제외
+          const existingItem = localDb.getRentalTransactionsByLockerLog(selectedEntry.id).find(t => t.itemId === item.itemId);
+          if (existingItem) {
+            const rentalBusinessDay = existingItem.businessDay;
+            const returnBusinessDay = checkoutBusinessDay;
+            if (rentalBusinessDay === returnBusinessDay) {
+              // 같은 영업일: 보증금 포함
+              itemRevenue += item.depositAmount;
+            }
+            // 다른 영업일: 보증금 제외 (이미 대여일 매출로 계산됨)
+          }
         }
         
         if (existingItem) {

@@ -10,6 +10,27 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### November 7, 2025
+- **추가요금 매출 기록 및 정렬 개선**: 추가요금은 퇴실 시간(checkout_time) 기준으로 정렬 및 매출 산입
+  - 오늘현황/입출기록: 추가요금은 퇴실 시간 기준으로 최신순 정렬
+  - 이전 영업일 입실 락커의 추가요금도 오늘 매출에 포함 (입실시간 공란, 금액 빨간색 표시)
+  - 방문자 수: 오늘 입실한 경우만 카운트, 추가요금만 있는 경우 제외
+
+- **정산 페이지 매출 계산 방식 변경**: Home 페이지와 동일한 실시간 계산 방식 적용
+  - 입실 매출 = 입실요금(entry_time 기준) + 추가요금(checkout_time 기준)
+  - 추가 매출 = 렌탈 대여비 + 보증금('받음'+'몰수', 환급 제외)
+  - 총 매출 = 입실 매출 + 추가 매출
+
+- **보증금 '몰수' 중복 매출 방지**: 영업일 기준 보증금 매출 산입 로직 개선
+  - 대여 시 '받음': 렌탈비 + 보증금 → 매출
+  - 반납 시 '몰수' (같은 영업일): 렌탈비 + 보증금 → 매출
+  - 반납 시 '몰수' (다른 영업일): 렌탈비만 → revenue (보증금은 0, 이미 대여일 매출로 계산됨)
+  - 반납 시 '환급': 렌탈비만 → revenue (보증금은 지출 처리)
+
+- **LogsPage 날짜 필터링 정확도 개선**: entry_time 기준 필터링으로 변경
+  - 날짜 범위 조회 시 정확히 해당 기간 입실 기록만 표시
+  - interval overlap 로직 제거로 영업일 범위 밖 데이터 포함 문제 해결
+
 ### November 6, 2025
 - **Fixed payment method breakdown in closing page**: Corrected critical bug where rental item payments were incorrectly distributed by combining locker entry payment with rental item revenue. Entry sales (locker fees) and additional sales (rental items) are now completely separate revenue streams:
   - **Entry sales**: Locker entrance fee only, using payment amounts entered at check-in

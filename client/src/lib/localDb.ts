@@ -1,5 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
-import { getTimeType, getBusinessDayRange } from '@shared/businessDay';
+import { getTimeType, getBusinessDayRange, getBusinessDay } from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -2314,11 +2314,17 @@ export function updateRentalTransaction(id: string, updates: {
   // Calculate revenue based on deposit status (use provided revenue or calculate)
   let revenue = updates.revenue !== undefined ? updates.revenue : rentalFee;
   if (updates.revenue === undefined) {
-    if (finalDepositStatus === 'received' || finalDepositStatus === 'forfeited') {
-      revenue += depositAmount; // Add deposit amount if received or forfeited
+    if (finalDepositStatus === 'received') {
+      revenue += depositAmount; // 대여 시: 렌탈비 + 보증금
+    } else if (finalDepositStatus === 'forfeited') {
+      // 몰수 시 영업일 비교: 같으면 보증금 포함, 다르면 제외
+      if (finalBusinessDay === currentBusinessDay) {
+        revenue += depositAmount; // 같은 영업일: 렌탈비 + 보증금
+      }
+      // 다른 영업일: 렌탈비만 (보증금은 이미 대여일 매출)
     }
+    // refunded: 렌탈비만
   }
-  // If refunded, only rental fee is counted (already in revenue variable)
   
   db.run(
     `UPDATE rental_transactions 
@@ -3038,7 +3044,10 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       COALESCE(payment_cash, 0) as payment_cash,
       COALESCE(payment_card, 0) as payment_card,
       COALESCE(payment_transfer, 0) as payment_transfer,
-      payment_method
+      payment_method,
+      rental_time,
+      return_time,
+      business_day
      FROM rental_transactions
      WHERE strftime('%s', rental_time) >= ? AND strftime('%s', rental_time) <= ?`,
     [startUnix.toString(), endUnix.toString()]
@@ -3054,6 +3063,9 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       const paymentCard = row[5] as number;
       const paymentTransfer = row[6] as number;
       const paymentMethod = row[7] as string | null;
+      const rentalTime = row[8] as string;
+      const returnTime = row[9] as string | null;
+      const rentalBusinessDay = row[10] as string;
       
       if (!breakdown[itemName]) {
         breakdown[itemName] = {
@@ -3070,8 +3082,17 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       
       // Calculate total revenue for this transaction
       let totalRevenue = rentalFee;
-      if (depositStatus === 'received' || depositStatus === 'forfeited') {
+      if (depositStatus === 'received') {
+        // 대여 시: 렌탈비 + 보증금
         totalRevenue += depositAmount;
+      } else if (depositStatus === 'forfeited' && returnTime) {
+        // 몰수 시: 영업일 비교
+        const returnBusinessDay = getBusinessDay(new Date(returnTime), settings.businessDayStartHour);
+        if (rentalBusinessDay === returnBusinessDay) {
+          // 같은 영업일: 렌탈비 + 보증금
+          totalRevenue += depositAmount;
+        }
+        // 다른 영업일: 렌탈비만 (보증금은 이미 대여일 매출)
       }
       
       // For refunded deposits, exclude deposit from payment calculation
@@ -3103,8 +3124,11 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
         breakdown[itemName].rentalFee.transfer += Math.round(effectivePaymentTransfer * rentalFeeRatio);
         breakdown[itemName].rentalFee.total += rentalFee;
         
-        // Calculate deposit portion (both received and forfeited count as revenue)
-        if (depositStatus === 'received' || depositStatus === 'forfeited') {
+        // Calculate deposit portion (only when included in totalRevenue)
+        const depositIncluded = (depositStatus === 'received') || 
+          (depositStatus === 'forfeited' && returnTime && rentalBusinessDay === getBusinessDay(new Date(returnTime), settings.businessDayStartHour));
+        
+        if (depositIncluded && totalRevenue > rentalFee) {
           const depositRatio = depositAmount / totalRevenue;
           breakdown[itemName].depositForfeited.cash += Math.round(effectivePaymentCash * depositRatio);
           breakdown[itemName].depositForfeited.card += Math.round(effectivePaymentCard * depositRatio);
@@ -3114,30 +3138,36 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
       } else if (totalRevenue > 0 && paymentMethod) {
         // Legacy data fallback: Use payment_method to allocate revenue
         // This handles old data where payment_cash/card/transfer weren't populated
+        const depositIncluded = (depositStatus === 'received') || 
+          (depositStatus === 'forfeited' && returnTime && rentalBusinessDay === getBusinessDay(new Date(returnTime), settings.businessDayStartHour));
+        
         if (paymentMethod === 'cash') {
           breakdown[itemName].rentalFee.cash += rentalFee;
-          if (depositStatus === 'received' || depositStatus === 'forfeited') {
+          if (depositIncluded) {
             breakdown[itemName].depositForfeited.cash += depositAmount;
           }
         } else if (paymentMethod === 'card') {
           breakdown[itemName].rentalFee.card += rentalFee;
-          if (depositStatus === 'received' || depositStatus === 'forfeited') {
+          if (depositIncluded) {
             breakdown[itemName].depositForfeited.card += depositAmount;
           }
         } else if (paymentMethod === 'transfer') {
           breakdown[itemName].rentalFee.transfer += rentalFee;
-          if (depositStatus === 'received' || depositStatus === 'forfeited') {
+          if (depositIncluded) {
             breakdown[itemName].depositForfeited.transfer += depositAmount;
           }
         }
         breakdown[itemName].rentalFee.total += rentalFee;
-        if (depositStatus === 'received' || depositStatus === 'forfeited') {
+        if (depositIncluded) {
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       } else {
         // Last resort fallback: just add totals without payment method breakdown
+        const depositIncluded = (depositStatus === 'received') || 
+          (depositStatus === 'forfeited' && returnTime && rentalBusinessDay === getBusinessDay(new Date(returnTime), settings.businessDayStartHour));
+        
         breakdown[itemName].rentalFee.total += rentalFee;
-        if (depositStatus === 'received' || depositStatus === 'forfeited') {
+        if (depositIncluded) {
           breakdown[itemName].depositForfeited.total += depositAmount;
         }
       }
