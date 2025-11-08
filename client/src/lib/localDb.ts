@@ -2047,9 +2047,9 @@ export async function createAdditionalFeeTestData() {
       console.log(`📍 현재 영업일: ${currentBusinessDay}`);
       console.log(`📍 영업일 시작: ${currentBusinessDayStart.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
       
-      // ===== TYPE A (필수): Same-business-day additional fee with checkout =====
-      console.log('\n[Type A - 필수] 같은 영업일 추가요금 ₩5,000 + 퇴실완료');
-      console.log('📖 시나리오: 전일 주간 입실 → 자정 넘김 → 오늘 오전 퇴실');
+      // ===== TYPE A (필수): Same-business-day additional fee - IN USE =====
+      console.log('\n[Type A - 필수] 전일 주간 입실 + 자정 넘김 + 현재 사용중');
+      console.log('📖 시나리오: 추가요금 ₩5,000 발생 예상 (퇴실 시 기록됨)');
       
       const typeALocker = randomInt(1, 80);
       
@@ -2062,21 +2062,12 @@ export async function createAdditionalFeeTestData() {
       const typeATimeType = getTimeType(typeAEntry);
       const typeABasePrice = dayPrice;
       
-      // Exit time: TODAY morning before settlement (07:00 - 09:30)
-      const typeAExitHour = randomInt(7, 9);
-      const typeAExitMinute = typeAExitHour === 9 ? randomInt(0, 30) : randomInt(0, 59);
-      const typeAExit = new Date();
-      typeAExit.setHours(typeAExitHour, typeAExitMinute, 0, 0);
-      
-      // Exit business day should be same as entry (same-business-day checkout)
-      const typeAExitBusinessDay = getBusinessDay(typeAExit, businessDayStartHour);
-      
       console.log(`  🔍 락커 #${typeALocker}`);
       console.log(`  📅 입실: ${typeAEntry.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (${typeATimeType})`);
       console.log(`  📊 입실 영업일: ${typeABusinessDay}`);
-      console.log(`  🚪 퇴실: ${typeAExit.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-      console.log(`  📊 퇴실 영업일: ${typeAExitBusinessDay}`);
-      console.log(`  ✅ 같은 영업일 확인: ${typeABusinessDay === typeAExitBusinessDay ? 'YES' : 'NO'}`);
+      console.log(`  💡 추가요금 발생 예상: ₩${(nightPrice - dayPrice).toLocaleString()} (자정 넘김)`);
+      console.log(`  ⏳ 현재 사용중 (퇴실 시 additional_fee_events에 기록됨)`);
+      console.log(`  🔴 락커 버튼: 빨간색으로 표시 예상`);
       
       const typeAPaymentMethod = randomElement(paymentMethods);
       const typeAPaymentCash = typeAPaymentMethod === 'cash' ? typeABasePrice : 0;
@@ -2085,36 +2076,19 @@ export async function createAdditionalFeeTestData() {
       
       const typeAId = generateId();
       
-      // Insert checked_out locker log
+      // Insert IN USE locker log (NO exit_time, NO additional_fee_events)
       db!.run(
         `INSERT INTO locker_logs 
         (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
          option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
          payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
-        [typeAId, typeALocker, typeAEntry.toISOString(), typeAExit.toISOString(), typeABusinessDay, 
-         typeATimeType, typeABasePrice, 'none', 0, typeABasePrice, 'Type A: 같은영업일 추가요금', 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+        [typeAId, typeALocker, typeAEntry.toISOString(), null, typeABusinessDay, 
+         typeATimeType, typeABasePrice, 'none', 0, typeABasePrice, 'Type A: 전일입실+자정넘김+사용중', 
          typeAPaymentMethod, typeAPaymentCash, typeAPaymentCard, typeAPaymentTransfer, null]
       );
       
-      // Insert additional fee event (₩5,000 = nightPrice - dayPrice)
-      const typeAFee = nightPrice - dayPrice;
-      const typeAFeePaymentMethod = randomElement(paymentMethods);
-      const typeAFeeCash = typeAFeePaymentMethod === 'cash' ? typeAFee : 0;
-      const typeAFeeCard = typeAFeePaymentMethod === 'card' ? typeAFee : 0;
-      const typeAFeeTransfer = typeAFeePaymentMethod === 'transfer' ? typeAFee : 0;
-      const typeAFeeId = generateId();
-      
-      db!.run(
-        `INSERT INTO additional_fee_events 
-        (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [typeAFeeId, typeAId, typeALocker, typeAExit.toISOString(), typeAFee, typeAExitBusinessDay,
-         typeAFeePaymentMethod, typeAFeeCash, typeAFeeCard, typeAFeeTransfer, typeAExit.toISOString()]
-      );
-      
-      console.log(`  ✅ locker_logs 삽입 완료 (status: checked_out)`);
-      console.log(`  ✅ additional_fee_events 삽입 완료 (₩${typeAFee.toLocaleString()})`);
+      console.log(`  ✅ locker_logs 삽입 완료 (status: in_use)`);
       
       totalGenerated++;
       updateDailySummary(typeABusinessDay);
@@ -2165,14 +2139,15 @@ export async function createAdditionalFeeTestData() {
       totalGenerated++;
       updateDailySummary(greenBusinessDay);
       
-      // ===== RANDOMIZED DATA: 3 days of past data with additional fee cases =====
-      console.log('\n3일치 과거 데이터 (퇴실완료 + 랜덤 추가요금) 생성 중...');
-      
-      let additionalFeeGenerated = 0;
+      // ===== RANDOMIZED DATA: 3 days of past data (NO additional_fee_events) =====
+      console.log('\n3일치 과거 데이터 (퇴실완료) 생성 중...');
+      console.log('💡 추가요금 데이터는 사용자가 퇴실 처리 시 생성됨');
       
       for (let pastDays = 1; pastDays <= 3; pastDays++) {
         const pastDate = new Date();
         pastDate.setDate(pastDate.getDate() - pastDays);
+        
+        console.log(`  📅 ${pastDays}일 전: ${pastDate.toLocaleDateString('ko-KR')}`);
         
         const pastEntries = randomInt(10, 25); // Random 10-25 entries per day
         
@@ -2204,33 +2179,8 @@ export async function createAdditionalFeeTestData() {
           const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
           const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
           
-          // Randomly decide if this entry should have additional fee (20% chance)
-          const shouldHaveAdditionalFee = randomBoolean(0.2) && additionalFeeGenerated < 5;
-          
-          let exitTime: Date;
-          let additionalFee = 0;
-          
-          if (shouldHaveAdditionalFee) {
-            // Generate long-stay checkout with additional fee
-            if (optionType === 'foreigner') {
-              // Foreign customer: 24-hour blocks (₩25,000 per block)
-              const blocks = randomInt(1, 3); // 1-3 blocks
-              const stayHours = blocks * 24 + randomInt(1, 5); // Slightly over blocks
-              exitTime = new Date(entryDate.getTime() + stayHours * 60 * 60 * 1000);
-              additionalFee = foreignerPrice * blocks;
-            } else {
-              // Domestic: midnight crossing (₩5,000 per midnight)
-              const midnightsCrossed = randomInt(1, 4); // 1-4 midnights
-              const extraHours = randomInt(2, 10);
-              exitTime = new Date(entryDate.getTime() + (midnightsCrossed * 24 + extraHours) * 60 * 60 * 1000);
-              additionalFee = (nightPrice - dayPrice) * midnightsCrossed;
-            }
-            additionalFeeGenerated++;
-            console.log(`    추가요금 케이스: 락커 #${lockerNumber}, 입실 ${entryDate.toLocaleString('ko-KR')} → 퇴실 ${exitTime.toLocaleString('ko-KR')}, 추가요금 ₩${additionalFee.toLocaleString()}`);
-          } else {
-            // Normal checkout (30min - 3hours)
-            exitTime = new Date(entryDate.getTime() + randomInt(30, 180) * 60000);
-          }
+          // All past data: normal checkout (30min - 3hours)
+          const exitTime = new Date(entryDate.getTime() + randomInt(30, 180) * 60 * 1000);
           
           const id = generateId();
           const businessDay = getBusinessDay(entryDate, businessDayStartHour);
@@ -2242,35 +2192,16 @@ export async function createAdditionalFeeTestData() {
              payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
             [id, lockerNumber, entryDate.toISOString(), exitTime.toISOString(), businessDay, 
-             timeType, basePrice, optionType, optionAmount, finalPrice, 
-             shouldHaveAdditionalFee ? `과거+추가요금₩${additionalFee.toLocaleString()}` : '테스트 데이터 (퇴실완료)', 
+             timeType, basePrice, optionType, optionAmount, finalPrice, '테스트 데이터 (퇴실완료)', 
              paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
           );
-          
-          // Insert additional fee event if applicable
-          if (shouldHaveAdditionalFee && additionalFee > 0) {
-            const exitBusinessDay = getBusinessDay(exitTime, businessDayStartHour);
-            const feePaymentMethod = randomElement(paymentMethods);
-            const feeCash = feePaymentMethod === 'cash' ? additionalFee : 0;
-            const feeCard = feePaymentMethod === 'card' ? additionalFee : 0;
-            const feeTransfer = feePaymentMethod === 'transfer' ? additionalFee : 0;
-            const feeId = generateId();
-            
-            db!.run(
-              `INSERT INTO additional_fee_events 
-              (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [feeId, id, lockerNumber, exitTime.toISOString(), additionalFee, exitBusinessDay,
-               feePaymentMethod, feeCash, feeCard, feeTransfer, exitTime.toISOString()]
-            );
-          }
           
           totalGenerated++;
           updateDailySummary(businessDay);
         }
       }
       
-      console.log(`  ✅ 과거 데이터 생성 완료 (추가요금 케이스: ${additionalFeeGenerated}건)`);
+      console.log(`  ✅ 과거 데이터 생성 완료 (추가요금은 실제 퇴실 시 기록됨)`);
       
       // ===== TODAY'S DATA: In-use entries =====
       console.log('\n오늘 사용중 데이터 생성 중...');
