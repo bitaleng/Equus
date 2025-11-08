@@ -312,7 +312,7 @@ export default function Home() {
     lockerTimeTypes[log.lockerNumber] = convertedTimeType;
     
     // 디버깅: 특정 락커 변환 결과 출력
-    if (log.lockerNumber === 6 || log.lockerNumber === 21 || log.lockerNumber === 39 || log.lockerNumber === 45) {
+    if (log.lockerNumber === 6 || log.lockerNumber === 21 || log.lockerNumber === 45) {
       console.log(`락커 ${log.lockerNumber}번 상세:`, {
         외국인여부: isForeigner ? '외국인' : '내국인',
         원본timeType: log.timeType,
