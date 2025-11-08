@@ -973,7 +973,7 @@ export default function Home() {
                         style={{
                           transform: `scale(${lockerScales[num] || 1})`,
                           zIndex: (lockerScales[num] || 1) > 1 ? 10 : 1,
-                          transition: 'transform 200ms ease-out',
+                          transition: 'transform 100ms ease-out',
                         }}
                       >
                         <LockerButton
