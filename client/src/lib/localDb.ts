@@ -2008,51 +2008,52 @@ export async function createAdditionalFeeTestData() {
   
   return new Promise<boolean>((resolve, reject) => {
     try {
-      const id1 = generateId();
-      const id2 = generateId();
+      // Step 1: Clear existing test data for lockers 1-2
+      db.run('DELETE FROM additional_fee_events WHERE locker_number IN (1, 2)');
+      db.run('DELETE FROM locker_logs WHERE locker_number IN (1, 2)');
       
       // Get business day start hour from settings
       const settings = getSettings();
       const startHour = settings.businessDayStartHour ?? 10;
       
-      // Create timestamps for yesterday's business day
+      // Create timestamps within TODAY's business day
       const now = new Date();
-      const yesterday = new Date(now);
-      yesterday.setDate(yesterday.getDate() - 1);
+      const { start: businessDayStart, end: businessDayEnd } = getBusinessDayRange(now, startHour);
       
-      // Entry at 14:00 yesterday
-      const entryTime1 = new Date(yesterday);
-      entryTime1.setHours(14, 0, 0, 0);
+      // Entry times: 2 hours after business day start (always within today's business day)
+      const entryTime1 = new Date(businessDayStart);
+      entryTime1.setHours(entryTime1.getHours() + 2, 0, 0, 0);
       
-      // Entry at 15:30 yesterday
-      const entryTime2 = new Date(yesterday);
-      entryTime2.setHours(15, 30, 0, 0);
+      const entryTime2 = new Date(businessDayStart);
+      entryTime2.setHours(entryTime2.getHours() + 2, 30, 0, 0);
       
-      // Exit times: today morning 7:00 and 7:30
-      const exitTime1 = new Date(now);
-      exitTime1.setHours(7, 0, 0, 0);
+      // Exit times: 6 hours after business day start (creates 4-hour usage = overtime)
+      const exitTime1 = new Date(businessDayStart);
+      exitTime1.setHours(exitTime1.getHours() + 6, 0, 0, 0);
       
-      const exitTime2 = new Date(now);
-      exitTime2.setHours(7, 30, 0, 0);
+      const exitTime2 = new Date(businessDayStart);
+      exitTime2.setHours(exitTime2.getHours() + 6, 30, 0, 0);
       
-      // Calculate business day - should be yesterday since entries are after 10AM yesterday
+      // Calculate business day using ISO format (yyyy-MM-dd)
       const businessDayISO = getBusinessDay(entryTime1, startHour);
-      // Convert to legacy dotted format to match existing database records
-      const businessDay = businessDayISO.replace(/-/g, '.');
+      const checkoutBusinessDayISO = getBusinessDay(exitTime1, startHour);
       
       // Determine time type
       const timeType1 = getTimeType(entryTime1);
       const timeType2 = getTimeType(entryTime2);
       
-      console.log('Creating test data:');
-      console.log('- Business Day:', businessDay);
-      console.log('- Start Hour:', startHour);
-      console.log('- Entry 1:', entryTime1.toISOString(), `(${timeType1})`);
-      console.log('- Exit 1:', exitTime1.toISOString());
-      console.log('- Entry 2:', entryTime2.toISOString(), `(${timeType2})`);
-      console.log('- Exit 2:', exitTime2.toISOString());
+      console.log('=== 추가요금 테스트 데이터 생성 ===');
+      console.log('영업일:', businessDayISO);
+      console.log('퇴실 영업일:', checkoutBusinessDayISO);
+      console.log('락커 1: 입실', entryTime1.toISOString(), `(${timeType1}) → 퇴실`, exitTime1.toISOString());
+      console.log('락커 2: 입실', entryTime2.toISOString(), `(${timeType2}) → 퇴실`, exitTime2.toISOString());
       
-      // Test Entry 1: Locker 1, cash payment
+      // Generate unique IDs
+      const id1 = generateId();
+      const id2 = generateId();
+      
+      // Locker 1: Cash entry (10,000원), Card additional fee (5,000원)
+      // Only store base price in locker_logs, additional fee goes to separate table
       db.run(
         `INSERT INTO locker_logs 
         (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees, 
@@ -2060,11 +2061,22 @@ export async function createAdditionalFeeTestData() {
          option_type, option_amount)
         VALUES 
         (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 10000, 15000, 5000,
-         'checked_out', 0, 'cash', 15000, 0, 0, businessDay, 'none', 0]
+        [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 
+         10000, 10000, 0,  // finalPrice = basePrice only, additional_fees = 0 (stored separately)
+         'checked_out', 0, 'cash', 10000, 0, 0, businessDayISO, 'none', 0]
       );
       
-      // Test Entry 2: Locker 2, card payment
+      // Add additional fee event for Locker 1 (Card payment)
+      db.run(
+        `INSERT INTO additional_fee_events 
+        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
+         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [generateId(), id1, 1, exitTime1.toISOString(), 5000, 5000, 0, 
+         checkoutBusinessDayISO, 'card', 0, 5000, 0, new Date().toISOString()]
+      );
+      
+      // Locker 2: Card entry (10,000원), Transfer additional fee (5,000원)
       db.run(
         `INSERT INTO locker_logs 
         (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees,
@@ -2072,16 +2084,38 @@ export async function createAdditionalFeeTestData() {
          option_type, option_amount)
         VALUES 
         (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 10000, 15000, 5000,
-         'checked_out', 0, 'card', 0, 15000, 0, businessDay, 'none', 0]
+        [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 
+         10000, 10000, 0,  // finalPrice = basePrice only, additional_fees = 0 (stored separately)
+         'checked_out', 0, 'card', 0, 10000, 0, businessDayISO, 'none', 0]
       );
       
-      // Save database and wait for it to complete
+      // Add additional fee event for Locker 2 (Transfer payment)
+      db.run(
+        `INSERT INTO additional_fee_events 
+        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
+         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [generateId(), id2, 2, exitTime2.toISOString(), 5000, 5000, 0, 
+         checkoutBusinessDayISO, 'transfer', 0, 0, 5000, new Date().toISOString()]
+      );
+      
+      // Save database
       saveDatabase();
       
-      console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번');
-      console.log('   영업일:', businessDay);
-      console.log('   데이터가 자동 삭제되지 않도록 올바른 business_day로 생성됨');
+      console.log('✅ 테스트 데이터 생성 완료!');
+      console.log('');
+      console.log('락커 1번: 현금 10,000원 (입실) + 카드 5,000원 (추가요금)');
+      console.log('락커 2번: 카드 10,000원 (입실) + 계좌이체 5,000원 (추가요금)');
+      console.log('');
+      console.log('정산 페이지 예상 집계:');
+      console.log('① 일반요금: 현금 10,000 + 카드 10,000 = 20,000원');
+      console.log('② 추가요금: 카드 5,000 + 계좌이체 5,000 = 10,000원');
+      console.log('③ 총합: 30,000원');
+      console.log('');
+      console.log('결제수단별:');
+      console.log('- 현금: 10,000원 (입실만)');
+      console.log('- 카드: 15,000원 (입실 10,000 + 추가 5,000)');
+      console.log('- 계좌이체: 5,000원 (추가요금만)');
       
       // Wait a bit to ensure saveDatabase completes
       setTimeout(() => {
