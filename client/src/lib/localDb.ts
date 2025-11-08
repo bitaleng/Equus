@@ -2103,13 +2103,14 @@ export async function createAdditionalFeeTestData() {
       const typeAFeeCash = typeAFeePaymentMethod === 'cash' ? typeAFee : 0;
       const typeAFeeCard = typeAFeePaymentMethod === 'card' ? typeAFee : 0;
       const typeAFeeTransfer = typeAFeePaymentMethod === 'transfer' ? typeAFee : 0;
+      const typeAFeeId = generateId();
       
       db!.run(
         `INSERT INTO additional_fee_events 
-        (locker_number, entry_time, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [typeALocker, typeAEntry.toISOString(), typeAExit.toISOString(), typeAFee, typeAExitBusinessDay,
-         typeAFeePaymentMethod, typeAFeeCash, typeAFeeCard, typeAFeeTransfer]
+        (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [typeAFeeId, typeAId, typeALocker, typeAExit.toISOString(), typeAFee, typeAExitBusinessDay,
+         typeAFeePaymentMethod, typeAFeeCash, typeAFeeCard, typeAFeeTransfer, typeAExit.toISOString()]
       );
       
       console.log(`  ✅ locker_logs 삽입 완료 (status: checked_out)`);
@@ -2253,13 +2254,14 @@ export async function createAdditionalFeeTestData() {
             const feeCash = feePaymentMethod === 'cash' ? additionalFee : 0;
             const feeCard = feePaymentMethod === 'card' ? additionalFee : 0;
             const feeTransfer = feePaymentMethod === 'transfer' ? additionalFee : 0;
+            const feeId = generateId();
             
             db!.run(
               `INSERT INTO additional_fee_events 
-              (locker_number, entry_time, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [lockerNumber, entryDate.toISOString(), exitTime.toISOString(), additionalFee, exitBusinessDay,
-               feePaymentMethod, feeCash, feeCard, feeTransfer]
+              (id, locker_log_id, locker_number, checkout_time, fee_amount, business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [feeId, id, lockerNumber, exitTime.toISOString(), additionalFee, exitBusinessDay,
+               feePaymentMethod, feeCash, feeCard, feeTransfer, exitTime.toISOString()]
             );
           }
           
