@@ -1258,7 +1258,7 @@ export function getDailySummary(businessDay: string) {
   return rowsToObjects(result[0])[0];
 }
 
-function updateDailySummary(businessDay: string) {
+export function updateDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
   // Get locker logs summary
@@ -2318,55 +2318,71 @@ export async function createAdditionalFeeTestData() {
       
       saveDatabase();
       
-      // Verify additional fee was created
+      // Verify additional fee pending lockers (in_use with expected fees)
+      const pendingStmt = db!.prepare(`
+        SELECT COUNT(*) as count 
+        FROM locker_logs 
+        WHERE locker_number BETWEEN 1 AND 80 
+        AND status = 'in_use'
+        AND notes LIKE '%추가요금%'
+      `);
+      const pendingResult = pendingStmt.get([]) as any;
+      const pendingAdditionalFeeCount = pendingResult?.count || 0;
+      pendingStmt.free();
+      
+      // Verify completed additional fee events
       const verifyStmt = db!.prepare('SELECT COUNT(*) as count FROM additional_fee_events WHERE locker_number BETWEEN 1 AND 80');
       const verifyResult = verifyStmt.get([]) as any;
-      const additionalFeeCount = verifyResult?.count || 0;
+      const completedAdditionalFeeCount = verifyResult?.count || 0;
+      verifyStmt.free();
       
       console.log('\n='.repeat(60));
       console.log('✅ 테스트 데이터 생성 완료!');
       console.log('='.repeat(60));
       console.log(`📊 총 생성 건수: ${totalGenerated}건 (락커 #1~80, 3일치)`);
-      console.log(`💰 추가요금 건수: ${additionalFeeCount}건`);
+      console.log(`🔴 추가요금 발생 예정: ${pendingAdditionalFeeCount}건 (사용중, 퇴실 시 기록됨)`);
+      console.log(`💰 추가요금 이미 처리: ${completedAdditionalFeeCount}건 (퇴실 완료)`);
       
-      if (additionalFeeCount === 0) {
-        console.error('❌ 경고: 추가요금이 생성되지 않았습니다!');
+      if (pendingAdditionalFeeCount === 0 && completedAdditionalFeeCount === 0) {
+        console.warn('⚠️ 추가요금 관련 락커가 생성되지 않았습니다.');
       } else {
-        console.log('🎯 같은 영업일 추가요금 5000원 시나리오 포함 보장 ✓');
+        console.log('🎯 Type A 시나리오: 전일 주간 입실 + 자정 넘김 + 사용중 (₩5,000 발생 예정) ✓');
         
-        // Show detailed info about additional fees
-        const feeDetailsStmt = db!.prepare(`
-          SELECT 
-            afe.locker_number,
-            afe.fee_amount,
-            afe.payment_method,
-            afe.business_day,
-            ll.business_day as entry_business_day
-          FROM additional_fee_events afe
-          LEFT JOIN locker_logs ll ON afe.locker_log_id = ll.id
-          WHERE afe.locker_number BETWEEN 1 AND 80
-          ORDER BY afe.checkout_time DESC
-        `);
-        
-        const feeDetails: Array<{
-          locker_number: number;
-          fee_amount: number;
-          payment_method: string;
-          business_day: string;
-          entry_business_day: string;
-        }> = [];
-        
-        while (feeDetailsStmt.step()) {
-          const row = feeDetailsStmt.getAsObject() as any;
-          feeDetails.push(row);
+        // Show detailed info about completed additional fees
+        if (completedAdditionalFeeCount > 0) {
+          const feeDetailsStmt = db!.prepare(`
+            SELECT 
+              afe.locker_number,
+              afe.fee_amount,
+              afe.payment_method,
+              afe.business_day,
+              ll.business_day as entry_business_day
+            FROM additional_fee_events afe
+            LEFT JOIN locker_logs ll ON afe.locker_log_id = ll.id
+            WHERE afe.locker_number BETWEEN 1 AND 80
+            ORDER BY afe.checkout_time DESC
+          `);
+          
+          const feeDetails: Array<{
+            locker_number: number;
+            fee_amount: number;
+            payment_method: string;
+            business_day: string;
+            entry_business_day: string;
+          }> = [];
+          
+          while (feeDetailsStmt.step()) {
+            const row = feeDetailsStmt.getAsObject() as any;
+            feeDetails.push(row);
+          }
+          feeDetailsStmt.free();
+          
+          console.log('\n📋 퇴실 완료된 추가요금 내역:');
+          feeDetails.forEach((fee, idx) => {
+            const sameDay = fee.business_day === fee.entry_business_day ? '✅ 같은 영업일' : '❌ 다른 영업일';
+            console.log(`  ${idx + 1}. 락커 #${fee.locker_number}: ${fee.fee_amount}원 (${fee.payment_method.toUpperCase()}) - ${sameDay}`);
+          });
         }
-        feeDetailsStmt.free();
-        
-        console.log('\n📋 추가요금 상세 내역:');
-        feeDetails.forEach((fee, idx) => {
-          const sameDay = fee.business_day === fee.entry_business_day ? '✅ 같은 영업일' : '❌ 다른 영업일';
-          console.log(`  ${idx + 1}. 락커 #${fee.locker_number}: ${fee.fee_amount}원 (${fee.payment_method.toUpperCase()}) - ${sameDay}`);
-        });
       }
       console.log('='.repeat(60));
       
