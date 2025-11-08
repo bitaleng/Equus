@@ -2088,38 +2088,10 @@ export async function createAdditionalFeeTestData() {
       
       console.log(`  🌙 자정 시각: ${midnightAfterEntry.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
       console.log(`  📊 입실 영업일: ${entryBusinessDay}`);
-      
-      // Additional fee checkout_time = NOW (current time)
-      // Additional fee business_day = CURRENT business day (explicitly, not calculated from time)
-      // This ensures the fee ALWAYS appears in today's business day, regardless of current time
-      const feeCheckoutTime = new Date();
-      const feeBusinessDay = currentBusinessDay; // Use current business day directly
-      
-      console.log(`  📅 추가요금 퇴실시간: ${feeCheckoutTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (현재)`);
-      console.log(`  📊 추가요금 영업일: ${feeBusinessDay}`);
-      console.log(`  ✅ 추가요금이 오늘 영업일에 기록됨: ${feeBusinessDay === currentBusinessDay ? 'YES ✓' : 'NO ✗'}`);
-      
-      // Insert additional fee event (5000원, checkout time = NOW)
-      const feePaymentMethod = randomElement(paymentMethods);
-      const feeCash = feePaymentMethod === 'cash' ? 5000 : 0;
-      const feeCard = feePaymentMethod === 'card' ? 5000 : 0;
-      const feeTransfer = feePaymentMethod === 'transfer' ? 5000 : 0;
-      const feeId = generateId();
-      
-      console.log(`  💰 추가요금: ${feePaymentMethod.toUpperCase()} 5000원 (야간-주간 차액)`);
-      
-      db!.run(
-        `INSERT INTO additional_fee_events 
-        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
-         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [feeId, id, guaranteedLocker, feeCheckoutTime.toISOString(), 5000, 5000, 0, 
-         feeBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
-      );
-      
-      console.log(`  ✅ additional_fee_events 삽입 완료 (ID: ${feeId})`);
-      console.log(`  🎯 총합: 입실 ${basePrice}원 + 추가요금 5000원 = ${basePrice + 5000}원`);
+      console.log(`  💡 추가요금 발생 예상: 5000원 (야간-주간 차액)`);
+      console.log(`  ⏳ 추가요금은 실제 퇴실 시 additional_fee_events에 기록됨`);
       console.log(`  ✅ 현재 상태: in_use (아직 퇴실하지 않음)`);
+      console.log(`  🔴 락커 버튼: 빨간색으로 표시됨 (추가요금 발생 감지)`);
       
       totalGenerated++;
       updateDailySummary(entryBusinessDay);

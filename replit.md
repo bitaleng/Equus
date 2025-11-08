@@ -8,6 +8,25 @@ This Progressive Web App (PWA) digitizes manual ledger processes for rest hotels
 
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes
+
+### November 8, 2025
+- **락커 색상 로직 명확화**: 이전 영업일 입실(그린색) vs 오늘 영업일 입실(옐로우/블루) 구분 규칙 문서화
+  - **그린색**: 이전 영업일에 입실해서 오늘 영업일에 아직 퇴실하지 않은 락커
+  - **옐로우**: 오늘 영업일 주간(07:00-19:00) 입실 + 사용중
+  - **블루**: 오늘 영업일 야간(19:00-익일 07:00) 입실 + 사용중
+  - **레드**: 추가요금 발생 (우선순위 최상위)
+  - 로직: entryTime < businessDayStart → 그린색 (이전 영업일 입실)
+  - 예: 11월 7일 14:00 입실 → 11월 8일 09:50 옐로우 (같은 영업일) → 11월 8일 10:00 이후 그린색 (이전 영업일) ✓
+
+- **추가요금 테스트 데이터 생성 로직 수정**: 추가요금은 실제 퇴실 시에만 기록되도록 변경
+  - **문제**: additional_fee_events를 테스트 데이터 생성 시 미리 기록하여 아직 퇴실하지 않은 락커가 이미 퇴실 처리된 것처럼 표시됨
+  - **해결**: 테스트 데이터는 locker_logs만 in_use 상태로 생성, additional_fee_events는 실제 퇴실 시 생성
+  - **보장된 시나리오**: 전날 영업일 12:00-18:00 주간 입실 → 자정 넘김 → 추가요금 발생 예상 (5000원) → 현재 in_use
+  - 락커 버튼: 빨간색으로 표시 (추가요금 발생 감지)
+  - 오늘 현황: 추가요금 발생 없음 (아직 퇴실하지 않음)
+  - 실제 퇴실 시: additional_fee_events에 추가요금 기록 → 오늘 현황 및 매출에 반영 ✓
+
 ## System Architecture
 
 ### UI/UX Decisions
