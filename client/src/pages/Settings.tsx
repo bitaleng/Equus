@@ -276,19 +276,20 @@ export default function Settings() {
     });
   };
 
-  const handleCreateTestData = () => {
+  const handleCreateTestData = async () => {
     try {
-      localDb.createAdditionalFeeTestData();
+      // Wait for test data to be created and saved
+      await localDb.createAdditionalFeeTestData();
       
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "락커 1, 2번에 추가요금 5,000원씩 포함된 테스트 데이터가 생성되었습니다. (2025-11-06 영업일)",
+        description: "락커 1, 2번에 추가요금 테스트 데이터가 생성되었습니다.",
       });
       
       // Reload page to show new data
       setTimeout(() => {
         window.location.reload();
-      }, 1500);
+      }, 1000);
     } catch (error) {
       console.error('Test data creation error:', error);
       toast({
