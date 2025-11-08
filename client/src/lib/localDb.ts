@@ -2010,35 +2010,38 @@ export function createAdditionalFeeTestData() {
     const id1 = generateId();
     const id2 = generateId();
     
-    // Calculate dates dynamically to avoid auto-deletion
-    const now = new Date();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
+    // Get business day start hour from settings
+    const settings = getSettings();
+    const startHour = settings.businessDayStartHour ?? 10;
     
-    // Yesterday 14:00 KST = UTC+9, so subtract 9 hours
-    const entryTime1 = new Date(yesterday);
-    entryTime1.setHours(14 - 9, 0, 0, 0); // 14:00 KST = 05:00 UTC
+    // Calculate base time: current time minus business day offset
+    const base = new Date();
+    base.setHours(base.getHours() - startHour);
     
-    const entryTime2 = new Date(yesterday);
-    entryTime2.setHours(15 - 9, 30, 0, 0); // 15:30 KST = 06:30 UTC
+    // Create entry 15 hours before base (yesterday afternoon in KST)
+    const entryTime1 = new Date(base.getTime() - 15 * 60 * 60 * 1000);
+    const entryTime2 = new Date(base.getTime() - 14.5 * 60 * 60 * 1000);
     
-    // Today 07:00 KST = 22:00 UTC (previous day in UTC)
-    const exitTime1 = new Date(yesterday);
-    exitTime1.setHours(22, 0, 0, 0); // 07:00 KST next day = 22:00 UTC same day
+    // Create exit times 8 hours after entry (next morning)
+    const exitTime1 = new Date(entryTime1.getTime() + 8 * 60 * 60 * 1000);
+    const exitTime2 = new Date(entryTime2.getTime() + 8 * 60 * 60 * 1000);
     
-    const exitTime2 = new Date(yesterday);
-    exitTime2.setHours(22, 30, 0, 0); // 07:30 KST next day = 22:30 UTC same day
+    // Calculate business day using the shared function
+    const businessDay = getBusinessDay(entryTime1, startHour);
     
-    // Business day is yesterday (since both entry times are after 10:00 KST)
-    const businessDay = yesterday.toISOString().split('T')[0];
+    // Determine time type
+    const timeType1 = getTimeType(entryTime1);
+    const timeType2 = getTimeType(entryTime2);
     
     console.log('Creating test data:');
     console.log('- Business Day:', businessDay);
-    console.log('- Entry 1:', entryTime1.toISOString());
+    console.log('- Start Hour:', startHour);
+    console.log('- Entry 1:', entryTime1.toISOString(), `(${timeType1})`);
     console.log('- Exit 1:', exitTime1.toISOString());
+    console.log('- Entry 2:', entryTime2.toISOString(), `(${timeType2})`);
+    console.log('- Exit 2:', exitTime2.toISOString());
     
     // Test Entry 1: Locker 1, cash payment
-    // Yesterday 14:00 check-in -> Today 07:00 checkout (same business day)
     db.run(
       `INSERT INTO locker_logs 
       (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees, 
@@ -2046,7 +2049,7 @@ export function createAdditionalFeeTestData() {
        option_type, option_amount)
       VALUES 
       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), '주간', 10000, 15000, 5000,
+      [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 10000, 15000, 5000,
        'checked_out', 0, 'cash', 15000, 0, 0, businessDay, 'none', 0]
     );
     
@@ -2058,13 +2061,15 @@ export function createAdditionalFeeTestData() {
        option_type, option_amount)
       VALUES 
       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), '주간', 10000, 15000, 5000,
+      [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 10000, 15000, 5000,
        'checked_out', 0, 'card', 0, 15000, 0, businessDay, 'none', 0]
     );
     
     saveDatabase();
     
-    console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번 (어제 영업일)');
+    console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번');
+    console.log('   영업일:', businessDay);
+    console.log('   데이터가 자동 삭제되지 않도록 올바른 business_day로 생성됨');
     return true;
   } catch (error) {
     console.error('Error creating additional fee test data:', error);
