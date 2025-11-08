@@ -1112,9 +1112,20 @@ export function getTodayEntries(businessDay: string) {
 export function getEntriesByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
 
-  // Convert dates to datetime range in local timezone, then to ISO for storage comparison
-  const startDateTime = new Date(startDate + 'T00:00:00').toISOString();
-  const endDateTime = new Date(endDate + 'T23:59:59.999').toISOString();
+  // Parse dates and convert to ISO
+  // Input format: YYYY-MM-DD
+  // Append time component for local timezone parsing
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59.999`);
+  
+  // Validate dates
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    console.error('Invalid date format:', { startDate, endDate });
+    return [];
+  }
+  
+  const startDateTime = start.toISOString();
+  const endDateTime = end.toISOString();
 
   // Interval overlap logic: Include records where:
   // - entry_time is before or during the period, AND
