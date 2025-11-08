@@ -196,34 +196,46 @@ export default function Home() {
       // Get additional fee events for today (모든 추가요금: 같은 영업일 + 다른 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
       
-      // IMPORTANT: Exclude entries that have additional fees from the entry list
-      // Only show additional fee records for those entries, not the original entry
-      const additionalFeeLogIds = new Set(additionalFeeEvents.map(e => e.lockerLogId));
-      const entries = allEntriesFromDb.filter(entry => !additionalFeeLogIds.has(entry.id));
+      // CRITICAL FIX: Only exclude entries with CROSS-DAY additional fees
+      // Same-day additional fees should NOT exclude the original entry
+      const crossDayAdditionalFeeLogIds = new Set(
+        additionalFeeEvents
+          .filter(e => {
+            const event = e as any;
+            return event.entryBusinessDay && event.entryBusinessDay !== e.businessDay;
+          })
+          .map(e => e.lockerLogId)
+      );
+      const entries = allEntriesFromDb.filter(entry => !crossDayAdditionalFeeLogIds.has(entry.id));
       
-      // Create pseudo entries for ALL additional fee events
-      // Display all as separate rows with empty entry time
-      const additionalFeeEntries = additionalFeeEvents.map(event => {
-        return {
-          id: `additionalfee_${event.id}`,
-          lockerNumber: event.lockerNumber,
-          entryTime: null, // Always display empty entry time for additional fees
-          exitTime: event.checkoutTime,
-          timeType: '추가요금' as any, // Special marker for additional fee
-          basePrice: 0,
-          optionType: 'none' as const,
-          optionAmount: 0,
-          finalPrice: event.feeAmount,
-          status: 'checked_out' as const,
-          cancelled: false,
-          paymentMethod: event.paymentMethod as any,
-          paymentCash: (event as any).paymentCash,
-          paymentCard: (event as any).paymentCard,
-          paymentTransfer: (event as any).paymentTransfer,
-          businessDay: event.businessDay,
-          additionalFeeOnly: true, // Always exclude from visitor count (displayed as separate row)
-        };
-      });
+      // Create pseudo entries ONLY for CROSS-DAY additional fee events
+      // Same-day additional fees are already included in the original entry's row
+      const additionalFeeEntries = additionalFeeEvents
+        .filter(event => {
+          const e = event as any;
+          return e.entryBusinessDay && e.entryBusinessDay !== event.businessDay;
+        })
+        .map(event => {
+          return {
+            id: `additionalfee_${event.id}`,
+            lockerNumber: event.lockerNumber,
+            entryTime: null, // Always display empty entry time for additional fees
+            exitTime: event.checkoutTime,
+            timeType: '추가요금' as any, // Special marker for additional fee
+            basePrice: 0,
+            optionType: 'none' as const,
+            optionAmount: 0,
+            finalPrice: event.feeAmount,
+            status: 'checked_out' as const,
+            cancelled: false,
+            paymentMethod: event.paymentMethod as any,
+            paymentCash: (event as any).paymentCash,
+            paymentCard: (event as any).paymentCard,
+            paymentTransfer: (event as any).paymentTransfer,
+            businessDay: event.businessDay,
+            additionalFeeOnly: true, // Always exclude from visitor count (displayed as separate row)
+          };
+        });
       
       // Combine filtered entries with additional fee entries and sort by time
       // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬

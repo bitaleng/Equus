@@ -54,6 +54,7 @@ interface AdditionalFeeEvent {
   checkoutTime: string;
   feeAmount: number;
   businessDay: string;
+  entryBusinessDay?: string; // 입실 영업일 (JOIN으로 가져옴)
   paymentMethod: 'card' | 'cash' | 'transfer';
   paymentCash?: number;
   paymentCard?: number;
