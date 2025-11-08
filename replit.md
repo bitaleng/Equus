@@ -10,6 +10,19 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### November 8, 2025
+- **CRITICAL BUG FIX #1: 추가요금 결제수단 독립성 완전 구현**: ClosingPage에서 추가요금 결제가 입실 결제 비율을 따르지 않고 독립적으로 집계되도록 수정
+  - 문제: 추가요금 결제가 입실 결제 비율로 분배되어 실제 결제수단과 다르게 집계됨
+  - 해결: ClosingPage.tsx에서 비율 계산 로직 제거, additional_fee_events 테이블에서 직접 결제수단별 집계
+  - 결과: 추가요금 현금/카드/계좌이체 금액이 실제 결제 내역과 정확히 일치
+
+- **CRITICAL BUG FIX #2: 오늘현황 테이블 추가요금 표시 정확도 개선**: 같은 영업일 추가요금이 별도 행으로 명확히 표시되도록 수정
+  - 문제: 같은 영업일 추가요금이 입실 기록과 혼합되어 표시됨 (추가 뱃지로만 구분)
+  - 해결 1: Home.tsx에서 모든 추가요금을 additional_fee_events에서 읽어 별도 행으로 생성
+  - 해결 2: TodayStatusTable.tsx에서 추가요금 뱃지 및 displayPrice 로직 제거, 단순화
+  - 해결 3: 모든 추가요금 행을 `additionalFeeOnly: true`로 설정하여 방문자 수 중복 카운트 방지
+  - 결과: 추가요금이 항상 별도 행으로 표시 (입실시간: 공란, timeType: '추가요금', 빨간색 금액)
+
 ### November 7, 2025
 - **ClosingPage UI 매출 구조 명확화**: 추가요금과 렌탈 매출을 별도 섹션으로 분리하여 가독성 개선
   - 상태 변수 구조화: baseEntrySales, additionalFeeSales, entrySales, rentalSales 분리 관리
