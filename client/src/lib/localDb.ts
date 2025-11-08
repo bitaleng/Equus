@@ -2206,7 +2206,6 @@ export async function createAdditionalFeeTestData() {
       // ===== TODAY'S DATA: In-use entries =====
       console.log('\n오늘 사용중 데이터 생성 중...');
       const nowForToday = new Date();
-      const currentHour = nowForToday.getHours();
       const todayEntries = randomInt(15, 30);
       
       // Track used lockers for today's data only (avoid duplicates in in_use state)
@@ -2225,21 +2224,31 @@ export async function createAdditionalFeeTestData() {
         return lockerNumber;
       };
       
+      // Calculate valid entry time range for current business day
+      // If current time is before business day start (e.g., 02:00, start at 10:00)
+      // → Use yesterday's business day start to now
+      // If current time is after business day start
+      // → Use today's business day start to now
+      let entryRangeStart: Date;
+      if (nowForToday < currentBusinessDayStart) {
+        // Early morning (before business day start)
+        entryRangeStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
+        console.log(`  ⏰ 새벽 시간 (${nowForToday.getHours()}시) → 어제 영업일 시작부터 생성`);
+      } else {
+        entryRangeStart = currentBusinessDayStart;
+        console.log(`  ⏰ 영업일 시작 이후 → 오늘 영업일 시작부터 생성`);
+      }
+      
+      console.log(`  📅 입실 범위: ${entryRangeStart.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} ~ ${nowForToday.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+      
       for (let i = 0; i < todayEntries; i++) {
         const lockerNumber = getUnusedLocker();
         if (!lockerNumber) break;
         
-        // Random entry time today (7:00 ~ current time)
-        const minHour = 7;
-        const maxHour = Math.min(currentHour, 23);
-        if (maxHour < minHour) continue;
-        
-        const hour = randomInt(minHour, maxHour);
-        const maxMinute = (hour === currentHour) ? nowForToday.getMinutes() : 59;
-        const minute = randomInt(0, maxMinute);
-        
-        const entryDate = new Date();
-        entryDate.setHours(hour, minute, 0, 0);
+        // Random entry time within valid range
+        const timeRange = nowForToday.getTime() - entryRangeStart.getTime();
+        const randomOffset = Math.floor(Math.random() * timeRange);
+        const entryDate = new Date(entryRangeStart.getTime() + randomOffset);
         
         const timeType = getTimeType(entryDate);
         const basePrice = timeType === '주간' ? dayPrice : nightPrice;
