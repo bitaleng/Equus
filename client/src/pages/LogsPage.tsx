@@ -134,21 +134,51 @@ export default function LogsPage() {
       
       if (useTimeFilter && startDate && endDate) {
         // Time-based filtering: Convert datetime-local to ISO strings for UTC comparison
-        const startISO = new Date(startDate).toISOString();
-        const endISO = new Date(endDate).toISOString();
-        result = localDb.getEntriesByDateTimeRange(startISO, endISO);
-        feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
-        rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+        console.log('[LogsPage] DateTime filter inputs:', { startDate, endDate, useTimeFilter });
+        
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        console.log('[LogsPage] Parsed dates:', { 
+          start: start.toString(), 
+          end: end.toString(),
+          startValid: !isNaN(start.getTime()),
+          endValid: !isNaN(end.getTime())
+        });
+        
+        // Validate dates before converting to ISO
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          console.error('[LogsPage] Invalid datetime format:', { startDate, endDate });
+          result = [];
+          feeEvents = [];
+          rentalTxns = [];
+        } else {
+          const startISO = start.toISOString();
+          const endISO = end.toISOString();
+          console.log('[LogsPage] ISO strings:', { startISO, endISO });
+          result = localDb.getEntriesByDateTimeRange(startISO, endISO);
+          feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
+          rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+        }
       } else if (useTimeFilter && startDate) {
         // Single datetime point - convert to ISO and set end of day
         const start = new Date(startDate);
-        const startISO = start.toISOString();
-        const endOfDay = new Date(start);
-        endOfDay.setHours(23, 59, 59, 999);
-        const endISO = endOfDay.toISOString();
-        result = localDb.getEntriesByDateTimeRange(startISO, endISO);
-        feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
-        rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+        
+        // Validate date before converting to ISO
+        if (isNaN(start.getTime())) {
+          console.error('Invalid datetime format:', { startDate });
+          result = [];
+          feeEvents = [];
+          rentalTxns = [];
+        } else {
+          const startISO = start.toISOString();
+          const endOfDay = new Date(start);
+          endOfDay.setHours(23, 59, 59, 999);
+          const endISO = endOfDay.toISOString();
+          result = localDb.getEntriesByDateTimeRange(startISO, endISO);
+          feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
+          rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+        }
       } else if (startDate && endDate) {
         // Date-based filtering (YYYY-MM-DD format)
         result = localDb.getEntriesByDateRange(startDate, endDate);
