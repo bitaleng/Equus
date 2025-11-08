@@ -23,8 +23,11 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
       }
       
-      // 2순위: 입실시간이 오늘 영업일 시작 시간보다 이전인 경우 -> 그린색 (이전 영업일)
-      // 어제 저녁 입실도 오늘 오전 10시 이전이므로 그린색으로 표시
+      // 2순위: 이전 영업일 입실 -> 그린색
+      // 입실시간이 현재 영업일 시작 시간보다 이전이면 이전 영업일 입실로 판단
+      // 예: 11월 7일 14:00 입실
+      //   - 11월 8일 09:50 (정산 전): businessDayStart = 11월 7일 10:00 -> entryTime > start -> 옐로우
+      //   - 11월 8일 10:00 (정산 후): businessDayStart = 11월 8일 10:00 -> entryTime < start -> 그린색 ✓
       if (entryTime) {
         const now = new Date();
         const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
