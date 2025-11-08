@@ -2093,28 +2093,30 @@ export async function createAdditionalFeeTestData() {
       totalGenerated++;
       updateDailySummary(typeABusinessDay);
       
-      // ===== GREEN LOCKER (선택): Previous business day entry, still in use, NO additional fee =====
+      // ===== GREEN LOCKER: Previous business day entry, still in use, NO additional fee =====
       console.log('\n[그린색 락커] 이전 영업일 입실 + 사용중 + 추가요금 없음');
       
       const greenLocker = randomInt(1, 80);
       
-      // Entry: Yesterday morning (short stay, no midnight crossed yet)
-      // Entry at 08:00-09:30 yesterday = still in same business day if now < 10:00
-      const greenEntryHour = randomInt(8, 9);
-      const greenEntryMinute = greenEntryHour === 9 ? randomInt(0, 30) : randomInt(0, 59);
-      const greenEntry = new Date();
-      greenEntry.setDate(greenEntry.getDate() - 1);
-      greenEntry.setHours(greenEntryHour, greenEntryMinute, 0, 0);
+      // Entry: BEFORE current business day start (ensures previous business day)
+      // Generate entry time in the range: (currentBusinessDayStart - 12 hours) to (currentBusinessDayStart - 1 hour)
+      const hoursBeforeStart = randomInt(1, 12);
+      const minutesOffset = randomInt(0, 59);
+      const greenEntry = new Date(currentBusinessDayStart.getTime() - hoursBeforeStart * 60 * 60 * 1000 - minutesOffset * 60 * 1000);
       
       const greenBusinessDay = getBusinessDay(greenEntry, businessDayStartHour);
       const greenTimeType = getTimeType(greenEntry);
       const greenBasePrice = greenTimeType === '주간' ? dayPrice : nightPrice;
       
+      // Verify it's actually previous business day
+      const isActuallyPreviousDay = greenBusinessDay !== currentBusinessDay;
+      
       console.log(`  🟢 락커 #${greenLocker}`);
       console.log(`  📅 입실: ${greenEntry.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (${greenTimeType})`);
       console.log(`  📊 입실 영업일: ${greenBusinessDay}`);
-      console.log(`  💡 조건: 입실시각 < 현재 영업일 시작 → 이전 영업일 입실`);
-      console.log(`  💡 추가요금 없음 (아직 자정 미도달 또는 짧은 사용)`);
+      console.log(`  📊 현재 영업일: ${currentBusinessDay}`);
+      console.log(`  ✅ 이전 영업일 확인: ${isActuallyPreviousDay ? 'YES' : 'NO (같은 영업일)'}`);
+      console.log(`  💡 추가요금 없음 (짧은 사용, 자정 미도달 또는 외국인 24시간 미도달)`);
       
       const greenPaymentMethod = randomElement(paymentMethods);
       const greenPaymentCash = greenPaymentMethod === 'cash' ? greenBasePrice : 0;
@@ -2142,22 +2144,51 @@ export async function createAdditionalFeeTestData() {
       // ===== RANDOMIZED DATA: 3 days of past data (NO additional_fee_events) =====
       console.log('\n3일치 과거 데이터 (퇴실완료) 생성 중...');
       console.log('💡 추가요금 데이터는 사용자가 퇴실 처리 시 생성됨');
+      console.log('💡 과거 데이터는 현재 영업일 시작 이전에 모두 퇴실 완료');
+      
+      // Track used locker numbers per day to prevent same-day duplicates
+      const pastUsedLockers = new Map<string, Set<number>>();
       
       for (let pastDays = 1; pastDays <= 3; pastDays++) {
         const pastDate = new Date();
         pastDate.setDate(pastDate.getDate() - pastDays);
+        const dateKey = pastDate.toISOString().split('T')[0];
+        pastUsedLockers.set(dateKey, new Set<number>());
         
         console.log(`  📅 ${pastDays}일 전: ${pastDate.toLocaleDateString('ko-KR')}`);
         
         const pastEntries = randomInt(10, 25); // Random 10-25 entries per day
         
         for (let i = 0; i < pastEntries; i++) {
-          const lockerNumber = randomInt(1, 80); // Allow duplicates across days
+          // Get unused locker number for this day
+          let lockerNumber: number;
+          const usedSet = pastUsedLockers.get(dateKey)!;
+          if (usedSet.size >= 80) break; // All lockers used
+          
+          do {
+            lockerNumber = randomInt(1, 80);
+          } while (usedSet.has(lockerNumber));
+          usedSet.add(lockerNumber);
+          
           const hour = randomInt(0, 23);
           const minute = randomInt(0, 59);
           
           const entryDate = new Date(pastDate);
           entryDate.setHours(hour, minute, 0, 0);
+          
+          // IMPORTANT: Exit time MUST be before current business day start
+          // This ensures past data doesn't appear in today's business day
+          const maxExitTime = currentBusinessDayStart.getTime() - 60 * 1000; // 1 minute before
+          const entryTime = entryDate.getTime();
+          const stayDuration = randomInt(30, 180) * 60 * 1000; // 30min - 3hours
+          let exitTimeValue = entryTime + stayDuration;
+          
+          // If exit would be after business day start, cap it
+          if (exitTimeValue >= maxExitTime) {
+            exitTimeValue = maxExitTime - randomInt(1, 120) * 60 * 1000; // 1-2 hours before
+          }
+          
+          const exitTime = new Date(exitTimeValue);
           
           const timeType = getTimeType(entryDate);
           const basePrice = timeType === '주간' ? dayPrice : nightPrice;
@@ -2178,9 +2209,6 @@ export async function createAdditionalFeeTestData() {
           const paymentCash = paymentMethod === 'cash' ? finalPrice : 0;
           const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
           const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
-          
-          // All past data: normal checkout (30min - 3hours)
-          const exitTime = new Date(entryDate.getTime() + randomInt(30, 180) * 60 * 1000);
           
           const id = generateId();
           const businessDay = getBusinessDay(entryDate, businessDayStartHour);
