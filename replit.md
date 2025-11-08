@@ -27,6 +27,13 @@ Preferred communication style: Simple, everyday language.
   - 오늘 현황: 추가요금 발생 없음 (아직 퇴실하지 않음)
   - 실제 퇴실 시: additional_fee_events에 추가요금 기록 → 오늘 현황 및 매출에 반영 ✓
 
+- **입출기록 로그 날짜/시간 필터 수정**: Interval overlap 로직으로 모든 관련 기록 포함
+  - **문제**: 날짜/시간 필터 사용 시 추가요금이 필터되지 않고, 기간을 포함하는 기록도 누락됨
+  - **해결**: Interval overlap 로직 적용 (`entry_time <= end AND (exit_time IS NULL OR exit_time >= start)`)
+  - **포함되는 경우**: 기간 안 입실, 기간 안 퇴실, 기간 완전 포함, 사용 중 (exit_time IS NULL)
+  - **적용 함수**: getEntriesByDateRange, getEntriesByDateTimeRange
+  - 추가요금 이벤트는 별도로 올바르게 필터링 (checkout_time 기준) ✓
+
 ## System Architecture
 
 ### UI/UX Decisions
