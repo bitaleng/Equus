@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,7 @@ interface RevenueItemFormData {
 
 export default function Settings() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [formData, setFormData] = useState<Settings>({
     businessDayStartHour: 10,
     dayPrice: 10000,
@@ -283,13 +284,13 @@ export default function Settings() {
       
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "락커 1, 2번에 추가요금 테스트 데이터가 생성되었습니다.",
+        description: "락커 1, 2번에 추가요금 테스트 데이터가 생성되었습니다. 홈 페이지로 이동합니다.",
       });
       
-      // Reload page to show new data
+      // Navigate to home instead of reloading (preserves business day context)
       setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+        setLocation("/");
+      }, 500);
     } catch (error) {
       console.error('Test data creation error:', error);
       toast({
