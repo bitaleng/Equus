@@ -2003,78 +2003,85 @@ export function createTestData() {
 }
 
 // Create test data for additional fee display verification
-export function createAdditionalFeeTestData() {
+export async function createAdditionalFeeTestData() {
   if (!db) throw new Error('Database not initialized');
   
-  try {
-    const id1 = generateId();
-    const id2 = generateId();
-    
-    // Get business day start hour from settings
-    const settings = getSettings();
-    const startHour = settings.businessDayStartHour ?? 10;
-    
-    // Calculate base time: current time minus business day offset
-    const base = new Date();
-    base.setHours(base.getHours() - startHour);
-    
-    // Create entry 15 hours before base (yesterday afternoon in KST)
-    const entryTime1 = new Date(base.getTime() - 15 * 60 * 60 * 1000);
-    const entryTime2 = new Date(base.getTime() - 14.5 * 60 * 60 * 1000);
-    
-    // Create exit times 8 hours after entry (next morning)
-    const exitTime1 = new Date(entryTime1.getTime() + 8 * 60 * 60 * 1000);
-    const exitTime2 = new Date(entryTime2.getTime() + 8 * 60 * 60 * 1000);
-    
-    // Calculate business day using the shared function
-    const businessDay = getBusinessDay(entryTime1, startHour);
-    
-    // Determine time type
-    const timeType1 = getTimeType(entryTime1);
-    const timeType2 = getTimeType(entryTime2);
-    
-    console.log('Creating test data:');
-    console.log('- Business Day:', businessDay);
-    console.log('- Start Hour:', startHour);
-    console.log('- Entry 1:', entryTime1.toISOString(), `(${timeType1})`);
-    console.log('- Exit 1:', exitTime1.toISOString());
-    console.log('- Entry 2:', entryTime2.toISOString(), `(${timeType2})`);
-    console.log('- Exit 2:', exitTime2.toISOString());
-    
-    // Test Entry 1: Locker 1, cash payment
-    db.run(
-      `INSERT INTO locker_logs 
-      (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees, 
-       status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day, 
-       option_type, option_amount)
-      VALUES 
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 10000, 15000, 5000,
-       'checked_out', 0, 'cash', 15000, 0, 0, businessDay, 'none', 0]
-    );
-    
-    // Test Entry 2: Locker 2, card payment
-    db.run(
-      `INSERT INTO locker_logs 
-      (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees,
-       status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day,
-       option_type, option_amount)
-      VALUES 
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 10000, 15000, 5000,
-       'checked_out', 0, 'card', 0, 15000, 0, businessDay, 'none', 0]
-    );
-    
-    saveDatabase();
-    
-    console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번');
-    console.log('   영업일:', businessDay);
-    console.log('   데이터가 자동 삭제되지 않도록 올바른 business_day로 생성됨');
-    return true;
-  } catch (error) {
-    console.error('Error creating additional fee test data:', error);
-    throw error;
-  }
+  return new Promise<boolean>((resolve, reject) => {
+    try {
+      const id1 = generateId();
+      const id2 = generateId();
+      
+      // Get business day start hour from settings
+      const settings = getSettings();
+      const startHour = settings.businessDayStartHour ?? 10;
+      
+      // Calculate base time: current time minus business day offset
+      const base = new Date();
+      base.setHours(base.getHours() - startHour);
+      
+      // Create entry 15 hours before base (yesterday afternoon in KST)
+      const entryTime1 = new Date(base.getTime() - 15 * 60 * 60 * 1000);
+      const entryTime2 = new Date(base.getTime() - 14.5 * 60 * 60 * 1000);
+      
+      // Create exit times 8 hours after entry (next morning)
+      const exitTime1 = new Date(entryTime1.getTime() + 8 * 60 * 60 * 1000);
+      const exitTime2 = new Date(entryTime2.getTime() + 8 * 60 * 60 * 1000);
+      
+      // Calculate business day using the shared function
+      const businessDay = getBusinessDay(entryTime1, startHour);
+      
+      // Determine time type
+      const timeType1 = getTimeType(entryTime1);
+      const timeType2 = getTimeType(entryTime2);
+      
+      console.log('Creating test data:');
+      console.log('- Business Day:', businessDay);
+      console.log('- Start Hour:', startHour);
+      console.log('- Entry 1:', entryTime1.toISOString(), `(${timeType1})`);
+      console.log('- Exit 1:', exitTime1.toISOString());
+      console.log('- Entry 2:', entryTime2.toISOString(), `(${timeType2})`);
+      console.log('- Exit 2:', exitTime2.toISOString());
+      
+      // Test Entry 1: Locker 1, cash payment
+      db.run(
+        `INSERT INTO locker_logs 
+        (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees, 
+         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day, 
+         option_type, option_amount)
+        VALUES 
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 10000, 15000, 5000,
+         'checked_out', 0, 'cash', 15000, 0, 0, businessDay, 'none', 0]
+      );
+      
+      // Test Entry 2: Locker 2, card payment
+      db.run(
+        `INSERT INTO locker_logs 
+        (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees,
+         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day,
+         option_type, option_amount)
+        VALUES 
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 10000, 15000, 5000,
+         'checked_out', 0, 'card', 0, 15000, 0, businessDay, 'none', 0]
+      );
+      
+      // Save database and wait for it to complete
+      saveDatabase();
+      
+      console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번');
+      console.log('   영업일:', businessDay);
+      console.log('   데이터가 자동 삭제되지 않도록 올바른 business_day로 생성됨');
+      
+      // Wait a bit to ensure saveDatabase completes
+      setTimeout(() => {
+        resolve(true);
+      }, 100);
+    } catch (error) {
+      console.error('Error creating additional fee test data:', error);
+      reject(error);
+    }
+  });
 }
 
 // ===== Stage 1: Additional Fee Events =====
