@@ -278,11 +278,40 @@ export default function Settings() {
 
   const handleCreateTestData = () => {
     try {
-      localDb.createTestData();
+      // Create 2 test entries: Yesterday check-in with same-day additional fees
+      // Test Entry 1: Locker 1, cash payment
+      const sql1 = `
+        INSERT INTO locker_logs 
+        (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees, 
+         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
+        VALUES 
+        (1, '2025-11-06T05:00:00.000Z', '2025-11-06T22:00:00.000Z', '주간', 10000, 15000, 5000,
+         'checked_out', 0, 'cash', 15000, 0, 0, '2025-11-06');
+      `;
+      
+      // Test Entry 2: Locker 2, card payment
+      const sql2 = `
+        INSERT INTO locker_logs 
+        (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees,
+         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
+        VALUES 
+        (2, '2025-11-06T06:30:00.000Z', '2025-11-06T22:30:00.000Z', '주간', 10000, 15000, 5000,
+         'checked_out', 0, 'card', 0, 15000, 0, '2025-11-06');
+      `;
+      
+      localDb.db.run(sql1);
+      localDb.db.run(sql2);
+      localDb.saveToLocalStorage();
+      
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "과거 7일치 랜덤 데이터가 락커 #1~80에 생성되었습니다.",
+        description: "락커 1, 2번에 추가요금 5,000원씩 포함된 테스트 데이터가 생성되었습니다. (2025-11-06 영업일)",
       });
+      
+      // Reload page to show new data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (error) {
       toast({
         title: "생성 실패",
@@ -988,17 +1017,15 @@ export default function Settings() {
                 <div className="flex items-start gap-3">
                   <Database className="h-5 w-5 text-primary mt-0.5" />
                   <div className="flex-1">
-                    <h4 className="font-medium text-primary mb-1">테스트 데이터 생성</h4>
+                    <h4 className="font-medium text-primary mb-1">추가요금 테스트 데이터 생성</h4>
                     <p className="text-sm text-muted-foreground mb-3">
-                      과거 7일치 랜덤 테스트 데이터를 생성합니다.
+                      추가요금 표시를 테스트하기 위한 데이터를 생성합니다.
                       <br />
                       <span className="text-xs">
-                        • 락커 번호: #1~80<br />
-                        • 기간: 현재 기준 과거 7일<br />
-                        • 하루당 10~30건 랜덤 생성<br />
-                        • 주간/야간 모두 포함 (현재 시간대 고려)<br />
-                        • 지불방식: 카드/현금/이체 랜덤<br />
-                        • 옵션: 일반/할인/외국인 랜덤
+                        • 락커 1번: 현금 15,000원 (기본 10,000 + 추가 5,000)<br />
+                        • 락커 2번: 카드 15,000원 (기본 10,000 + 추가 5,000)<br />
+                        • 영업일: 2025-11-06 (어제 주간 입실 → 오늘 아침 퇴실)<br />
+                        • 정산 페이지에서 ① 일반요금 20,000 + ② 추가요금 10,000 = ③ 총합 30,000 확인
                       </span>
                     </p>
                     <Button
@@ -1006,7 +1033,7 @@ export default function Settings() {
                       data-testid="button-create-test-data"
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      테스트 데이터 생성
+                      추가요금 테스트 데이터 생성
                     </Button>
                   </div>
                 </div>
