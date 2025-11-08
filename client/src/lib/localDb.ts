@@ -2040,11 +2040,11 @@ export async function createAdditionalFeeTestData() {
       console.log(`  📍 현재 영업일: ${currentBusinessDay}`);
       console.log(`  📍 영업일 시작: ${currentBusinessDayStart.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
       
-      // Entry time: Current business day daytime (start + 2~8 hours = 12:00-18:00 KST)
-      // This ensures entry is BEFORE 19:00 (daytime) and BEFORE midnight (00:00)
-      // "전일" = before midnight, "주간" = 07:00-19:00, "자정 넘김" = crosses 00:00
+      // Entry time: PREVIOUS business day daytime (start + 2~8 hours = 12:00-18:00 KST)
+      // "전일 주간 입실" = entry on previous calendar day, daytime (07:00-19:00)
+      const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
       const entryHourOffset = randomInt(2, 8); // 10:00 + 2~8 = 12:00~18:00 (before 19:00)
-      const entryTime = new Date(currentBusinessDayStart.getTime() + entryHourOffset * 60 * 60 * 1000);
+      const entryTime = new Date(previousBusinessDayStart.getTime() + entryHourOffset * 60 * 60 * 1000);
       
       const entryBusinessDay = getBusinessDay(entryTime, businessDayStartHour);
       const timeType = getTimeType(entryTime);
@@ -2086,17 +2086,20 @@ export async function createAdditionalFeeTestData() {
       midnightAfterEntry.setDate(midnightAfterEntry.getDate() + 1);
       midnightAfterEntry.setHours(0, 0, 0, 0);
       
-      const midnightBusinessDay = getBusinessDay(midnightAfterEntry, businessDayStartHour);
-      
       console.log(`  🌙 자정 시각: ${midnightAfterEntry.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-      console.log(`  📊 자정 영업일: ${midnightBusinessDay}`);
-      console.log(`  ✅ 같은 영업일: ${entryBusinessDay === midnightBusinessDay ? 'YES ✓' : 'NO ✗'}`);
+      console.log(`  📊 입실 영업일: ${entryBusinessDay}`);
       
-      if (entryBusinessDay !== midnightBusinessDay) {
-        console.error('  ❌ 오류: 입실과 자정이 다른 영업일입니다!');
-      }
+      // Additional fee checkout_time = NOW (current time)
+      // Additional fee business_day = CURRENT business day (explicitly, not calculated from time)
+      // This ensures the fee ALWAYS appears in today's business day, regardless of current time
+      const feeCheckoutTime = new Date();
+      const feeBusinessDay = currentBusinessDay; // Use current business day directly
       
-      // Insert additional fee event (5000원 at midnight)
+      console.log(`  📅 추가요금 퇴실시간: ${feeCheckoutTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (현재)`);
+      console.log(`  📊 추가요금 영업일: ${feeBusinessDay}`);
+      console.log(`  ✅ 추가요금이 오늘 영업일에 기록됨: ${feeBusinessDay === currentBusinessDay ? 'YES ✓' : 'NO ✗'}`);
+      
+      // Insert additional fee event (5000원, checkout time = NOW)
       const feePaymentMethod = randomElement(paymentMethods);
       const feeCash = feePaymentMethod === 'cash' ? 5000 : 0;
       const feeCard = feePaymentMethod === 'card' ? 5000 : 0;
@@ -2110,8 +2113,8 @@ export async function createAdditionalFeeTestData() {
         (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
          business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [feeId, id, guaranteedLocker, midnightAfterEntry.toISOString(), 5000, 5000, 0, 
-         midnightBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
+        [feeId, id, guaranteedLocker, feeCheckoutTime.toISOString(), 5000, 5000, 0, 
+         feeBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
       );
       
       console.log(`  ✅ additional_fee_events 삽입 완료 (ID: ${feeId})`);
