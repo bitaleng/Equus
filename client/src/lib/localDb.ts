@@ -2002,127 +2002,231 @@ export function createTestData() {
   console.log(`- 추가요금 2회+: ${additionalFee2PlusCount}건 (레드)`);
 }
 
-// Create test data for additional fee display verification
+// Create comprehensive test data with guaranteed same-business-day additional fee
 export async function createAdditionalFeeTestData() {
   if (!db) throw new Error('Database not initialized');
   
   return new Promise<boolean>((resolve, reject) => {
     try {
-      // Step 1: Clear existing test data for lockers 1-2
-      db.run('DELETE FROM additional_fee_events WHERE locker_number IN (1, 2)');
-      db.run('DELETE FROM locker_logs WHERE locker_number IN (1, 2)');
-      
-      // Get business day start hour from settings
       const settings = getSettings();
-      const startHour = settings.businessDayStartHour ?? 10;
+      const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice } = settings;
       
-      // Create timestamps within TODAY's business day
+      // Random helpers
+      const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+      const randomElement = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+      const randomBoolean = (probability = 0.5) => Math.random() < probability;
+      
+      // Delete existing test data (locker numbers 1-80)
+      db.run('DELETE FROM additional_fee_events WHERE locker_number BETWEEN 1 AND 80');
+      db.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 1 AND 80');
+      
+      const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
+      const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
+      
+      let totalGenerated = 0;
+      console.log('=== 7일치 랜덤 테스트 데이터 생성 시작 ===');
+      
+      // ===== GUARANTEED SCENARIO: Same-business-day additional fee =====
+      console.log('\n[보장된 시나리오] 같은 영업일 추가요금 5000원 생성 중...');
+      const guaranteedLocker = randomInt(1, 80);
+      
+      // Scenario: Daytime entry yesterday 14:00 → Checkout today 08:00 (before 10:00)
+      // Both entry and checkout fall in the SAME business day
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(14, 0, 0, 0); // 14:00 yesterday (daytime)
+      
+      const todayMorning = new Date();
+      todayMorning.setHours(8, 0, 0, 0); // 08:00 today (before business day start)
+      
+      const entryBusinessDay = getBusinessDay(yesterday, businessDayStartHour);
+      const checkoutBusinessDay = getBusinessDay(todayMorning, businessDayStartHour);
+      
+      console.log(`  락커${guaranteedLocker}: 입실 ${yesterday.toLocaleString('ko-KR')} → 퇴실 ${todayMorning.toLocaleString('ko-KR')}`);
+      console.log(`  입실 영업일: ${entryBusinessDay}, 퇴실 영업일: ${checkoutBusinessDay}`);
+      console.log(`  같은 영업일: ${entryBusinessDay === checkoutBusinessDay ? '✅ YES' : '❌ NO'}`);
+      
+      const timeType = getTimeType(yesterday); // 주간
+      const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+      const paymentMethod = randomElement(paymentMethods);
+      const id = generateId();
+      
+      // Set payment columns for entry
+      const paymentCash = paymentMethod === 'cash' ? basePrice : 0;
+      const paymentCard = paymentMethod === 'card' ? basePrice : 0;
+      const paymentTransfer = paymentMethod === 'transfer' ? basePrice : 0;
+      
+      // Insert locker log (checked out)
+      db.run(
+        `INSERT INTO locker_logs 
+        (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+         option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+         payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
+        [id, guaranteedLocker, yesterday.toISOString(), todayMorning.toISOString(), entryBusinessDay, 
+         timeType, basePrice, 'none', 0, basePrice, '테스트: 같은영업일 추가요금', paymentMethod, 
+         paymentCash, paymentCard, paymentTransfer, null]
+      );
+      
+      // Insert additional fee event (5000원, random payment method)
+      const feePaymentMethod = randomElement(paymentMethods);
+      const feeCash = feePaymentMethod === 'cash' ? 5000 : 0;
+      const feeCard = feePaymentMethod === 'card' ? 5000 : 0;
+      const feeTransfer = feePaymentMethod === 'transfer' ? 5000 : 0;
+      
+      db.run(
+        `INSERT INTO additional_fee_events 
+        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
+         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [generateId(), id, guaranteedLocker, todayMorning.toISOString(), 5000, 5000, 0, 
+         checkoutBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
+      );
+      
+      console.log(`  ✅ ${paymentMethod.toUpperCase()} ${basePrice}원 입실 + ${feePaymentMethod.toUpperCase()} 5000원 추가요금`);
+      totalGenerated++;
+      updateDailySummary(entryBusinessDay);
+      
+      // ===== RANDOMIZED DATA: 7 days of past data =====
+      console.log('\n7일치 과거 데이터 (퇴실완료) 생성 중...');
+      for (let pastDays = 1; pastDays <= 7; pastDays++) {
+        const pastDate = new Date();
+        pastDate.setDate(pastDate.getDate() - pastDays);
+        
+        const pastEntries = randomInt(10, 25); // Random 10-25 entries per day
+        
+        for (let i = 0; i < pastEntries; i++) {
+          const lockerNumber = randomInt(1, 80); // Allow duplicates across days
+          const hour = randomInt(0, 23);
+          const minute = randomInt(0, 59);
+          
+          const entryDate = new Date(pastDate);
+          entryDate.setHours(hour, minute, 0, 0);
+          
+          const timeType = getTimeType(entryDate);
+          const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+          
+          const optionType = randomElement(optionTypes);
+          let optionAmount = 0;
+          let finalPrice = basePrice;
+          
+          if (optionType === 'discount') {
+            optionAmount = -discountAmount;
+            finalPrice = basePrice - discountAmount;
+          } else if (optionType === 'foreigner') {
+            optionAmount = foreignerPrice - basePrice;
+            finalPrice = foreignerPrice;
+          }
+          
+          const paymentMethod = randomElement(paymentMethods);
+          const paymentCash = paymentMethod === 'cash' ? finalPrice : 0;
+          const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
+          const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
+          
+          // All past data is checked out (30min - 3hours)
+          const exitTime = new Date(entryDate.getTime() + randomInt(30, 180) * 60000);
+          
+          const id = generateId();
+          const businessDay = getBusinessDay(entryDate, businessDayStartHour);
+          
+          db.run(
+            `INSERT INTO locker_logs 
+            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
+            [id, lockerNumber, entryDate.toISOString(), exitTime.toISOString(), businessDay, 
+             timeType, basePrice, optionType, optionAmount, finalPrice, '테스트 데이터 (퇴실완료)', 
+             paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
+          );
+          
+          totalGenerated++;
+          updateDailySummary(businessDay);
+        }
+      }
+      
+      // ===== TODAY'S DATA: In-use entries =====
+      console.log('\n오늘 사용중 데이터 생성 중...');
       const now = new Date();
-      const { start: businessDayStart, end: businessDayEnd } = getBusinessDayRange(now, startHour);
+      const currentHour = now.getHours();
+      const todayEntries = randomInt(15, 30);
       
-      // Entry times: 2 hours after business day start (always within today's business day)
-      const entryTime1 = new Date(businessDayStart);
-      entryTime1.setHours(entryTime1.getHours() + 2, 0, 0, 0);
+      // Track used lockers for today's data only (avoid duplicates in in_use state)
+      const usedLockers = new Set<number>();
+      const getUnusedLocker = (): number | null => {
+        if (usedLockers.size >= 80) return null;
+        let lockerNumber: number;
+        do {
+          lockerNumber = randomInt(1, 80);
+        } while (usedLockers.has(lockerNumber));
+        usedLockers.add(lockerNumber);
+        return lockerNumber;
+      };
       
-      const entryTime2 = new Date(businessDayStart);
-      entryTime2.setHours(entryTime2.getHours() + 2, 30, 0, 0);
+      for (let i = 0; i < todayEntries; i++) {
+        const lockerNumber = getUnusedLocker();
+        if (!lockerNumber) break;
+        
+        // Random entry time today (7:00 ~ current time)
+        const minHour = 7;
+        const maxHour = Math.min(currentHour, 23);
+        if (maxHour < minHour) continue;
+        
+        const hour = randomInt(minHour, maxHour);
+        const maxMinute = (hour === currentHour) ? now.getMinutes() : 59;
+        const minute = randomInt(0, maxMinute);
+        
+        const entryDate = new Date();
+        entryDate.setHours(hour, minute, 0, 0);
+        
+        const timeType = getTimeType(entryDate);
+        const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+        
+        const optionType = randomElement(optionTypes);
+        let optionAmount = 0;
+        let finalPrice = basePrice;
+        
+        if (optionType === 'discount') {
+          optionAmount = -discountAmount;
+          finalPrice = basePrice - discountAmount;
+        } else if (optionType === 'foreigner') {
+          optionAmount = foreignerPrice - basePrice;
+          finalPrice = foreignerPrice;
+        }
+        
+        const paymentMethod = randomElement(paymentMethods);
+        const paymentCash = paymentMethod === 'cash' ? finalPrice : 0;
+        const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
+        const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
+        
+        const id = generateId();
+        const businessDay = getBusinessDay(entryDate, businessDayStartHour);
+        
+        db.run(
+          `INSERT INTO locker_logs 
+          (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+           option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+           payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+          [id, lockerNumber, entryDate.toISOString(), null, businessDay, 
+           timeType, basePrice, optionType, optionAmount, finalPrice, '테스트 데이터', 
+           paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
+        );
+        
+        totalGenerated++;
+        updateDailySummary(businessDay);
+      }
       
-      // Exit times: 6 hours after business day start (creates 4-hour usage = overtime)
-      const exitTime1 = new Date(businessDayStart);
-      exitTime1.setHours(exitTime1.getHours() + 6, 0, 0, 0);
-      
-      const exitTime2 = new Date(businessDayStart);
-      exitTime2.setHours(exitTime2.getHours() + 6, 30, 0, 0);
-      
-      // Calculate business day using ISO format (yyyy-MM-dd)
-      const businessDayISO = getBusinessDay(entryTime1, startHour);
-      const checkoutBusinessDayISO = getBusinessDay(exitTime1, startHour);
-      
-      // Determine time type
-      const timeType1 = getTimeType(entryTime1);
-      const timeType2 = getTimeType(entryTime2);
-      
-      console.log('=== 추가요금 테스트 데이터 생성 ===');
-      console.log('영업일:', businessDayISO);
-      console.log('퇴실 영업일:', checkoutBusinessDayISO);
-      console.log('락커 1: 입실', entryTime1.toISOString(), `(${timeType1}) → 퇴실`, exitTime1.toISOString());
-      console.log('락커 2: 입실', entryTime2.toISOString(), `(${timeType2}) → 퇴실`, exitTime2.toISOString());
-      
-      // Generate unique IDs
-      const id1 = generateId();
-      const id2 = generateId();
-      
-      // Locker 1: Cash entry (10,000원), Card additional fee (5,000원)
-      // Only store base price in locker_logs, additional fee goes to separate table
-      db.run(
-        `INSERT INTO locker_logs 
-        (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees, 
-         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day, 
-         option_type, option_amount)
-        VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), timeType1, 
-         10000, 10000, 0,  // finalPrice = basePrice only, additional_fees = 0 (stored separately)
-         'checked_out', 0, 'cash', 10000, 0, 0, businessDayISO, 'none', 0]
-      );
-      
-      // Add additional fee event for Locker 1 (Card payment)
-      db.run(
-        `INSERT INTO additional_fee_events 
-        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
-         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [generateId(), id1, 1, exitTime1.toISOString(), 5000, 5000, 0, 
-         checkoutBusinessDayISO, 'card', 0, 5000, 0, new Date().toISOString()]
-      );
-      
-      // Locker 2: Card entry (10,000원), Transfer additional fee (5,000원)
-      db.run(
-        `INSERT INTO locker_logs 
-        (id, locker_number, entry_time, exit_time, time_type, base_price, final_price, additional_fees,
-         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day,
-         option_type, option_amount)
-        VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), timeType2, 
-         10000, 10000, 0,  // finalPrice = basePrice only, additional_fees = 0 (stored separately)
-         'checked_out', 0, 'card', 0, 10000, 0, businessDayISO, 'none', 0]
-      );
-      
-      // Add additional fee event for Locker 2 (Transfer payment)
-      db.run(
-        `INSERT INTO additional_fee_events 
-        (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
-         business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [generateId(), id2, 2, exitTime2.toISOString(), 5000, 5000, 0, 
-         checkoutBusinessDayISO, 'transfer', 0, 0, 5000, new Date().toISOString()]
-      );
-      
-      // Save database
       saveDatabase();
       
-      console.log('✅ 테스트 데이터 생성 완료!');
-      console.log('');
-      console.log('락커 1번: 현금 10,000원 (입실) + 카드 5,000원 (추가요금)');
-      console.log('락커 2번: 카드 10,000원 (입실) + 계좌이체 5,000원 (추가요금)');
-      console.log('');
-      console.log('정산 페이지 예상 집계:');
-      console.log('① 일반요금: 현금 10,000 + 카드 10,000 = 20,000원');
-      console.log('② 추가요금: 카드 5,000 + 계좌이체 5,000 = 10,000원');
-      console.log('③ 총합: 30,000원');
-      console.log('');
-      console.log('결제수단별:');
-      console.log('- 현금: 10,000원 (입실만)');
-      console.log('- 카드: 15,000원 (입실 10,000 + 추가 5,000)');
-      console.log('- 계좌이체: 5,000원 (추가요금만)');
+      console.log(`\n✅ 테스트 데이터 생성 완료: 총 ${totalGenerated}건 (7일치, 락커 #1~80)`);
+      console.log('🎯 같은 영업일 추가요금 5000원 시나리오 포함 보장!');
       
-      // Wait a bit to ensure saveDatabase completes
       setTimeout(() => {
         resolve(true);
       }, 100);
     } catch (error) {
-      console.error('Error creating additional fee test data:', error);
+      console.error('Error creating test data:', error);
       reject(error);
     }
   });
