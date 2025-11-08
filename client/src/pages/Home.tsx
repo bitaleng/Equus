@@ -670,48 +670,24 @@ export default function Home() {
         exitTime: now,
       });
     } else {
-      // Same business day checkout - combine base and additional fee payments
-      let finalPaymentCash = paymentCash;
-      let finalPaymentCard = paymentCard;
-      let finalPaymentTransfer = paymentTransfer;
-      let finalPaymentMethod = paymentMethod;
-      
-      if (additionalFeeInfo.additionalFee > 0 && additionalFeePayment) {
-        // Combine base price payment with additional fee payment
-        const basePayment = {
-          cash: paymentCash,
-          card: paymentCard,
-          transfer: paymentTransfer,
-        };
-        const addPayment = {
-          cash: additionalFeePayment.cash,
-          card: additionalFeePayment.card,
-          transfer: additionalFeePayment.transfer,
-        };
-        
-        const combined = combinePayments(basePayment, addPayment);
-        finalPaymentCash = combined.cash;
-        finalPaymentCard = combined.card;
-        finalPaymentTransfer = combined.transfer;
-        finalPaymentMethod = combined.cash ? 'cash' : (combined.card ? 'card' : 'transfer');
-      }
-      
-      const finalPriceWithAdditionalFee = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
+      // Same business day checkout - DO NOT combine payments, keep them separate
+      // Base price payment stays in locker_logs
+      // Additional fee payment goes to additional_fee_events table for independent tracking
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        paymentMethod: finalPaymentMethod,
-        paymentCash: finalPaymentCash,
-        paymentCard: finalPaymentCard,
-        paymentTransfer: finalPaymentTransfer,
-        finalPrice: finalPriceWithAdditionalFee,
+        paymentMethod: paymentMethod,
+        paymentCash: paymentCash,
+        paymentCard: paymentCard,
+        paymentTransfer: paymentTransfer,
+        finalPrice: selectedEntry.finalPrice,
         additionalFees: additionalFeeInfo.additionalFee,
       });
     }
     
-    // Create additional fee event ONLY for different business day checkouts
-    // (same-day checkouts already include the fee in finalPrice)
-    if (additionalFeeInfo.additionalFee > 0 && entryBusinessDay !== checkoutBusinessDay) {
+    // Create additional fee event for ALL checkouts with additional fees
+    // This ensures payment method independence between entry and additional fees
+    if (additionalFeeInfo.additionalFee > 0) {
       const addFeePayment = additionalFeePayment || {
         method: paymentMethod,
         cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,

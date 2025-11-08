@@ -185,82 +185,17 @@ export default function ClosingPage() {
     const rentalTransactions = localDb.getRentalTransactionsByBusinessDayRange(businessDay, bdStartHour);
     
     // 1) 입실 기본 요금 집계 (결제수단별)
-    // IMPORTANT: Exclude same-business-day additional_fees from base entry sales
-    // Base entry sales = finalPrice - additional_fees
+    // IMPORTANT: finalPrice now only contains base entry price (additional fees stored separately in additional_fee_events)
     let entryCash = 0, entryCard = 0, entryTransfer = 0;
     entries.filter(e => !e.cancelled).forEach(e => {
-      const finalPrice = e.finalPrice || 0;
-      const additionalFees = (e as any).additionalFees || 0;
-      const basePriceOnly = finalPrice - additionalFees; // Exclude same-day additional fees
-      
       const cashPayment = e.paymentCash || 0;
       const cardPayment = e.paymentCard || 0;
       const transferPayment = e.paymentTransfer || 0;
-      const paymentTotal = cashPayment + cardPayment + transferPayment;
       
-      // If payment fields match finalPrice, need to split proportionally for basePriceOnly
-      if (paymentTotal === finalPrice && finalPrice > 0) {
-        const ratio = basePriceOnly / finalPrice;
-        let normalizedCash = Math.floor(cashPayment * ratio);
-        let normalizedCard = Math.floor(cardPayment * ratio);
-        let normalizedTransfer = Math.floor(transferPayment * ratio);
-        
-        // Allocate remainder to largest payment channel
-        const remainder = basePriceOnly - (normalizedCash + normalizedCard + normalizedTransfer);
-        if (remainder !== 0) {
-          const amounts = [
-            { value: cashPayment, key: 'cash' as const },
-            { value: cardPayment, key: 'card' as const },
-            { value: transferPayment, key: 'transfer' as const }
-          ];
-          const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
-          
-          if (largest.key === 'cash') normalizedCash += remainder;
-          else if (largest.key === 'card') normalizedCard += remainder;
-          else normalizedTransfer += remainder;
-        }
-        
-        entryCash += normalizedCash;
-        entryCard += normalizedCard;
-        entryTransfer += normalizedTransfer;
-      } else if (paymentTotal > 0) {
-        // If there's a mismatch, redistribute basePriceOnly proportionally
-        const ratio = basePriceOnly / paymentTotal;
-        let normalizedCash = Math.floor(cashPayment * ratio);
-        let normalizedCard = Math.floor(cardPayment * ratio);
-        let normalizedTransfer = Math.floor(transferPayment * ratio);
-        
-        // Calculate remainder and assign to largest payment source
-        const remainder = basePriceOnly - (normalizedCash + normalizedCard + normalizedTransfer);
-        if (remainder !== 0) {
-          const amounts = [
-            { value: cashPayment, key: 'cash' as const },
-            { value: cardPayment, key: 'card' as const },
-            { value: transferPayment, key: 'transfer' as const }
-          ];
-          const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
-          
-          if (largest.key === 'cash') normalizedCash += remainder;
-          else if (largest.key === 'card') normalizedCard += remainder;
-          else normalizedTransfer += remainder;
-        }
-        
-        entryCash += normalizedCash;
-        entryCard += normalizedCard;
-        entryTransfer += normalizedTransfer;
-      } else {
-        // If no payment data, allocate to primary payment method
-        if (e.paymentMethod === 'cash') {
-          entryCash += basePriceOnly;
-        } else if (e.paymentMethod === 'card') {
-          entryCard += basePriceOnly;
-        } else if (e.paymentMethod === 'transfer') {
-          entryTransfer += basePriceOnly;
-        } else {
-          // Default to cash if no payment method specified
-          entryCash += basePriceOnly;
-        }
-      }
+      // Payment amounts already reflect base price only (additional fees tracked separately)
+      entryCash += cashPayment;
+      entryCard += cardPayment;
+      entryTransfer += transferPayment;
     });
     
     setBaseEntrySales({
@@ -271,85 +206,15 @@ export default function ClosingPage() {
     });
     
     // 2) 추가요금 집계 (결제수단별)
-    // Include BOTH same-business-day fees (from locker_logs.additional_fees) 
-    // AND different-business-day fees (from additional_fee_events table)
+    // All additional fees now come from additional_fee_events table
+    // This ensures payment method independence from entry payments
     let additionalCash = 0, additionalCard = 0, additionalTransfer = 0;
     
-    // Different-business-day additional fees (from additional_fee_events table)
+    // All additional fees (from additional_fee_events table)
     additionalFeeEvents.forEach(e => {
       additionalCash += (e as any).paymentCash || 0;
       additionalCard += (e as any).paymentCard || 0;
       additionalTransfer += (e as any).paymentTransfer || 0;
-    });
-    
-    // Same-business-day additional fees (from locker_logs.additional_fees column)
-    entries.filter(e => !e.cancelled).forEach(e => {
-      const additionalFees = (e as any).additionalFees || 0;
-      if (additionalFees > 0) {
-        const finalPrice = e.finalPrice || 0;
-        const cashPayment = e.paymentCash || 0;
-        const cardPayment = e.paymentCard || 0;
-        const transferPayment = e.paymentTransfer || 0;
-        const paymentTotal = cashPayment + cardPayment + transferPayment;
-        
-        // Distribute additional fees proportionally based on payment method
-        if (paymentTotal === finalPrice && finalPrice > 0) {
-          const ratio = additionalFees / finalPrice;
-          let normalizedCash = Math.floor(cashPayment * ratio);
-          let normalizedCard = Math.floor(cardPayment * ratio);
-          let normalizedTransfer = Math.floor(transferPayment * ratio);
-          
-          // Allocate remainder to largest payment channel
-          const remainder = additionalFees - (normalizedCash + normalizedCard + normalizedTransfer);
-          if (remainder !== 0) {
-            const amounts = [
-              { value: cashPayment, key: 'cash' as const },
-              { value: cardPayment, key: 'card' as const },
-              { value: transferPayment, key: 'transfer' as const }
-            ];
-            const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
-            
-            if (largest.key === 'cash') normalizedCash += remainder;
-            else if (largest.key === 'card') normalizedCard += remainder;
-            else normalizedTransfer += remainder;
-          }
-          
-          additionalCash += normalizedCash;
-          additionalCard += normalizedCard;
-          additionalTransfer += normalizedTransfer;
-        } else if (paymentTotal > 0) {
-          const ratio = additionalFees / paymentTotal;
-          let normalizedCash = Math.floor(cashPayment * ratio);
-          let normalizedCard = Math.floor(cardPayment * ratio);
-          let normalizedTransfer = Math.floor(transferPayment * ratio);
-          
-          // Allocate remainder to largest payment channel
-          const remainder = additionalFees - (normalizedCash + normalizedCard + normalizedTransfer);
-          if (remainder !== 0) {
-            const amounts = [
-              { value: cashPayment, key: 'cash' as const },
-              { value: cardPayment, key: 'card' as const },
-              { value: transferPayment, key: 'transfer' as const }
-            ];
-            const largest = amounts.reduce((max, curr) => curr.value > max.value ? curr : max);
-            
-            if (largest.key === 'cash') normalizedCash += remainder;
-            else if (largest.key === 'card') normalizedCard += remainder;
-            else normalizedTransfer += remainder;
-          }
-          
-          additionalCash += normalizedCash;
-          additionalCard += normalizedCard;
-          additionalTransfer += normalizedTransfer;
-        } else if (e.paymentMethod) {
-          // Allocate to primary payment method
-          if (e.paymentMethod === 'cash') additionalCash += additionalFees;
-          else if (e.paymentMethod === 'card') additionalCard += additionalFees;
-          else if (e.paymentMethod === 'transfer') additionalTransfer += additionalFees;
-        } else {
-          additionalCash += additionalFees; // Default to cash
-        }
-      }
     });
     
     setAdditionalFeeSales({
