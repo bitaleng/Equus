@@ -2175,6 +2175,9 @@ export async function createAdditionalFeeTestData() {
       
       // Track used lockers for today's data only (avoid duplicates in in_use state)
       const usedLockers = new Set<number>();
+      // IMPORTANT: Add guaranteed locker to used set to prevent duplicates
+      usedLockers.add(guaranteedLocker);
+      
       const getUnusedLocker = (): number | null => {
         if (usedLockers.size >= 80) return null;
         let lockerNumber: number;
