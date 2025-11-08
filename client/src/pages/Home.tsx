@@ -191,10 +191,15 @@ export default function Home() {
       if (locker45) console.log('락커 45번 데이터:', locker45);
       
       // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
-      const entries = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
+      const allEntriesFromDb = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
       
       // Get additional fee events for today (모든 추가요금: 같은 영업일 + 다른 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+      
+      // IMPORTANT: Exclude entries that have additional fees from the entry list
+      // Only show additional fee records for those entries, not the original entry
+      const additionalFeeLogIds = new Set(additionalFeeEvents.map(e => e.lockerLogId));
+      const entries = allEntriesFromDb.filter(entry => !additionalFeeLogIds.has(entry.id));
       
       // Create pseudo entries for ALL additional fee events
       // Display all as separate rows with empty entry time
@@ -220,13 +225,9 @@ export default function Home() {
         };
       });
       
-      // No need to enrich entries with additional fee flags anymore
-      // Additional fees are now displayed as separate rows
-      const enrichedEntries = entries;
-      
-      // Combine regular entries with additional fee entries and sort by time
+      // Combine filtered entries with additional fee entries and sort by time
       // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
-      const allEntries = [...enrichedEntries, ...additionalFeeEntries].sort((a, b) => {
+      const allEntries = [...entries, ...additionalFeeEntries].sort((a, b) => {
         const timeA = a.exitTime || a.entryTime || '';
         const timeB = b.exitTime || b.entryTime || '';
         return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
