@@ -2087,9 +2087,9 @@ export async function createAdditionalFeeTestData() {
       totalGenerated++;
       updateDailySummary(entryBusinessDay);
       
-      // ===== RANDOMIZED DATA: 7 days of past data =====
-      console.log('\n7일치 과거 데이터 (퇴실완료) 생성 중...');
-      for (let pastDays = 1; pastDays <= 7; pastDays++) {
+      // ===== RANDOMIZED DATA: 3 days of past data =====
+      console.log('\n3일치 과거 데이터 (퇴실완료) 생성 중...');
+      for (let pastDays = 1; pastDays <= 3; pastDays++) {
         const pastDate = new Date();
         pastDate.setDate(pastDate.getDate() - pastDays);
         
@@ -2219,7 +2219,7 @@ export async function createAdditionalFeeTestData() {
       
       saveDatabase();
       
-      console.log(`\n✅ 테스트 데이터 생성 완료: 총 ${totalGenerated}건 (7일치, 락커 #1~80)`);
+      console.log(`\n✅ 테스트 데이터 생성 완료: 총 ${totalGenerated}건 (3일치, 락커 #1~80)`);
       console.log('🎯 같은 영업일 추가요금 5000원 시나리오 포함 보장!');
       
       setTimeout(() => {

@@ -284,7 +284,7 @@ export default function Settings() {
       
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "7일치 랜덤 데이터 + 같은 영업일 추가요금 시나리오가 생성되었습니다. 홈 페이지로 이동합니다.",
+        description: "3일치 랜덤 데이터 + 같은 영업일 추가요금 시나리오가 생성되었습니다. 홈 페이지로 이동합니다.",
       });
       
       // Navigate to home instead of reloading (preserves business day context)
