@@ -2015,19 +2015,27 @@ export async function createAdditionalFeeTestData() {
       const settings = getSettings();
       const startHour = settings.businessDayStartHour ?? 10;
       
-      // Calculate base time: current time minus business day offset
-      const base = new Date();
-      base.setHours(base.getHours() - startHour);
+      // Create timestamps for yesterday's business day
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
       
-      // Create entry 15 hours before base (yesterday afternoon in KST)
-      const entryTime1 = new Date(base.getTime() - 15 * 60 * 60 * 1000);
-      const entryTime2 = new Date(base.getTime() - 14.5 * 60 * 60 * 1000);
+      // Entry at 14:00 yesterday
+      const entryTime1 = new Date(yesterday);
+      entryTime1.setHours(14, 0, 0, 0);
       
-      // Create exit times 8 hours after entry (next morning)
-      const exitTime1 = new Date(entryTime1.getTime() + 8 * 60 * 60 * 1000);
-      const exitTime2 = new Date(entryTime2.getTime() + 8 * 60 * 60 * 1000);
+      // Entry at 15:30 yesterday
+      const entryTime2 = new Date(yesterday);
+      entryTime2.setHours(15, 30, 0, 0);
       
-      // Calculate business day using the shared function
+      // Exit times: today morning 7:00 and 7:30
+      const exitTime1 = new Date(now);
+      exitTime1.setHours(7, 0, 0, 0);
+      
+      const exitTime2 = new Date(now);
+      exitTime2.setHours(7, 30, 0, 0);
+      
+      // Calculate business day - should be yesterday since entries are after 10AM yesterday
       const businessDay = getBusinessDay(entryTime1, startHour);
       
       // Determine time type
