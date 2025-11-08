@@ -2002,6 +2002,43 @@ export function createTestData() {
   console.log(`- 추가요금 2회+: ${additionalFee2PlusCount}건 (레드)`);
 }
 
+// Create test data for additional fee display verification
+export function createAdditionalFeeTestData() {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    // Test Entry 1: Locker 1, cash payment
+    // Yesterday 14:00 check-in -> Today 07:00 checkout (same business day)
+    const sql1 = `
+      INSERT INTO locker_logs 
+      (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees, 
+       status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
+      VALUES 
+      (1, '2025-11-06T05:00:00.000Z', '2025-11-06T22:00:00.000Z', '주간', 10000, 15000, 5000,
+       'checked_out', 0, 'cash', 15000, 0, 0, '2025-11-06');
+    `;
+    
+    // Test Entry 2: Locker 2, card payment
+    const sql2 = `
+      INSERT INTO locker_logs 
+      (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees,
+       status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
+      VALUES 
+      (2, '2025-11-06T06:30:00.000Z', '2025-11-06T22:30:00.000Z', '주간', 10000, 15000, 5000,
+       'checked_out', 0, 'card', 0, 15000, 0, '2025-11-06');
+    `;
+    
+    db.run(sql1);
+    db.run(sql2);
+    saveDatabase();
+    
+    return true;
+  } catch (error) {
+    console.error('Error creating additional fee test data:', error);
+    throw error;
+  }
+}
+
 // ===== Stage 1: Additional Fee Events =====
 
 export function createAdditionalFeeEvent(event: {
