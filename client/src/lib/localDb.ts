@@ -2028,87 +2028,95 @@ export async function createAdditionalFeeTestData() {
       
       // ===== GUARANTEED SCENARIO: Same-business-day additional fee =====
       console.log('\n[보장된 시나리오] 같은 영업일 추가요금 5000원 생성 중...');
+      console.log('📖 규칙: 전일 주간(19:00 이전) 입실 + 자정 넘김 + 현재 in_use');
+      
       const guaranteedLocker = randomInt(1, 80);
       
-      // Get current business day to ensure test data is visible
+      // Get current business day range
       const now = new Date();
       const currentBusinessDay = getBusinessDay(now, businessDayStartHour);
+      const { start: currentBusinessDayStart } = getBusinessDayRange(now, businessDayStartHour);
+      
       console.log(`  📍 현재 영업일: ${currentBusinessDay}`);
+      console.log(`  📍 영업일 시작: ${currentBusinessDayStart.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
       
-      // Scenario: Entry at business day start + 2 hours → Checkout at start + 11 hours
-      // This ensures 9 hours of usage, generating additional fee (for 3+ hour base)
-      // Both entry and checkout in the SAME current business day
-      const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
-      
-      // Entry: Business day start + 2 hours (e.g., 10:00 + 2 = 12:00)
-      const entryTime = new Date(businessDayStart.getTime() + 2 * 60 * 60 * 1000);
-      
-      // Checkout: Business day start + 11 hours (e.g., 10:00 + 11 = 21:00)
-      // 9 hours usage should trigger additional fee
-      const checkoutTime = new Date(businessDayStart.getTime() + 11 * 60 * 60 * 1000);
+      // Entry time: Current business day daytime (start + 2~8 hours = 12:00-18:00 KST)
+      // This ensures entry is BEFORE 19:00 (daytime) and BEFORE midnight (00:00)
+      // "전일" = before midnight, "주간" = 07:00-19:00, "자정 넘김" = crosses 00:00
+      const entryHourOffset = randomInt(2, 8); // 10:00 + 2~8 = 12:00~18:00 (before 19:00)
+      const entryTime = new Date(currentBusinessDayStart.getTime() + entryHourOffset * 60 * 60 * 1000);
       
       const entryBusinessDay = getBusinessDay(entryTime, businessDayStartHour);
-      const checkoutBusinessDay = getBusinessDay(checkoutTime, businessDayStartHour);
+      const timeType = getTimeType(entryTime);
+      const basePrice = dayPrice; // Must be daytime entry
       
       console.log(`  🔍 락커 #${guaranteedLocker}`);
-      console.log(`  📅 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-      console.log(`  📅 퇴실: ${checkoutTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+      console.log(`  📅 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (${timeType})`);
       console.log(`  📊 입실 영업일: ${entryBusinessDay}`);
-      console.log(`  📊 퇴실 영업일: ${checkoutBusinessDay}`);
-      console.log(`  ✅ 같은 영업일: ${entryBusinessDay === checkoutBusinessDay ? 'YES ✓' : 'NO ✗'}`);
-      console.log(`  ⏱️  사용 시간: ${Math.floor((checkoutTime.getTime() - entryTime.getTime()) / (60 * 60 * 1000))}시간`);
+      console.log(`  💵 입실요금: ${basePrice}원 (주간)`);
       
-      if (entryBusinessDay !== checkoutBusinessDay) {
-        console.error('  ❌ 오류: 입실과 퇴실이 다른 영업일입니다!');
-        console.error(`  ❌ 영업일 시작 시간: ${businessDayStartHour}시`);
+      if (timeType !== '주간') {
+        console.error('  ❌ 오류: 입실 시간이 주간이 아닙니다!');
       }
       
-      const timeType = getTimeType(entryTime);
-      const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+      // Payment for entry
       const paymentMethod = randomElement(paymentMethods);
-      const id = generateId();
-      
-      // Set payment columns for entry
       const paymentCash = paymentMethod === 'cash' ? basePrice : 0;
       const paymentCard = paymentMethod === 'card' ? basePrice : 0;
       const paymentTransfer = paymentMethod === 'transfer' ? basePrice : 0;
       
-      console.log(`  💵 입실 결제: ${paymentMethod.toUpperCase()} ${basePrice}원 (${timeType})`);
+      const id = generateId();
       
-      // Insert locker log (checked out)
+      // Insert locker log (IN USE - no exit_time)
       db!.run(
         `INSERT INTO locker_logs 
         (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
          option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
          payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
-        [id, guaranteedLocker, entryTime.toISOString(), checkoutTime.toISOString(), entryBusinessDay, 
-         timeType, basePrice, 'none', 0, basePrice, '테스트: 같은영업일 추가요금', paymentMethod, 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+        [id, guaranteedLocker, entryTime.toISOString(), null, entryBusinessDay, 
+         timeType, basePrice, 'none', 0, basePrice, '테스트: 전일주간입실+자정넘김', paymentMethod, 
          paymentCash, paymentCard, paymentTransfer, null]
       );
       
-      console.log(`  ✅ locker_logs 테이블에 입실 기록 삽입 완료 (ID: ${id})`);
+      console.log(`  ✅ locker_logs 삽입 완료 (status: in_use, ID: ${id})`);
       
-      // Insert additional fee event (5000원, random payment method)
+      // Calculate midnight after entry (first midnight crossed)
+      const midnightAfterEntry = new Date(entryTime);
+      midnightAfterEntry.setDate(midnightAfterEntry.getDate() + 1);
+      midnightAfterEntry.setHours(0, 0, 0, 0);
+      
+      const midnightBusinessDay = getBusinessDay(midnightAfterEntry, businessDayStartHour);
+      
+      console.log(`  🌙 자정 시각: ${midnightAfterEntry.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+      console.log(`  📊 자정 영업일: ${midnightBusinessDay}`);
+      console.log(`  ✅ 같은 영업일: ${entryBusinessDay === midnightBusinessDay ? 'YES ✓' : 'NO ✗'}`);
+      
+      if (entryBusinessDay !== midnightBusinessDay) {
+        console.error('  ❌ 오류: 입실과 자정이 다른 영업일입니다!');
+      }
+      
+      // Insert additional fee event (5000원 at midnight)
       const feePaymentMethod = randomElement(paymentMethods);
       const feeCash = feePaymentMethod === 'cash' ? 5000 : 0;
       const feeCard = feePaymentMethod === 'card' ? 5000 : 0;
       const feeTransfer = feePaymentMethod === 'transfer' ? 5000 : 0;
       const feeId = generateId();
       
-      console.log(`  💰 추가요금: ${feePaymentMethod.toUpperCase()} 5000원`);
+      console.log(`  💰 추가요금: ${feePaymentMethod.toUpperCase()} 5000원 (야간-주간 차액)`);
       
       db!.run(
         `INSERT INTO additional_fee_events 
         (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
          business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [feeId, id, guaranteedLocker, checkoutTime.toISOString(), 5000, 5000, 0, 
-         checkoutBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
+        [feeId, id, guaranteedLocker, midnightAfterEntry.toISOString(), 5000, 5000, 0, 
+         midnightBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
       );
       
-      console.log(`  ✅ additional_fee_events 테이블에 추가요금 삽입 완료 (ID: ${feeId})`);
+      console.log(`  ✅ additional_fee_events 삽입 완료 (ID: ${feeId})`);
       console.log(`  🎯 총합: 입실 ${basePrice}원 + 추가요금 5000원 = ${basePrice + 5000}원`);
+      console.log(`  ✅ 현재 상태: in_use (아직 퇴실하지 않음)`);
       
       totalGenerated++;
       updateDailySummary(entryBusinessDay);
