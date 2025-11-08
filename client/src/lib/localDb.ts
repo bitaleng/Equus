@@ -2010,6 +2010,33 @@ export function createAdditionalFeeTestData() {
     const id1 = generateId();
     const id2 = generateId();
     
+    // Calculate dates dynamically to avoid auto-deletion
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Yesterday 14:00 KST = UTC+9, so subtract 9 hours
+    const entryTime1 = new Date(yesterday);
+    entryTime1.setHours(14 - 9, 0, 0, 0); // 14:00 KST = 05:00 UTC
+    
+    const entryTime2 = new Date(yesterday);
+    entryTime2.setHours(15 - 9, 30, 0, 0); // 15:30 KST = 06:30 UTC
+    
+    // Today 07:00 KST = 22:00 UTC (previous day in UTC)
+    const exitTime1 = new Date(yesterday);
+    exitTime1.setHours(22, 0, 0, 0); // 07:00 KST next day = 22:00 UTC same day
+    
+    const exitTime2 = new Date(yesterday);
+    exitTime2.setHours(22, 30, 0, 0); // 07:30 KST next day = 22:30 UTC same day
+    
+    // Business day is yesterday (since both entry times are after 10:00 KST)
+    const businessDay = yesterday.toISOString().split('T')[0];
+    
+    console.log('Creating test data:');
+    console.log('- Business Day:', businessDay);
+    console.log('- Entry 1:', entryTime1.toISOString());
+    console.log('- Exit 1:', exitTime1.toISOString());
+    
     // Test Entry 1: Locker 1, cash payment
     // Yesterday 14:00 check-in -> Today 07:00 checkout (same business day)
     db.run(
@@ -2019,8 +2046,8 @@ export function createAdditionalFeeTestData() {
        option_type, option_amount)
       VALUES 
       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id1, 1, '2025-11-06T05:00:00.000Z', '2025-11-06T22:00:00.000Z', '주간', 10000, 15000, 5000,
-       'checked_out', 0, 'cash', 15000, 0, 0, '2025-11-06', 'none', 0]
+      [id1, 1, entryTime1.toISOString(), exitTime1.toISOString(), '주간', 10000, 15000, 5000,
+       'checked_out', 0, 'cash', 15000, 0, 0, businessDay, 'none', 0]
     );
     
     // Test Entry 2: Locker 2, card payment
@@ -2031,12 +2058,13 @@ export function createAdditionalFeeTestData() {
        option_type, option_amount)
       VALUES 
       (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id2, 2, '2025-11-06T06:30:00.000Z', '2025-11-06T22:30:00.000Z', '주간', 10000, 15000, 5000,
-       'checked_out', 0, 'card', 0, 15000, 0, '2025-11-06', 'none', 0]
+      [id2, 2, entryTime2.toISOString(), exitTime2.toISOString(), '주간', 10000, 15000, 5000,
+       'checked_out', 0, 'card', 0, 15000, 0, businessDay, 'none', 0]
     );
     
     saveDatabase();
     
+    console.log('✅ 테스트 데이터 생성 완료: 락커 1, 2번 (어제 영업일)');
     return true;
   } catch (error) {
     console.error('Error creating additional fee test data:', error);
