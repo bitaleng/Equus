@@ -81,11 +81,6 @@ export default function Home() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
-  
-  // macOS Dock-style magnification effect
-  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
-  const [lockerScales, setLockerScales] = useState<{ [key: number]: number }>({});
-  const lockerRefs = useRef<{ [key: number]: HTMLElement | null }>({});
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -109,59 +104,6 @@ export default function Home() {
   // Pattern verified, expand panel
   const handlePatternCorrect = () => {
     setIsPanelCollapsed(false);
-  };
-  
-  // Calculate scale for Dock-style magnification effect
-  const calculateLockerScales = useCallback(() => {
-    if (!mousePosition) {
-      setLockerScales({});
-      return;
-    }
-    
-    const maxDistance = 150; // Maximum distance for magnification effect (pixels)
-    const maxScale = 1.5; // Maximum scale factor
-    const newScales: { [key: number]: number } = {};
-    
-    Object.entries(lockerRefs.current).forEach(([lockerNum, element]) => {
-      if (!element) {
-        newScales[Number(lockerNum)] = 1;
-        return;
-      }
-      
-      const rect = element.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      
-      // Calculate distance from mouse to button center
-      const dx = mousePosition.x - centerX;
-      const dy = mousePosition.y - centerY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Calculate scale based on distance (closer = larger)
-      if (distance > maxDistance) {
-        newScales[Number(lockerNum)] = 1;
-      } else {
-        const influence = 1 - distance / maxDistance;
-        newScales[Number(lockerNum)] = 1 + influence * (maxScale - 1);
-      }
-    });
-    
-    setLockerScales(newScales);
-  }, [mousePosition]);
-  
-  // Update scales when mouse position changes
-  useEffect(() => {
-    calculateLockerScales();
-  }, [calculateLockerScales]);
-  
-  // Handle mouse move over locker grid
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    setMousePosition({ x: e.clientX, y: e.clientY });
-  };
-  
-  // Handle mouse leave from locker grid
-  const handleMouseLeave = () => {
-    setMousePosition(null);
   };
 
   // Update current time every minute
@@ -940,8 +882,6 @@ export default function Home() {
         {/* Locker Grid */}
         <div 
           className={`flex-1 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
         >
           {lockerGroups.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
@@ -967,26 +907,17 @@ export default function Home() {
                       { length: group.endNumber - group.startNumber + 1 },
                       (_, i) => group.startNumber + i
                     ).map((num) => (
-                      <div 
+                      <LockerButton
                         key={num}
-                        ref={(el) => { lockerRefs.current[num] = el; }}
-                        style={{
-                          transform: `scale(${lockerScales[num] || 1})`,
-                          zIndex: (lockerScales[num] || 1) > 1 ? 10 : 1,
-                          transition: 'transform 100ms ease-out',
-                        }}
-                      >
-                        <LockerButton
-                          number={num}
-                          status={lockerStates[num] || 'empty'}
-                          additionalFeeCount={additionalFeeCounts[num] || 0}
-                          timeType={lockerTimeTypes[num] || 'day'}
-                          entryTime={lockerEntryTimes[num]}
-                          businessDayStartHour={businessDayStartHour}
-                          onClick={() => handleLockerClick(num)}
-                          isExpanded={isPanelCollapsed && !overviewMode}
-                        />
-                      </div>
+                        number={num}
+                        status={lockerStates[num] || 'empty'}
+                        additionalFeeCount={additionalFeeCounts[num] || 0}
+                        timeType={lockerTimeTypes[num] || 'day'}
+                        entryTime={lockerEntryTimes[num]}
+                        businessDayStartHour={businessDayStartHour}
+                        onClick={() => handleLockerClick(num)}
+                        isExpanded={isPanelCollapsed && !overviewMode}
+                      />
                     ))}
                   </div>
                 </div>
