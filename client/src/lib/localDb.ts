@@ -1116,11 +1116,15 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
   const startDateTime = new Date(startDate + 'T00:00:00').toISOString();
   const endDateTime = new Date(endDate + 'T23:59:59.999').toISOString();
 
+  // Interval overlap logic: Include records where:
+  // - entry_time is before or during the period, AND
+  // - exit_time is during or after the period (or still in use)
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE entry_time >= ? AND entry_time <= ?
+     WHERE entry_time <= ?
+       AND (exit_time IS NULL OR exit_time >= ?)
      ORDER BY entry_time DESC`,
-    [startDateTime, endDateTime]
+    [endDateTime, startDateTime]
   );
 
   if (result.length === 0) return [];
@@ -1129,17 +1133,22 @@ export function getEntriesByDateRange(startDate: string, endDate: string) {
 }
 
 /**
- * 시간 범위로 입실 기록 조회 (entry_time 기준)
- * 입출기록 페이지의 시간 필터링용 - 해당 시간대에 입실한 기록만 반환
+ * 시간 범위로 입실 기록 조회 (interval overlap 로직)
+ * 입출기록 페이지의 시간 필터링용 - 해당 시간대와 겹치는 모든 기록 반환
+ * 기간 전 입실/기간 후 퇴실, 기간 중 입실/퇴실, 사용중 등 모든 경우 포함
  */
 export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: string) {
   if (!db) throw new Error('Database not initialized');
 
+  // Interval overlap logic: Include records where:
+  // - entry_time is before or during the period, AND
+  // - exit_time is during or after the period (or still in use)
   const result = db.exec(
     `SELECT * FROM locker_logs 
-     WHERE entry_time >= ? AND entry_time <= ?
+     WHERE entry_time <= ?
+       AND (exit_time IS NULL OR exit_time >= ?)
      ORDER BY entry_time DESC`,
-    [startDateTime, endDateTime]
+    [endDateTime, startDateTime]
   );
 
   if (result.length === 0) return [];
