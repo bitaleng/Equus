@@ -2113,8 +2113,8 @@ export async function createAdditionalFeeTestData() {
           const basePrice = timeType === '주간' ? dayPrice : nightPrice;
           const paymentMethod = randomElement(paymentMethods);
           
-          // 검증: 추가요금이 실제로 0인지 확인 (디버깅용)
-          const { additionalFeeCount: greenFeeCount } = calculateAdditionalFee(
+          // CRITICAL: 검증 후 추가요금이 있으면 레드색으로 재분류
+          const { additionalFeeCount: greenFeeCount, additionalFee: greenFeeAmount } = calculateAdditionalFee(
             entryTime.toISOString(),
             timeType,
             dayPrice,
@@ -2124,22 +2124,42 @@ export async function createAdditionalFeeTestData() {
             foreignerPrice
           );
           
-          db!.run(
-            `INSERT INTO locker_logs 
-            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
-            [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-             timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증:${greenFeeCount})`, 
-             paymentMethod, 
-             paymentMethod === 'cash' ? basePrice : 0,
-             paymentMethod === 'card' ? basePrice : 0,
-             paymentMethod === 'transfer' ? basePrice : 0,
-             null]
-          );
+          // 추가요금이 발생하면 레드색으로 재분류 (그린 → 레드 변환)
+          if (greenFeeCount > 0) {
+            db!.run(
+              `INSERT INTO locker_logs 
+              (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+               option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+               payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+              [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
+               timeType, basePrice, 'none', 0, basePrice, `이전영업일+추가요금발생(그린→레드자동변환)`, 
+               paymentMethod, 
+               paymentMethod === 'cash' ? basePrice : 0,
+               paymentMethod === 'card' ? basePrice : 0,
+               paymentMethod === 'transfer' ? basePrice : 0,
+               null]
+            );
+            console.log(`  🔴 락커 #${lockerNumber}: 레드 (그린→레드 자동변환, 추가요금: ₩${greenFeeAmount.toLocaleString()})`);
+          } else {
+            // 추가요금 없음 → 진짜 그린색
+            db!.run(
+              `INSERT INTO locker_logs 
+              (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+               option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+               payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+              [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
+               timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증완료)`, 
+               paymentMethod, 
+               paymentMethod === 'cash' ? basePrice : 0,
+               paymentMethod === 'card' ? basePrice : 0,
+               paymentMethod === 'transfer' ? basePrice : 0,
+               null]
+            );
+            console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 추가요금: 0회) ✓`);
+          }
           
-          console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 추가요금 검증: ${greenFeeCount}회)`);
           totalGenerated++;
           updateDailySummary(businessDay);
           
