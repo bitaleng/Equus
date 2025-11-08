@@ -2036,7 +2036,9 @@ export async function createAdditionalFeeTestData() {
       exitTime2.setHours(7, 30, 0, 0);
       
       // Calculate business day - should be yesterday since entries are after 10AM yesterday
-      const businessDay = getBusinessDay(entryTime1, startHour);
+      const businessDayISO = getBusinessDay(entryTime1, startHour);
+      // Convert to legacy dotted format to match existing database records
+      const businessDay = businessDayISO.replace(/-/g, '.');
       
       // Determine time type
       const timeType1 = getTimeType(entryTime1);
