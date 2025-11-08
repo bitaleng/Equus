@@ -278,30 +278,7 @@ export default function Settings() {
 
   const handleCreateTestData = () => {
     try {
-      // Create 2 test entries: Yesterday check-in with same-day additional fees
-      // Test Entry 1: Locker 1, cash payment
-      const sql1 = `
-        INSERT INTO locker_logs 
-        (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees, 
-         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
-        VALUES 
-        (1, '2025-11-06T05:00:00.000Z', '2025-11-06T22:00:00.000Z', '주간', 10000, 15000, 5000,
-         'checked_out', 0, 'cash', 15000, 0, 0, '2025-11-06');
-      `;
-      
-      // Test Entry 2: Locker 2, card payment
-      const sql2 = `
-        INSERT INTO locker_logs 
-        (locker_number, entry_time, checkout_time, time_type, base_price, final_price, additional_fees,
-         status, cancelled, payment_method, payment_cash, payment_card, payment_transfer, business_day)
-        VALUES 
-        (2, '2025-11-06T06:30:00.000Z', '2025-11-06T22:30:00.000Z', '주간', 10000, 15000, 5000,
-         'checked_out', 0, 'card', 0, 15000, 0, '2025-11-06');
-      `;
-      
-      localDb.db.run(sql1);
-      localDb.db.run(sql2);
-      localDb.saveToLocalStorage();
+      localDb.createAdditionalFeeTestData();
       
       toast({
         title: "테스트 데이터 생성 완료",
@@ -313,6 +290,7 @@ export default function Settings() {
         window.location.reload();
       }, 1500);
     } catch (error) {
+      console.error('Test data creation error:', error);
       toast({
         title: "생성 실패",
         description: "테스트 데이터 생성 중 오류가 발생했습니다.",
