@@ -2053,6 +2053,25 @@ export async function createAdditionalFeeTestData() {
       const numCurrentLockers = randomInt(5, 10);
       const currentUsedLockers = new Set<number>();
       
+      // Pre-determine state distribution to guarantee at least one of each color
+      // 30% Green, 30% Red, 20% Yellow, 20% Blue
+      const states: string[] = [];
+      const greenCount = Math.max(1, Math.round(numCurrentLockers * 0.3)); // At least 1
+      const redCount = Math.max(1, Math.round(numCurrentLockers * 0.3)); // At least 1
+      const yellowCount = Math.max(1, Math.round(numCurrentLockers * 0.2));
+      const blueCount = numCurrentLockers - greenCount - redCount - yellowCount;
+      
+      for (let i = 0; i < greenCount; i++) states.push('green');
+      for (let i = 0; i < redCount; i++) states.push('red');
+      for (let i = 0; i < yellowCount; i++) states.push('yellow');
+      for (let i = 0; i < blueCount; i++) states.push('blue');
+      
+      // Shuffle states for randomness
+      for (let i = states.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [states[i], states[j]] = [states[j], states[i]];
+      }
+      
       for (let i = 0; i < numCurrentLockers; i++) {
         // Get unused locker number
         let lockerNumber: number;
@@ -2061,14 +2080,9 @@ export async function createAdditionalFeeTestData() {
         } while (currentUsedLockers.has(lockerNumber));
         currentUsedLockers.add(lockerNumber);
         
-        // Randomly decide locker state:
-        // 30% - Green (previous business day, no additional fee)
-        // 30% - Red (previous business day, with additional fee)
-        // 20% - Yellow (today daytime)
-        // 20% - Blue (today nighttime)
-        const stateRoll = Math.random();
+        const state = states[i];
         
-        if (stateRoll < 0.3) {
+        if (state === 'green') {
           // GREEN: Previous business day, no additional fee yet
           const hoursBeforeStart = randomInt(1, 12);
           const minutesOffset = randomInt(0, 59);
@@ -2098,7 +2112,7 @@ export async function createAdditionalFeeTestData() {
           totalGenerated++;
           updateDailySummary(businessDay);
           
-        } else if (stateRoll < 0.6) {
+        } else if (state === 'red') {
           // RED: Previous business day daytime, crossed midnight → additional fee expected
           const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
           const entryHour = randomInt(2, 8);
@@ -2128,7 +2142,7 @@ export async function createAdditionalFeeTestData() {
           totalGenerated++;
           updateDailySummary(businessDay);
           
-        } else if (stateRoll < 0.8) {
+        } else if (state === 'yellow') {
           // YELLOW: Today daytime entry
           const hoursAfterStart = randomInt(1, 8);
           const entryTime = new Date(currentBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
@@ -2641,9 +2655,11 @@ export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, bu
   const endUnix = Math.floor(end.getTime() / 1000);
   
   const result = db.exec(
-    `SELECT * FROM additional_fee_events 
-     WHERE strftime('%s', checkout_time) >= ? AND strftime('%s', checkout_time) <= ?
-     ORDER BY checkout_time DESC`,
+    `SELECT afe.*, ll.business_day as entry_business_day 
+     FROM additional_fee_events afe
+     LEFT JOIN locker_logs ll ON afe.locker_log_id = ll.id
+     WHERE strftime('%s', afe.checkout_time) >= ? AND strftime('%s', afe.checkout_time) <= ?
+     ORDER BY afe.checkout_time DESC`,
     [startUnix.toString(), endUnix.toString()]
   );
   
@@ -2665,6 +2681,7 @@ export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, bu
     paymentCard: row[10],
     paymentTransfer: row[11],
     createdAt: row[12],
+    entryBusinessDay: row[13], // 입실 영업일 추가
   }));
 }
 
