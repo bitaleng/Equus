@@ -2017,8 +2017,8 @@ export async function createAdditionalFeeTestData() {
       const randomBoolean = (probability = 0.5) => Math.random() < probability;
       
       // Delete existing test data (locker numbers 1-80)
-      db.run('DELETE FROM additional_fee_events WHERE locker_number BETWEEN 1 AND 80');
-      db.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 1 AND 80');
+      db!.run('DELETE FROM additional_fee_events WHERE locker_number BETWEEN 1 AND 80');
+      db!.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 1 AND 80');
       
       const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
       const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
@@ -2030,34 +2030,40 @@ export async function createAdditionalFeeTestData() {
       console.log('\n[보장된 시나리오] 같은 영업일 추가요금 5000원 생성 중...');
       const guaranteedLocker = randomInt(1, 80);
       
-      // Scenario: Daytime entry yesterday 14:00 → Checkout today early morning (before 10:00)
-      // Both entry and checkout fall in the SAME business day
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      yesterday.setHours(14, 0, 0, 0); // 14:00 yesterday (daytime)
+      // Get current business day to ensure test data is visible
+      const now = new Date();
+      const currentBusinessDay = getBusinessDay(now, businessDayStartHour);
+      console.log(`  📍 현재 영업일: ${currentBusinessDay}`);
       
-      const todayMorning = new Date();
-      // Random checkout time between 05:00 and 09:30 today
-      const checkoutHour = randomInt(5, 9);
-      const checkoutMinute = checkoutHour === 9 ? randomInt(0, 30) : randomInt(0, 59);
-      todayMorning.setHours(checkoutHour, checkoutMinute, 0, 0);
+      // Scenario: Entry at business day start + 2 hours → Checkout at start + 11 hours
+      // This ensures 9 hours of usage, generating additional fee (for 3+ hour base)
+      // Both entry and checkout in the SAME current business day
+      const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
       
-      const entryBusinessDay = getBusinessDay(yesterday, businessDayStartHour);
-      const checkoutBusinessDay = getBusinessDay(todayMorning, businessDayStartHour);
+      // Entry: Business day start + 2 hours (e.g., 10:00 + 2 = 12:00)
+      const entryTime = new Date(businessDayStart.getTime() + 2 * 60 * 60 * 1000);
+      
+      // Checkout: Business day start + 11 hours (e.g., 10:00 + 11 = 21:00)
+      // 9 hours usage should trigger additional fee
+      const checkoutTime = new Date(businessDayStart.getTime() + 11 * 60 * 60 * 1000);
+      
+      const entryBusinessDay = getBusinessDay(entryTime, businessDayStartHour);
+      const checkoutBusinessDay = getBusinessDay(checkoutTime, businessDayStartHour);
       
       console.log(`  🔍 락커 #${guaranteedLocker}`);
-      console.log(`  📅 입실: ${yesterday.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-      console.log(`  📅 퇴실: ${todayMorning.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+      console.log(`  📅 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
+      console.log(`  📅 퇴실: ${checkoutTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
       console.log(`  📊 입실 영업일: ${entryBusinessDay}`);
       console.log(`  📊 퇴실 영업일: ${checkoutBusinessDay}`);
       console.log(`  ✅ 같은 영업일: ${entryBusinessDay === checkoutBusinessDay ? 'YES ✓' : 'NO ✗'}`);
+      console.log(`  ⏱️  사용 시간: ${Math.floor((checkoutTime.getTime() - entryTime.getTime()) / (60 * 60 * 1000))}시간`);
       
       if (entryBusinessDay !== checkoutBusinessDay) {
         console.error('  ❌ 오류: 입실과 퇴실이 다른 영업일입니다!');
         console.error(`  ❌ 영업일 시작 시간: ${businessDayStartHour}시`);
       }
       
-      const timeType = getTimeType(yesterday); // 주간
+      const timeType = getTimeType(entryTime);
       const basePrice = timeType === '주간' ? dayPrice : nightPrice;
       const paymentMethod = randomElement(paymentMethods);
       const id = generateId();
@@ -2070,13 +2076,13 @@ export async function createAdditionalFeeTestData() {
       console.log(`  💵 입실 결제: ${paymentMethod.toUpperCase()} ${basePrice}원 (${timeType})`);
       
       // Insert locker log (checked out)
-      db.run(
+      db!.run(
         `INSERT INTO locker_logs 
         (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
          option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
          payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
-        [id, guaranteedLocker, yesterday.toISOString(), todayMorning.toISOString(), entryBusinessDay, 
+        [id, guaranteedLocker, entryTime.toISOString(), checkoutTime.toISOString(), entryBusinessDay, 
          timeType, basePrice, 'none', 0, basePrice, '테스트: 같은영업일 추가요금', paymentMethod, 
          paymentCash, paymentCard, paymentTransfer, null]
       );
@@ -2092,12 +2098,12 @@ export async function createAdditionalFeeTestData() {
       
       console.log(`  💰 추가요금: ${feePaymentMethod.toUpperCase()} 5000원`);
       
-      db.run(
+      db!.run(
         `INSERT INTO additional_fee_events 
         (id, locker_log_id, locker_number, checkout_time, fee_amount, original_fee_amount, discount_amount, 
          business_day, payment_method, payment_cash, payment_card, payment_transfer, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [feeId, id, guaranteedLocker, todayMorning.toISOString(), 5000, 5000, 0, 
+        [feeId, id, guaranteedLocker, checkoutTime.toISOString(), 5000, 5000, 0, 
          checkoutBusinessDay, feePaymentMethod, feeCash, feeCard, feeTransfer, new Date().toISOString()]
       );
       
@@ -2149,7 +2155,7 @@ export async function createAdditionalFeeTestData() {
           const id = generateId();
           const businessDay = getBusinessDay(entryDate, businessDayStartHour);
           
-          db.run(
+          db!.run(
             `INSERT INTO locker_logs 
             (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
              option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
@@ -2167,8 +2173,8 @@ export async function createAdditionalFeeTestData() {
       
       // ===== TODAY'S DATA: In-use entries =====
       console.log('\n오늘 사용중 데이터 생성 중...');
-      const now = new Date();
-      const currentHour = now.getHours();
+      const nowForToday = new Date();
+      const currentHour = nowForToday.getHours();
       const todayEntries = randomInt(15, 30);
       
       // Track used lockers for today's data only (avoid duplicates in in_use state)
@@ -2193,7 +2199,7 @@ export async function createAdditionalFeeTestData() {
         if (maxHour < minHour) continue;
         
         const hour = randomInt(minHour, maxHour);
-        const maxMinute = (hour === currentHour) ? now.getMinutes() : 59;
+        const maxMinute = (hour === currentHour) ? nowForToday.getMinutes() : 59;
         const minute = randomInt(0, maxMinute);
         
         const entryDate = new Date();
@@ -2222,7 +2228,7 @@ export async function createAdditionalFeeTestData() {
         const id = generateId();
         const businessDay = getBusinessDay(entryDate, businessDayStartHour);
         
-        db.run(
+        db!.run(
           `INSERT INTO locker_logs 
           (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
            option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
