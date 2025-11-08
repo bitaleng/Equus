@@ -104,13 +104,14 @@ function App() {
 
     // Initialize database
     initDatabase().then(() => {
-      // Auto-delete data older than 1 year
+      // Temporarily disabled: Auto-delete data older than 1 year
+      // (Will be re-enabled after business_day format normalization)
+      /*
       const settings = getSettings();
       const today = new Date();
       const oneYearAgo = new Date(today);
       oneYearAgo.setFullYear(today.getFullYear() - 1);
       
-      // Format as business day string (YYYY-MM-DD) using configured business day start hour
       const cutoffDate = getBusinessDay(oneYearAgo, settings.businessDayStartHour);
       
       try {
@@ -119,6 +120,7 @@ function App() {
       } catch (error) {
         console.error('Failed to delete old data:', error);
       }
+      */
       
       setDbReady(true);
     }).catch((error) => {
