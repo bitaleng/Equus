@@ -997,15 +997,15 @@ export default function Settings() {
                 <div className="flex items-start gap-3">
                   <Database className="h-5 w-5 text-primary mt-0.5" />
                   <div className="flex-1">
-                    <h4 className="font-medium text-primary mb-1">추가요금 테스트 데이터 생성</h4>
+                    <h4 className="font-medium text-primary mb-1">샘플 데이터 생성</h4>
                     <p className="text-sm text-muted-foreground mb-3">
-                      추가요금 결제수단 독립성을 테스트하기 위한 데이터를 생성합니다.
+                      다양한 시나리오의 테스트 데이터를 자동으로 생성합니다.
                       <br />
                       <span className="text-xs">
-                        • 락커 1번: 현금 10,000원 입실 + 카드 5,000원 추가요금<br />
-                        • 락커 2번: 카드 10,000원 입실 + 계좌이체 5,000원 추가요금<br />
-                        • 영업일: 오늘 (영업시작 +2시간 입실 → +6시간 퇴실, 4시간 사용)<br />
-                        • 정산 페이지에서 결제수단별 정확한 집계 확인 (현금 10,000 / 카드 15,000 / 계좌이체 5,000)
+                        • 3일치 과거 입출 데이터 (퇴실 완료)<br />
+                        • 현재 사용 중인 락커 (다양한 상태 포함)<br />
+                        • 추가요금 시나리오 (그린/옐로우/블루/레드 색상 테스트)<br />
+                        • 락커 #1-80 랜덤 데이터
                       </span>
                     </p>
                     <Button
@@ -1013,7 +1013,7 @@ export default function Settings() {
                       data-testid="button-create-test-data"
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      추가요금 테스트 데이터 생성
+                      샘플 데이터 생성
                     </Button>
                   </div>
                 </div>
