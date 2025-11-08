@@ -23,13 +23,15 @@ Preferred communication style: Simple, everyday language.
   - 해결 3: 모든 추가요금 행을 `additionalFeeOnly: true`로 설정하여 방문자 수 중복 카운트 방지
   - 결과: 추가요금이 항상 별도 행으로 표시 (입실시간: 공란, timeType: '추가요금', 빨간색 금액)
 
-- **추가요금 테스트 데이터 생성 함수 완전 재작성**: 새로운 버그 수정과 호환되도록 테스트 데이터 생성 로직 개선
+- **추가요금 테스트 데이터 생성 함수 완전 재작성 + 페이지 리로드 버그 수정**: 새로운 버그 수정과 호환되도록 테스트 데이터 생성 로직 개선
   - 문제 1: additional_fee_events 테이블에 데이터를 추가하지 않아 새 로직과 호환되지 않음
   - 문제 2: 타임스탬프가 영업일 경계를 넘어갈 수 있어 자동 삭제 위험
+  - 문제 3: window.location.reload()가 영업일 컨텍스트를 리셋하여 생성된 데이터가 안 보이는 현상
   - 해결 1: locker_logs + additional_fee_events 두 테이블 모두 업데이트
   - 해결 2: getBusinessDayRange 기준으로 타임스탬프 생성 (영업일 시작 + 2/6시간)
   - 해결 3: ISO 포맷(yyyy-MM-dd)으로 business_day 저장하여 deleteOldData 호환성 보장
-  - 결과: 락커 1(현금 입실+카드 추가요금), 락커 2(카드 입실+계좌이체 추가요금) 테스트 데이터 생성
+  - 해결 4: Settings.tsx에서 window.location.reload() 제거, wouter 라우터로 홈 네비게이트
+  - 결과: 락커 1(현금 입실+카드 추가요금), 락커 2(카드 입실+계좌이체 추가요금) 테스트 데이터 생성 후 즉시 표시
 
 ### November 7, 2025
 - **ClosingPage UI 매출 구조 명확화**: 추가요금과 렌탈 매출을 별도 섹션으로 분리하여 가독성 개선
