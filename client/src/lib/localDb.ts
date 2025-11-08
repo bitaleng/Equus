@@ -1,5 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
-import { getTimeType, getBusinessDayRange, getBusinessDay } from '@shared/businessDay';
+import { getTimeType, getBusinessDayRange, getBusinessDay, calculateAdditionalFee } from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -2084,14 +2084,45 @@ export async function createAdditionalFeeTestData() {
         
         if (state === 'green') {
           // GREEN: Previous business day, no additional fee yet
-          const hoursBeforeStart = randomInt(1, 12);
-          const minutesOffset = randomInt(0, 59);
-          const entryTime = new Date(currentBusinessDayStart.getTime() - hoursBeforeStart * 60 * 60 * 1000 - minutesOffset * 60 * 1000);
+          // RULE: 이전 영업일 주간(12:00-18:00) 또는 야간(>= 19:00) 입실만 허용
+          // 새벽(< 07:00) 입실은 이미 첫 자정을 넘겨 추가요금 발생하므로 제외
+          
+          const isNightEntry = Math.random() < 0.3; // 30% 야간, 70% 주간
+          let entryTime: Date;
+          
+          if (isNightEntry) {
+            // 야간 입실 (>= 19:00): 이전 영업일 19:00 ~ 23:59
+            // 첫 자정(다음날 00:00) 무료이므로 추가요금 없음
+            const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
+            const entryHour = randomInt(19, 23);
+            const entryMinute = randomInt(0, 59);
+            entryTime = new Date(previousBusinessDayStart);
+            entryTime.setHours(entryHour, entryMinute, 0, 0);
+          } else {
+            // 주간 입실 (12:00 ~ 18:00): 이전 영업일 늦은 오후 입실
+            // 자정(다음날 00:00)을 아직 넘지 않았으므로 추가요금 없음
+            const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
+            const entryHour = randomInt(12, 18);
+            const entryMinute = randomInt(0, 59);
+            entryTime = new Date(previousBusinessDayStart);
+            entryTime.setHours(entryHour, entryMinute, 0, 0);
+          }
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
           const timeType = getTimeType(entryTime);
           const basePrice = timeType === '주간' ? dayPrice : nightPrice;
           const paymentMethod = randomElement(paymentMethods);
+          
+          // 검증: 추가요금이 실제로 0인지 확인 (디버깅용)
+          const { additionalFeeCount: greenFeeCount } = calculateAdditionalFee(
+            entryTime.toISOString(),
+            timeType,
+            dayPrice,
+            nightPrice,
+            new Date(),
+            false, // 내국인
+            foreignerPrice
+          );
           
           db!.run(
             `INSERT INTO locker_logs 
@@ -2100,7 +2131,7 @@ export async function createAdditionalFeeTestData() {
              payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
             [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-             timeType, basePrice, 'none', 0, basePrice, '이전영업일+사용중+추가요금없음', 
+             timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증:${greenFeeCount})`, 
              paymentMethod, 
              paymentMethod === 'cash' ? basePrice : 0,
              paymentMethod === 'card' ? basePrice : 0,
@@ -2108,7 +2139,7 @@ export async function createAdditionalFeeTestData() {
              null]
           );
           
-          console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일, 추가요금 없음)`);
+          console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 추가요금 검증: ${greenFeeCount}회)`);
           totalGenerated++;
           updateDailySummary(businessDay);
           
