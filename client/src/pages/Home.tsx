@@ -696,6 +696,10 @@ export default function Home() {
         paymentCard: addFeePayment.card,
         paymentTransfer: addFeePayment.transfer,
       });
+      
+      // CRITICAL: Update checkout business day summary to include additional fee revenue
+      // Without this, additional fees won't appear in today's sales!
+      localDb.updateDailySummary(checkoutBusinessDay);
     }
     
     // Update rental transaction records for each rented item
