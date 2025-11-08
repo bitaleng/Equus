@@ -193,30 +193,16 @@ export default function Home() {
       // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
       const entries = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
       
-      // Get additional fee events for today (추가요금 퇴실만, 입실은 이전 영업일)
+      // Get additional fee events for today (모든 추가요금: 같은 영업일 + 다른 영업일)
       const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
       
-      // Create a map of locker log IDs to additional fees
-      // Use the additional_fees column from locker_logs directly
-      const additionalFeeMap = new Map<string, number>();
-      entries.forEach(entry => {
-        if (entry.additional_fees && entry.additional_fees > 0) {
-          additionalFeeMap.set(entry.id, entry.additional_fees);
-        }
-      });
-      
-      // Filter out additional fee events where entry was today (already in entries)
-      const entryLockerIds = new Set(entries.map(e => e.id));
-      const additionalFeeOnlyEvents = additionalFeeEvents.filter(event => 
-        !entryLockerIds.has(event.lockerLogId)
-      );
-      
-      // Create pseudo entries for additional fee checkouts (no entry time, red fee)
-      const additionalFeeEntries = additionalFeeOnlyEvents.map(event => {
+      // Create pseudo entries for ALL additional fee events
+      // Display all as separate rows with empty entry time
+      const additionalFeeEntries = additionalFeeEvents.map(event => {
         return {
           id: `additionalfee_${event.id}`,
           lockerNumber: event.lockerNumber,
-          entryTime: null, // No entry time - will be displayed empty
+          entryTime: null, // Always display empty entry time for additional fees
           exitTime: event.checkoutTime,
           timeType: '추가요금' as any, // Special marker for additional fee
           basePrice: 0,
@@ -230,16 +216,13 @@ export default function Home() {
           paymentCard: (event as any).paymentCard,
           paymentTransfer: (event as any).paymentTransfer,
           businessDay: event.businessDay,
-          additionalFeeOnly: true, // 방문인원 카운트에서 제외하기 위한 플래그
+          additionalFeeOnly: true, // Always exclude from visitor count (displayed as separate row)
         };
       });
       
-      // Add additional fee flags to regular entries
-      const enrichedEntries = entries.map(entry => ({
-        ...entry,
-        hasAdditionalFee: additionalFeeMap.has(entry.id),
-        additionalFeeAmount: additionalFeeMap.get(entry.id) || 0,
-      }));
+      // No need to enrich entries with additional fee flags anymore
+      // Additional fees are now displayed as separate rows
+      const enrichedEntries = entries;
       
       // Combine regular entries with additional fee entries and sort by time
       // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
@@ -809,9 +792,7 @@ export default function Home() {
     cancelled: log.cancelled,
     notes: log.notes,
     paymentMethod: log.paymentMethod,
-    additionalFeeOnly: log.additionalFeeOnly, // 추가요금만 있는 항목 플래그 전달
-    hasAdditionalFee: (log as any).hasAdditionalFee, // 오늘 입실 + 추가요금 있는 항목 플래그
-    additionalFeeAmount: (log as any).additionalFeeAmount, // 추가요금 금액
+    additionalFeeOnly: log.additionalFeeOnly,
   }));
 
   return (

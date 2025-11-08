@@ -287,12 +287,6 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                   : 'bg-muted text-muted-foreground';
                 
                 const isAdditionalFeeOnly = entry.timeType === '추가요금';
-                const hasAdditionalFee = (entry as any).additionalFees > 0;
-                
-                // Calculate display price: for same-business-day additional fees, show only the additional fee amount
-                const displayPrice = hasAdditionalFee && !isAdditionalFeeOnly 
-                  ? (entry as any).additionalFees 
-                  : entry.finalPrice;
                 
                 return (
                   <TableRow
@@ -304,29 +298,22 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
                     <TableCell className="text-sm">{entry.entryTime || '-'}</TableCell>
                     <TableCell>
-                      <div className="flex gap-1 items-center">
-                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                          entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
-                          entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
-                          'bg-accent text-accent-foreground'
-                        }`}>
-                          {entry.timeType}
-                        </span>
-                        {hasAdditionalFee && entry.timeType !== '추가요금' && (
-                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300">
-                            추가
-                          </span>
-                        )}
-                      </div>
+                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                        entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                        'bg-accent text-accent-foreground'
+                      }`}>
+                        {entry.timeType}
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm">{entry.option}</TableCell>
                     <TableCell className="text-sm">
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
                     <TableCell className={`font-semibold text-base ${
-                      (isAdditionalFeeOnly || hasAdditionalFee) ? 'text-red-600 dark:text-red-400' : ''
+                      isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''
                     }`}>
-                      {displayPrice.toLocaleString()}원
+                      {entry.finalPrice.toLocaleString()}원
                     </TableCell>
                     <TableCell>
                       <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${statusColor}`}>
