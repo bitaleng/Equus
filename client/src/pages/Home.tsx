@@ -208,6 +208,16 @@ export default function Home() {
       );
       const entries = allEntriesFromDb.filter(entry => !crossDayAdditionalFeeLogIds.has(entry.id));
       
+      // Identify same-day additional fee entries for badge display
+      const sameDayAdditionalFeeLogIds = new Set(
+        additionalFeeEvents
+          .filter(e => {
+            const event = e as any;
+            return event.entryBusinessDay && event.entryBusinessDay === e.businessDay;
+          })
+          .map(e => e.lockerLogId)
+      );
+      
       // Create pseudo entries ONLY for CROSS-DAY additional fee events
       // Same-day additional fees are already included in the original entry's row
       const additionalFeeEntries = additionalFeeEvents
@@ -237,9 +247,15 @@ export default function Home() {
           };
         });
       
+      // Add same-day additional fee flag to entries
+      const entriesWithFeeFlag = entries.map(entry => ({
+        ...entry,
+        hasSameDayFee: sameDayAdditionalFeeLogIds.has(entry.id),
+      }));
+      
       // Combine filtered entries with additional fee entries and sort by time
       // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
-      const allEntries = [...entries, ...additionalFeeEntries].sort((a, b) => {
+      const allEntries = [...entriesWithFeeFlag, ...additionalFeeEntries].sort((a, b) => {
         const timeA = a.exitTime || a.entryTime || '';
         const timeB = b.exitTime || b.entryTime || '';
         return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
@@ -256,7 +272,13 @@ export default function Home() {
       const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled).length;
       
       // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
-      const additionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+      // CRITICAL FIX: 다른 영업일 추가요금만 합산 (같은 영업일은 finalPrice에 포함됨)
+      const additionalFees = additionalFeeEvents
+        .filter(event => {
+          const e = event as any;
+          return e.entryBusinessDay && e.entryBusinessDay !== event.businessDay;
+        })
+        .reduce((sum, event) => sum + event.feeAmount, 0);
       setAdditionalFeeSales(additionalFees);
       
       setSummary({
@@ -816,6 +838,7 @@ export default function Home() {
     notes: log.notes,
     paymentMethod: log.paymentMethod,
     additionalFeeOnly: log.additionalFeeOnly,
+    hasSameDayFee: (log as any).hasSameDayFee || false,
   }));
 
   return (

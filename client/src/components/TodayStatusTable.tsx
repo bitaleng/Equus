@@ -43,6 +43,7 @@ interface LockerEntry {
   paymentCard?: number;
   paymentTransfer?: number;
   additionalFeeOnly?: boolean; // 추가요금만 있는 항목 (방문자 수에서 제외)
+  hasSameDayFee?: boolean; // 같은 영업일 내 추가요금 발생 여부
 }
 
 interface TodayStatusTableProps {
@@ -298,13 +299,20 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
                     <TableCell className="text-sm">{entry.entryTime || '-'}</TableCell>
                     <TableCell>
-                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                        entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
-                        entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
-                        'bg-accent text-accent-foreground'
-                      }`}>
-                        {entry.timeType}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                          entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                          entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                          'bg-accent text-accent-foreground'
+                        }`}>
+                          {entry.timeType}
+                        </span>
+                        {entry.hasSameDayFee && entry.timeType !== '추가요금' && (
+                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
+                            추가
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">{entry.option}</TableCell>
                     <TableCell className="text-sm">
