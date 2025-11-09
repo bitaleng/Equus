@@ -82,6 +82,10 @@ interface RentalTransaction {
 }
 
 export default function LogsPage() {
+  // Get settings for business day calculation
+  const settings = localDb.getSettings();
+  const businessDayStartHour = settings.businessDayStartHour;
+  
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [useTimeFilter, setUseTimeFilter] = useState(false);
@@ -310,16 +314,7 @@ export default function LogsPage() {
     );
   }
 
-  // Calculate total amount for filtered results (입실요금만, 추가요금은 별도 행에 이미 포함)
-  // 중복 방지: additionalFeeOnly 항목은 이미 finalPrice에 추가요금이 포함되어 있으므로 
-  // additionalFeeEvents에서 다시 합산하지 않음
-  const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-  
-  // Calculate overall totals (excluding cancelled entries)
-  const activeLogs = logs.filter(log => !log.cancelled);
-  const overallTotalCount = activeLogs.length;
-  const overallTotalAmount = activeLogs.reduce((sum, log) => sum + (log.finalPrice || 0), 0);
-
+  // Helper functions for display and export
   const getOptionText = (log: LogEntry) => {
     if (log.optionType === 'none') return '없음';
     if (log.optionType === 'foreigner') return '외국인';
@@ -328,6 +323,52 @@ export default function LogsPage() {
     if (log.optionType === 'direct_price') return '요금직접입력';
     return '-';
   };
+  
+  // Get display price for a log entry
+  // For cross-business-day checkouts, shows only additional fees
+  // For same-day checkouts, shows full final price (base + additional)
+  const getDisplayPrice = (log: LogEntry): number => {
+    const isAdditionalFeeOnly = (log as any).additionalFeeOnly === true;
+    
+    // 추가요금 전용 행: finalPrice 그대로 (이미 추가요금만)
+    if (isAdditionalFeeOnly) {
+      return log.finalPrice;
+    }
+    
+    // 퇴실하지 않았으면 finalPrice 그대로
+    if (!log.exitTime) {
+      return log.finalPrice;
+    }
+    
+    // 추가요금이 없으면 finalPrice 그대로
+    if (!log.additionalFees || log.additionalFees === 0) {
+      return log.finalPrice;
+    }
+    
+    // 퇴실 시 영업일 계산
+    const exitBusinessDay = getBusinessDay(new Date(log.exitTime), businessDayStartHour);
+    
+    // 입실 시 영업일 (businessDay 필드가 없으면 entryTime으로 계산)
+    const entryBusinessDay = (log as any).businessDay 
+      || getBusinessDay(new Date(log.entryTime), businessDayStartHour);
+    
+    // 다른 영업일 퇴실: 추가요금만 표시
+    if (exitBusinessDay !== entryBusinessDay) {
+      return log.additionalFees;
+    }
+    
+    // 같은 영업일 퇴실: finalPrice 그대로 (base + additional)
+    return log.finalPrice;
+  };
+
+  // Calculate total amount for filtered results using display price
+  // This ensures table totals match individual row displays
+  const filteredTotalAmount = displayedLogs.reduce((sum, log) => sum + getDisplayPrice(log), 0);
+  
+  // Calculate overall totals (excluding cancelled entries) using display price
+  const activeLogs = logs.filter(log => !log.cancelled);
+  const overallTotalCount = activeLogs.length;
+  const overallTotalAmount = activeLogs.reduce((sum, log) => sum + getDisplayPrice(log), 0);
 
   const exportToExcel = () => {
     const exportData = logs.map((log) => ({
@@ -345,7 +386,7 @@ export default function LogsPage() {
       '옵션': getOptionText(log),
       '옵션금액': log.optionAmount || '-',
       '추가요금': log.additionalFees || '-',
-      '최종요금': log.finalPrice,
+      '최종요금': getDisplayPrice(log),
       '지불방식': formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       '취소': log.cancelled ? 'O' : '-',
       '비고': log.notes || '-'
@@ -390,7 +431,7 @@ export default function LogsPage() {
       getOptionText(log),
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
       log.additionalFees ? log.additionalFees.toLocaleString() : '-',
-      log.finalPrice.toLocaleString(),
+      getDisplayPrice(log).toLocaleString(),
       formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       log.cancelled ? 'O' : '-',
       log.notes || '-',
@@ -770,7 +811,7 @@ export default function LogsPage() {
                       )}
                     </TableCell>
                     <TableCell className={`font-semibold text-base ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
-                      {log.finalPrice.toLocaleString()}원
+                      {getDisplayPrice(log).toLocaleString()}원
                     </TableCell>
                     <TableCell className="text-sm">
                       {formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer)}
