@@ -2084,28 +2084,29 @@ export async function createAdditionalFeeTestData() {
         
         if (state === 'green') {
           // GREEN: Previous business day, no additional fee yet
-          // RULE: 이전 영업일 주간(12:00-18:00) 또는 야간(>= 19:00) 입실만 허용
-          // 새벽(< 07:00) 입실은 이미 첫 자정을 넘겨 추가요금 발생하므로 제외
+          // CRITICAL FIX: previousBusinessDayStart를 직접 사용
+          // 예: 현재 영업일 11/8 10:00 ~ 11/9 09:59
+          //     이전 영업일 11/7 10:00 ~ 11/8 09:59
+          //     그린 주간: 11/7 12:00 ~ 18:00
+          //     그린 야간: 11/7 19:00 ~ 23:59
           
           const isNightEntry = Math.random() < 0.3; // 30% 야간, 70% 주간
           let entryTime: Date;
           
+          const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
+          
           if (isNightEntry) {
-            // 야간 입실 (>= 19:00): 이전 영업일 19:00 ~ 23:59
-            // 첫 자정(다음날 00:00) 무료이므로 추가요금 없음
-            const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
-            const entryHour = randomInt(19, 23);
+            // 야간 입실 (19:00 ~ 23:59): previousBusinessDayStart + 9~13시간
+            const hoursAfterStart = randomInt(9, 13); // 19:00 ~ 23:00
             const entryMinute = randomInt(0, 59);
-            entryTime = new Date(previousBusinessDayStart);
-            entryTime.setHours(entryHour, entryMinute, 0, 0);
+            entryTime = new Date(previousBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
+            entryTime.setMinutes(entryMinute, 0, 0);
           } else {
-            // 주간 입실 (12:00 ~ 18:00): 이전 영업일 늦은 오후 입실
-            // 자정(다음날 00:00)을 아직 넘지 않았으므로 추가요금 없음
-            const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
-            const entryHour = randomInt(12, 18);
+            // 주간 입실 (12:00 ~ 18:00): previousBusinessDayStart + 2~8시간
+            const hoursAfterStart = randomInt(2, 8); // 12:00 ~ 18:00
             const entryMinute = randomInt(0, 59);
-            entryTime = new Date(previousBusinessDayStart);
-            entryTime.setHours(entryHour, entryMinute, 0, 0);
+            entryTime = new Date(previousBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
+            entryTime.setMinutes(entryMinute, 0, 0);
           }
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
@@ -2164,10 +2165,19 @@ export async function createAdditionalFeeTestData() {
           updateDailySummary(businessDay);
           
         } else if (state === 'red') {
-          // RED: Previous business day daytime, crossed midnight → additional fee expected
+          // RED: Previous business day entry, crossed midnight → additional fee expected
+          // CRITICAL FIX: 이전 영업일의 끝 부분 (다음 날 새벽)에 입실
+          // 예: 이전 영업일 = 11/7 10:00 ~ 11/8 09:59
+          //     레드 입실 = 11/8 02:00 ~ 08:00 (이미 자정 넘김)
+          
           const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
+          
+          // 이전 영업일 끝 부분의 새벽 시간대 (다음 날 02:00 ~ 08:00)
           const entryHour = randomInt(2, 8);
-          const entryTime = new Date(previousBusinessDayStart.getTime() + entryHour * 60 * 60 * 1000);
+          const entryMinute = randomInt(0, 59);
+          const entryTime = new Date(previousBusinessDayStart);
+          entryTime.setDate(entryTime.getDate() + 1); // 다음 날로 이동
+          entryTime.setHours(entryHour, entryMinute, 0, 0);
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
           const timeType = getTimeType(entryTime);
