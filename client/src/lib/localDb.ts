@@ -2083,71 +2083,106 @@ export async function createAdditionalFeeTestData() {
         const state = states[i];
         
         if (state === 'green') {
-          // GREEN: Previous business day entry that hasn't crossed midnight yet
-          // CRITICAL: Must enter recently enough that midnight hasn't been crossed
-          // 예: 현재 시각 11/10 18:00
-          //     첫 자정 11/10 00:00 (이미 지남)
-          //     그린 가능 시간: 11/10 00:00 ~ 18:00 사이 입실 (아직 다음 자정 안 넘김)
+          // GREEN: Previous business day entry with NO additional fee
+          // - 내국인: 이전 영업일 야간(19:00~) 입실 + 아직 첫 자정 안 넘김
+          // - 외국인: 이전 영업일 입실 + 아직 24시간 안 지남
           
           const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
           
-          // Calculate the time range where no additional fee has accrued yet
-          // Must enter after the last midnight (today 00:00) but before now
-          const lastMidnight = new Date(now);
-          lastMidnight.setHours(0, 0, 0, 0);
+          // 50% 외국인, 50% 내국인
+          const isForeigner = randomBoolean(0.5);
+          let entryTime: Date;
+          let validEntry = false;
+          let attempts = 0;
+          const maxAttempts = 20;
           
-          // Entry time: between last midnight and current time (ensures no additional fee yet)
-          // But must be in previous business day
-          const minEntryTime = Math.max(previousBusinessDayStart.getTime(), lastMidnight.getTime());
-          const maxEntryTime = Math.min(now.getTime() - 60 * 60 * 1000, currentBusinessDayStart.getTime() - 1); // At least 1 hour ago, before current business day starts
-          
-          // If there's no valid time range, skip this green locker
-          if (minEntryTime >= maxEntryTime) {
-            console.log(`  ⚠️ 락커 #${lockerNumber}: 그린 생성 불가 (현재 시각으로는 추가요금 없는 이전 영업일 입실 불가능)`);
-            continue;
+          while (!validEntry && attempts < maxAttempts) {
+            attempts++;
+            
+            if (isForeigner) {
+              // 외국인: 24시간 기준 → 현재 시각 - 24시간 이내 입실
+              // 범위: max(previousBusinessDayStart, now - 24시간 + 1시간 버퍼) ~ currentBusinessDayStart - 1
+              const twentyFourHoursAgo = now.getTime() - 24 * 60 * 60 * 1000;
+              const minEntryTime = Math.max(previousBusinessDayStart.getTime(), twentyFourHoursAgo + 60 * 60 * 1000); // +1시간 버퍼
+              const maxEntryTime = currentBusinessDayStart.getTime() - 1;
+              
+              if (minEntryTime >= maxEntryTime) {
+                console.log(`  ⚠️ 락커 #${lockerNumber}: 외국인 그린 생성 불가 (유효 시간 범위 없음)`);
+                break;
+              }
+              
+              entryTime = new Date(minEntryTime + Math.random() * (maxEntryTime - minEntryTime));
+            } else {
+              // 내국인: 자정 기준 → 이전 영업일 야간(19:00~) + 아직 첫 자정 안 넘김
+              // 첫 자정 = 입실일 다음날 00:00
+              // 범위: previousBusinessDayStart + 9시간(19:00) ~ min(currentBusinessDayStart - 1, 다음날 00:00 - 1)
+              
+              const nineteenHoursAfterStart = previousBusinessDayStart.getTime() + 9 * 60 * 60 * 1000; // 19:00
+              
+              // 다음날 00:00 (첫 자정)
+              const nextMidnight = new Date(previousBusinessDayStart);
+              nextMidnight.setDate(nextMidnight.getDate() + 1);
+              nextMidnight.setHours(0, 0, 0, 0);
+              
+              const minEntryTime = nineteenHoursAfterStart;
+              const maxEntryTime = Math.min(currentBusinessDayStart.getTime() - 1, nextMidnight.getTime() - 1);
+              
+              if (minEntryTime >= maxEntryTime) {
+                console.log(`  ⚠️ 락커 #${lockerNumber}: 내국인 그린 생성 불가 (현재 시각으로는 자정 안 넘긴 야간 입실 불가능)`);
+                break;
+              }
+              
+              entryTime = new Date(minEntryTime + Math.random() * (maxEntryTime - minEntryTime));
+            }
+            
+            // 검증: 추가요금이 없는지 확인
+            const businessDay = getBusinessDay(entryTime, businessDayStartHour);
+            const timeType = getTimeType(entryTime);
+            
+            const { additionalFeeCount, additionalFee } = calculateAdditionalFee(
+              entryTime.toISOString(),
+              timeType,
+              dayPrice,
+              nightPrice,
+              now,
+              isForeigner,
+              foreignerPrice
+            );
+            
+            if (additionalFeeCount === 0) {
+              validEntry = true;
+              
+              const basePrice = isForeigner ? foreignerPrice : (timeType === '주간' ? dayPrice : nightPrice);
+              const optionType = isForeigner ? 'foreigner' : 'none';
+              const paymentMethod = randomElement(paymentMethods);
+              
+              db!.run(
+                `INSERT INTO locker_logs 
+                (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+                 option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+                 payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+                [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
+                 timeType, basePrice, optionType, 0, basePrice, 
+                 `이전영업일+사용중+추가요금없음(${isForeigner ? '외국인' : '내국인'})`, 
+                 paymentMethod, 
+                 paymentMethod === 'cash' ? basePrice : 0,
+                 paymentMethod === 'card' ? basePrice : 0,
+                 paymentMethod === 'transfer' ? basePrice : 0,
+                 null]
+              );
+              
+              console.log(`  🟢 락커 #${lockerNumber}: 그린 (${isForeigner ? '외국인' : '내국인'}, ${timeType}, 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}) ✓`);
+              totalGenerated++;
+              updateDailySummary(businessDay);
+            } else {
+              console.log(`  ⚠️ 락커 #${lockerNumber}: 그린 재시도 (추가요금: ${additionalFee}원, ${attempts}/${maxAttempts})`);
+            }
           }
           
-          const entryTime = new Date(minEntryTime + Math.random() * (maxEntryTime - minEntryTime));
-          
-          const businessDay = getBusinessDay(entryTime, businessDayStartHour);
-          const timeType = getTimeType(entryTime);
-          const basePrice = timeType === '주간' ? dayPrice : nightPrice;
-          const paymentMethod = randomElement(paymentMethods);
-          
-          // Verify no additional fee (should be guaranteed by time range calculation)
-          const { additionalFeeCount: greenFeeCount, additionalFee: greenFeeAmount } = calculateAdditionalFee(
-            entryTime.toISOString(),
-            timeType,
-            dayPrice,
-            nightPrice,
-            now,
-            false,
-            foreignerPrice
-          );
-          
-          if (greenFeeCount > 0) {
-            console.log(`  ⚠️ 락커 #${lockerNumber}: 그린 검증 실패 (예상외 추가요금 발생: ${greenFeeAmount}원)`);
-            continue;
+          if (!validEntry) {
+            console.log(`  ❌ 락커 #${lockerNumber}: 그린 생성 실패 (${maxAttempts}회 시도 후 포기)`);
           }
-          
-          db!.run(
-            `INSERT INTO locker_logs 
-            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
-            [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-             timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증완료)`, 
-             paymentMethod, 
-             paymentMethod === 'cash' ? basePrice : 0,
-             paymentMethod === 'card' ? basePrice : 0,
-             paymentMethod === 'transfer' ? basePrice : 0,
-             null]
-          );
-          console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}) ✓`);
-          
-          totalGenerated++;
-          updateDailySummary(businessDay);
           
         } else if (state === 'red') {
           // RED: Previous business day entry, crossed midnight → additional fee expected
