@@ -2181,7 +2181,7 @@ export async function createAdditionalFeeTestData() {
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
           const timeType = getTimeType(entryTime);
-          const basePrice = dayPrice;
+          const basePrice = timeType === '주간' ? dayPrice : nightPrice; // CRITICAL FIX: Use correct price based on time type
           const paymentMethod = randomElement(paymentMethods);
           
           db!.run(
@@ -2191,7 +2191,7 @@ export async function createAdditionalFeeTestData() {
              payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
             [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-             timeType, basePrice, 'none', 0, basePrice, '전일주간입실+추가요금발생예정+사용중', 
+             timeType, basePrice, 'none', 0, basePrice, '전일입실+추가요금발생예정+사용중', 
              paymentMethod,
              paymentMethod === 'cash' ? basePrice : 0,
              paymentMethod === 'card' ? basePrice : 0,
@@ -2204,8 +2204,18 @@ export async function createAdditionalFeeTestData() {
           updateDailySummary(businessDay);
           
         } else if (state === 'yellow') {
-          // YELLOW: Today daytime entry
-          const hoursAfterStart = randomInt(1, 8);
+          // YELLOW: Today daytime entry (must be in the past)
+          // Calculate max hours from business day start to current time
+          const now = new Date();
+          const maxHoursFromStart = Math.floor((now.getTime() - currentBusinessDayStart.getTime()) / (60 * 60 * 1000));
+          const maxHours = Math.min(8, maxHoursFromStart - 1); // Cap at 8 hours, ensure past time
+          
+          if (maxHours < 1) {
+            // Not enough time passed since business day start, skip yellow
+            continue;
+          }
+          
+          const hoursAfterStart = randomInt(1, maxHours);
           const entryTime = new Date(currentBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
@@ -2233,8 +2243,18 @@ export async function createAdditionalFeeTestData() {
           updateDailySummary(businessDay);
           
         } else {
-          // BLUE: Today nighttime entry
-          const hoursAfterStart = randomInt(9, 15);
+          // BLUE: Today nighttime entry (must be in the past)
+          // Calculate max hours from business day start to current time
+          const now = new Date();
+          const maxHoursFromStart = Math.floor((now.getTime() - currentBusinessDayStart.getTime()) / (60 * 60 * 1000));
+          const maxHours = Math.min(15, maxHoursFromStart - 1); // Cap at 15 hours, ensure past time
+          
+          if (maxHours < 9) {
+            // Not enough time passed for nighttime entry, skip blue
+            continue;
+          }
+          
+          const hoursAfterStart = randomInt(9, maxHours);
           const entryTime = new Date(currentBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
