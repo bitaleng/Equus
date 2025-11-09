@@ -102,6 +102,9 @@ export default function LogsPage() {
   const [rentalPaymentFilter, setRentalPaymentFilter] = useState<string>("all");
   const [rentalDepositFilter, setRentalDepositFilter] = useState<string>("all");
   const [rentalLockerNumberFilter, setRentalLockerNumberFilter] = useState<string>("");
+  const [rentalStartDate, setRentalStartDate] = useState<string>("");
+  const [rentalEndDate, setRentalEndDate] = useState<string>("");
+  const [rentalUseTimeFilter, setRentalUseTimeFilter] = useState(false);
   const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
 
   // Load data on mount and when filters change
@@ -796,6 +799,40 @@ export default function LogsPage() {
         // Apply rental filters
         let filteredRentals = [...rentalTransactions];
         
+        // Date/Time filter for rental section
+        if (rentalStartDate || rentalEndDate) {
+          filteredRentals = filteredRentals.filter(txn => {
+            const rentalDate = new Date(txn.rentalTime);
+            
+            if (rentalUseTimeFilter) {
+              // Time-based filtering
+              const start = rentalStartDate ? new Date(rentalStartDate) : null;
+              const end = rentalEndDate ? new Date(rentalEndDate) : null;
+              
+              if (start && end) {
+                return rentalDate >= start && rentalDate <= end;
+              } else if (start) {
+                return rentalDate >= start;
+              } else if (end) {
+                return rentalDate <= end;
+              }
+            } else {
+              // Date-only filtering
+              const rentalDateOnly = rentalDate.toISOString().split('T')[0];
+              
+              if (rentalStartDate && rentalEndDate) {
+                return rentalDateOnly >= rentalStartDate && rentalDateOnly <= rentalEndDate;
+              } else if (rentalStartDate) {
+                return rentalDateOnly >= rentalStartDate;
+              } else if (rentalEndDate) {
+                return rentalDateOnly <= rentalEndDate;
+              }
+            }
+            
+            return true;
+          });
+        }
+        
         if (rentalItemFilter !== "all") {
           filteredRentals = filteredRentals.filter(txn => txn.itemName === rentalItemFilter);
         }
@@ -833,7 +870,7 @@ export default function LogsPage() {
           return sum;
         }, 0);
         
-        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all" || rentalLockerNumberFilter !== "";
+        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all" || rentalLockerNumberFilter !== "" || rentalStartDate !== "" || rentalEndDate !== "";
         
         return (
           <Collapsible open={isRentalSectionOpen} onOpenChange={setIsRentalSectionOpen} className="mt-6">
@@ -869,7 +906,7 @@ export default function LogsPage() {
             <CollapsibleContent className="border rounded-lg p-6 bg-card mt-2">
               {/* Rental Filters */}
             <div className="mb-4 space-y-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <Button 
                   variant={showRentalFilters ? "default" : "outline"}
                   size="sm"
@@ -942,6 +979,9 @@ export default function LogsPage() {
                           setRentalPaymentFilter("all");
                           setRentalDepositFilter("all");
                           setRentalLockerNumberFilter("");
+                          setRentalStartDate("");
+                          setRentalEndDate("");
+                          setRentalUseTimeFilter(false);
                         }}
                         data-testid="button-clear-rental-filters"
                       >
@@ -952,18 +992,47 @@ export default function LogsPage() {
                 )}
               </div>
               
-              {/* Date/Time filter info for rental section */}
-              {(startDate || endDate) && (
-                <div className="text-xs text-muted-foreground pl-1">
-                  📅 현재 {useTimeFilter ? "날짜+시간" : "날짜"} 필터 적용 중: 
-                  <span className="font-medium ml-1">
-                    {startDate && endDate 
-                      ? `${startDate} ~ ${endDate}`
-                      : startDate
-                      ? `${startDate} 이후`
-                      : `${endDate} 이전`
-                    }
-                  </span>
+              {/* Date/Time filter for rental section */}
+              {showRentalFilters && (
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Button
+                    variant={rentalUseTimeFilter ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRentalUseTimeFilter(!rentalUseTimeFilter)}
+                    data-testid="button-toggle-rental-time-filter"
+                  >
+                    {rentalUseTimeFilter ? "날짜+시간" : "날짜"}
+                  </Button>
+                  
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="rental-start-date" className="text-sm whitespace-nowrap">시작</Label>
+                    <Input
+                      id="rental-start-date"
+                      type={rentalUseTimeFilter ? "datetime-local" : "date"}
+                      value={rentalStartDate}
+                      onChange={(e) => setRentalStartDate(e.target.value)}
+                      className="w-auto h-8"
+                      data-testid="input-rental-start-date"
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="rental-end-date" className="text-sm whitespace-nowrap">종료</Label>
+                    <Input
+                      id="rental-end-date"
+                      type={rentalUseTimeFilter ? "datetime-local" : "date"}
+                      value={rentalEndDate}
+                      onChange={(e) => setRentalEndDate(e.target.value)}
+                      className="w-auto h-8"
+                      data-testid="input-rental-end-date"
+                    />
+                  </div>
+                  
+                  {(rentalStartDate || rentalEndDate) && (
+                    <div className="text-xs text-muted-foreground">
+                      📅 {rentalUseTimeFilter ? "날짜+시간" : "날짜"} 필터 적용 중
+                    </div>
+                  )}
                 </div>
               )}
             </div>
