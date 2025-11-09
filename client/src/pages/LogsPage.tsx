@@ -101,6 +101,7 @@ export default function LogsPage() {
   const [rentalItemFilter, setRentalItemFilter] = useState<string>("all");
   const [rentalPaymentFilter, setRentalPaymentFilter] = useState<string>("all");
   const [rentalDepositFilter, setRentalDepositFilter] = useState<string>("all");
+  const [rentalLockerNumberFilter, setRentalLockerNumberFilter] = useState<string>("");
   const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
 
   // Load data on mount and when filters change
@@ -813,6 +814,14 @@ export default function LogsPage() {
           filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'none');
         }
         
+        // Locker number filter
+        if (rentalLockerNumberFilter) {
+          const lockerNum = parseInt(rentalLockerNumberFilter);
+          if (!isNaN(lockerNum)) {
+            filteredRentals = filteredRentals.filter(txn => txn.lockerNumber === lockerNum);
+          }
+        }
+        
         // Calculate cash totals
         const cashRentals = filteredRentals.filter(txn => txn.paymentMethod === 'cash');
         const cashRentalFeeTotal = cashRentals.reduce((sum, txn) => sum + txn.rentalFee, 0);
@@ -824,7 +833,7 @@ export default function LogsPage() {
           return sum;
         }, 0);
         
-        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all";
+        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all" || rentalLockerNumberFilter !== "";
         
         return (
           <Collapsible open={isRentalSectionOpen} onOpenChange={setIsRentalSectionOpen} className="mt-6">
@@ -859,70 +868,103 @@ export default function LogsPage() {
             
             <CollapsibleContent className="border rounded-lg p-6 bg-card mt-2">
               {/* Rental Filters */}
-            <div className="mb-4 flex items-center gap-3">
-              <Button 
-                variant={showRentalFilters ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowRentalFilters(!showRentalFilters)}
-                data-testid="button-toggle-rental-filters"
-              >
-                <Filter className="h-3 w-3 mr-2" />
-                필터
-              </Button>
+            <div className="mb-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <Button 
+                  variant={showRentalFilters ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setShowRentalFilters(!showRentalFilters)}
+                  data-testid="button-toggle-rental-filters"
+                >
+                  <Filter className="h-3 w-3 mr-2" />
+                  필터
+                </Button>
+                
+                {showRentalFilters && (
+                  <>
+                    <Select value={rentalItemFilter} onValueChange={setRentalItemFilter}>
+                      <SelectTrigger className="w-36 h-8" data-testid="select-rental-item-filter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체 항목</SelectItem>
+                        <SelectItem value="담요">담요</SelectItem>
+                        <SelectItem value="롱타올">롱타올</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={rentalPaymentFilter} onValueChange={setRentalPaymentFilter}>
+                      <SelectTrigger className="w-28 h-8" data-testid="select-rental-payment-filter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체</SelectItem>
+                        <SelectItem value="cash">현금</SelectItem>
+                        <SelectItem value="card">카드</SelectItem>
+                        <SelectItem value="transfer">이체</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <Select value={rentalDepositFilter} onValueChange={setRentalDepositFilter}>
+                      <SelectTrigger className="w-36 h-8" data-testid="select-rental-deposit-filter">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">전체</SelectItem>
+                        <SelectItem value="received">보증금 받음</SelectItem>
+                        <SelectItem value="refunded">보증금 환급</SelectItem>
+                        <SelectItem value="forfeited">보증금 몰수</SelectItem>
+                        <SelectItem value="none">보증금 없음</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="rental-locker-number" className="text-sm whitespace-nowrap">락커번호</Label>
+                      <Input
+                        id="rental-locker-number"
+                        type="number"
+                        min="1"
+                        max="999"
+                        value={rentalLockerNumberFilter}
+                        onChange={(e) => setRentalLockerNumberFilter(e.target.value)}
+                        placeholder="번호 입력"
+                        className="w-28 h-8"
+                        data-testid="input-rental-locker-number"
+                      />
+                    </div>
+                    
+                    {hasRentalFilters && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => {
+                          setRentalItemFilter("all");
+                          setRentalPaymentFilter("all");
+                          setRentalDepositFilter("all");
+                          setRentalLockerNumberFilter("");
+                        }}
+                        data-testid="button-clear-rental-filters"
+                      >
+                        필터 초기화
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
               
-              {showRentalFilters && (
-                <>
-                  <Select value={rentalItemFilter} onValueChange={setRentalItemFilter}>
-                    <SelectTrigger className="w-36 h-8" data-testid="select-rental-item-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체 항목</SelectItem>
-                      <SelectItem value="담요">담요</SelectItem>
-                      <SelectItem value="롱타올">롱타올</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select value={rentalPaymentFilter} onValueChange={setRentalPaymentFilter}>
-                    <SelectTrigger className="w-28 h-8" data-testid="select-rental-payment-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체</SelectItem>
-                      <SelectItem value="cash">현금</SelectItem>
-                      <SelectItem value="card">카드</SelectItem>
-                      <SelectItem value="transfer">이체</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select value={rentalDepositFilter} onValueChange={setRentalDepositFilter}>
-                    <SelectTrigger className="w-36 h-8" data-testid="select-rental-deposit-filter">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">전체</SelectItem>
-                      <SelectItem value="received">보증금 받음</SelectItem>
-                      <SelectItem value="refunded">보증금 환급</SelectItem>
-                      <SelectItem value="forfeited">보증금 몰수</SelectItem>
-                      <SelectItem value="none">보증금 없음</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  {hasRentalFilters && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => {
-                        setRentalItemFilter("all");
-                        setRentalPaymentFilter("all");
-                        setRentalDepositFilter("all");
-                      }}
-                      data-testid="button-clear-rental-filters"
-                    >
-                      필터 초기화
-                    </Button>
-                  )}
-                </>
+              {/* Date/Time filter info for rental section */}
+              {(startDate || endDate) && (
+                <div className="text-xs text-muted-foreground pl-1">
+                  📅 현재 {useTimeFilter ? "날짜+시간" : "날짜"} 필터 적용 중: 
+                  <span className="font-medium ml-1">
+                    {startDate && endDate 
+                      ? `${startDate} ~ ${endDate}`
+                      : startDate
+                      ? `${startDate} 이후`
+                      : `${endDate} 이전`
+                    }
+                  </span>
+                </div>
               )}
             </div>
 
