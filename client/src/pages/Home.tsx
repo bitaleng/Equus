@@ -672,6 +672,9 @@ export default function Home() {
       // Additional fee payment goes to additional_fee_events table for independent tracking
       const updatedFinalPrice = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
       
+      // DO NOT store additionalFees in locker_logs.additional_fees column for same-day checkouts
+      // It's already tracked in additional_fee_events table below
+      // Storing it in both places causes double-counting in LogsPage
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
@@ -680,7 +683,7 @@ export default function Home() {
         paymentCard: paymentCard,
         paymentTransfer: paymentTransfer,
         finalPrice: updatedFinalPrice,
-        additionalFees: additionalFeeInfo.additionalFee,
+        // additionalFees: removed to prevent duplication with additional_fee_events
       });
     }
     
