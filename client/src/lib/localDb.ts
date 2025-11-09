@@ -2083,83 +2083,68 @@ export async function createAdditionalFeeTestData() {
         const state = states[i];
         
         if (state === 'green') {
-          // GREEN: Previous business day, no additional fee yet
-          // CRITICAL FIX: previousBusinessDayStart를 직접 사용
-          // 예: 현재 영업일 11/8 10:00 ~ 11/9 09:59
-          //     이전 영업일 11/7 10:00 ~ 11/8 09:59
-          //     그린 주간: 11/7 12:00 ~ 18:00
-          //     그린 야간: 11/7 19:00 ~ 23:59
-          
-          const isNightEntry = Math.random() < 0.3; // 30% 야간, 70% 주간
-          let entryTime: Date;
+          // GREEN: Previous business day entry that hasn't crossed midnight yet
+          // CRITICAL: Must enter recently enough that midnight hasn't been crossed
+          // 예: 현재 시각 11/10 18:00
+          //     첫 자정 11/10 00:00 (이미 지남)
+          //     그린 가능 시간: 11/10 00:00 ~ 18:00 사이 입실 (아직 다음 자정 안 넘김)
           
           const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
           
-          if (isNightEntry) {
-            // 야간 입실 (19:00 ~ 23:59): previousBusinessDayStart + 9~13시간
-            const hoursAfterStart = randomInt(9, 13); // 19:00 ~ 23:00
-            const entryMinute = randomInt(0, 59);
-            entryTime = new Date(previousBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
-            entryTime.setMinutes(entryMinute, 0, 0);
-          } else {
-            // 주간 입실 (12:00 ~ 18:00): previousBusinessDayStart + 2~8시간
-            const hoursAfterStart = randomInt(2, 8); // 12:00 ~ 18:00
-            const entryMinute = randomInt(0, 59);
-            entryTime = new Date(previousBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
-            entryTime.setMinutes(entryMinute, 0, 0);
+          // Calculate the time range where no additional fee has accrued yet
+          // Must enter after the last midnight (today 00:00) but before now
+          const lastMidnight = new Date(now);
+          lastMidnight.setHours(0, 0, 0, 0);
+          
+          // Entry time: between last midnight and current time (ensures no additional fee yet)
+          // But must be in previous business day
+          const minEntryTime = Math.max(previousBusinessDayStart.getTime(), lastMidnight.getTime());
+          const maxEntryTime = Math.min(now.getTime() - 60 * 60 * 1000, currentBusinessDayStart.getTime() - 1); // At least 1 hour ago, before current business day starts
+          
+          // If there's no valid time range, skip this green locker
+          if (minEntryTime >= maxEntryTime) {
+            console.log(`  ⚠️ 락커 #${lockerNumber}: 그린 생성 불가 (현재 시각으로는 추가요금 없는 이전 영업일 입실 불가능)`);
+            continue;
           }
+          
+          const entryTime = new Date(minEntryTime + Math.random() * (maxEntryTime - minEntryTime));
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
           const timeType = getTimeType(entryTime);
           const basePrice = timeType === '주간' ? dayPrice : nightPrice;
           const paymentMethod = randomElement(paymentMethods);
           
-          // CRITICAL: 검증 후 추가요금이 있으면 레드색으로 재분류
+          // Verify no additional fee (should be guaranteed by time range calculation)
           const { additionalFeeCount: greenFeeCount, additionalFee: greenFeeAmount } = calculateAdditionalFee(
             entryTime.toISOString(),
             timeType,
             dayPrice,
             nightPrice,
-            new Date(),
-            false, // 내국인
+            now,
+            false,
             foreignerPrice
           );
           
-          // 추가요금이 발생하면 레드색으로 재분류 (그린 → 레드 변환)
           if (greenFeeCount > 0) {
-            db!.run(
-              `INSERT INTO locker_logs 
-              (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-               option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-               payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
-              [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-               timeType, basePrice, 'none', 0, basePrice, `이전영업일+추가요금발생(그린→레드자동변환)`, 
-               paymentMethod, 
-               paymentMethod === 'cash' ? basePrice : 0,
-               paymentMethod === 'card' ? basePrice : 0,
-               paymentMethod === 'transfer' ? basePrice : 0,
-               null]
-            );
-            console.log(`  🔴 락커 #${lockerNumber}: 레드 (그린→레드 자동변환, 추가요금: ₩${greenFeeAmount.toLocaleString()})`);
-          } else {
-            // 추가요금 없음 → 진짜 그린색
-            db!.run(
-              `INSERT INTO locker_logs 
-              (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-               option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-               payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
-              [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
-               timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증완료)`, 
-               paymentMethod, 
-               paymentMethod === 'cash' ? basePrice : 0,
-               paymentMethod === 'card' ? basePrice : 0,
-               paymentMethod === 'transfer' ? basePrice : 0,
-               null]
-            );
-            console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 추가요금: 0회) ✓`);
+            console.log(`  ⚠️ 락커 #${lockerNumber}: 그린 검증 실패 (예상외 추가요금 발생: ${greenFeeAmount}원)`);
+            continue;
           }
+          
+          db!.run(
+            `INSERT INTO locker_logs 
+            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+            [generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, 
+             timeType, basePrice, 'none', 0, basePrice, `이전영업일+사용중+추가요금없음(검증완료)`, 
+             paymentMethod, 
+             paymentMethod === 'cash' ? basePrice : 0,
+             paymentMethod === 'card' ? basePrice : 0,
+             paymentMethod === 'transfer' ? basePrice : 0,
+             null]
+          );
+          console.log(`  🟢 락커 #${lockerNumber}: 그린 (이전 영업일 ${timeType}, 입실: ${entryTime.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}) ✓`);
           
           totalGenerated++;
           updateDailySummary(businessDay);
