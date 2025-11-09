@@ -666,9 +666,12 @@ export default function Home() {
         exitTime: now,
       });
     } else {
-      // Same business day checkout - DO NOT combine payments, keep them separate
+      // Same business day checkout
+      // CRITICAL FIX: Update finalPrice to include additional fee for correct display
       // Base price payment stays in locker_logs
       // Additional fee payment goes to additional_fee_events table for independent tracking
+      const updatedFinalPrice = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
+      
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
@@ -676,7 +679,7 @@ export default function Home() {
         paymentCash: paymentCash,
         paymentCard: paymentCard,
         paymentTransfer: paymentTransfer,
-        finalPrice: selectedEntry.finalPrice,
+        finalPrice: updatedFinalPrice,
         additionalFees: additionalFeeInfo.additionalFee,
       });
     }
