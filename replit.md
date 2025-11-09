@@ -10,6 +10,15 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes
 
+### November 9, 2025
+- **테스트 데이터 생성 버그 5건 수정 완료**: 그린/레드/옐로우/블루 락커 생성 로직 정확성 개선
+  - **그린색 락커 시간 계산**: previousBusinessDayStart 직접 사용하여 정확한 이전 영업일 시간대 생성
+  - **레드색 락커 시간 계산**: previousBusinessDayStart + 1일 + 새벽(02:00-08:00) 시간으로 수정
+  - **레드색 락커 요금 버그**: timeType에 따라 주간/야간 요금 정확히 적용 (21:00 야간 입실 = 15,000원)
+  - **미래 시간 데이터 생성 방지**: Yellow/Blue 락커는 현재 시각 이전 시간만 생성하도록 제한
+  - **같은 영업일 추가요금 표시**: finalPrice = basePrice + additionalFee로 수정 (10,000원 → 15,000원 정확히 표시)
+  - 결과: 모든 테스트 데이터가 시간대별 정확한 요금으로 과거 시간에만 생성됨 ✓
+
 ### November 8, 2025
 - **락커 색상 로직 명확화**: 이전 영업일 입실(그린색) vs 오늘 영업일 입실(옐로우/블루) 구분 규칙 문서화
   - **그린색**: 이전 영업일에 입실해서 오늘 영업일에 아직 퇴실하지 않은 락커
