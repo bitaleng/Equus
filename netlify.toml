@@ -2,22 +2,52 @@
   command = "vite build"
   publish = "dist/public"
 
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA routing - redirect all routes to index.html
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
+# Service Worker - prevent caching to ensure updates work properly
 [[headers]]
   for = "/sw.js"
   [headers.values]
-    Cache-Control = "no-cache"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Web App Manifest - correct MIME type
 [[headers]]
   for = "/manifest.json"
   [headers.values]
     Content-Type = "application/manifest+json"
 
 [[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
+# SQLite WASM files - long cache (immutable)
+[[headers]]
   for = "/*.wasm"
   [headers.values]
     Content-Type = "application/wasm"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Static assets - long cache with cache busting via filename hash
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Fonts - long cache
+[[headers]]
+  for = "/*.woff2"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
