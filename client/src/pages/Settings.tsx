@@ -284,7 +284,7 @@ export default function Settings() {
       
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "3일치 랜덤 데이터 + 같은 영업일 추가요금 시나리오가 생성되었습니다. 홈 페이지로 이동합니다.",
+        description: "다양한 상태의 락커 데이터가 생성되었습니다. 홈 페이지로 이동합니다.",
       });
       
       // Navigate to home instead of reloading (preserves business day context)
@@ -1002,9 +1002,9 @@ export default function Settings() {
                       다양한 시나리오의 테스트 데이터를 자동으로 생성합니다.
                       <br />
                       <span className="text-xs">
-                        • 3일치 과거 입출 데이터 (퇴실 완료)<br />
-                        • 현재 사용 중인 락커 (다양한 상태 포함)<br />
+                        • 현재 사용 중인 락커 (5-10개, 다양한 상태 포함)<br />
                         • 추가요금 시나리오 (그린/옐로우/블루/레드 색상 테스트)<br />
+                        • 추가 사용 중 락커 (5-15개, 오늘 입실 데이터)<br />
                         • 락커 #1-80 랜덤 데이터
                       </span>
                     </p>

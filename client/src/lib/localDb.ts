@@ -2305,95 +2305,9 @@ export async function createAdditionalFeeTestData() {
       
       console.log(`\n✅ 현재 사용 중인 락커 ${numCurrentLockers}개 생성 완료`);
       
-      // ===== RANDOMIZED DATA: 3 days of past data (NO additional_fee_events) =====
-      console.log('\n3일치 과거 데이터 (퇴실완료) 생성 중...');
-      console.log('💡 추가요금 데이터는 사용자가 퇴실 처리 시 생성됨');
-      console.log('💡 과거 데이터는 현재 영업일 시작 이전에 모두 퇴실 완료');
-      
-      // Track used locker numbers per day to prevent same-day duplicates
-      const pastUsedLockers = new Map<string, Set<number>>();
-      
-      for (let pastDays = 1; pastDays <= 3; pastDays++) {
-        const pastDate = new Date();
-        pastDate.setDate(pastDate.getDate() - pastDays);
-        const dateKey = pastDate.toISOString().split('T')[0];
-        pastUsedLockers.set(dateKey, new Set<number>());
-        
-        console.log(`  📅 ${pastDays}일 전: ${pastDate.toLocaleDateString('ko-KR')}`);
-        
-        const pastEntries = randomInt(10, 25); // Random 10-25 entries per day
-        
-        for (let i = 0; i < pastEntries; i++) {
-          // Get unused locker number for this day
-          let lockerNumber: number;
-          const usedSet = pastUsedLockers.get(dateKey)!;
-          if (usedSet.size >= 80) break; // All lockers used
-          
-          do {
-            lockerNumber = randomInt(1, 80);
-          } while (usedSet.has(lockerNumber));
-          usedSet.add(lockerNumber);
-          
-          const hour = randomInt(0, 23);
-          const minute = randomInt(0, 59);
-          
-          const entryDate = new Date(pastDate);
-          entryDate.setHours(hour, minute, 0, 0);
-          
-          // IMPORTANT: Exit time MUST be before current business day start
-          // This ensures past data doesn't appear in today's business day
-          const maxExitTime = currentBusinessDayStart.getTime() - 60 * 1000; // 1 minute before
-          const entryTime = entryDate.getTime();
-          const stayDuration = randomInt(30, 180) * 60 * 1000; // 30min - 3hours
-          let exitTimeValue = entryTime + stayDuration;
-          
-          // If exit would be after business day start, cap it
-          if (exitTimeValue >= maxExitTime) {
-            exitTimeValue = maxExitTime - randomInt(1, 120) * 60 * 1000; // 1-2 hours before
-          }
-          
-          const exitTime = new Date(exitTimeValue);
-          
-          const timeType = getTimeType(entryDate);
-          const basePrice = timeType === '주간' ? dayPrice : nightPrice;
-          
-          const optionType = randomElement(optionTypes);
-          let optionAmount = 0;
-          let finalPrice = basePrice;
-          
-          if (optionType === 'discount') {
-            optionAmount = -discountAmount;
-            finalPrice = basePrice - discountAmount;
-          } else if (optionType === 'foreigner') {
-            optionAmount = foreignerPrice - basePrice;
-            finalPrice = foreignerPrice;
-          }
-          
-          const paymentMethod = randomElement(paymentMethods);
-          const paymentCash = paymentMethod === 'cash' ? finalPrice : 0;
-          const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
-          const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
-          
-          const id = generateId();
-          const businessDay = getBusinessDay(entryDate, businessDayStartHour);
-          
-          db!.run(
-            `INSERT INTO locker_logs 
-            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
-             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
-            [id, lockerNumber, entryDate.toISOString(), exitTime.toISOString(), businessDay, 
-             timeType, basePrice, optionType, optionAmount, finalPrice, '테스트 데이터 (퇴실완료)', 
-             paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
-          );
-          
-          totalGenerated++;
-          updateDailySummary(businessDay);
-        }
-      }
-      
-      console.log(`  ✅ 과거 데이터 생성 완료 (추가요금은 실제 퇴실 시 기록됨)`);
+      // ===== NO PAST DATA: Only today's data =====
+      // Past data generation removed to ensure fresh state on initial installation
+      console.log('\n✅ 과거 데이터 생성 생략 (깨끗한 상태 유지)');
       
       // ===== TODAY'S DATA: More in-use entries =====
       console.log('\n추가 사용중 락커 생성 중...');
