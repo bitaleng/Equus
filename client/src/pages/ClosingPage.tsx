@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, CheckCircle, Calculator } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, Calculator, Calendar, AlertCircle } from 'lucide-react';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,10 +39,28 @@ import {
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 import * as localDb from '@/lib/localDb';
 
+// Helper function to generate past business days
+function generatePastBusinessDays(count: number, businessDayStartHour: number): string[] {
+  const days: string[] = [];
+  const today = new Date();
+  
+  for (let i = 0; i < count; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() - i);
+    const businessDay = getBusinessDay(date, businessDayStartHour);
+    if (!days.includes(businessDay)) {
+      days.push(businessDay);
+    }
+  }
+  
+  return days;
+}
+
 export default function ClosingPage() {
   const { toast } = useToast();
   const [businessDay, setBusinessDay] = useState('');
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [availableBusinessDays, setAvailableBusinessDays] = useState<string[]>([]);
 
   // Basic information
   const [startTime, setStartTime] = useState('');
@@ -92,6 +119,11 @@ export default function ClosingPage() {
   useEffect(() => {
     const settings = getSettings();
     const currentBusinessDay = getBusinessDay(new Date(), settings.businessDayStartHour);
+    
+    // Generate past 30 days of business days
+    const pastDays = generatePastBusinessDays(30, settings.businessDayStartHour);
+    setAvailableBusinessDays(pastDays);
+    
     setBusinessDay(currentBusinessDay);
     loadClosingData(currentBusinessDay);
   }, []);
@@ -380,6 +412,25 @@ export default function ClosingPage() {
     loadClosingData(businessDay);
   };
 
+  const handleBusinessDayChange = (selectedDay: string) => {
+    if (selectedDay === businessDay) return; // Skip if unchanged
+    
+    setBusinessDay(selectedDay);
+    loadClosingData(selectedDay);
+    
+    toast({
+      title: '영업일 변경',
+      description: `${selectedDay} 영업일 데이터를 불러왔습니다.`,
+    });
+  };
+
+  // Calculate pending closings (only for days with saved closing data)
+  const pendingClosings = availableBusinessDays.filter(day => {
+    const closing = getClosingDay(day);
+    // Only include days that have closing data but not confirmed
+    return closing && !closing.isConfirmed;
+  });
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
@@ -391,12 +442,46 @@ export default function ClosingPage() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <div>
-              <h1 className="text-3xl font-bold">정산하기</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                영업일: {businessDay}
-                {isConfirmed && <span className="ml-2 text-green-600 font-semibold">✓ 확정완료</span>}
-              </p>
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">정산하기</h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {isConfirmed && <span className="text-green-600 font-semibold">✓ 확정완료</span>}
+                </p>
+              </div>
+              
+              {/* Business Day Selector */}
+              <div className="flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <Select value={businessDay} onValueChange={handleBusinessDayChange}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-business-day">
+                    <SelectValue placeholder="영업일 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableBusinessDays.map((day) => {
+                      const closing = getClosingDay(day);
+                      const isPending = !closing?.isConfirmed;
+                      
+                      return (
+                        <SelectItem key={day} value={day} data-testid={`option-business-day-${day}`}>
+                          <div className="flex items-center gap-2">
+                            <span>{day}</span>
+                            {closing?.isConfirmed && (
+                              <Badge variant="secondary" className="text-xs">확정</Badge>
+                            )}
+                            {isPending && closing && (
+                              <Badge variant="outline" className="text-xs">저장됨</Badge>
+                            )}
+                            {isPending && !closing && (
+                              <Badge variant="destructive" className="text-xs">미정산</Badge>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -427,6 +512,21 @@ export default function ClosingPage() {
             </Button>
           </div>
         </div>
+
+        {/* Pending Closings Warning */}
+        {pendingClosings.length > 0 && (
+          <Alert variant="default" className="border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950" data-testid="alert-pending-closings">
+            <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            <AlertDescription className="text-orange-800 dark:text-orange-200">
+              <span className="font-semibold">미정산 영업일:</span> {pendingClosings.length}일
+              {pendingClosings.length <= 5 && (
+                <span className="ml-2 text-sm">
+                  ({pendingClosings.slice(0, 5).join(', ')})
+                </span>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Basic Information */}
         <Card>
