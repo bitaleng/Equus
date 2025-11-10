@@ -11,6 +11,20 @@ Preferred communication style: Simple, everyday language.
 ## Recent Changes
 
 ### November 10, 2025
+- **매출 중복 계산 버그 수정 및 오늘현황 추가요금 배지 표시 기능 추가**: 같은 영업일 추가요금 처리 완전 개선
+  - **문제 1 (매출 중복 계산)**: 같은 영업일 추가요금이 finalPrice와 additionalFeeSales 양쪽에 중복 집계됨
+  - **해결 1**: Line 260-266에서 다른 영업일 추가요금만 additionalFeeSales에 합산
+    - 같은 영업일 추가요금: finalPrice에만 포함 (입실 요금 + 추가요금)
+    - 다른 영업일 추가요금: additionalFeeSales에만 포함 (별도 row)
+    - 결과: 매출 집계에서 중복 카운트 완전 제거 ✓
+  - **문제 2 (추가요금 배지 누락)**: 같은 영업일 추가요금 발생 항목에 배지 표시 없음
+  - **해결 2**: TodayStatusTable에 "추가" 오렌지색 배지 표시
+    - Line 214-222: 같은 영업일 추가요금 ID Set 생성
+    - Line 254-257: entries에 hasSameDayFee 플래그 추가
+    - TodayStatusTable.tsx: "추가" 배지 표시 (같은 영업일 추가요금)
+    - 결과: 운영자가 같은 영업일 추가요금 항목을 즉시 식별 가능 ✓
+  - **테스트**: playwright e2e 테스트 통과 (9개 항목, "추가" 및 "추가요금" 배지 모두 확인) ✓
+
 - **최종요금 표시 로직 완전 수정**: 영업일 간 퇴실 vs 같은 영업일 퇴실 구분
   - **문제**: 다른 영업일 퇴실 시 최종요금에 기본요금(10,000원) 표시 (정산 완료된 금액)
   - **해결**: `getDisplayPrice()` 함수로 조건부 표시 로직 구현
