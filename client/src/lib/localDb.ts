@@ -2196,7 +2196,7 @@ export async function createAdditionalFeeTestData() {
           let entryTime: Date;
           let optionType: 'none' | 'foreigner';
           let basePrice: number;
-          let timeType: string;
+          let timeType: '주간' | '야간';
           let businessDay: string;
           
           while (!validEntry && attempts < maxAttempts) {
@@ -2217,11 +2217,22 @@ export async function createAdditionalFeeTestData() {
                 entryTime = new Date(previousBusinessDayStart.getTime() + randomInt(1, 12) * 60 * 60 * 1000);
               }
             } else {
-              // 내국인: 자정 기준 → 어제 입실 + 오늘 자정 넘김
-              // 범위: previousBusinessDayStart ~ currentBusinessDayStart - 1 사이의 임의 시간
-              const timeRange = currentBusinessDayStart.getTime() - previousBusinessDayStart.getTime();
-              const randomOffset = Math.floor(Math.random() * timeRange);
-              entryTime = new Date(previousBusinessDayStart.getTime() + randomOffset);
+              // 내국인: 자정 기준 → 어제 주간 또는 야간 < 07:00 입실 (첫 자정에 추가요금 발생)
+              // 야간 >= 19:00는 첫 자정 무료이므로 제외
+              const useEarlyMorning = randomBoolean(0.5);
+              
+              if (useEarlyMorning) {
+                // 야간 < 07:00 입실: 새벽 00:00 ~ 06:59
+                const entryHour = randomInt(0, 6);
+                const entryMinute = randomInt(0, 59);
+                entryTime = new Date(previousBusinessDayStart);
+                entryTime.setDate(entryTime.getDate() + 1); // 다음 날로 이동
+                entryTime.setHours(entryHour, entryMinute, 0, 0);
+              } else {
+                // 주간 입실: 07:00 ~ 18:59
+                const hoursAfterStart = randomInt(0, 9); // 0-9시간 (최대 19:00까지)
+                entryTime = new Date(previousBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
+              }
             }
             
             businessDay = getBusinessDay(entryTime, businessDayStartHour);
