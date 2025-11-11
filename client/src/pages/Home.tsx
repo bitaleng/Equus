@@ -6,7 +6,7 @@ import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Maximize2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -79,7 +79,9 @@ export default function Home() {
   
   // Panel collapse state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
+  const [isLockerPanelCollapsed, setIsLockerPanelCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
+  const [showLockerPatternDialog, setShowLockerPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
 
   // Load settings from localStorage
@@ -90,7 +92,7 @@ export default function Home() {
   const discountAmount = settings.discountAmount;
   const foreignerPrice = settings.foreignerPrice;
   
-  // Toggle panel visibility
+  // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
     if (isPanelCollapsed) {
       // Expanding panel - require pattern
@@ -101,9 +103,25 @@ export default function Home() {
     }
   };
   
-  // Pattern verified, expand panel
+  // Toggle right panel (Locker Management) visibility
+  const handleToggleLockerPanel = () => {
+    if (isLockerPanelCollapsed) {
+      // Expanding panel - require pattern
+      setShowLockerPatternDialog(true);
+    } else {
+      // Collapsing panel - no pattern required
+      setIsLockerPanelCollapsed(true);
+    }
+  };
+  
+  // Pattern verified, expand left panel
   const handlePatternCorrect = () => {
     setIsPanelCollapsed(false);
+  };
+  
+  // Pattern verified, expand right panel
+  const handleLockerPatternCorrect = () => {
+    setIsLockerPanelCollapsed(false);
   };
 
   // Update current time every minute
@@ -845,7 +863,21 @@ export default function Home() {
     <div className="h-full w-full flex bg-background">
       {/* Left Panel - Collapsible */}
       {!isPanelCollapsed && (
-        <div className="w-[40%] border-r flex flex-col">
+        <div className={`border-r flex flex-col ${isLockerPanelCollapsed ? 'flex-1' : 'w-[40%]'}`}>
+          {/* Header with Expand Button */}
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="text-xl font-semibold">오늘 현황</h2>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleToggleLockerPanel}
+              data-testid="button-toggle-locker-panel"
+              title={isLockerPanelCollapsed ? "입실관리 표시" : "입실관리 숨기기"}
+            >
+              {isLockerPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </Button>
+          </div>
+
           {/* Today Status */}
           <div className="flex-[3] border-b overflow-hidden">
             <TodayStatusTable
@@ -877,7 +909,8 @@ export default function Home() {
       )}
 
       {/* Right Panel - Locker Grid */}
-      <div className="flex-1 flex flex-col">
+      {!isLockerPanelCollapsed && (
+        <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="p-6 border-b flex items-center justify-between">
           {/* Hamburger Menu Button */}
@@ -971,7 +1004,7 @@ export default function Home() {
             </div>
           )}
         </div>
-      </div>
+      )}
 
       {/* Options Dialog */}
       {(selectedEntry || newLockerInfo) && (
@@ -1031,7 +1064,7 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Pattern Lock Dialog for Panel Expansion */}
+      {/* Pattern Lock Dialog for Left Panel Expansion */}
       <PatternLockDialog
         open={showPatternDialog}
         onOpenChange={setShowPatternDialog}
@@ -1039,6 +1072,16 @@ export default function Home() {
         title="패널 잠금 해제"
         description="패턴을 그려서 오늘현황 및 매출집계 패널을 열어주세요."
         testId="dialog-panel-pattern"
+      />
+
+      {/* Pattern Lock Dialog for Locker Panel Expansion */}
+      <PatternLockDialog
+        open={showLockerPatternDialog}
+        onOpenChange={setShowLockerPatternDialog}
+        onPatternCorrect={handleLockerPatternCorrect}
+        title="패널 잠금 해제"
+        description="패턴을 그려서 입실관리 패널을 열어주세요."
+        testId="dialog-locker-pattern"
       />
     </div>
   );

@@ -35,6 +35,7 @@ import {
   getSettings,
   getDetailedSalesByBusinessDay,
   getRentalRevenueBreakdownByBusinessDay,
+  getDetailedSalesByBusinessDayRange,
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 import * as localDb from '@/lib/localDb';
@@ -115,6 +116,17 @@ export default function ClosingPage() {
 
   // Confirmation dialog
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+
+  // Range query states
+  const [rangeStartBusinessDay, setRangeStartBusinessDay] = useState('');
+  const [rangeEndBusinessDay, setRangeEndBusinessDay] = useState('');
+  const [rangeSalesData, setRangeSalesData] = useState<{
+    entrySales: { cash: number; card: number; transfer: number; total: number };
+    additionalSales: { cash: number; card: number; transfer: number; total: number };
+    rentalSales: { cash: number; card: number; transfer: number; total: number };
+    totalEntrySales: { cash: number; card: number; transfer: number; total: number };
+  } | null>(null);
+  const [showRangeSummary, setShowRangeSummary] = useState(false);
 
   useEffect(() => {
     const settings = getSettings();
@@ -424,6 +436,35 @@ export default function ClosingPage() {
     });
   };
 
+  const handleRangeQuery = () => {
+    if (!rangeStartBusinessDay || !rangeEndBusinessDay) {
+      toast({
+        title: '기간 선택 필요',
+        description: '시작일과 종료일을 모두 선택해주세요.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (rangeStartBusinessDay > rangeEndBusinessDay) {
+      toast({
+        title: '날짜 오류',
+        description: '시작일이 종료일보다 늦을 수 없습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const data = getDetailedSalesByBusinessDayRange(rangeStartBusinessDay, rangeEndBusinessDay);
+    setRangeSalesData(data);
+    setShowRangeSummary(true);
+
+    toast({
+      title: '기간별 조회 완료',
+      description: `${rangeStartBusinessDay} ~ ${rangeEndBusinessDay} 기간의 매출을 조회했습니다.`,
+    });
+  };
+
   // Calculate pending closings (only for days with saved closing data)
   const pendingClosings = availableBusinessDays.filter(day => {
     const closing = getClosingDay(day);
@@ -590,6 +631,162 @@ export default function ClosingPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Range Query */}
+        <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+              <Calendar className="h-5 w-5" />
+              기간별 정산 조회
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="rangeStartBusinessDay">시작 영업일</Label>
+                <Select value={rangeStartBusinessDay} onValueChange={setRangeStartBusinessDay}>
+                  <SelectTrigger id="rangeStartBusinessDay" data-testid="select-range-start">
+                    <SelectValue placeholder="시작일 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableBusinessDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="rangeEndBusinessDay">종료 영업일</Label>
+                <Select value={rangeEndBusinessDay} onValueChange={setRangeEndBusinessDay}>
+                  <SelectTrigger id="rangeEndBusinessDay" data-testid="select-range-end">
+                    <SelectValue placeholder="종료일 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableBusinessDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button onClick={handleRangeQuery} className="w-full sm:w-auto" data-testid="button-query-range">
+                  <Calculator className="h-4 w-4 mr-2" />
+                  조회
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Range Query Results */}
+        {showRangeSummary && rangeSalesData && (
+          <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                기간별 매출 합계 ({rangeStartBusinessDay} ~ {rangeEndBusinessDay})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* 입실매출 */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg border-b pb-2">입실매출</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">현금</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.cash)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">카드</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.card)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">이체</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.transfer)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">합계</p>
+                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.entrySales.total)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 추가요금 매출 */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg border-b pb-2">추가요금 매출</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">현금</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.cash)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">카드</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.card)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">이체</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.transfer)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">합계</p>
+                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.additionalSales.total)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 대여물품 매출 */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg border-b pb-2">대여물품 매출</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">현금</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.cash)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">카드</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.card)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">이체</p>
+                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.transfer)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">합계</p>
+                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.rentalSales.total)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 총매출 */}
+              <div className="space-y-3 bg-primary/5 dark:bg-primary/10 p-4 rounded-lg border border-primary/20">
+                <h3 className="font-semibold text-lg border-b border-primary/20 pb-2">총 입실매출 (입실 + 추가요금)</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">현금</p>
+                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.cash)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">카드</p>
+                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.card)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">이체</p>
+                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.transfer)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">합계</p>
+                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.total)}</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Detailed Sales Summary */}
         <Card>

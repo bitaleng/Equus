@@ -3921,6 +3921,113 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
   };
 }
 
+// Get detailed sales summary for a range of business days
+export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, endBusinessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+  
+  // Get UTC start/end timestamps for the business day range
+  const settings = getSettings();
+  const startDate = new Date(startBusinessDay + 'T12:00:00');
+  const endDate = new Date(endBusinessDay + 'T12:00:00');
+  
+  const { start: rangeStart } = getBusinessDayRange(startDate, settings.businessDayStartHour);
+  const { end: rangeEnd } = getBusinessDayRange(endDate, settings.businessDayStartHour);
+  
+  // Convert to Unix timestamps (seconds) for reliable numeric comparison
+  const startUnix = Math.floor(rangeStart.getTime() / 1000);
+  const endUnix = Math.floor(rangeEnd.getTime() / 1000);
+  
+  // Get base entry sales (입실 기본요금) - filter by entry_time within range
+  const entryResult = db.exec(
+    `SELECT 
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
+     FROM locker_logs
+     WHERE strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
+  );
+  
+  const entrySales = {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    total: 0
+  };
+  
+  if (entryResult.length > 0 && entryResult[0].values.length > 0) {
+    const row = entryResult[0].values[0];
+    entrySales.cash = row[0] as number;
+    entrySales.card = row[1] as number;
+    entrySales.transfer = row[2] as number;
+    entrySales.total = entrySales.cash + entrySales.card + entrySales.transfer;
+  }
+  
+  // Get additional fee sales (추가요금) - filter by checkout_time within range
+  const additionalResult = db.exec(
+    `SELECT 
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
+     FROM additional_fee_events
+     WHERE strftime('%s', checkout_time) >= ? AND strftime('%s', checkout_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
+  );
+  
+  const additionalSales = {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    total: 0
+  };
+  
+  if (additionalResult.length > 0 && additionalResult[0].values.length > 0) {
+    const row = additionalResult[0].values[0];
+    additionalSales.cash = row[0] as number;
+    additionalSales.card = row[1] as number;
+    additionalSales.transfer = row[2] as number;
+    additionalSales.total = additionalSales.cash + additionalSales.card + additionalSales.transfer;
+  }
+  
+  // Get rental sales (대여물품 매출) - filter by rental_time within range
+  const rentalResult = db.exec(
+    `SELECT 
+      COALESCE(SUM(CASE WHEN deposit_status = 'received' OR deposit_status = 'refunded' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
+      COALESCE(SUM(CASE WHEN deposit_status = 'received' OR deposit_status = 'refunded' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
+      COALESCE(SUM(CASE WHEN deposit_status = 'received' OR deposit_status = 'refunded' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
+     FROM rental_transactions
+     WHERE strftime('%s', rental_time) >= ? AND strftime('%s', rental_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
+  );
+  
+  const rentalSales = {
+    cash: 0,
+    card: 0,
+    transfer: 0,
+    total: 0
+  };
+  
+  if (rentalResult.length > 0 && rentalResult[0].values.length > 0) {
+    const row = rentalResult[0].values[0];
+    rentalSales.cash = row[0] as number;
+    rentalSales.card = row[1] as number;
+    rentalSales.transfer = row[2] as number;
+    rentalSales.total = rentalSales.cash + rentalSales.card + rentalSales.transfer;
+  }
+  
+  return {
+    entrySales,
+    additionalSales,
+    rentalSales,
+    totalEntrySales: {
+      cash: entrySales.cash + additionalSales.cash,
+      card: entrySales.card + additionalSales.card,
+      transfer: entrySales.transfer + additionalSales.transfer,
+      total: entrySales.total + additionalSales.total
+    }
+  };
+}
+
 // Expense Categories operations
 export function getExpenseCategories() {
   if (!db) throw new Error('Database not initialized');

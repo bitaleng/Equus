@@ -231,11 +231,23 @@ export function calculateAdditionalFee(
   
   // 내국인: 01:00 기준 계산
   const entryHour = entrySeoul.getHours();
+  const entryMinute = entrySeoul.getMinutes();
   
-  // 입실일의 01:00 (다음날 01:00)
+  // 입실일의 01:00 계산: 입실 시간이 01:00 이전이면 같은 날 01:00, 01:00 이후면 다음 날 01:00
   const firstCheckpoint = new Date(entrySeoul);
-  firstCheckpoint.setDate(firstCheckpoint.getDate() + 1);
-  firstCheckpoint.setHours(1, 0, 0, 0);
+  firstCheckpoint.setMinutes(0, 0, 0);
+  
+  // 입실 시간이 01:00 이전인지 확인
+  const entryBefore0100 = entryHour < 1 || (entryHour === 1 && entryMinute === 0);
+  
+  if (entryBefore0100) {
+    // 같은 날 01:00
+    firstCheckpoint.setHours(1, 0, 0, 0);
+  } else {
+    // 다음 날 01:00
+    firstCheckpoint.setDate(firstCheckpoint.getDate() + 1);
+    firstCheckpoint.setHours(1, 0, 0, 0);
+  }
   
   // 현재 시간이 첫 01:00를 넘지 않았으면 추가요금 없음
   if (currentSeoul < firstCheckpoint) {
