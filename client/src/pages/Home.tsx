@@ -958,10 +958,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Locker Grid */}
-        <div 
-          className={`flex-1 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
-        >
+          {/* Locker Grid */}
+          <div 
+            className={`flex-1 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
+          >
           {lockerGroups.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <p>락커 그룹이 설정되지 않았습니다.</p>
@@ -1003,6 +1003,7 @@ export default function Home() {
               ))}
             </div>
           )}
+          </div>
         </div>
       )}
 

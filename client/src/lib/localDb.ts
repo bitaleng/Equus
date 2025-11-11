@@ -3966,9 +3966,9 @@ export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, end
   // Get additional fee sales (추가요금) - filter by checkout_time within range
   const additionalResult = db.exec(
     `SELECT 
-      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash_total,
-      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card_total,
-      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer_total
+      COALESCE(SUM(COALESCE(payment_cash, 0)), 0) as cash_total,
+      COALESCE(SUM(COALESCE(payment_card, 0)), 0) as card_total,
+      COALESCE(SUM(COALESCE(payment_transfer, 0)), 0) as transfer_total
      FROM additional_fee_events
      WHERE strftime('%s', checkout_time) >= ? AND strftime('%s', checkout_time) <= ?`,
     [startUnix.toString(), endUnix.toString()]
