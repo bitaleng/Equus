@@ -40,6 +40,8 @@ interface SalesSummaryProps {
   rentalRevenue: number;
   totalExpenses: number;
   onExpenseAdded?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export default function SalesSummary({
@@ -54,6 +56,8 @@ export default function SalesSummary({
   rentalRevenue,
   totalExpenses,
   onExpenseAdded,
+  isCollapsed = false,
+  onToggleCollapse,
 }: SalesSummaryProps) {
   const { toast } = useToast();
   const entrySales = totalSales + additionalFeeSales;
@@ -126,12 +130,9 @@ export default function SalesSummary({
 
   return (
     <div className="space-y-4">
-      <Collapsible open={isSalesOpen} onOpenChange={setIsSalesOpen}>
-        <div className="flex items-center justify-between">
-          <CollapsibleTrigger className="flex items-center gap-2 hover-elevate px-2 py-1 rounded-md cursor-pointer" data-testid="button-toggle-sales">
-            <h2 className="text-lg font-semibold">매출 집계</h2>
-            {isSalesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-          </CollapsibleTrigger>
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">매출 집계</h2>
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -141,7 +142,24 @@ export default function SalesSummary({
             <Receipt className="h-4 w-4 mr-2" />
             지출입력
           </Button>
+          {onToggleCollapse && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleCollapse}
+              data-testid="button-collapse-sales"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+          )}
         </div>
+      </div>
+      
+      <Collapsible open={isSalesOpen} onOpenChange={setIsSalesOpen}>
+        <CollapsibleTrigger className="flex items-center gap-2 hover-elevate px-2 py-1 rounded-md cursor-pointer w-full" data-testid="button-toggle-sales">
+          <span className="text-sm font-medium">상세 내역</span>
+          {isSalesOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+        </CollapsibleTrigger>
         
         <CollapsibleContent>
           <Card className="mt-4">

@@ -6,7 +6,7 @@ import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2 } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -80,8 +80,8 @@ export default function Home() {
   // Panel collapse state
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const [isLockerPanelCollapsed, setIsLockerPanelCollapsed] = useState(false);
+  const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
-  const [showLockerPatternDialog, setShowLockerPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
 
   // Load settings from localStorage
@@ -105,23 +105,13 @@ export default function Home() {
   
   // Toggle right panel (Locker Management) visibility
   const handleToggleLockerPanel = () => {
-    if (isLockerPanelCollapsed) {
-      // Expanding panel - require pattern
-      setShowLockerPatternDialog(true);
-    } else {
-      // Collapsing panel - no pattern required
-      setIsLockerPanelCollapsed(true);
-    }
+    // No pattern lock - just toggle
+    setIsLockerPanelCollapsed(!isLockerPanelCollapsed);
   };
   
   // Pattern verified, expand left panel
   const handlePatternCorrect = () => {
     setIsPanelCollapsed(false);
-  };
-  
-  // Pattern verified, expand right panel
-  const handleLockerPatternCorrect = () => {
-    setIsLockerPanelCollapsed(false);
   };
 
   // Update current time every minute
@@ -879,9 +869,10 @@ export default function Home() {
           </div>
 
           {/* Today Status */}
-          <div className="flex-[3] border-b overflow-hidden">
+          <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
             <TodayStatusTable
               entries={todayEntries}
+              isExpanded={isLockerPanelCollapsed}
               onRowClick={(entry) => {
                 setSelectedLocker(entry.lockerNumber);
                 setDialogOpen(true);
@@ -890,21 +881,41 @@ export default function Home() {
           </div>
 
           {/* Sales Summary */}
-          <div className="flex-[2] p-6 overflow-auto">
-            <SalesSummary
-              date={getBusinessDay(currentTime, businessDayStartHour)}
-              totalVisitors={summary?.totalVisitors || 0}
-              totalSales={summary?.totalSales || 0}
-              cancellations={summary?.cancellations || 0}
-              foreignerCount={summary?.foreignerCount || 0}
-              dayVisitors={summary?.dayVisitors || 0}
-              nightVisitors={summary?.nightVisitors || 0}
-              additionalFeeSales={additionalFeeSales}
-              rentalRevenue={rentalRevenue}
-              totalExpenses={totalExpenses}
-              onExpenseAdded={loadData}
-            />
-          </div>
+          {!isSalesSummaryCollapsed && (
+            <div className="flex-[2] p-6 overflow-auto">
+              <SalesSummary
+                date={getBusinessDay(currentTime, businessDayStartHour)}
+                totalVisitors={summary?.totalVisitors || 0}
+                totalSales={summary?.totalSales || 0}
+                cancellations={summary?.cancellations || 0}
+                foreignerCount={summary?.foreignerCount || 0}
+                dayVisitors={summary?.dayVisitors || 0}
+                nightVisitors={summary?.nightVisitors || 0}
+                additionalFeeSales={additionalFeeSales}
+                rentalRevenue={rentalRevenue}
+                totalExpenses={totalExpenses}
+                onExpenseAdded={loadData}
+                isCollapsed={isSalesSummaryCollapsed}
+                onToggleCollapse={() => setIsSalesSummaryCollapsed(!isSalesSummaryCollapsed)}
+              />
+            </div>
+          )}
+
+          {/* Sales Summary Collapsed Toggle Button */}
+          {isSalesSummaryCollapsed && (
+            <div className="p-3 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSalesSummaryCollapsed(false)}
+                className="w-full"
+                data-testid="button-expand-sales"
+              >
+                <ChevronDown className="h-4 w-4 mr-2" />
+                매출집계 펼치기
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1073,16 +1084,6 @@ export default function Home() {
         title="패널 잠금 해제"
         description="패턴을 그려서 오늘현황 및 매출집계 패널을 열어주세요."
         testId="dialog-panel-pattern"
-      />
-
-      {/* Pattern Lock Dialog for Locker Panel Expansion */}
-      <PatternLockDialog
-        open={showLockerPatternDialog}
-        onOpenChange={setShowLockerPatternDialog}
-        onPatternCorrect={handleLockerPatternCorrect}
-        title="패널 잠금 해제"
-        description="패턴을 그려서 입실관리 패널을 열어주세요."
-        testId="dialog-locker-pattern"
       />
     </div>
   );

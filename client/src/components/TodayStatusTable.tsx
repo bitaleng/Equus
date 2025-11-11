@@ -48,10 +48,11 @@ interface LockerEntry {
 
 interface TodayStatusTableProps {
   entries: LockerEntry[];
+  isExpanded?: boolean;
   onRowClick?: (entry: LockerEntry) => void;
 }
 
-export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTableProps) {
+export default function TodayStatusTable({ entries, isExpanded = false, onRowClick }: TodayStatusTableProps) {
   const [lockerNumberInput, setLockerNumberInput] = useState("");
   const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -259,13 +260,13 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
         <Table>
           <TableHeader className="sticky top-0 bg-muted/50">
             <TableRow>
-              <TableHead className="w-16 text-sm font-bold">번호</TableHead>
-              <TableHead className="w-20 text-sm font-bold">입실시간</TableHead>
-              <TableHead className="w-16 text-sm font-bold">구분</TableHead>
-              <TableHead className="w-20 text-sm font-bold">옵션</TableHead>
-              <TableHead className="w-16 text-sm font-bold">지불</TableHead>
-              <TableHead className="w-24 text-sm font-bold">최종요금</TableHead>
-              <TableHead className="w-20 text-sm font-bold">상태</TableHead>
+              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>번호</TableHead>
+              <TableHead className={`${isExpanded ? 'w-28 text-base' : 'w-20 text-sm'} font-bold`}>입실시간</TableHead>
+              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>구분</TableHead>
+              <TableHead className={`${isExpanded ? 'w-28 text-base' : 'w-20 text-sm'} font-bold`}>옵션</TableHead>
+              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>지불</TableHead>
+              <TableHead className={`${isExpanded ? 'w-32 text-base' : 'w-24 text-sm'} font-bold`}>최종요금</TableHead>
+              <TableHead className={`${isExpanded ? 'w-24 text-base' : 'w-20 text-sm'} font-bold`}>상태</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -296,11 +297,11 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                     onClick={() => onRowClick?.(entry)}
                     data-testid={`row-entry-${entry.lockerNumber}`}
                   >
-                    <TableCell className="font-semibold text-base">{entry.lockerNumber}</TableCell>
-                    <TableCell className="text-sm">{entry.entryTime || '-'}</TableCell>
-                    <TableCell>
+                    <TableCell className={`font-semibold ${isExpanded ? 'text-lg py-4' : 'text-base'}`}>{entry.lockerNumber}</TableCell>
+                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>{entry.entryTime || '-'}</TableCell>
+                    <TableCell className={`${isExpanded ? 'py-4' : ''}`}>
                       <div className="flex items-center gap-1.5">
-                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
+                        <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap ${
                           entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
                           entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
                           'bg-accent text-accent-foreground'
@@ -308,23 +309,23 @@ export default function TodayStatusTable({ entries, onRowClick }: TodayStatusTab
                           {entry.timeType}
                         </span>
                         {entry.hasSameDayFee && entry.timeType !== '추가요금' && (
-                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
+                          <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300`}>
                             추가
                           </span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{entry.option}</TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>{entry.option}</TableCell>
+                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
-                    <TableCell className={`font-semibold text-base ${
+                    <TableCell className={`font-semibold ${isExpanded ? 'text-lg py-4' : 'text-base'} ${
                       isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''
                     }`}>
                       {entry.finalPrice.toLocaleString()}원
                     </TableCell>
-                    <TableCell>
-                      <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${statusColor}`}>
+                    <TableCell className={`${isExpanded ? 'py-4' : ''}`}>
+                      <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap ${statusColor}`}>
                         {statusText}
                       </span>
                     </TableCell>
