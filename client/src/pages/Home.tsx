@@ -114,9 +114,9 @@ export default function Home() {
     setIsPanelCollapsed(false);
   };
 
-  // Update current time every minute
+  // Update current time every second
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -942,7 +942,7 @@ export default function Home() {
               </span>
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
+              {currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })} {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
