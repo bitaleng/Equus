@@ -941,9 +941,12 @@ export default function Home() {
                 빈 락커: {emptyLockerCount}개
               </span>
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })} {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
-            </p>
+            <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+              <div>{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
+              <div className="tabular-nums">
+                {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
+              </div>
+            </div>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
