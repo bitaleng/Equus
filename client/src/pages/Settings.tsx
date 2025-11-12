@@ -38,6 +38,8 @@ interface Settings {
   nightPrice: number;
   discountAmount: number;
   foreignerPrice: number;
+  domesticCheckpointHour: number;
+  foreignerAdditionalFeePeriod: number;
 }
 
 interface LockerGroup {
@@ -79,6 +81,8 @@ export default function Settings() {
     nightPrice: 15000,
     discountAmount: 2000,
     foreignerPrice: 25000,
+    domesticCheckpointHour: 1,
+    foreignerAdditionalFeePeriod: 24,
   });
 
   // Locker group dialog states
@@ -165,7 +169,16 @@ export default function Settings() {
   };
 
   const handleSave = () => {
-    localDb.updateSettings(formData);
+    // Validate and clamp settings before saving
+    const validatedData = {
+      ...formData,
+      domesticCheckpointHour: Math.max(0, Math.min(23, formData.domesticCheckpointHour)),
+      foreignerAdditionalFeePeriod: Math.max(1, formData.foreignerAdditionalFeePeriod),
+    };
+    
+    localDb.updateSettings(validatedData);
+    setFormData(validatedData); // Update form with validated values
+    
     toast({
       title: "설정 저장 완료",
       description: "시스템 설정이 성공적으로 저장되었습니다.",
@@ -609,6 +622,53 @@ export default function Settings() {
                   onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-foreigner-price"
                 />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 추가요금 설정 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>추가요금 설정</CardTitle>
+              <CardDescription>
+                내국인 및 외국인 추가요금 계산 기준을 설정합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="domesticCheckpointHour">내국인 추가요금 체크포인트 시간 (0-23시)</Label>
+                <Input
+                  id="domesticCheckpointHour"
+                  type="number"
+                  min="0"
+                  max="23"
+                  value={formData.domesticCheckpointHour}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setFormData({ ...formData, domesticCheckpointHour: isNaN(val) ? 0 : val });
+                  }}
+                  data-testid="input-domestic-checkpoint"
+                />
+                <p className="text-xs text-muted-foreground">
+                  예: 1시 = 매일 01:00에 내국인 추가요금 발생 (기본값: 1시)
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="foreignerAdditionalFeePeriod">외국인 추가요금 주기 (시간 단위)</Label>
+                <Input
+                  id="foreignerAdditionalFeePeriod"
+                  type="number"
+                  min="1"
+                  value={formData.foreignerAdditionalFeePeriod}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setFormData({ ...formData, foreignerAdditionalFeePeriod: isNaN(val) ? 1 : val });
+                  }}
+                  data-testid="input-foreigner-period"
+                />
+                <p className="text-xs text-muted-foreground">
+                  예: 24시간 = 입실 시각 기준 24시간마다 추가요금 발생 (기본값: 24시간)
+                </p>
               </div>
             </CardContent>
           </Card>

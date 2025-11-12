@@ -1424,7 +1424,9 @@ export function getSettings() {
     dayPrice: 10000,
     nightPrice: 15000,
     discountAmount: 2000,
-    foreignerPrice: 25000
+    foreignerPrice: 25000,
+    domesticCheckpointHour: 1,
+    foreignerAdditionalFeePeriod: 24
   };
 
   const saved = localStorage.getItem('settings');
@@ -1485,7 +1487,7 @@ export function createTestData() {
   if (!db) throw new Error('Database not initialized');
   
   const settings = getSettings();
-  const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice } = settings;
+  const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod } = settings;
   
   // Helper function to format date for business day
   const getBusinessDay = (date: Date): string => {
@@ -2146,7 +2148,9 @@ export async function createAdditionalFeeTestData() {
               nightPrice,
               now,
               isForeigner,
-              foreignerPrice
+              foreignerPrice,
+              domesticCheckpointHour,
+              foreignerAdditionalFeePeriod
             );
             
             if (additionalFeeCount === 0) {
@@ -2247,7 +2251,9 @@ export async function createAdditionalFeeTestData() {
               nightPrice,
               now,
               optionType === 'foreigner',
-              foreignerPrice
+              foreignerPrice,
+              domesticCheckpointHour,
+              foreignerAdditionalFeePeriod
             );
             
             if (result.additionalFee > 0) {

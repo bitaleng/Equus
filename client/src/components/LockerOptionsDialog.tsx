@@ -105,6 +105,10 @@ export default function LockerOptionsDialog({
   onCheckout,
   onCancel,
 }: LockerOptionsDialogProps) {
+  // Load settings
+  const settings = localDb.getSettings();
+  const domesticCheckpointHour = settings.domesticCheckpointHour;
+  const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
@@ -226,7 +230,9 @@ export default function LockerOptionsDialog({
             nightPrice, 
             new Date(), 
             isCurrentlyForeigner, 
-            foreignerPrice
+            foreignerPrice,
+            domesticCheckpointHour,
+            foreignerAdditionalFeePeriod
           );
           const hasAdditionalFee = additionalFeeCalc.additionalFee > 0;
           
@@ -826,7 +832,7 @@ export default function LockerOptionsDialog({
   // Calculate additional fee if entry time exists
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const additionalFeeInfo = entryTime && isInUse
-    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice)
+    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod)
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
 
   // Format entry date and time

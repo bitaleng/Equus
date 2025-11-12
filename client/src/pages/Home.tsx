@@ -91,6 +91,8 @@ export default function Home() {
   const nightPrice = settings.nightPrice;
   const discountAmount = settings.discountAmount;
   const foreignerPrice = settings.foreignerPrice;
+  const domesticCheckpointHour = settings.domesticCheckpointHour;
+  const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
   
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
@@ -344,7 +346,9 @@ export default function Home() {
       nightPrice,
       currentTime,
       isForeigner,
-      foreignerPrice
+      foreignerPrice,
+      domesticCheckpointHour,
+      foreignerAdditionalFeePeriod
     );
     
     // 추가요금 횟수를 그대로 저장 (0이면 추가요금 없음)
@@ -680,7 +684,9 @@ export default function Home() {
       nightPrice,
       now,
       isCurrentlyForeigner,
-      foreignerPrice
+      foreignerPrice,
+      domesticCheckpointHour,
+      foreignerAdditionalFeePeriod
     );
     
     // If checking out on a different business day (after settlement time):
