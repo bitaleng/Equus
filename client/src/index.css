@@ -333,4 +333,65 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* Container Queries for TodayStatusTable Responsive Scaling */
+  @supports (container-type: inline-size) {
+    .today-status-container {
+      container-type: inline-size;
+      container-name: today-status;
+    }
+
+    /* Base state - collapsed locker panel (expanded table) */
+    @container today-status (min-width: 800px) {
+      .today-status-container {
+        --fluid-base: clamp(0.95rem, 0.55cqi + 0.8rem, 1.35rem);
+        --fluid-header: clamp(1.1rem, 0.6cqi + 0.95rem, 1.6rem);
+        --fluid-large: clamp(1.15rem, 0.65cqi + 1rem, 1.7rem);
+        --fluid-small: clamp(0.85rem, 0.5cqi + 0.7rem, 1.15rem);
+        --fluid-badge: clamp(0.75rem, 0.45cqi + 0.6rem, 1rem);
+        --fluid-gap: clamp(0.5rem, 0.4cqi + 0.3rem, 1rem);
+        --fluid-padding: clamp(0.75rem, 0.5cqi + 0.5rem, 1.5rem);
+        --fluid-col-number: clamp(4.5rem, 3cqi + 3rem, 7rem);
+        --fluid-col-time: clamp(6rem, 4cqi + 4rem, 9rem);
+        --fluid-col-type: clamp(5rem, 3.5cqi + 3.5rem, 8rem);
+        --fluid-col-option: clamp(6rem, 4cqi + 4rem, 9rem);
+        --fluid-col-payment: clamp(5rem, 3.5cqi + 3.5rem, 8rem);
+        --fluid-col-price: clamp(6.5rem, 4.5cqi + 4.5rem, 10rem);
+        --fluid-col-status: clamp(5.5rem, 3.5cqi + 3.5rem, 8rem);
+      }
+    }
+
+    /* Extra large state - very wide screens */
+    @container today-status (min-width: 1200px) {
+      .today-status-container {
+        --fluid-base: clamp(1.05rem, 0.6cqi + 0.9rem, 1.5rem);
+        --fluid-header: clamp(1.2rem, 0.65cqi + 1.05rem, 1.75rem);
+        --fluid-large: clamp(1.3rem, 0.7cqi + 1.15rem, 1.9rem);
+        --fluid-small: clamp(0.95rem, 0.55cqi + 0.8rem, 1.3rem);
+        --fluid-badge: clamp(0.85rem, 0.5cqi + 0.7rem, 1.15rem);
+        --fluid-gap: clamp(0.75rem, 0.5cqi + 0.5rem, 1.5rem);
+        --fluid-padding: clamp(1rem, 0.6cqi + 0.7rem, 2rem);
+      }
+    }
+  }
+
+  /* Fallback for browsers without container query support */
+  @supports not (container-type: inline-size) {
+    .today-status-container.expanded-mode {
+      --fluid-base: 1.125rem;
+      --fluid-header: 1.25rem;
+      --fluid-large: 1.375rem;
+      --fluid-small: 1rem;
+      --fluid-badge: 0.875rem;
+      --fluid-gap: 0.75rem;
+      --fluid-padding: 1rem;
+      --fluid-col-number: 5.5rem;
+      --fluid-col-time: 7rem;
+      --fluid-col-type: 6rem;
+      --fluid-col-option: 7rem;
+      --fluid-col-payment: 6rem;
+      --fluid-col-price: 8rem;
+      --fluid-col-status: 6.5rem;
+    }
+  }
 }

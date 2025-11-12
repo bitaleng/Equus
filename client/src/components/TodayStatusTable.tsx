@@ -124,8 +124,8 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled).length;
 
   return (
-    <div className="h-full flex flex-col p-6">
-      <div className="flex flex-col gap-3 mb-4">
+    <div className={`h-full flex flex-col p-6 today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
+      <div className="today-status-wrapper flex flex-col gap-3 mb-4">
         {/* 첫 번째 줄: 제목과 메모 버튼 */}
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">오늘 현황</h2>
@@ -260,13 +260,69 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
         <Table>
           <TableHeader className="sticky top-0 bg-muted/50">
             <TableRow>
-              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>번호</TableHead>
-              <TableHead className={`${isExpanded ? 'w-28 text-base' : 'w-20 text-sm'} font-bold`}>입실시간</TableHead>
-              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>구분</TableHead>
-              <TableHead className={`${isExpanded ? 'w-28 text-base' : 'w-20 text-sm'} font-bold`}>옵션</TableHead>
-              <TableHead className={`${isExpanded ? 'w-20 text-base' : 'w-16 text-sm'} font-bold`}>지불</TableHead>
-              <TableHead className={`${isExpanded ? 'w-32 text-base' : 'w-24 text-sm'} font-bold`}>최종요금</TableHead>
-              <TableHead className={`${isExpanded ? 'w-24 text-base' : 'w-20 text-sm'} font-bold`}>상태</TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-number, 4rem)' 
+                } : undefined}
+              >
+                번호
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-time, 5rem)' 
+                } : undefined}
+              >
+                입실시간
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-type, 4rem)' 
+                } : undefined}
+              >
+                구분
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-option, 5rem)' 
+                } : undefined}
+              >
+                옵션
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-payment, 4rem)' 
+                } : undefined}
+              >
+                지불
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-price, 5rem)' 
+                } : undefined}
+              >
+                최종요금
+              </TableHead>
+              <TableHead 
+                className="font-bold" 
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-status, 5rem)' 
+                } : undefined}
+              >
+                상태
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -297,35 +353,92 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                     onClick={() => onRowClick?.(entry)}
                     data-testid={`row-entry-${entry.lockerNumber}`}
                   >
-                    <TableCell className={`font-semibold ${isExpanded ? 'text-lg py-4' : 'text-base'}`}>{entry.lockerNumber}</TableCell>
-                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>{entry.entryTime || '-'}</TableCell>
-                    <TableCell className={`${isExpanded ? 'py-4' : ''}`}>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap ${
-                          entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
-                          entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
-                          'bg-accent text-accent-foreground'
-                        }`}>
+                    <TableCell 
+                      className="font-semibold"
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-large, 1.125rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      {entry.lockerNumber}
+                    </TableCell>
+                    <TableCell 
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-base, 1rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      {entry.entryTime || '-'}
+                    </TableCell>
+                    <TableCell 
+                      style={isExpanded ? { 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      <div className="flex items-center" style={isExpanded ? { gap: 'var(--fluid-gap, 0.5rem)' } : { gap: '0.375rem' }}>
+                        <span 
+                          className={`rounded whitespace-nowrap ${
+                            entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                            entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
+                            'bg-accent text-accent-foreground'
+                          }`}
+                          style={isExpanded ? { 
+                            fontSize: 'var(--fluid-badge, 0.875rem)', 
+                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
+                          } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                        >
                           {entry.timeType}
                         </span>
                         {entry.hasSameDayFee && entry.timeType !== '추가요금' && (
-                          <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300`}>
+                          <span 
+                            className="rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
+                            style={isExpanded ? { 
+                              fontSize: 'var(--fluid-badge, 0.875rem)', 
+                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
+                            } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                          >
                             추가
                           </span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>{entry.option}</TableCell>
-                    <TableCell className={`${isExpanded ? 'text-base py-4' : 'text-sm'}`}>
+                    <TableCell 
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-base, 1rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      {entry.option}
+                    </TableCell>
+                    <TableCell 
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-base, 1rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
-                    <TableCell className={`font-semibold ${isExpanded ? 'text-lg py-4' : 'text-base'} ${
-                      isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''
-                    }`}>
+                    <TableCell 
+                      className={`font-semibold ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-large, 1.125rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
                       {entry.finalPrice.toLocaleString()}원
                     </TableCell>
-                    <TableCell className={`${isExpanded ? 'py-4' : ''}`}>
-                      <span className={`${isExpanded ? 'text-sm px-2 py-1' : 'text-xs px-1.5 py-0.5'} rounded whitespace-nowrap ${statusColor}`}>
+                    <TableCell 
+                      style={isExpanded ? { 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      <span 
+                        className={`rounded whitespace-nowrap ${statusColor}`}
+                        style={isExpanded ? { 
+                          fontSize: 'var(--fluid-badge, 0.875rem)', 
+                          padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
+                        } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                      >
                         {statusText}
                       </span>
                     </TableCell>
