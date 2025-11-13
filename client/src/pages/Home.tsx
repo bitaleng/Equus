@@ -929,54 +929,54 @@ export default function Home() {
         <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="p-6 border-b">
-          {/* 1행: 햄버거 메뉴 + 입실 관리 제목 (우측) */}
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleTogglePanel}
-              data-testid="button-toggle-panel"
-            >
-              {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
-            </Button>
+          {/* 1행: 햄버거 + 날짜/시간 (좌측) | 입실 관리 (우측) */}
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={handleTogglePanel}
+                data-testid="button-toggle-panel"
+              >
+                {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+              </Button>
+              <p className="text-base font-semibold tabular-nums">
+                <span className="font-bold">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                {' '}
+                {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </p>
+            </div>
             <h1 className="text-xl font-semibold">입실 관리</h1>
           </div>
           
-          {/* 2행: 범례 (우측) */}
-          <div className="flex items-center justify-end gap-2 flex-wrap mb-4">
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
-              <span className="text-xs">빈칸</span>
+          {/* 2행: 빈락카/주간야간/요금 (좌측) | 범례 (우측) */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+              <span>빈 락커: {emptyLockerCount}개</span>
+              <span>{getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
-              <span className="text-xs">이전영업일</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
+                <span className="text-xs">빈칸</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
+                <span className="text-xs">이전영업일</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
+                <span className="text-xs">주간</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
+                <span className="text-xs">야간</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
+                <span className="text-xs">추가요금</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
-              <span className="text-xs">주간</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
-              <span className="text-xs">야간</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
-              <span className="text-xs">추가요금</span>
-            </div>
-          </div>
-          
-          {/* 3행: 날짜(BOLD) + 시간 (우측) */}
-          <p className="text-lg font-semibold tabular-nums text-right mb-2">
-            <span className="font-bold">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-            {' '}
-            {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </p>
-          
-          {/* 4행: 빈락카 | 주간/야간 | 요금 (우측) */}
-          <div className="flex flex-wrap justify-end gap-3 text-sm text-muted-foreground">
-            <span>빈 락커: {emptyLockerCount}개</span>
-            <span>{getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)</span>
           </div>
         </div>
 
