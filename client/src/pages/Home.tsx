@@ -39,6 +39,7 @@ interface LockerLog {
   paymentTransfer?: number;
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
+  parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
 }
 
 interface DailySummary {
@@ -322,18 +323,21 @@ export default function Home() {
   const additionalFeeCounts: { [key: number]: number } = {};
   const lockerTimeTypes: { [key: number]: 'day' | 'night' } = {};
   const lockerEntryTimes: { [key: number]: Date } = {};
+  const lockerParents: { [key: number]: number | null } = {};
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
       lockerStates[i] = 'empty';
       additionalFeeCounts[i] = 0;
       lockerTimeTypes[i] = 'day';
+      lockerParents[i] = null;
     }
   });
   
   activeLockers.forEach(log => {
     lockerStates[log.lockerNumber] = 'in-use';
     lockerEntryTimes[log.lockerNumber] = new Date(log.entryTime);
+    lockerParents[log.lockerNumber] = log.parentLocker || null;
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -1038,6 +1042,7 @@ export default function Home() {
                         businessDayStartHour={businessDayStartHour}
                         onClick={() => handleLockerClick(num)}
                         isExpanded={isPanelCollapsed && !overviewMode}
+                        parentLocker={lockerParents[num] || null}
                       />
                     ))}
                   </div>

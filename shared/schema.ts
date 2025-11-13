@@ -26,6 +26,7 @@ export const lockerLogs = pgTable("locker_logs", {
   cancelled: boolean("cancelled").notNull().default(false),
   paymentMethod: paymentMethodEnum("payment_method"),
   notes: text("notes"),
+  parentLocker: integer("parent_locker"), // 부모 락카 번호 (자식 락카인 경우)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

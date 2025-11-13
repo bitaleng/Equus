@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { getBusinessDayRange } from "@shared/businessDay";
+import { Lock } from "lucide-react";
 
 interface LockerButtonProps {
   number: number;
@@ -10,9 +11,10 @@ interface LockerButtonProps {
   businessDayStartHour?: number; // 정산시간 (기본값: 10)
   onClick: () => void;
   isExpanded?: boolean; // 패널 접힌 상태 (true = 패널 접힘, 버튼 크게)
+  parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null }: LockerButtonProps) {
   const getButtonStyles = () => {
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
@@ -84,6 +86,12 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     >
       <span className={isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}>{number}</span>
       <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>
+      {parentLocker && (
+        <div className="flex items-center gap-1 mt-0.5">
+          <Lock className="w-2.5 h-2.5 opacity-90" />
+          <span className="text-[9px] font-normal opacity-90">{parentLocker}번</span>
+        </div>
+      )}
     </Button>
   );
 }
