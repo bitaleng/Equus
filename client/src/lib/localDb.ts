@@ -1287,10 +1287,12 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
 export function linkLockers(parentLockerNumber: number, childLockerNumbers: number[]): { success: boolean; message: string } {
   if (!db) throw new Error('Database not initialized');
 
+  let transactionStarted = false;
   try {
     db.run('BEGIN TRANSACTION');
+    transactionStarted = true;
 
-    // Check if parent locker is in use
+    // Check if parent locker is in use (all queries inside transaction)
     const parentResult = db.exec(
       `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
       [parentLockerNumber]
@@ -1298,34 +1300,45 @@ export function linkLockers(parentLockerNumber: number, childLockerNumbers: numb
 
     if (parentResult.length === 0 || parentResult[0].values.length === 0) {
       db.run('ROLLBACK');
+      transactionStarted = false;
       return { success: false, message: '부모 락카가 사용중이 아닙니다.' };
     }
 
-    // Check if all child lockers are vacant
-    const activeLockers = getActiveLockers();
-    const activeNumbers = activeLockers.map((l: any) => l.lockerNumber);
+    const parentData = rowsToObjects(parentResult[0])[0];
 
+    // Check if all child lockers are truly vacant
+    // Get the latest log for each child locker and ensure it's checked_out or doesn't exist
     for (const childNumber of childLockerNumbers) {
-      if (activeNumbers.includes(childNumber)) {
-        db.run('ROLLBACK');
-        return { success: false, message: `${childNumber}번 락카는 이미 사용중입니다.` };
+      const latestLogResult = db.exec(
+        `SELECT * FROM locker_logs 
+         WHERE locker_number = ? 
+         ORDER BY entry_time DESC 
+         LIMIT 1`,
+        [childNumber]
+      );
+      
+      if (latestLogResult.length > 0 && latestLogResult[0].values.length > 0) {
+        const latestLog = rowsToObjects(latestLogResult[0])[0];
+        // Locker is occupied if latest log is in_use OR cancelled without checkout
+        if (latestLog.status === 'in_use' || (latestLog.status === 'cancelled' && !latestLog.exitTime)) {
+          db.run('ROLLBACK');
+          transactionStarted = false;
+          return { success: false, message: `${childNumber}번 락카는 이미 사용중입니다.` };
+        }
       }
     }
 
-    const currentTime = new Date().toISOString();
-    const parentData = rowsToObjects(parentResult[0])[0];
-
-    // Create child locker entries
+    // Create child locker entries using parent's metadata
     for (const childNumber of childLockerNumbers) {
       db.run(
         `INSERT INTO locker_logs (
           id, locker_number, entry_time, business_day, time_type,
-          base_price, option_type, final_price, status, parent_locker
-        ) VALUES (?, ?, ?, ?, ?, 0, 'none', 0, 'in_use', ?)`,
+          base_price, option_type, final_price, status, cancelled, parent_locker
+        ) VALUES (?, ?, ?, ?, ?, 0, 'none', 0, 'in_use', 0, ?)`,
         [
           `${childNumber}-${Date.now()}-${Math.random()}`,
           childNumber,
-          currentTime,
+          parentData.entryTime,  // Use parent's entry_time
           parentData.businessDay,
           parentData.timeType,
           parentLockerNumber
@@ -1334,6 +1347,7 @@ export function linkLockers(parentLockerNumber: number, childLockerNumbers: numb
     }
 
     db.run('COMMIT');
+    transactionStarted = false;
     saveDatabase();
 
     return { 
@@ -1342,10 +1356,12 @@ export function linkLockers(parentLockerNumber: number, childLockerNumbers: numb
     };
   } catch (error) {
     console.error('Locker linking error:', error);
-    try {
-      db.run('ROLLBACK');
-    } catch (rollbackError) {
-      console.error('Rollback error:', rollbackError);
+    if (transactionStarted) {
+      try {
+        db.run('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
     }
     return { success: false, message: '락카묶기 중 오류가 발생했습니다.' };
   }
@@ -1366,16 +1382,35 @@ export function getChildLockers(parentLockerNumber: number) {
 }
 
 // Unlink (checkout) child lockers when parent is checked out
-export function unlinkChildLockers(parentLockerNumber: number) {
+// Only affects active child lockers to avoid corrupting history
+export function unlinkChildLockers(parentLockerNumber: number, exitTime?: string) {
   if (!db) throw new Error('Database not initialized');
 
-  const exitTime = new Date().toISOString();
+  const checkoutTime = exitTime || new Date().toISOString();
 
+  // Only update child lockers that are currently in_use
   db.run(
     `UPDATE locker_logs 
      SET status = 'checked_out', exit_time = ? 
      WHERE parent_locker = ? AND status = 'in_use'`,
-    [exitTime, parentLockerNumber]
+    [checkoutTime, parentLockerNumber]
+  );
+
+  saveDatabase();
+}
+
+// Cancel child lockers when parent is cancelled
+// Mirrors parent cancellation: sets cancelled=1, status='cancelled', exit_time=NULL
+export function cancelChildLockers(parentLockerNumber: number) {
+  if (!db) throw new Error('Database not initialized');
+
+  // Only cancel child lockers that are currently in_use
+  // Match parent cancellation behavior: set cancelled=1, don't set exit_time
+  db.run(
+    `UPDATE locker_logs 
+     SET status = 'cancelled', cancelled = 1, exit_time = NULL
+     WHERE parent_locker = ? AND status = 'in_use'`,
+    [parentLockerNumber]
   );
 
   saveDatabase();

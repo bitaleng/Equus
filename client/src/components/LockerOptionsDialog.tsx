@@ -139,6 +139,11 @@ export default function LockerOptionsDialog({
   const [showSwapConfirm, setShowSwapConfirm] = useState(false);
   const [swapInfo, setSwapInfo] = useState<{ targetLocker: number; willSwap: boolean } | null>(null);
   
+  // Locker linking states
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [selectedChildLockers, setSelectedChildLockers] = useState<Set<number>>(new Set());
+  const [showLinkConfirm, setShowLinkConfirm] = useState(false);
+  
   // Rental items state (담요, 롱타올) - legacy
   const [hasBlanket, setHasBlanket] = useState(false);
   const [hasLongTowel, setHasLongTowel] = useState(false);
@@ -888,6 +893,77 @@ export default function LockerOptionsDialog({
     onClose();
   };
 
+  // Locker linking handlers
+  const handleLinkClick = () => {
+    playClickSound();
+    setSelectedChildLockers(new Set());
+    setShowLinkDialog(true);
+  };
+
+  const handleLinkSubmit = () => {
+    if (selectedChildLockers.size === 0) {
+      toast({
+        variant: "destructive",
+        title: "선택 오류",
+        description: "묶을 락카를 최소 1개 이상 선택해주세요.",
+      });
+      return;
+    }
+
+    playClickSound();
+    setShowLinkDialog(false);
+    setShowLinkConfirm(true);
+  };
+
+  const handleLinkConfirm = async () => {
+    playClickSound();
+    
+    try {
+      const childLockerNumbers = Array.from(selectedChildLockers);
+      const result = localDb.linkLockers(lockerNumber, childLockerNumbers);
+      
+      if (result.success) {
+        toast({
+          title: "락카묶기 완료",
+          description: result.message,
+        });
+        setShowLinkConfirm(false);
+        setSelectedChildLockers(new Set());
+        onClose();
+        // Refresh page to show updated locker states
+        window.location.reload();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "락카묶기 실패",
+          description: result.message,
+        });
+        // Keep dialog open so user can adjust selections
+        setShowLinkConfirm(false);
+      }
+    } catch (error) {
+      console.error('Link error:', error);
+      toast({
+        variant: "destructive",
+        title: "락카묶기 실패",
+        description: "락카묶기 중 오류가 발생했습니다.",
+      });
+      setShowLinkConfirm(false);
+    }
+  };
+
+  const toggleChildLocker = (childNumber: number) => {
+    setSelectedChildLockers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(childNumber)) {
+        newSet.delete(childNumber);
+      } else {
+        newSet.add(childNumber);
+      }
+      return newSet;
+    });
+  };
+
   // Calculate additional fee if entry time exists
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const additionalFeeInfo = entryTime && isInUse
@@ -1454,6 +1530,9 @@ export default function LockerOptionsDialog({
                 <Button variant="secondary" onClick={handleSwapClick} data-testid="button-swap">
                   락카교체
                 </Button>
+                <Button variant="secondary" onClick={handleLinkClick} data-testid="button-link">
+                  락카묶기
+                </Button>
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
@@ -1666,6 +1745,102 @@ export default function LockerOptionsDialog({
               onClick={handleSwapConfirm} 
               className="bg-orange-600 hover:bg-orange-700"
               data-testid="button-swap-confirm-ok"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Locker linking selection dialog */}
+      <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
+        <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto" data-testid="dialog-link-select">
+          <DialogHeader>
+            <DialogTitle>락카묶기 - {lockerNumber}번에 추가할 빈 락카 선택</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              짐이 많은 손님을 위해 빈 락카를 추가로 묶을 수 있습니다. 
+              묶인 락카는 요금 없이 사용되며, 부모 락카 퇴실 시 자동으로 해제됩니다.
+            </p>
+            
+            <div className="text-sm font-semibold">
+              현재 {selectedChildLockers.size}개 선택됨
+            </div>
+
+            <div className="grid grid-cols-5 gap-2">
+              {(() => {
+                // Get all active locker numbers
+                const activeLockers = localDb.getActiveLockers();
+                const activeNumbers = new Set(activeLockers.map((l: any) => l.lockerNumber));
+                
+                // Get all locker groups to determine total range
+                const groups = localDb.getLockerGroups();
+                const maxLocker = Math.max(...groups.map((g: any) => g.endNumber), 80);
+                
+                // Generate vacant locker numbers
+                const vacantLockers: number[] = [];
+                for (let i = 1; i <= maxLocker; i++) {
+                  if (!activeNumbers.has(i) && i !== lockerNumber) {
+                    vacantLockers.push(i);
+                  }
+                }
+                
+                return vacantLockers.map(num => (
+                  <Button
+                    key={num}
+                    variant={selectedChildLockers.has(num) ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => toggleChildLocker(num)}
+                    data-testid={`button-child-locker-${num}`}
+                    className="h-10"
+                  >
+                    {num}
+                  </Button>
+                ));
+              })()}
+            </div>
+
+            {selectedChildLockers.size === 0 && (
+              <div className="text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950 p-3 rounded-md border border-orange-200 dark:border-orange-800">
+                최소 1개 이상의 빈 락카를 선택해주세요
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLinkDialog(false)} data-testid="button-link-cancel">
+              취소
+            </Button>
+            <Button onClick={handleLinkSubmit} data-testid="button-link-submit">
+              묶기 확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Locker linking confirmation dialog */}
+      <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}>
+        <AlertDialogContent data-testid="dialog-link-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-blue-600">락카묶기 확인</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-600 dark:text-blue-400">
+                  {lockerNumber}번 락카에 {Array.from(selectedChildLockers).join(', ')}번 락카를 묶습니다.
+                  <br/><br/>
+                  • 묶인 락카는 요금 없이 사용됩니다<br/>
+                  • {lockerNumber}번 퇴실 시 자동으로 함께 퇴실됩니다
+                </p>
+              </div>
+              <p className="font-medium">계속하시겠습니까?</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-link-confirm-cancel">취소</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleLinkConfirm} 
+              className="bg-blue-600 hover:bg-blue-700"
+              data-testid="button-link-confirm-ok"
             >
               확인
             </AlertDialogAction>
