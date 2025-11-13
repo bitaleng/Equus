@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Enums
-export const optionTypeEnum = pgEnum('option_type', ['none', 'discount', 'custom', 'foreigner']);
+export const optionTypeEnum = pgEnum('option_type', ['none', 'discount', 'custom', 'foreigner', 'direct_price']);
 export const timeTypeEnum = pgEnum('time_type', ['주간', '야간']);
 export const statusEnum = pgEnum('status', ['in_use', 'checked_out', 'cancelled']);
 export const paymentMethodEnum = pgEnum('payment_method', ['card', 'cash', 'transfer']);

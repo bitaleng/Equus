@@ -21,25 +21,18 @@ import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getBusinessDayRange, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
+import type { LockerLog as SharedLockerLog } from "@shared/schema";
 
-interface LockerLog {
-  id: string;
-  lockerNumber: number;
+// Extend shared LockerLog with UI-specific fields
+interface LockerLog extends Omit<SharedLockerLog, 'entryTime' | 'exitTime' | 'createdAt' | 'updatedAt' | 'notes' | 'paymentMethod' | 'optionAmount'> {
   entryTime: string;
   exitTime: string | null;
-  timeType: '주간' | '야간';
-  basePrice: number;
-  optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
-  optionAmount?: number;
-  finalPrice: number;
   notes?: string;
   paymentMethod?: 'card' | 'cash' | 'transfer';
+  optionAmount?: number;
   paymentCash?: number;
   paymentCard?: number;
   paymentTransfer?: number;
-  status: 'in_use' | 'checked_out' | 'cancelled';
-  cancelled: boolean;
-  parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
 }
 
 interface DailySummary {
@@ -67,6 +60,8 @@ export default function Home() {
   const { toast } = useToast();
   const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [childLockerAlertOpen, setChildLockerAlertOpen] = useState(false);
+  const [childLockerParent, setChildLockerParent] = useState<number | null>(null);
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
@@ -394,9 +389,18 @@ export default function Home() {
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
-      setNewLockerInfo(null);
-      setSelectedLocker(lockerNumber);
-      setDialogOpen(true);
+      // Check if this is a child locker
+      const parentLocker = lockerParents[lockerNumber];
+      if (parentLocker) {
+        // Show child locker alert instead of options dialog
+        setChildLockerParent(parentLocker);
+        setChildLockerAlertOpen(true);
+      } else {
+        // Normal locker - show options dialog
+        setNewLockerInfo(null);
+        setSelectedLocker(lockerNumber);
+        setDialogOpen(true);
+      }
     }
   };
 
@@ -1108,6 +1112,31 @@ export default function Home() {
               }}
             >
               정산하기
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Child Locker Alert Dialog */}
+      <AlertDialog open={childLockerAlertOpen} onOpenChange={setChildLockerAlertOpen}>
+        <AlertDialogContent data-testid="dialog-child-locker-alert">
+          <AlertDialogHeader>
+            <AlertDialogTitle>묶인 락카 안내</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="text-base">
+                이 락카는 <span className="font-semibold text-primary">{childLockerParent}번 락카</span>에 묶여 있습니다.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                묶인 락카는 요금 없이 사용되며, {childLockerParent}번 락카 퇴실 시 자동으로 함께 퇴실됩니다.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => setChildLockerAlertOpen(false)}
+              data-testid="button-child-locker-ok"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
