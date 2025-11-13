@@ -481,12 +481,25 @@ export default function Home() {
       return;
     }
     
+    // Check locker state
+    const state = lockerStates[lockerNumber];
+    
+    if (state === 'empty') {
+      // Empty locker - set new entry info
+      const timeType = getTimeType(currentTime);
+      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+      setNewLockerInfo({ lockerNumber, timeType, basePrice });
+    } else {
+      // In-use locker - clear new entry info
+      setNewLockerInfo(null);
+    }
+    
     // Open dialog for the locker
     setSelectedLocker(lockerNumber);
     setDialogOpen(true);
     toast({
       title: "바코드 스캔 시뮬레이션",
-      description: `바코드 "${barcode}" → ${lockerNumber}번 락카`,
+      description: `바코드 "${barcode}" → ${lockerNumber}번 락카 (${state === 'empty' ? '빈 락카' : '사용 중'})`,
     });
   };
   
