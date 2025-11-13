@@ -861,8 +861,7 @@ export default function Home() {
       {!isPanelCollapsed && (
         <div className={`border-r flex flex-col ${isLockerPanelCollapsed ? 'flex-1' : 'w-[40%]'}`}>
           {/* Header with Expand Button */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="text-xl font-semibold">오늘 현황</h2>
+          <div className="p-4 border-b flex items-center justify-end">
             <Button 
               variant="ghost" 
               size="icon" 
@@ -929,32 +928,22 @@ export default function Home() {
       {!isLockerPanelCollapsed && (
         <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b flex items-center justify-between">
-          {/* Hamburger Menu Button */}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleTogglePanel}
-            data-testid="button-toggle-panel"
-            className="mr-2"
-          >
-            {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold">
-              입실 관리 
-              <span className="ml-3 text-base font-normal text-muted-foreground">
-                빈 락커: {emptyLockerCount}개
-              </span>
-            </h1>
-            <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
-              <div>{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
-              <div className="tabular-nums">
-                {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} - {getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)
-              </div>
-            </div>
+        <div className="p-6 border-b">
+          {/* 1행: 햄버거 메뉴 + 입실 관리 제목 */}
+          <div className="flex items-center gap-3 mb-4">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleTogglePanel}
+              data-testid="button-toggle-panel"
+            >
+              {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+            </Button>
+            <h1 className="text-xl font-semibold">입실 관리</h1>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          
+          {/* 2행: 범례 */}
+          <div className="flex items-center gap-2 flex-wrap mb-4">
             <div className="flex items-center gap-1.5">
               <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
               <span className="text-xs">빈칸</span>
@@ -975,6 +964,18 @@ export default function Home() {
               <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
               <span className="text-xs">추가요금</span>
             </div>
+          </div>
+          
+          {/* 3행: 시간 (크고 굵게) */}
+          <p className="text-lg font-semibold tabular-nums mb-2">
+            {currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
+          
+          {/* 4행: 날짜 | 빈락카 | 주간/야간 | 요금 */}
+          <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+            <span>{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+            <span>빈 락커: {emptyLockerCount}개</span>
+            <span>{getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)</span>
           </div>
         </div>
 
