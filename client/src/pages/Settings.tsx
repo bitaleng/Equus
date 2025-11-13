@@ -125,6 +125,7 @@ export default function Settings() {
   const [isBarcodeScanMode, setIsBarcodeScanMode] = useState(false);
   const [scanningLockerNumber, setScanningLockerNumber] = useState<number | null>(null);
   const [scannedBarcode, setScannedBarcode] = useState("");
+  const [selectedBarcodeLocker, setSelectedBarcodeLocker] = useState<number | null>(null);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -1133,7 +1134,8 @@ export default function Settings() {
                   <select
                     id="locker-select"
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                    defaultValue=""
+                    value={selectedBarcodeLocker || ""}
+                    onChange={(e) => setSelectedBarcodeLocker(e.target.value ? parseInt(e.target.value) : null)}
                     data-testid="select-locker-number"
                   >
                     <option value="" disabled>락카 번호를 선택하세요</option>
@@ -1145,10 +1147,8 @@ export default function Settings() {
                   </select>
                   <Button
                     onClick={() => {
-                      const select = document.getElementById('locker-select') as HTMLSelectElement;
-                      const lockerNumber = parseInt(select.value);
-                      if (lockerNumber) {
-                        handleStartBarcodeScan(lockerNumber);
+                      if (selectedBarcodeLocker) {
+                        handleStartBarcodeScan(selectedBarcodeLocker);
                       } else {
                         toast({
                           title: "락카 번호 선택 필요",
