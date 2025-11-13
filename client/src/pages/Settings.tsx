@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -114,6 +114,18 @@ export default function Settings() {
   const [expenseCategoryFormData, setExpenseCategoryFormData] = useState({ name: "" });
   const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; sortOrder: number }[]>([]);
 
+  // Barcode mappings states
+  const [barcodeMappings, setBarcodeMappings] = useState<Array<{
+    id: string;
+    barcode: string;
+    lockerNumber: number;
+    createdAt: string;
+    updatedAt: string;
+  }>>([]);
+  const [isBarcodeScanMode, setIsBarcodeScanMode] = useState(false);
+  const [scanningLockerNumber, setScanningLockerNumber] = useState<number | null>(null);
+  const [scannedBarcode, setScannedBarcode] = useState("");
+
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -144,6 +156,7 @@ export default function Settings() {
     loadLockerGroups();
     loadRevenueItems();
     loadExpenseCategories();
+    loadBarcodeMappings();
     
     // Load cash register from localStorage
     const savedCashRegister = localStorage.getItem('cash_register');
@@ -167,6 +180,118 @@ export default function Settings() {
   const loadExpenseCategories = () => {
     setExpenseCategories(localDb.getExpenseCategories());
   };
+
+  const loadBarcodeMappings = () => {
+    setBarcodeMappings(localDb.getAllBarcodeMappings());
+  };
+
+  const handleStartBarcodeScan = (lockerNumber: number) => {
+    setScanningLockerNumber(lockerNumber);
+    setScannedBarcode("");
+    setIsBarcodeScanMode(true);
+    
+    toast({
+      title: "스캔 대기 중",
+      description: `${lockerNumber}번 락카 키의 바코드를 스캔해주세요 (5초 대기)`,
+    });
+  };
+
+  const handleBarcodeScanned = (barcode: string) => {
+    if (!scanningLockerNumber) return;
+    
+    const success = localDb.saveBarcodeMapping(barcode, scanningLockerNumber);
+    
+    if (success) {
+      loadBarcodeMappings();
+      toast({
+        title: "바코드 등록 완료",
+        description: `${scanningLockerNumber}번 락카에 바코드가 등록되었습니다.`,
+      });
+    } else {
+      toast({
+        title: "바코드 등록 실패",
+        description: "바코드 등록 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+    
+    setIsBarcodeScanMode(false);
+    setScanningLockerNumber(null);
+    setScannedBarcode("");
+  };
+
+  const handleDeleteBarcodeMapping = (id: string, lockerNumber: number) => {
+    if (confirm(`${lockerNumber}번 락카의 바코드 매핑을 삭제하시겠습니까?`)) {
+      const success = localDb.deleteBarcodeMappingById(id);
+      
+      if (success) {
+        loadBarcodeMappings();
+        toast({
+          title: "바코드 삭제 완료",
+          description: "바코드 매핑이 삭제되었습니다.",
+        });
+      } else {
+        toast({
+          title: "바코드 삭제 실패",
+          description: "바코드 삭제 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  // Barcode scan listener
+  useEffect(() => {
+    if (!isBarcodeScanMode) return;
+    
+    let barcodeBuffer = '';
+    let lastKeyTime = 0;
+    let scanTimeout: NodeJS.Timeout | null = null;
+    
+    const handleKeyPress = (e: KeyboardEvent) => {
+      const now = Date.now();
+      
+      // Reset buffer if more than 100ms has passed
+      if (now - lastKeyTime > 100) {
+        barcodeBuffer = '';
+      }
+      
+      // Enter key = scan complete
+      if (e.key === 'Enter' && barcodeBuffer.length > 0) {
+        handleBarcodeScanned(barcodeBuffer);
+        e.preventDefault();
+        return;
+      }
+      
+      // Add character to buffer
+      if (e.key.length === 1) {
+        barcodeBuffer += e.key;
+        lastKeyTime = now;
+        setScannedBarcode(barcodeBuffer);
+      }
+    };
+    
+    // Auto-cancel after 5 seconds
+    scanTimeout = setTimeout(() => {
+      if (isBarcodeScanMode) {
+        setIsBarcodeScanMode(false);
+        setScanningLockerNumber(null);
+        setScannedBarcode("");
+        toast({
+          title: "스캔 취소",
+          description: "시간이 초과되어 스캔이 취소되었습니다.",
+          variant: "destructive",
+        });
+      }
+    }, 5000);
+    
+    document.addEventListener('keypress', handleKeyPress);
+    
+    return () => {
+      document.removeEventListener('keypress', handleKeyPress);
+      if (scanTimeout) clearTimeout(scanTimeout);
+    };
+  }, [isBarcodeScanMode, scanningLockerNumber]);
 
   const handleSave = () => {
     // Validate and clamp settings before saving
@@ -956,6 +1081,126 @@ export default function Settings() {
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 바코드 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Barcode className="h-5 w-5" />
+                    바코드 관리
+                  </CardTitle>
+                  <CardDescription>
+                    락카키 바코드를 스캔하여 락카번호와 매핑할 수 있습니다
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isBarcodeScanMode && (
+                <div className="mb-4 p-4 bg-primary/10 border border-primary rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-primary">
+                        {scanningLockerNumber}번 락카 바코드 스캔 대기 중...
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        락카키의 바코드를 스캔해주세요 {scannedBarcode && `(${scannedBarcode})`}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setIsBarcodeScanMode(false);
+                        setScanningLockerNumber(null);
+                        setScannedBarcode("");
+                      }}
+                      data-testid="button-cancel-scan"
+                    >
+                      취소
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-4">
+                <Label htmlFor="locker-select">락카 번호 선택</Label>
+                <div className="flex gap-2 mt-2">
+                  <select
+                    id="locker-select"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    defaultValue=""
+                    data-testid="select-locker-number"
+                  >
+                    <option value="" disabled>락카 번호를 선택하세요</option>
+                    {lockerGroups.flatMap(group => 
+                      Array.from({ length: group.endNumber - group.startNumber + 1 }, (_, i) => group.startNumber + i)
+                    ).map(num => (
+                      <option key={num} value={num}>{num}번</option>
+                    ))}
+                  </select>
+                  <Button
+                    onClick={() => {
+                      const select = document.getElementById('locker-select') as HTMLSelectElement;
+                      const lockerNumber = parseInt(select.value);
+                      if (lockerNumber) {
+                        handleStartBarcodeScan(lockerNumber);
+                      } else {
+                        toast({
+                          title: "락카 번호 선택 필요",
+                          description: "락카 번호를 먼저 선택해주세요.",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={isBarcodeScanMode}
+                    data-testid="button-start-scan"
+                  >
+                    <Barcode className="h-4 w-4 mr-2" />
+                    스캔 시작
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-medium mb-3">등록된 바코드 ({barcodeMappings.length}개)</h4>
+                {barcodeMappings.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    등록된 바코드가 없습니다
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {barcodeMappings.map((mapping) => (
+                      <div
+                        key={mapping.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                        data-testid={`barcode-${mapping.id}`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium">{mapping.lockerNumber}번</span>
+                            <span className="text-sm text-muted-foreground font-mono">
+                              {mapping.barcode}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteBarcodeMapping(mapping.id, mapping.lockerNumber)}
+                          data-testid={`button-delete-barcode-${mapping.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
