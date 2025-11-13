@@ -942,8 +942,7 @@ export default function Home() {
               </Button>
               <p className="tabular-nums">
                 <span className="text-sm font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                {' '}
-                <span className="text-base font-semibold text-blue-600">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                <span className="text-base font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               </p>
             </div>
             <h1 className="text-xl font-semibold">입실 관리</h1>
