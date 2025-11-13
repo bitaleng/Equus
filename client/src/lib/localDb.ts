@@ -713,6 +713,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 12: Add parent_locker column to locker_logs for locker linking
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN parent_locker INTEGER`);
+      console.log('Added parent_locker column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -744,7 +752,8 @@ function createTables() {
       payment_card INTEGER,
       payment_transfer INTEGER,
       rental_items TEXT,
-      additional_fees INTEGER DEFAULT 0
+      additional_fees INTEGER DEFAULT 0,
+      parent_locker INTEGER
     )
   `);
 
@@ -1272,6 +1281,104 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
       type: 'error' 
     };
   }
+}
+
+// Link child lockers to a parent locker
+export function linkLockers(parentLockerNumber: number, childLockerNumbers: number[]): { success: boolean; message: string } {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    db.run('BEGIN TRANSACTION');
+
+    // Check if parent locker is in use
+    const parentResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [parentLockerNumber]
+    );
+
+    if (parentResult.length === 0 || parentResult[0].values.length === 0) {
+      db.run('ROLLBACK');
+      return { success: false, message: '부모 락카가 사용중이 아닙니다.' };
+    }
+
+    // Check if all child lockers are vacant
+    const activeLockers = getActiveLockers();
+    const activeNumbers = activeLockers.map((l: any) => l.lockerNumber);
+
+    for (const childNumber of childLockerNumbers) {
+      if (activeNumbers.includes(childNumber)) {
+        db.run('ROLLBACK');
+        return { success: false, message: `${childNumber}번 락카는 이미 사용중입니다.` };
+      }
+    }
+
+    const currentTime = new Date().toISOString();
+    const parentData = rowsToObjects(parentResult[0])[0];
+
+    // Create child locker entries
+    for (const childNumber of childLockerNumbers) {
+      db.run(
+        `INSERT INTO locker_logs (
+          id, locker_number, entry_time, business_day, time_type,
+          base_price, option_type, final_price, status, parent_locker
+        ) VALUES (?, ?, ?, ?, ?, 0, 'none', 0, 'in_use', ?)`,
+        [
+          `${childNumber}-${Date.now()}-${Math.random()}`,
+          childNumber,
+          currentTime,
+          parentData.businessDay,
+          parentData.timeType,
+          parentLockerNumber
+        ]
+      );
+    }
+
+    db.run('COMMIT');
+    saveDatabase();
+
+    return { 
+      success: true, 
+      message: `${parentLockerNumber}번 락카에 ${childLockerNumbers.join(', ')}번 락카가 묶였습니다.` 
+    };
+  } catch (error) {
+    console.error('Locker linking error:', error);
+    try {
+      db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError);
+    }
+    return { success: false, message: '락카묶기 중 오류가 발생했습니다.' };
+  }
+}
+
+// Get child lockers for a parent locker
+export function getChildLockers(parentLockerNumber: number) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT * FROM locker_logs WHERE parent_locker = ? AND status = 'in_use'`,
+    [parentLockerNumber]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
+// Unlink (checkout) child lockers when parent is checked out
+export function unlinkChildLockers(parentLockerNumber: number) {
+  if (!db) throw new Error('Database not initialized');
+
+  const exitTime = new Date().toISOString();
+
+  db.run(
+    `UPDATE locker_logs 
+     SET status = 'checked_out', exit_time = ? 
+     WHERE parent_locker = ? AND status = 'in_use'`,
+    [exitTime, parentLockerNumber]
+  );
+
+  saveDatabase();
 }
 
 export function getActiveLockers() {
