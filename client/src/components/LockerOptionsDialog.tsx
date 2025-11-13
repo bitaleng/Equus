@@ -78,6 +78,7 @@ interface LockerOptionsDialogProps {
     }
   ) => void;
   onCancel: () => void;
+  onSwap?: (fromLocker: number, toLocker: number) => void;
 }
 
 export default function LockerOptionsDialog({
@@ -104,6 +105,7 @@ export default function LockerOptionsDialog({
   onApply,
   onCheckout,
   onCancel,
+  onSwap,
 }: LockerOptionsDialogProps) {
   // Load settings
   const settings = localDb.getSettings();
@@ -130,6 +132,12 @@ export default function LockerOptionsDialog({
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
+  
+  // Locker swap states
+  const [showSwapDialog, setShowSwapDialog] = useState(false);
+  const [swapTargetLocker, setSwapTargetLocker] = useState<string>("");
+  const [showSwapConfirm, setShowSwapConfirm] = useState(false);
+  const [swapInfo, setSwapInfo] = useState<{ targetLocker: number; willSwap: boolean } | null>(null);
   
   // Rental items state (담요, 롱타올) - legacy
   const [hasBlanket, setHasBlanket] = useState(false);
@@ -829,6 +837,57 @@ export default function LockerOptionsDialog({
     }
   };
 
+  // Locker swap handlers
+  const handleSwapClick = () => {
+    playClickSound();
+    setSwapTargetLocker("");
+    setShowSwapDialog(true);
+  };
+
+  const handleSwapSubmit = () => {
+    const targetNumber = parseInt(swapTargetLocker);
+    
+    // 유효성 검사
+    if (isNaN(targetNumber) || targetNumber < 1 || targetNumber > 200) {
+      toast({
+        title: "오류",
+        description: "유효한 락카 번호를 입력해주세요 (1-200)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (targetNumber === lockerNumber) {
+      toast({
+        title: "오류",
+        description: "같은 락카 번호입니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // 목표 락카가 사용 중인지 확인
+    const activeLockers = localDb.getActiveLockers();
+    const targetInUse = activeLockers.some((locker: any) => locker.locker_number === targetNumber);
+
+    setSwapInfo({
+      targetLocker: targetNumber,
+      willSwap: targetInUse,
+    });
+    
+    setShowSwapDialog(false);
+    setShowSwapConfirm(true);
+  };
+
+  const handleSwapConfirm = () => {
+    if (!swapInfo || !onSwap) return;
+
+    playClickSound();
+    onSwap(lockerNumber, swapInfo.targetLocker);
+    setShowSwapConfirm(false);
+    onClose();
+  };
+
   // Calculate additional fee if entry time exists
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const additionalFeeInfo = entryTime && isInUse
@@ -1392,6 +1451,9 @@ export default function LockerOptionsDialog({
                 <Button variant="destructive" onClick={handleCancelClick} data-testid="button-cancel">
                   입실취소
                 </Button>
+                <Button variant="secondary" onClick={handleSwapClick} data-testid="button-swap">
+                  락카교체
+                </Button>
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
@@ -1526,6 +1588,87 @@ export default function LockerOptionsDialog({
             <AlertDialogCancel data-testid="button-checkout-cancel">취소</AlertDialogCancel>
             <AlertDialogAction onClick={confirmCheckout} data-testid="button-checkout-confirm">
               확인 및 퇴실
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Locker swap input dialog */}
+      <AlertDialog open={showSwapDialog} onOpenChange={setShowSwapDialog}>
+        <AlertDialogContent data-testid="dialog-swap-input">
+          <AlertDialogHeader>
+            <AlertDialogTitle>락카 교체</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>교체할 락카 번호를 입력하세요.</p>
+              <div className="space-y-2">
+                <Label htmlFor="swap-target">교체 대상 락카 번호</Label>
+                <Input
+                  id="swap-target"
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={swapTargetLocker}
+                  onChange={(e) => setSwapTargetLocker(e.target.value)}
+                  placeholder="락카 번호 입력 (1-200)"
+                  data-testid="input-swap-target"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSwapSubmit();
+                    }
+                  }}
+                />
+              </div>
+              <div className="text-sm bg-blue-50 dark:bg-blue-950 p-3 rounded-md border border-blue-200 dark:border-blue-800">
+                <p className="text-blue-700 dark:text-blue-300">
+                  • 빈 락카로 교체 시: 현재 락카의 내용이 대상 락카로 이동합니다.<br/>
+                  • 사용중인 락카로 교체 시: 두 락카의 내용이 서로 교환됩니다.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-swap-cancel">취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSwapSubmit} data-testid="button-swap-submit">
+              다음
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Locker swap confirmation dialog */}
+      <AlertDialog open={showSwapConfirm} onOpenChange={setShowSwapConfirm}>
+        <AlertDialogContent data-testid="dialog-swap-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-orange-600">락카 교체 확인</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              {swapInfo && (
+                <>
+                  <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800">
+                    <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">
+                      {swapInfo.willSwap ? '락카 교환' : '락카 이동'}
+                    </p>
+                    <p className="text-sm text-orange-600 dark:text-orange-400">
+                      {swapInfo.willSwap
+                        ? `${lockerNumber}번과 ${swapInfo.targetLocker}번 락카의 모든 내용(입실시간, 요금, 대여품목 등)이 서로 교환됩니다.`
+                        : `${lockerNumber}번 락카의 모든 내용(입실시간, 요금, 대여품목 등)이 ${swapInfo.targetLocker}번 락카로 이동하고, ${lockerNumber}번은 빈 락카가 됩니다.`
+                      }
+                    </p>
+                  </div>
+                  <p className="font-medium">계속하시겠습니까?</p>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-swap-confirm-cancel">취소</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleSwapConfirm} 
+              className="bg-orange-600 hover:bg-orange-700"
+              data-testid="button-swap-confirm-ok"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

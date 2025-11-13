@@ -836,6 +836,27 @@ export default function Home() {
     setSelectedLocker(null);
   };
 
+  const handleSwap = (fromLocker: number, toLocker: number) => {
+    const result = localDb.swapLockers(fromLocker, toLocker);
+    
+    if (result.success) {
+      toast({
+        title: "성공",
+        description: result.message,
+        className: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800",
+      });
+      loadData();
+      setDialogOpen(false);
+      setSelectedLocker(null);
+    } else {
+      toast({
+        title: "오류",
+        description: result.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const todayEntries = todayAllEntries.map(log => ({
     lockerNumber: log.lockerNumber,
     entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
@@ -1057,6 +1078,7 @@ export default function Home() {
           onApply={handleApplyOption}
           onCheckout={handleCheckout}
           onCancel={handleCancel}
+          onSwap={handleSwap}
         />
       )}
 

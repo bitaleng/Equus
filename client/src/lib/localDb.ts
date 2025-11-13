@@ -1078,6 +1078,202 @@ export function updateEntry(id: string, updates: any) {
   }
 }
 
+export function swapLockers(fromLockerNumber: number, toLockerNumber: number): { success: boolean; message: string; type: 'move' | 'swap' | 'error' } {
+  if (!db) throw new Error('Database not initialized');
+
+  // 유효성 검사
+  if (fromLockerNumber === toLockerNumber) {
+    return { success: false, message: '같은 락카 번호입니다.', type: 'error' };
+  }
+
+  // 동적 범위 검사 (1-80은 기본값, 실제로는 locker_groups에서 가져와야 하지만 간단히 1-200으로 확장)
+  if (fromLockerNumber < 1 || fromLockerNumber > 200 || toLockerNumber < 1 || toLockerNumber > 200) {
+    return { success: false, message: '유효하지 않은 락카 번호입니다.', type: 'error' };
+  }
+
+  try {
+    // Begin transaction
+    db.run('BEGIN TRANSACTION');
+    // 두 락카의 현재 상태 확인
+    const fromResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [fromLockerNumber]
+    );
+    
+    const toResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [toLockerNumber]
+    );
+
+    const fromInUse = fromResult.length > 0 && fromResult[0].values.length > 0;
+    const toInUse = toResult.length > 0 && toResult[0].values.length > 0;
+
+    if (!fromInUse) {
+      db.run('ROLLBACK');
+      return { success: false, message: `${fromLockerNumber}번 락카가 사용 중이 아닙니다.`, type: 'error' };
+    }
+
+    // 안전한 임시 번호 계산 (현재 사용 중인 최대 락카 번호 + 10000)
+    const tempNumber = 10000 + fromLockerNumber;
+
+    if (!toInUse) {
+      // 시나리오 1: 이동 (from만 사용중, to는 비어있음)
+      
+      // 1. locker_logs 업데이트
+      db.run(
+        `UPDATE locker_logs SET locker_number = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [toLockerNumber, fromLockerNumber]
+      );
+      const changes1 = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+      if (changes1 !== 1) {
+        db.run('ROLLBACK');
+        return { success: false, message: 'locker_logs 업데이트 실패', type: 'error' };
+      }
+
+      // 2. rental_transactions 업데이트
+      db.run(
+        `UPDATE rental_transactions SET locker_number = ? 
+         WHERE locker_number = ? AND return_time IS NULL`,
+        [toLockerNumber, fromLockerNumber]
+      );
+      // rental_transactions는 0개 이상일 수 있으므로 검증 안함
+
+      // 3. additional_fee_events 업데이트 (해당 locker_log_id에 연결된 것만)
+      const fromData = rowsToObjects(fromResult[0])[0];
+      if (fromData && fromData.id) {
+        db.run(
+          `UPDATE additional_fee_events SET locker_number = ? 
+           WHERE locker_log_id = ?`,
+          [toLockerNumber, fromData.id]
+        );
+        // additional_fee_events도 0개 이상일 수 있으므로 검증 안함
+      }
+
+      // Commit transaction
+      db.run('COMMIT');
+      
+      // 영업일 요약 업데이트
+      if (fromData && fromData.business_day) {
+        updateDailySummary(fromData.business_day);
+      }
+
+      saveDatabase();
+      return { 
+        success: true, 
+        message: `${fromLockerNumber}번 락카의 내용이 ${toLockerNumber}번 락카로 이동되었습니다.`, 
+        type: 'move' 
+      };
+    } else {
+      // 시나리오 2: 교환 (둘 다 사용중)
+      
+      const fromData = rowsToObjects(fromResult[0])[0];
+      const toData = rowsToObjects(toResult[0])[0];
+
+      // 1. locker_logs 교환
+      db.run(
+        `UPDATE locker_logs SET locker_number = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [tempNumber, fromLockerNumber]
+      );
+      const swap1 = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+      if (swap1 !== 1) {
+        db.run('ROLLBACK');
+        return { success: false, message: 'locker_logs 교환 실패 (step 1)', type: 'error' };
+      }
+      
+      db.run(
+        `UPDATE locker_logs SET locker_number = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [fromLockerNumber, toLockerNumber]
+      );
+      const swap2 = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+      if (swap2 !== 1) {
+        db.run('ROLLBACK');
+        return { success: false, message: 'locker_logs 교환 실패 (step 2)', type: 'error' };
+      }
+      
+      db.run(
+        `UPDATE locker_logs SET locker_number = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [toLockerNumber, tempNumber]
+      );
+      const swap3 = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+      if (swap3 !== 1) {
+        db.run('ROLLBACK');
+        return { success: false, message: 'locker_logs 교환 실패 (step 3)', type: 'error' };
+      }
+
+      // 2. rental_transactions 교환
+      db.run(
+        `UPDATE rental_transactions SET locker_number = ? 
+         WHERE locker_number = ? AND return_time IS NULL`,
+        [tempNumber, fromLockerNumber]
+      );
+      db.run(
+        `UPDATE rental_transactions SET locker_number = ? 
+         WHERE locker_number = ? AND return_time IS NULL`,
+        [fromLockerNumber, toLockerNumber]
+      );
+      db.run(
+        `UPDATE rental_transactions SET locker_number = ? 
+         WHERE locker_number = ? AND return_time IS NULL`,
+        [toLockerNumber, tempNumber]
+      );
+
+      // 3. additional_fee_events 교환
+      if (fromData && fromData.id) {
+        db.run(
+          `UPDATE additional_fee_events SET locker_number = ? 
+           WHERE locker_log_id = ?`,
+          [tempNumber, fromData.id]
+        );
+      }
+      if (toData && toData.id) {
+        db.run(
+          `UPDATE additional_fee_events SET locker_number = ? 
+           WHERE locker_log_id = ?`,
+          [fromLockerNumber, toData.id]
+        );
+      }
+      if (fromData && fromData.id) {
+        db.run(
+          `UPDATE additional_fee_events SET locker_number = ? 
+           WHERE locker_log_id = ?`,
+          [toLockerNumber, fromData.id]
+        );
+      }
+
+      // Commit transaction
+      db.run('COMMIT');
+      
+      // 두 영업일 요약 업데이트
+      if (fromData && fromData.business_day) {
+        updateDailySummary(fromData.business_day);
+      }
+      if (toData && toData.business_day && toData.business_day !== fromData?.business_day) {
+        updateDailySummary(toData.business_day);
+      }
+
+      saveDatabase();
+      return { 
+        success: true, 
+        message: `${fromLockerNumber}번과 ${toLockerNumber}번 락카의 내용이 서로 교환되었습니다.`, 
+        type: 'swap' 
+      };
+    }
+  } catch (error) {
+    console.error('Locker swap error:', error);
+    // Rollback on any error
+    try {
+      db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError);
+    }
+    return { 
+      success: false, 
+      message: '락카 교체 중 오류가 발생했습니다.', 
+      type: 'error' 
+    };
+  }
+}
+
 export function getActiveLockers() {
   if (!db) throw new Error('Database not initialized');
 
