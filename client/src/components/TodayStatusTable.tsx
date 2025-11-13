@@ -127,9 +127,29 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
 
   return (
     <div className={`h-full flex flex-col today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
-      {/* 헤더: 토글버튼 + 제목 + 방문수 + 메모버튼 */}
+      {/* 헤더: 제목 + 방문수 (좌측) | 메모버튼 + 토글버튼 (우측) */}
       <div className="p-4 border-b flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">오늘 현황</h2>
+          <span className="text-sm text-muted-foreground">
+            총 방문: {totalVisitors}명
+          </span>
+          {filteredLockerNumber !== null && (
+            <span className="text-sm font-semibold text-primary">
+              락커 {filteredLockerNumber}번 사용: {usageCount}회
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant={memo ? "default" : "outline"}
+            onClick={() => setMemoDialogOpen(true)}
+            data-testid="button-daily-memo"
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            메모
+          </Button>
           {onToggleLockerPanel && (
             <Button 
               variant="ghost" 
@@ -141,25 +161,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
               {isLockerPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
             </Button>
           )}
-          <h2 className="text-lg font-semibold">오늘 현황</h2>
-          <span className="text-sm text-muted-foreground">
-            총 방문: {totalVisitors}명
-          </span>
-          {filteredLockerNumber !== null && (
-            <span className="text-sm font-semibold text-primary">
-              락커 {filteredLockerNumber}번 사용: {usageCount}회
-            </span>
-          )}
         </div>
-        <Button
-          size="sm"
-          variant={memo ? "default" : "outline"}
-          onClick={() => setMemoDialogOpen(true)}
-          data-testid="button-daily-memo"
-        >
-          <FileText className="h-4 w-4 mr-1" />
-          메모
-        </Button>
       </div>
       
       <div className="p-6 pt-4 today-status-wrapper flex flex-col gap-3 mb-4">
