@@ -138,6 +138,15 @@ export const closingDays = pgTable("closing_days", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Barcode Mappings Table - 바코드 매핑 (락카키 바코드 ↔ 락카번호)
+export const barcodeMappings = pgTable("barcode_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  barcode: varchar("barcode").notNull().unique(), // 바코드 값 (락카키에 인쇄된 바코드)
+  lockerNumber: integer("locker_number").notNull(), // 락카 번호
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Insert Schemas
 export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
@@ -284,6 +293,17 @@ export const updateClosingDaySchema = z.object({
   }),
 });
 
+export const insertBarcodeMappingSchema = createInsertSchema(barcodeMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateBarcodeMappingSchema = z.object({
+  barcode: z.string().optional(),
+  lockerNumber: z.number().optional(),
+});
+
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
 export type LockerLog = typeof lockerLogs.$inferSelect;
@@ -312,3 +332,7 @@ export type UpdateExpense = z.infer<typeof updateExpenseSchema>;
 export type ClosingDay = typeof closingDays.$inferSelect;
 export type InsertClosingDay = z.infer<typeof insertClosingDaySchema>;
 export type UpdateClosingDay = z.infer<typeof updateClosingDaySchema>;
+
+export type BarcodeMapping = typeof barcodeMappings.$inferSelect;
+export type InsertBarcodeMapping = z.infer<typeof insertBarcodeMappingSchema>;
+export type UpdateBarcodeMapping = z.infer<typeof updateBarcodeMappingSchema>;
