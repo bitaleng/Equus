@@ -975,19 +975,6 @@ export default function Home() {
       {/* Left Panel - Collapsible */}
       {!isPanelCollapsed && (
         <div className={`border-r flex flex-col ${isLockerPanelCollapsed ? 'flex-1' : 'w-[40%]'}`}>
-          {/* Header with Expand Button */}
-          <div className="p-4 border-b flex items-center justify-end">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={handleToggleLockerPanel}
-              data-testid="button-toggle-locker-panel"
-              title={isLockerPanelCollapsed ? "입실관리 표시" : "입실관리 숨기기"}
-            >
-              {isLockerPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
-            </Button>
-          </div>
-
           {/* Today Status */}
           <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
             <TodayStatusTable
@@ -997,6 +984,8 @@ export default function Home() {
                 setSelectedLocker(entry.lockerNumber);
                 setDialogOpen(true);
               }}
+              isLockerPanelCollapsed={isLockerPanelCollapsed}
+              onToggleLockerPanel={handleToggleLockerPanel}
             />
           </div>
 

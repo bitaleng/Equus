@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Filter, FileText } from "lucide-react";
+import { X, Filter, FileText, Menu, Maximize2 } from "lucide-react";
 import { formatPaymentMethod } from "@/lib/utils";
 
 interface LockerEntry {
@@ -50,9 +50,11 @@ interface TodayStatusTableProps {
   entries: LockerEntry[];
   isExpanded?: boolean;
   onRowClick?: (entry: LockerEntry) => void;
+  isLockerPanelCollapsed?: boolean;
+  onToggleLockerPanel?: () => void;
 }
 
-export default function TodayStatusTable({ entries, isExpanded = false, onRowClick }: TodayStatusTableProps) {
+export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel }: TodayStatusTableProps) {
   const [lockerNumberInput, setLockerNumberInput] = useState("");
   const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -124,24 +126,22 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled).length;
 
   return (
-    <div className={`h-full flex flex-col p-6 today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
-      <div className="today-status-wrapper flex flex-col gap-3 mb-4">
-        {/* 첫 번째 줄: 제목과 메모 버튼 */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">오늘 현황</h2>
-          <Button
-            size="sm"
-            variant={memo ? "default" : "outline"}
-            onClick={() => setMemoDialogOpen(true)}
-            data-testid="button-daily-memo"
-          >
-            <FileText className="h-4 w-4 mr-1" />
-            메모
-          </Button>
-        </div>
-        
-        {/* 두 번째 줄: 총 방문수와 필터링 결과 */}
+    <div className={`h-full flex flex-col today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
+      {/* 헤더: 토글버튼 + 제목 + 방문수 + 메모버튼 */}
+      <div className="p-4 border-b flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
+          {onToggleLockerPanel && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onToggleLockerPanel}
+              data-testid="button-toggle-locker-panel"
+              title={isLockerPanelCollapsed ? "입실관리 표시" : "입실관리 숨기기"}
+            >
+              {isLockerPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
+            </Button>
+          )}
+          <h2 className="text-lg font-semibold">오늘 현황</h2>
           <span className="text-sm text-muted-foreground">
             총 방문: {totalVisitors}명
           </span>
@@ -151,6 +151,18 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
             </span>
           )}
         </div>
+        <Button
+          size="sm"
+          variant={memo ? "default" : "outline"}
+          onClick={() => setMemoDialogOpen(true)}
+          data-testid="button-daily-memo"
+        >
+          <FileText className="h-4 w-4 mr-1" />
+          메모
+        </Button>
+      </div>
+      
+      <div className="p-6 pt-4 today-status-wrapper flex flex-col gap-3 mb-4">
         
         {/* 세 번째 줄: 입력란과 버튼들 */}
         <div className="flex items-center gap-2 flex-wrap">
