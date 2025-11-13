@@ -868,7 +868,7 @@ export default function LockerOptionsDialog({
 
     // 목표 락카가 사용 중인지 확인
     const activeLockers = localDb.getActiveLockers();
-    const targetInUse = activeLockers.some((locker: any) => locker.locker_number === targetNumber);
+    const targetInUse = activeLockers.some((locker: any) => locker.lockerNumber === targetNumber);
 
     setSwapInfo({
       targetLocker: targetNumber,
@@ -1641,14 +1641,13 @@ export default function LockerOptionsDialog({
       <AlertDialog open={showSwapConfirm} onOpenChange={setShowSwapConfirm}>
         <AlertDialogContent data-testid="dialog-swap-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-orange-600">락카 교체 확인</AlertDialogTitle>
+            <AlertDialogTitle className="text-orange-600">
+              {swapInfo?.willSwap ? '락카 교환 확인' : '락카 이동 확인'}
+            </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               {swapInfo && (
                 <>
                   <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800">
-                    <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">
-                      {swapInfo.willSwap ? '락카 교환' : '락카 이동'}
-                    </p>
                     <p className="text-sm text-orange-600 dark:text-orange-400">
                       {swapInfo.willSwap
                         ? `${lockerNumber}번과 ${swapInfo.targetLocker}번 락카의 모든 내용(입실시간, 요금, 대여품목 등)이 서로 교환됩니다.`
