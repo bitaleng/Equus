@@ -83,13 +83,6 @@ export default function Home() {
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
-  // Barcode test panel state
-  const [showBarcodeTestPanel, setShowBarcodeTestPanel] = useState(false);
-  const [barcodeMappings, setBarcodeMappings] = useState<Array<{
-    id: string;
-    barcode: string;
-    lockerNumber: number;
-  }>>([]);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -276,9 +269,6 @@ export default function Home() {
       const activeData = localDb.getActiveLockers();
       setActiveLockers(activeData);
       activeLockersRef.current = activeData;
-      
-      // Load barcode mappings for test panel
-      setBarcodeMappings(localDb.getAllBarcodeMappings());
       
       // 디버깅: 락커 21, 45번 데이터 출력
       const locker21 = activeData.find(l => l.lockerNumber === 21);
@@ -468,41 +458,6 @@ export default function Home() {
   // 빈 락커 개수 계산
   const emptyLockerCount = Object.values(lockerStates).filter(state => state === 'empty').length;
 
-  const handleBarcodeTest = (barcode: string, lockerNumber: number) => {
-    // Simulate barcode scan - check if it's a child locker
-    const activeLog = activeLockersRef.current.find(log => log.lockerNumber === lockerNumber);
-    if (activeLog && activeLog.parentLocker) {
-      setChildLockerParent(activeLog.parentLocker);
-      setChildLockerAlertOpen(true);
-      toast({
-        title: "자녀 락카 감지",
-        description: `바코드 "${barcode}" - ${activeLog.parentLocker}번 락카의 자녀 락카입니다.`,
-      });
-      return;
-    }
-    
-    // Check locker state
-    const state = lockerStates[lockerNumber];
-    
-    if (state === 'empty') {
-      // Empty locker - set new entry info
-      const timeType = getTimeType(currentTime);
-      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
-      setNewLockerInfo({ lockerNumber, timeType, basePrice });
-    } else {
-      // In-use locker - clear new entry info
-      setNewLockerInfo(null);
-    }
-    
-    // Open dialog for the locker
-    setSelectedLocker(lockerNumber);
-    setDialogOpen(true);
-    toast({
-      title: "바코드 스캔 시뮬레이션",
-      description: `바코드 "${barcode}" → ${lockerNumber}번 락카 (${state === 'empty' ? '빈 락카' : '사용 중'})`,
-    });
-  };
-  
   const handleLockerClick = async (lockerNumber: number) => {
     const state = lockerStates[lockerNumber];
     
@@ -1017,52 +972,11 @@ export default function Home() {
 
   return (
     <div className="h-full w-full flex bg-background">
-      {/* Barcode Test Panel - Dev Mode */}
-      {showBarcodeTestPanel && barcodeMappings.length > 0 && (
-        <div className="fixed top-4 right-4 z-50 bg-card border rounded-lg shadow-lg p-3 max-w-xs">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-sm">바코드 테스트 (개발용)</h3>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowBarcodeTestPanel(false)}
-              className="h-6 w-6"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="space-y-1 max-h-64 overflow-y-auto">
-            {barcodeMappings.map((mapping) => (
-              <Button
-                key={mapping.id}
-                variant="outline"
-                size="sm"
-                className="w-full justify-start text-xs"
-                onClick={() => handleBarcodeTest(mapping.barcode, mapping.lockerNumber)}
-                data-testid={`test-barcode-${mapping.id}`}
-              >
-                <span className="font-mono mr-2">{mapping.barcode}</span>
-                → {mapping.lockerNumber}번
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-      
       {/* Left Panel - Collapsible */}
       {!isPanelCollapsed && (
         <div className={`border-r flex flex-col ${isLockerPanelCollapsed ? 'flex-1' : 'w-[40%]'}`}>
           {/* Header with Expand Button */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowBarcodeTestPanel(!showBarcodeTestPanel)}
-              className="text-xs"
-              data-testid="button-toggle-barcode-test"
-            >
-              {showBarcodeTestPanel ? "테스트 닫기" : "바코드 테스트"}
-            </Button>
+          <div className="p-4 border-b flex items-center justify-end">
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1142,8 +1056,8 @@ export default function Home() {
                 {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
               </Button>
               <p className="tabular-nums">
-                <span className="text-sm font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                <span className="text-lg font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               </p>
             </div>
             <h1 className="text-xl font-semibold">입실 관리</h1>
@@ -1151,7 +1065,7 @@ export default function Home() {
           
           {/* 2행: 빈락카/주간야간/요금 (좌측) | 범례 (우측) */}
           <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground ml-12">
               <span>빈 락커: {emptyLockerCount}개</span>
               <span>{getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)</span>
             </div>

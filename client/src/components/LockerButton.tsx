@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { getBusinessDayRange } from "@shared/businessDay";
-import { Lock } from "lucide-react";
+import { Link2 } from "lucide-react";
 
 interface LockerButtonProps {
   number: number;
@@ -54,6 +54,8 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   const getStatusText = () => {
     if (status === 'disabled') return '퇴실완료';
     if (status === 'in-use') {
+      // 자식 락카인 경우 "사용중" 텍스트 숨김
+      if (parentLocker) return null;
       // 추가요금이 있으면 횟수만 표시
       if (additionalFeeCount > 0) return `추가 ${additionalFeeCount}회`;
       return '사용중';
@@ -85,11 +87,11 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       data-testid={`locker-${number}`}
     >
       <span className={isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}>{number}</span>
-      <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>
+      {getStatusText() && <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>}
       {parentLocker && (
-        <div className="flex items-center gap-1 mt-0.5">
-          <Lock className="w-2.5 h-2.5 opacity-90" />
-          <span className="text-[9px] font-normal opacity-90">{parentLocker}번</span>
+        <div className="flex items-center gap-1">
+          <Link2 className={isExpanded ? "w-3 h-3 opacity-90" : "w-2.5 h-2.5 opacity-90"} />
+          <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{parentLocker}번</span>
         </div>
       )}
     </Button>

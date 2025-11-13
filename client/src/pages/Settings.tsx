@@ -126,8 +126,6 @@ export default function Settings() {
   const [scanningLockerNumber, setScanningLockerNumber] = useState<number | null>(null);
   const [scannedBarcode, setScannedBarcode] = useState("");
   const [selectedBarcodeLocker, setSelectedBarcodeLocker] = useState<number | null>(null);
-  const [isManualInputMode, setIsManualInputMode] = useState(false);
-  const [manualBarcodeInput, setManualBarcodeInput] = useState("");
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -223,43 +221,6 @@ export default function Settings() {
     setScannedBarcode("");
   };
 
-  const handleManualBarcodeInput = () => {
-    if (!selectedBarcodeLocker) {
-      toast({
-        title: "락카 번호 선택 필요",
-        description: "락카 번호를 먼저 선택해주세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!manualBarcodeInput.trim()) {
-      toast({
-        title: "바코드 입력 필요",
-        description: "바코드를 입력해주세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const success = localDb.saveBarcodeMapping(manualBarcodeInput.trim(), selectedBarcodeLocker);
-    
-    if (success) {
-      loadBarcodeMappings();
-      toast({
-        title: "바코드 등록 완료",
-        description: `${selectedBarcodeLocker}번 락카에 바코드 "${manualBarcodeInput.trim()}"가 등록되었습니다.`,
-      });
-      setManualBarcodeInput("");
-      setIsManualInputMode(false);
-    } else {
-      toast({
-        title: "바코드 등록 실패",
-        description: "이미 등록된 바코드입니다.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleDeleteBarcodeMapping = (id: string, lockerNumber: number) => {
     if (confirm(`${lockerNumber}번 락카의 바코드 매핑을 삭제하시겠습니까?`)) {
@@ -1197,82 +1158,14 @@ export default function Settings() {
                         });
                       }
                     }}
-                    disabled={isBarcodeScanMode || isManualInputMode}
+                    disabled={isBarcodeScanMode}
                     data-testid="button-start-scan"
                   >
                     <Barcode className="h-4 w-4 mr-2" />
                     스캔 시작
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      if (selectedBarcodeLocker) {
-                        setIsManualInputMode(true);
-                        setManualBarcodeInput("");
-                      } else {
-                        toast({
-                          title: "락카 번호 선택 필요",
-                          description: "락카 번호를 먼저 선택해주세요.",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                    disabled={isBarcodeScanMode || isManualInputMode}
-                    data-testid="button-manual-input"
-                  >
-                    <Edit3 className="h-4 w-4 mr-2" />
-                    수동 입력
-                  </Button>
                 </div>
               </div>
-
-              {isManualInputMode && (
-                <div className="mb-4 p-4 bg-accent/10 border border-accent rounded-lg">
-                  <div className="flex flex-col gap-3">
-                    <div>
-                      <p className="font-medium text-accent mb-2">
-                        {selectedBarcodeLocker}번 락카 바코드 수동 입력
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        테스트용 바코드 문자열을 입력하세요 (예: BC12345)
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Input
-                        type="text"
-                        placeholder="바코드 입력..."
-                        value={manualBarcodeInput}
-                        onChange={(e) => setManualBarcodeInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && manualBarcodeInput.trim()) {
-                            handleManualBarcodeInput();
-                          }
-                        }}
-                        className="flex-1"
-                        data-testid="input-manual-barcode"
-                        autoFocus
-                      />
-                      <Button
-                        onClick={handleManualBarcodeInput}
-                        disabled={!manualBarcodeInput.trim()}
-                        data-testid="button-save-manual-barcode"
-                      >
-                        등록
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          setIsManualInputMode(false);
-                          setManualBarcodeInput("");
-                        }}
-                        data-testid="button-cancel-manual-input"
-                      >
-                        취소
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <div className="border-t pt-4">
                 <h4 className="font-medium mb-3">등록된 바코드 ({barcodeMappings.length}개)</h4>
