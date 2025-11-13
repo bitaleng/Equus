@@ -80,6 +80,9 @@ export default function Home() {
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
 
+  // Ref to store latest activeLockers for barcode scanner
+  const activeLockersRef = useRef<LockerLog[]>([]);
+
   // Load settings from localStorage
   const settings = localDb.getSettings();
   const businessDayStartHour = settings.businessDayStartHour;
@@ -117,6 +120,81 @@ export default function Home() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Global barcode scanner listener
+  useEffect(() => {
+    let barcodeBuffer = '';
+    let lastKeyTime = 0;
+    
+    const handleBarcodeScan = (e: KeyboardEvent) => {
+      // Skip if a dialog is open
+      if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
+        return;
+      }
+      
+      // Skip if target is an input element
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+        return;
+      }
+      
+      const now = Date.now();
+      
+      // Reset buffer if more than 100ms has passed (human typing)
+      if (now - lastKeyTime > 100) {
+        barcodeBuffer = '';
+      }
+      
+      // Enter key = scan complete
+      if (e.key === 'Enter' && barcodeBuffer.length > 0) {
+        const barcode = barcodeBuffer;
+        barcodeBuffer = '';
+        
+        // Look up locker number by barcode
+        const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
+        
+        if (lockerNumber) {
+          // Check if this is a child locker by looking up in activeLockersRef (always fresh)
+          const activeLog = activeLockersRef.current.find(log => log.lockerNumber === lockerNumber);
+          if (activeLog && activeLog.parentLocker) {
+            setChildLockerParent(activeLog.parentLocker);
+            setChildLockerAlertOpen(true);
+            return;
+          }
+          
+          // Open locker dialog
+          setSelectedLocker(lockerNumber);
+          setDialogOpen(true);
+          
+          toast({
+            title: "락카 선택",
+            description: `${lockerNumber}번 락카가 선택되었습니다.`,
+          });
+        } else {
+          toast({
+            title: "바코드 미등록",
+            description: "등록되지 않은 바코드입니다.",
+            variant: "destructive",
+          });
+        }
+        
+        e.preventDefault();
+        return;
+      }
+      
+      // Add character to buffer (only non-special keys)
+      if (e.key.length === 1) {
+        barcodeBuffer += e.key;
+        lastKeyTime = now;
+      }
+    };
+    
+    document.addEventListener('keypress', handleBarcodeScan);
+    
+    return () => {
+      document.removeEventListener('keypress', handleBarcodeScan);
+    };
+  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, toast]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -189,6 +267,7 @@ export default function Home() {
       
       const activeData = localDb.getActiveLockers();
       setActiveLockers(activeData);
+      activeLockersRef.current = activeData;
       
       // 디버깅: 락커 21, 45번 데이터 출력
       const locker21 = activeData.find(l => l.lockerNumber === 21);
