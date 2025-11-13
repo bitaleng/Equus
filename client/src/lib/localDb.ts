@@ -721,6 +721,17 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 13: Create barcode_mappings table if not exists
+    db.run(`
+      CREATE TABLE IF NOT EXISTS barcode_mappings (
+        id TEXT PRIMARY KEY,
+        barcode TEXT NOT NULL UNIQUE,
+        locker_number INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -888,6 +899,17 @@ function createTables() {
     )
   `);
 
+  // Barcode mappings table (바코드 매핑: 락카키 바코드 ↔ 락카번호)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS barcode_mappings (
+      id TEXT PRIMARY KEY,
+      barcode TEXT NOT NULL UNIQUE,
+      locker_number INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   saveDatabase();
 }
 
@@ -904,7 +926,7 @@ export function forceRegenerateDatabase() {
     // Drop all existing tables
     const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
                    'system_metadata', 'additional_fee_events', 'additional_revenue_items', 
-                   'rental_transactions', 'expenses', 'closing_days'];
+                   'rental_transactions', 'expenses', 'closing_days', 'barcode_mappings'];
     
     tables.forEach(table => {
       try {
@@ -4568,4 +4590,148 @@ export function recalculateAllBusinessDays() {
   saveDatabase();
   
   return updatedCount;
+}
+
+// ============================================================================
+// Barcode Mappings (바코드 매핑 관리)
+// ============================================================================
+
+export function saveBarcodeMapping(barcode: string, lockerNumber: number): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    
+    // Check if barcode already exists
+    const existing = db.exec(
+      'SELECT id, locker_number FROM barcode_mappings WHERE barcode = ?',
+      [barcode]
+    );
+    
+    if (existing.length > 0 && existing[0].values.length > 0) {
+      // Update existing mapping
+      const existingLockerNumber = existing[0].values[0][1] as number;
+      
+      if (existingLockerNumber === lockerNumber) {
+        // Same mapping already exists
+        return true;
+      }
+      
+      // Update to new locker number
+      db.run(
+        'UPDATE barcode_mappings SET locker_number = ?, updated_at = ? WHERE barcode = ?',
+        [lockerNumber, now, barcode]
+      );
+    } else {
+      // Insert new mapping
+      db.run(
+        'INSERT INTO barcode_mappings (id, barcode, locker_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        [id, barcode, lockerNumber, now, now]
+      );
+    }
+    
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error saving barcode mapping:', error);
+    return false;
+  }
+}
+
+export function getLockerNumberByBarcode(barcode: string): number | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT locker_number FROM barcode_mappings WHERE barcode = ?',
+      [barcode]
+    );
+    
+    if (result.length > 0 && result[0].values.length > 0) {
+      return result[0].values[0][0] as number;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting locker number by barcode:', error);
+    return null;
+  }
+}
+
+export function getBarcodeByLockerNumber(lockerNumber: number): string | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT barcode FROM barcode_mappings WHERE locker_number = ?',
+      [lockerNumber]
+    );
+    
+    if (result.length > 0 && result[0].values.length > 0) {
+      return result[0].values[0][0] as string;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting barcode by locker number:', error);
+    return null;
+  }
+}
+
+export function getAllBarcodeMappings(): Array<{
+  id: string;
+  barcode: string;
+  lockerNumber: number;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT id, barcode, locker_number, created_at, updated_at FROM barcode_mappings ORDER BY locker_number'
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return [];
+    }
+    
+    return result[0].values.map((row: any) => ({
+      id: row[0],
+      barcode: row[1],
+      lockerNumber: row[2],
+      createdAt: row[3],
+      updatedAt: row[4],
+    }));
+  } catch (error) {
+    console.error('Error getting all barcode mappings:', error);
+    return [];
+  }
+}
+
+export function deleteBarcodeMapping(barcode: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    db.run('DELETE FROM barcode_mappings WHERE barcode = ?', [barcode]);
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error deleting barcode mapping:', error);
+    return false;
+  }
+}
+
+export function deleteBarcodeMappingById(id: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    db.run('DELETE FROM barcode_mappings WHERE id = ?', [id]);
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error deleting barcode mapping by id:', error);
+    return false;
+  }
 }
