@@ -1053,7 +1053,7 @@ export default function Home() {
                 onClick={handleTogglePanel}
                 data-testid="button-toggle-panel"
               >
-                {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+                {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </Button>
               <p className="tabular-nums">
                 <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
