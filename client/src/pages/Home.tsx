@@ -826,6 +826,9 @@ export default function Home() {
       });
     }
     
+    // Automatically unlink child lockers when parent checks out
+    localDb.unlinkChildLockers(selectedEntry.lockerNumber, now.toISOString());
+    
     loadData();
     setDialogOpen(false);
     setSelectedLocker(null);
@@ -838,6 +841,9 @@ export default function Home() {
       status: 'cancelled',
       cancelled: true,
     });
+    
+    // Automatically cancel child lockers when parent is cancelled
+    localDb.cancelChildLockers(selectedEntry.lockerNumber);
     
     loadData();
     setDialogOpen(false);
