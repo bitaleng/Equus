@@ -1161,7 +1161,14 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         return { success: false, message: 'locker_logs 업데이트 실패', type: 'error' };
       }
 
-      // 2. rental_transactions 업데이트
+      // 2. 자식 락카들의 parentLocker 업데이트 (부모 락카가 이동하면 자식들도 따라감)
+      db.run(
+        `UPDATE locker_logs SET parent_locker = ? 
+         WHERE parent_locker = ? AND status = 'in_use'`,
+        [toLockerNumber, fromLockerNumber]
+      );
+
+      // 3. rental_transactions 업데이트
       db.run(
         `UPDATE rental_transactions SET locker_number = ? 
          WHERE locker_number = ? AND return_time IS NULL`,
@@ -1169,7 +1176,7 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
       );
       // rental_transactions는 0개 이상일 수 있으므로 검증 안함
 
-      // 3. additional_fee_events 업데이트 (해당 locker_log_id에 연결된 것만)
+      // 4. additional_fee_events 업데이트 (해당 locker_log_id에 연결된 것만)
       const fromData = rowsToObjects(fromResult[0])[0];
       if (fromData && fromData.id) {
         db.run(
@@ -1231,7 +1238,25 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         return { success: false, message: 'locker_logs 교환 실패 (step 3)', type: 'error' };
       }
 
-      // 2. rental_transactions 교환
+      // 2. 자식 락카들의 parentLocker 교환 (부모 락카가 교환되면 자식들도 따라감)
+      // 임시 번호를 사용하여 3-way swap
+      db.run(
+        `UPDATE locker_logs SET parent_locker = ? 
+         WHERE parent_locker = ? AND status = 'in_use'`,
+        [tempNumber, fromLockerNumber]
+      );
+      db.run(
+        `UPDATE locker_logs SET parent_locker = ? 
+         WHERE parent_locker = ? AND status = 'in_use'`,
+        [fromLockerNumber, toLockerNumber]
+      );
+      db.run(
+        `UPDATE locker_logs SET parent_locker = ? 
+         WHERE parent_locker = ? AND status = 'in_use'`,
+        [toLockerNumber, tempNumber]
+      );
+
+      // 3. rental_transactions 교환
       db.run(
         `UPDATE rental_transactions SET locker_number = ? 
          WHERE locker_number = ? AND return_time IS NULL`,
