@@ -1063,7 +1063,7 @@ export default function Home() {
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
-                <span className="text-xs">빈칸</span>
+                <span className="text-xs">빈락카</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
