@@ -68,8 +68,8 @@ interface AdditionalRevenueItem {
 
 interface RevenueItemFormData {
   name: string;
-  rentalFee: number;
-  depositAmount: number;
+  rentalFee: string;
+  depositAmount: string;
 }
 
 export default function Settings() {
@@ -102,8 +102,8 @@ export default function Settings() {
   const [editingRevenueItem, setEditingRevenueItem] = useState<AdditionalRevenueItem | null>(null);
   const [revenueItemFormData, setRevenueItemFormData] = useState<RevenueItemFormData>({
     name: "",
-    rentalFee: 1000,
-    depositAmount: 5000,
+    rentalFee: "",
+    depositAmount: "",
   });
   
   const [revenueItems, setRevenueItems] = useState<AdditionalRevenueItem[]>([]);
@@ -522,7 +522,7 @@ export default function Settings() {
 
   const handleAddRevenueItem = () => {
     setEditingRevenueItem(null);
-    setRevenueItemFormData({ name: "", rentalFee: 1000, depositAmount: 5000 });
+    setRevenueItemFormData({ name: "", rentalFee: "", depositAmount: "" });
     setIsRevenueItemDialogOpen(true);
   };
 
@@ -530,8 +530,8 @@ export default function Settings() {
     setEditingRevenueItem(item);
     setRevenueItemFormData({
       name: item.name,
-      rentalFee: item.rentalFee,
-      depositAmount: item.depositAmount,
+      rentalFee: String(item.rentalFee),
+      depositAmount: String(item.depositAmount),
     });
     setIsRevenueItemDialogOpen(true);
   };
@@ -557,14 +557,20 @@ export default function Settings() {
 
   const handleSaveRevenueItem = () => {
     try {
+      const data = {
+        name: revenueItemFormData.name,
+        rentalFee: parseInt(revenueItemFormData.rentalFee) || 0,
+        depositAmount: parseInt(revenueItemFormData.depositAmount) || 0,
+      };
+      
       if (editingRevenueItem) {
-        localDb.updateAdditionalRevenueItem(editingRevenueItem.id, revenueItemFormData);
+        localDb.updateAdditionalRevenueItem(editingRevenueItem.id, data);
         toast({
           title: "항목 수정 완료",
           description: "대여 항목이 수정되었습니다.",
         });
       } else {
-        localDb.createAdditionalRevenueItem(revenueItemFormData);
+        localDb.createAdditionalRevenueItem(data);
         toast({
           title: "항목 생성 완료",
           description: "새 대여 항목이 생성되었습니다.",
@@ -573,7 +579,7 @@ export default function Settings() {
       loadRevenueItems();
       setIsRevenueItemDialogOpen(false);
       setEditingRevenueItem(null);
-      setRevenueItemFormData({ name: "", rentalFee: 1000, depositAmount: 5000 });
+      setRevenueItemFormData({ name: "", rentalFee: "", depositAmount: "" });
     } catch (error) {
       toast({
         title: "저장 실패",
@@ -1510,13 +1516,11 @@ export default function Settings() {
                   id="rental-fee"
                   type="number"
                   value={revenueItemFormData.rentalFee}
-                  onChange={(e) => {
-                    const parsed = parseInt(e.target.value, 10);
-                    setRevenueItemFormData({ 
-                      ...revenueItemFormData, 
-                      rentalFee: isNaN(parsed) ? 0 : parsed 
-                    });
-                  }}
+                  onChange={(e) => setRevenueItemFormData({ 
+                    ...revenueItemFormData, 
+                    rentalFee: e.target.value 
+                  })}
+                  placeholder="0"
                   data-testid="input-rental-fee"
                 />
               </div>
@@ -1526,13 +1530,11 @@ export default function Settings() {
                   id="deposit-amount"
                   type="number"
                   value={revenueItemFormData.depositAmount}
-                  onChange={(e) => {
-                    const parsed = parseInt(e.target.value, 10);
-                    setRevenueItemFormData({ 
-                      ...revenueItemFormData, 
-                      depositAmount: isNaN(parsed) ? 0 : parsed 
-                    });
-                  }}
+                  onChange={(e) => setRevenueItemFormData({ 
+                    ...revenueItemFormData, 
+                    depositAmount: e.target.value 
+                  })}
+                  placeholder="0"
                   data-testid="input-deposit-amount"
                 />
               </div>

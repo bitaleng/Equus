@@ -66,8 +66,8 @@ export default function ClosingPage() {
   // Basic information
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [openingFloat, setOpeningFloat] = useState('0');
-  const [targetFloat, setTargetFloat] = useState('0');
+  const [openingFloat, setOpeningFloat] = useState('');
+  const [targetFloat, setTargetFloat] = useState('');
 
   // Detailed sales breakdown
   const [baseEntrySales, setBaseEntrySales] = useState({
@@ -157,10 +157,10 @@ export default function ClosingPage() {
       // Load existing closing data
       setStartTime(String(existingClosing.startTime || ''));
       setEndTime(String(existingClosing.endTime || ''));
-      setOpeningFloat(String(Number(existingClosing.openingFloat) || 0));
-      setTargetFloat(String(Number(existingClosing.targetFloat) || 0));
-      setActualCash(existingClosing.actualCash ? String(Number(existingClosing.actualCash)) : '');
-      setBankDeposit(existingClosing.bankDeposit ? String(Number(existingClosing.bankDeposit)) : '');
+      setOpeningFloat(existingClosing.openingFloat != null ? String(existingClosing.openingFloat) : '');
+      setTargetFloat(existingClosing.targetFloat != null ? String(existingClosing.targetFloat) : '');
+      setActualCash(existingClosing.actualCash != null ? String(existingClosing.actualCash) : '');
+      setBankDeposit(existingClosing.bankDeposit != null ? String(existingClosing.bankDeposit) : '');
       setNotes(String(existingClosing.notes || ''));
       setMemo(String(existingClosing.memo || ''));
       setIsConfirmed(existingClosing.isConfirmed);
@@ -202,9 +202,9 @@ export default function ClosingPage() {
           setOpeningFloat(latestClosing.targetFloat.toString());
           setTargetFloat(latestClosing.targetFloat.toString());
         } else {
-          // Default to 0 if no previous closing exists
-          setOpeningFloat('0');
-          setTargetFloat('0');
+          // Default to empty string if no previous closing exists (allows user to type freely)
+          setOpeningFloat('');
+          setTargetFloat('');
         }
       }
       
