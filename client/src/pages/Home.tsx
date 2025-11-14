@@ -350,12 +350,13 @@ export default function Home() {
       
       // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
       // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
+      // 자식 락카(parentLocker가 있는 락카)도 방문인원에서 제외 (한 손님이 여러 락카 사용)
       const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
-      const totalVisitors = entries.filter(e => !e.cancelled).length; // 추가요금은 entries에 없으므로 자동 제외
+      const totalVisitors = entries.filter(e => !e.cancelled && !e.parentLocker).length;
       const cancellations = entries.filter(e => e.cancelled).length;
-      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled).length;
-      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled).length;
-      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled).length;
+      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !e.parentLocker).length;
+      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled && !e.parentLocker).length;
+      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled && !e.parentLocker).length;
       
       // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
       // CRITICAL FIX: 다른 영업일 추가요금만 합산 (같은 영업일은 finalPrice에 포함됨)
@@ -968,6 +969,7 @@ export default function Home() {
     paymentMethod: log.paymentMethod,
     additionalFeeOnly: log.additionalFeeOnly,
     hasSameDayFee: (log as any).hasSameDayFee || false,
+    parentLocker: log.parentLocker || null,
   }));
 
   return (

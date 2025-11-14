@@ -44,6 +44,7 @@ interface LockerEntry {
   paymentTransfer?: number;
   additionalFeeOnly?: boolean; // 추가요금만 있는 항목 (방문자 수에서 제외)
   hasSameDayFee?: boolean; // 같은 영업일 내 추가요금 발생 여부
+  parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우, 방문자 수에서 제외)
 }
 
 interface TodayStatusTableProps {
@@ -117,13 +118,13 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
     displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'transfer');
   }
 
-  // Count usage for filtered locker (exclude additional fee only entries)
+  // Count usage for filtered locker (exclude additional fee only entries and child lockers)
   const usageCount = filteredLockerNumber !== null
-    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled && !e.additionalFeeOnly).length
+    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled && !e.additionalFeeOnly && !e.parentLocker).length
     : 0;
   
-  // Calculate total visitors (exclude additional fee only entries and cancelled entries)
-  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled).length;
+  // Calculate total visitors (exclude additional fee only entries, cancelled entries, and child lockers)
+  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled && !e.parentLocker).length;
 
   return (
     <div className={`h-full flex flex-col today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
