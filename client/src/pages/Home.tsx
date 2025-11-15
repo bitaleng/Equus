@@ -155,15 +155,8 @@ export default function Home() {
         const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
         
         if (lockerNumber) {
-          // Check if this is a child locker by looking up in activeLockersRef (always fresh)
-          const activeLog = activeLockersRef.current.find(log => log.lockerNumber === lockerNumber);
-          if (activeLog && activeLog.parentLocker) {
-            setChildLockerParent(activeLog.parentLocker);
-            setChildLockerAlertOpen(true);
-            return;
-          }
-          
-          // Open locker dialog
+          // Open locker dialog for all lockers (including child lockers)
+          // Child lockers will show "부모락카 변경/해제" button in the dialog
           setSelectedLocker(lockerNumber);
           setDialogOpen(true);
           
@@ -470,18 +463,11 @@ export default function Home() {
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
-      // Check if this is a child locker
-      const parentLocker = lockerParents[lockerNumber];
-      if (parentLocker) {
-        // Show child locker alert instead of options dialog
-        setChildLockerParent(parentLocker);
-        setChildLockerAlertOpen(true);
-      } else {
-        // Normal locker - show options dialog
-        setNewLockerInfo(null);
-        setSelectedLocker(lockerNumber);
-        setDialogOpen(true);
-      }
+      // Always show options dialog for in-use lockers (including child lockers)
+      // Child lockers will show "부모락카 변경/해제" button in the dialog
+      setNewLockerInfo(null);
+      setSelectedLocker(lockerNumber);
+      setDialogOpen(true);
     }
   };
 
