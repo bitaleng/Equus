@@ -155,15 +155,22 @@ export default function Home() {
         const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
         
         if (lockerNumber) {
-          // Open locker dialog for all lockers (including child lockers)
-          // Child lockers will show "부모락카 변경/해제" button in the dialog
-          setSelectedLocker(lockerNumber);
-          setDialogOpen(true);
-          
-          toast({
-            title: "락카 선택",
-            description: `${lockerNumber}번 락카가 선택되었습니다.`,
-          });
+          // Check if this is a child locker
+          const parentLockerNumber = lockerParents[lockerNumber];
+          if (parentLockerNumber) {
+            // Child locker: show alert only
+            setChildLockerParent(parentLockerNumber);
+            setChildLockerAlertOpen(true);
+          } else {
+            // Parent or independent locker: open dialog
+            setSelectedLocker(lockerNumber);
+            setDialogOpen(true);
+            
+            toast({
+              title: "락카 선택",
+              description: `${lockerNumber}번 락카가 선택되었습니다.`,
+            });
+          }
         } else {
           toast({
             title: "바코드 미등록",
@@ -467,7 +474,7 @@ export default function Home() {
       const parentLockerNumber = lockerParents[lockerNumber];
       if (parentLockerNumber) {
         // Child locker: show alert only
-        setChildLockerAlertParent(parentLockerNumber);
+        setChildLockerParent(parentLockerNumber);
         setChildLockerAlertOpen(true);
       } else {
         // Parent or independent locker: open options dialog

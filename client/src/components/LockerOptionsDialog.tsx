@@ -915,7 +915,10 @@ export default function LockerOptionsDialog({
   // Locker linking handlers
   const handleLinkClick = () => {
     playClickSound();
-    setSelectedChildLockers(new Set());
+    // Pre-select already linked child lockers
+    const currentChildren = localDb.getChildLockers(lockerNumber);
+    const currentChildNumbers = currentChildren.map((c: any) => c.lockerNumber);
+    setSelectedChildLockers(new Set(currentChildNumbers));
     setShowLinkDialog(true);
   };
 
@@ -939,7 +942,7 @@ export default function LockerOptionsDialog({
     
     try {
       const childLockerNumbers = Array.from(selectedChildLockers);
-      const result = localDb.linkLockers(lockerNumber, childLockerNumbers);
+      const result = localDb.setParentChildLinks(lockerNumber, childLockerNumbers);
       
       if (result.success) {
         toast({
@@ -1657,11 +1660,6 @@ export default function LockerOptionsDialog({
                     락카묶기
                   </Button>
                 )}
-                {parentLockerNumber && (
-                  <Button variant="secondary" onClick={handleChangeParentClick} data-testid="button-change-parent">
-                    부모락카 변경/해제
-                  </Button>
-                )}
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
@@ -1885,7 +1883,7 @@ export default function LockerOptionsDialog({
       <Dialog open={showLinkDialog} onOpenChange={setShowLinkDialog}>
         <DialogContent className="sm:max-w-[500px] max-h-[80vh] overflow-y-auto" data-testid="dialog-link-select">
           <DialogHeader>
-            <DialogTitle>락카묶기 - {lockerNumber}번에 추가할 빈 락카 선택</DialogTitle>
+            <DialogTitle>락카묶기 - {lockerNumber}번 자식 락카 관리</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <p className="text-sm text-muted-foreground">
@@ -1903,36 +1901,52 @@ export default function LockerOptionsDialog({
                 const activeLockers = localDb.getActiveLockers();
                 const activeNumbers = new Set(activeLockers.map((l: any) => l.lockerNumber));
                 
+                // Get currently linked children
+                const currentChildren = localDb.getChildLockers(lockerNumber);
+                const currentChildNumbers = new Set(currentChildren.map((c: any) => c.lockerNumber));
+                
                 // Get all locker groups to determine total range
                 const groups = localDb.getLockerGroups();
                 const maxLocker = Math.max(...groups.map((g: any) => g.endNumber), 80);
                 
-                // Generate vacant locker numbers
-                const vacantLockers: number[] = [];
+                // Generate available locker numbers (vacant OR already linked children)
+                const availableLockers: number[] = [];
                 for (let i = 1; i <= maxLocker; i++) {
-                  if (!activeNumbers.has(i) && i !== lockerNumber) {
-                    vacantLockers.push(i);
+                  if (i !== lockerNumber) {
+                    // Include if vacant OR already a child of this parent
+                    if (!activeNumbers.has(i) || currentChildNumbers.has(i)) {
+                      availableLockers.push(i);
+                    }
                   }
                 }
                 
-                return vacantLockers.map(num => (
-                  <Button
-                    key={num}
-                    variant={selectedChildLockers.has(num) ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => toggleChildLocker(num)}
-                    data-testid={`button-child-locker-${num}`}
-                    className="h-10"
-                  >
-                    {num}
-                  </Button>
-                ));
+                return availableLockers.map(num => {
+                  const isLinkedChild = currentChildNumbers.has(num);
+                  return (
+                    <Button
+                      key={num}
+                      variant={selectedChildLockers.has(num) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleChildLocker(num)}
+                      data-testid={`button-child-locker-${num}`}
+                      className={`h-10 ${isLinkedChild ? 'border-blue-500 border-2' : ''}`}
+                      title={isLinkedChild ? '현재 연결된 자식 락카' : '빈 락카'}
+                    >
+                      {num}
+                      {isLinkedChild && <span className="ml-1 text-xs">✓</span>}
+                    </Button>
+                  );
+                });
               })()}
+            </div>
+
+            <div className="text-xs text-muted-foreground p-3 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
+              <span className="font-semibold">✓ 표시:</span> 현재 연결된 자식 락카입니다. 선택 해제하면 연결이 해제됩니다.
             </div>
 
             {selectedChildLockers.size === 0 && (
               <div className="text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950 p-3 rounded-md border border-orange-200 dark:border-orange-800">
-                최소 1개 이상의 빈 락카를 선택해주세요
+                최소 1개 이상의 락카를 선택해주세요
               </div>
             )}
           </div>

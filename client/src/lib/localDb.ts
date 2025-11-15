@@ -1604,6 +1604,190 @@ export function cancelChildLockers(parentLockerNumber: number) {
   saveDatabase();
 }
 
+// Atomically update parent-child locker relationships
+// Used when user selects/deselects child lockers in the link dialog
+export function setParentChildLinks(
+  parentLockerNumber: number, 
+  newChildLockerNumbers: number[]
+): { success: boolean; message: string } {
+  if (!db) throw new Error('Database not initialized');
+
+  let transactionStarted = false;
+  try {
+    db.run('BEGIN TRANSACTION');
+    transactionStarted = true;
+
+    // Validate parent locker exists and is in use
+    const parentResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [parentLockerNumber]
+    );
+
+    if (parentResult.length === 0 || parentResult[0].values.length === 0) {
+      db.run('ROLLBACK');
+      transactionStarted = false;
+      return { success: false, message: '부모 락카가 사용중이 아닙니다.' };
+    }
+
+    const parentData = rowsToObjects(parentResult[0])[0];
+
+    // Get current child lockers
+    const currentChildren = getChildLockers(parentLockerNumber);
+    const currentChildNumbers = currentChildren.map(c => c.lockerNumber);
+
+    // Calculate changes
+    const toAdd = newChildLockerNumbers.filter(num => !currentChildNumbers.includes(num));
+    const toRemove = currentChildNumbers.filter(num => !newChildLockerNumbers.includes(num));
+
+    // ========== PHASE 1: VALIDATE ALL CHANGES (no mutations yet) ==========
+    
+    // Validate all removals first
+    for (const childNumber of toRemove) {
+      const childResult = db.exec(
+        `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+        [childNumber]
+      );
+      
+      if (childResult.length > 0 && childResult[0].values.length > 0) {
+        const allChildData = rowsToObjects(childResult[0]);
+        
+        // Find any row with conflicting parent ownership
+        const conflictingRow = allChildData.find(
+          (row: any) => row.parentLocker && row.parentLocker !== parentLockerNumber
+        );
+        
+        if (conflictingRow) {
+          db.run('ROLLBACK');
+          transactionStarted = false;
+          return {
+            success: false,
+            message: `${childNumber}번 락카는 ${conflictingRow.parentLocker}번에 묶여있습니다. 작업을 중단했습니다.`
+          };
+        }
+      }
+    }
+    
+    // Validate all additions
+    for (const childNumber of toAdd) {
+      const childResult = db.exec(
+        `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+        [childNumber]
+      );
+
+      if (childResult.length > 0 && childResult[0].values.length > 0) {
+        const allChildData = rowsToObjects(childResult[0]);
+        
+        // Check each row for conflicts
+        for (const childData of allChildData) {
+          if (childData.basePrice > 0) {
+            db.run('ROLLBACK');
+            transactionStarted = false;
+            return { 
+              success: false, 
+              message: `${childNumber}번 락카는 이미 사용 중입니다.` 
+            };
+          }
+          
+          if (childData.basePrice === 0 && childData.parentLocker && childData.parentLocker !== parentLockerNumber) {
+            db.run('ROLLBACK');
+            transactionStarted = false;
+            return { 
+              success: false, 
+              message: `${childNumber}번 락카는 이미 ${childData.parentLocker}번에 묶여있습니다.` 
+            };
+          }
+        }
+      }
+    }
+    
+    // ========== PHASE 2: APPLY ALL CHANGES (validation passed) ==========
+    
+    // Remove children (safe: all validated)
+    for (const childNumber of toRemove) {
+      db.run(
+        `DELETE FROM locker_logs 
+         WHERE locker_number = ? 
+         AND status = 'in_use' 
+         AND base_price = 0 
+         AND parent_locker = ?`,
+        [childNumber, parentLockerNumber]
+      );
+      
+      db.run(
+        `UPDATE locker_logs 
+         SET parent_locker = NULL 
+         WHERE locker_number = ? 
+         AND status = 'in_use' 
+         AND base_price > 0 
+         AND parent_locker = ?`,
+        [childNumber, parentLockerNumber]
+      );
+    }
+
+    // Add children (safe: all validated)
+    for (const childNumber of toAdd) {
+      db.run(
+        `DELETE FROM locker_logs 
+         WHERE locker_number = ? 
+         AND status = 'in_use' 
+         AND base_price = 0 
+         AND (parent_locker IS NULL OR parent_locker = ?)`,
+        [childNumber, parentLockerNumber]
+      );
+      
+      const id = generateId();
+      
+      db.run(
+        `INSERT INTO locker_logs 
+        (id, locker_number, entry_time, business_day, time_type, base_price, final_price, 
+         option_type, status, cancelled, parent_locker)
+        VALUES (?, ?, ?, ?, ?, 0, 0, 'none', 'in_use', 0, ?)`,
+        [
+          id,
+          childNumber,
+          parentData.entryTime,
+          parentData.businessDay,
+          parentData.timeType,
+          parentLockerNumber
+        ]
+      );
+    }
+
+    db.run('COMMIT');
+    transactionStarted = false;
+    saveDatabase();
+
+    if (toAdd.length > 0 && toRemove.length > 0) {
+      return { 
+        success: true, 
+        message: `${toAdd.join(', ')}번 락카가 추가되고, ${toRemove.join(', ')}번 락카가 해제되었습니다.` 
+      };
+    } else if (toAdd.length > 0) {
+      return { 
+        success: true, 
+        message: `${toAdd.join(', ')}번 락카가 추가되었습니다.` 
+      };
+    } else if (toRemove.length > 0) {
+      return { 
+        success: true, 
+        message: `${toRemove.join(', ')}번 락카가 해제되었습니다.` 
+      };
+    } else {
+      return { success: true, message: '변경사항이 없습니다.' };
+    }
+  } catch (error) {
+    console.error('Parent-child link update error:', error);
+    if (transactionStarted) {
+      try {
+        db.run('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+    return { success: false, message: '락카 링크 업데이트 중 오류가 발생했습니다.' };
+  }
+}
+
 export function getActiveLockers() {
   if (!db) throw new Error('Database not initialized');
 
@@ -2550,7 +2734,7 @@ export async function createAdditionalFeeTestData() {
   return new Promise<boolean>((resolve, reject) => {
     try {
       const settings = getSettings();
-      const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice } = settings;
+      const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice, domesticCheckpointHour = 1, foreignerAdditionalFeePeriod = 24 } = settings;
       
       // Random helpers
       const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
