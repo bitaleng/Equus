@@ -1414,6 +1414,147 @@ export function linkLockers(parentLockerNumber: number, childLockerNumbers: numb
   }
 }
 
+// Unlink a single child locker (manual unlink)
+export function unlinkChildLocker(childLockerNumber: number): { success: boolean; message: string } {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    db.run('BEGIN TRANSACTION');
+
+    // Check if child locker exists and is in use
+    const childResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [childLockerNumber]
+    );
+
+    if (childResult.length === 0 || childResult[0].values.length === 0) {
+      db.run('ROLLBACK');
+      return { success: false, message: '해당 락카가 사용중이 아닙니다.' };
+    }
+
+    const childData = rowsToObjects(childResult[0])[0];
+
+    // Check if this locker is actually a child locker
+    if (!childData.parentLocker) {
+      db.run('ROLLBACK');
+      return { success: false, message: '부모 락카에 연결되지 않은 락카입니다.' };
+    }
+
+    const parentNumber = childData.parentLocker;
+
+    // Remove parent_locker link but keep the locker in 'in_use' status
+    db.run(
+      `UPDATE locker_logs SET parent_locker = NULL WHERE locker_number = ? AND status = 'in_use'`,
+      [childLockerNumber]
+    );
+
+    const changes = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+    if (changes !== 1) {
+      db.run('ROLLBACK');
+      return { success: false, message: '락카 해제 실패' };
+    }
+
+    db.run('COMMIT');
+    saveDatabase();
+
+    return { 
+      success: true, 
+      message: `${childLockerNumber}번 락카가 ${parentNumber}번 부모 락카에서 해제되었습니다.` 
+    };
+  } catch (error) {
+    console.error('Child locker unlink error:', error);
+    try {
+      db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError);
+    }
+    return { success: false, message: '락카 해제 중 오류가 발생했습니다.' };
+  }
+}
+
+// Change parent of a child locker
+export function changeChildParent(childLockerNumber: number, newParentLockerNumber: number): { success: boolean; message: string } {
+  if (!db) throw new Error('Database not initialized');
+
+  try {
+    db.run('BEGIN TRANSACTION');
+
+    // Check if child locker exists and is in use
+    const childResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [childLockerNumber]
+    );
+
+    if (childResult.length === 0 || childResult[0].values.length === 0) {
+      db.run('ROLLBACK');
+      return { success: false, message: '해당 락카가 사용중이 아닙니다.' };
+    }
+
+    const childData = rowsToObjects(childResult[0])[0];
+
+    // Check if this locker is actually a child locker
+    if (!childData.parentLocker) {
+      db.run('ROLLBACK');
+      return { success: false, message: '부모 락카에 연결되지 않은 락카입니다.' };
+    }
+
+    // Check if new parent locker exists and is in use
+    const newParentResult = db.exec(
+      `SELECT * FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`,
+      [newParentLockerNumber]
+    );
+
+    if (newParentResult.length === 0 || newParentResult[0].values.length === 0) {
+      db.run('ROLLBACK');
+      return { success: false, message: '새 부모 락카가 사용중이 아닙니다.' };
+    }
+
+    const newParentData = rowsToObjects(newParentResult[0])[0];
+
+    // Prevent linking to itself
+    if (childLockerNumber === newParentLockerNumber) {
+      db.run('ROLLBACK');
+      return { success: false, message: '자기 자신을 부모 락카로 설정할 수 없습니다.' };
+    }
+
+    // Prevent linking to another child locker
+    if (newParentData.parentLocker) {
+      db.run('ROLLBACK');
+      return { success: false, message: '이미 다른 락카에 연결된 락카는 부모 락카로 설정할 수 없습니다.' };
+    }
+
+    const oldParentNumber = childData.parentLocker;
+
+    // Update parent_locker to new parent
+    db.run(
+      `UPDATE locker_logs SET parent_locker = ? WHERE locker_number = ? AND status = 'in_use'`,
+      [newParentLockerNumber, childLockerNumber]
+    );
+
+    const changes = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
+    if (changes !== 1) {
+      db.run('ROLLBACK');
+      return { success: false, message: '부모 락카 변경 실패' };
+    }
+
+    db.run('COMMIT');
+    saveDatabase();
+
+    return { 
+      success: true, 
+      message: `${childLockerNumber}번 락카의 부모가 ${oldParentNumber}번에서 ${newParentLockerNumber}번으로 변경되었습니다.` 
+    };
+  } catch (error) {
+    console.error('Parent change error:', error);
+    try {
+      db.run('ROLLBACK');
+    } catch (rollbackError) {
+      console.error('Rollback error:', rollbackError);
+    }
+    return { success: false, message: '부모 락카 변경 중 오류가 발생했습니다.' };
+  }
+}
+
 // Get child lockers for a parent locker
 export function getChildLockers(parentLockerNumber: number) {
   if (!db) throw new Error('Database not initialized');
