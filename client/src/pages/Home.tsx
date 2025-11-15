@@ -1129,9 +1129,9 @@ export default function Home() {
             setDialogOpen(false);
             setNewLockerInfo(null);
           }}
-          lockerNumber={selectedEntry?.lockerNumber || newLockerInfo!.lockerNumber}
-          basePrice={selectedEntry?.basePrice || newLockerInfo!.basePrice}
-          timeType={selectedEntry?.timeType || newLockerInfo!.timeType}
+          lockerNumber={selectedEntry?.lockerNumber || newLockerInfo?.lockerNumber || 0}
+          basePrice={selectedEntry?.basePrice || newLockerInfo?.basePrice || 0}
+          timeType={selectedEntry?.timeType || newLockerInfo?.timeType || '주간'}
           entryTime={selectedEntry?.entryTime}
           currentNotes={selectedEntry?.notes}
           currentPaymentMethod={selectedEntry?.paymentMethod}
