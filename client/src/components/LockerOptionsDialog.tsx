@@ -144,6 +144,13 @@ export default function LockerOptionsDialog({
   const [selectedChildLockers, setSelectedChildLockers] = useState<Set<number>>(new Set());
   const [showLinkConfirm, setShowLinkConfirm] = useState(false);
   
+  // Parent locker change/unlink states
+  const [parentLockerNumber, setParentLockerNumber] = useState<number | null>(null);
+  const [showChangeParentDialog, setShowChangeParentDialog] = useState(false);
+  const [newParentLocker, setNewParentLocker] = useState<string>("");
+  const [showChangeParentConfirm, setShowChangeParentConfirm] = useState(false);
+  const [unlinkMode, setUnlinkMode] = useState(false); // true = unlink, false = change parent
+  
   // Rental items state (담요, 롱타올) - legacy
   const [hasBlanket, setHasBlanket] = useState(false);
   const [hasLongTowel, setHasLongTowel] = useState(false);
@@ -270,6 +277,18 @@ export default function LockerOptionsDialog({
       }
     }
   }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, checkoutResolved]);
+
+  // Load parent locker info when dialog opens
+  useEffect(() => {
+    if (open && isInUse) {
+      const lockerLog = localDb.getActiveLockers().find(log => log.lockerNumber === lockerNumber);
+      if (lockerLog && lockerLog.parentLocker) {
+        setParentLockerNumber(lockerLog.parentLocker);
+      } else {
+        setParentLockerNumber(null);
+      }
+    }
+  }, [open, isInUse, lockerNumber]);
 
   // Play click sound
   const playClickSound = () => {
@@ -964,6 +983,109 @@ export default function LockerOptionsDialog({
     });
   };
 
+  // Parent locker change/unlink handlers
+  const handleChangeParentClick = () => {
+    playClickSound();
+    setNewParentLocker("");
+    setUnlinkMode(false);
+    setShowChangeParentDialog(true);
+  };
+
+  const handleChangeParentSubmit = () => {
+    playClickSound();
+    
+    // Check if user wants to unlink (empty input)
+    if (!newParentLocker.trim()) {
+      setUnlinkMode(true);
+      setShowChangeParentConfirm(true);
+      return;
+    }
+
+    const targetNumber = parseInt(newParentLocker.trim());
+    
+    if (isNaN(targetNumber) || targetNumber < 1) {
+      toast({
+        variant: "destructive",
+        title: "입력 오류",
+        description: "유효한 락카 번호를 입력하세요.",
+      });
+      return;
+    }
+
+    if (targetNumber === lockerNumber) {
+      toast({
+        variant: "destructive",
+        title: "입력 오류",
+        description: "자기 자신을 부모 락카로 설정할 수 없습니다.",
+      });
+      return;
+    }
+
+    setUnlinkMode(false);
+    setShowChangeParentConfirm(true);
+  };
+
+  const handleChangeParentConfirm = () => {
+    playClickSound();
+    
+    try {
+      if (unlinkMode) {
+        // Unlink from parent
+        const result = localDb.unlinkChildLocker(lockerNumber);
+        
+        if (result.success) {
+          toast({
+            title: "연결 해제 완료",
+            description: result.message,
+          });
+          setShowChangeParentDialog(false);
+          setShowChangeParentConfirm(false);
+          setNewParentLocker("");
+          onClose();
+          window.location.reload();
+        } else {
+          toast({
+            variant: "destructive",
+            title: "연결 해제 실패",
+            description: result.message,
+          });
+          setShowChangeParentConfirm(false);
+        }
+      } else {
+        // Change to new parent
+        const targetNumber = parseInt(newParentLocker);
+        const result = localDb.changeChildParent(lockerNumber, targetNumber);
+        
+        if (result.success) {
+          toast({
+            title: "부모 락카 변경 완료",
+            description: result.message,
+          });
+          setShowChangeParentDialog(false);
+          setShowChangeParentConfirm(false);
+          setNewParentLocker("");
+          onClose();
+          window.location.reload();
+        } else {
+          toast({
+            variant: "destructive",
+            title: "부모 락카 변경 실패",
+            description: result.message,
+          });
+          setShowChangeParentConfirm(false);
+        }
+      }
+    } catch (error) {
+      console.error('Change parent error:', error);
+      toast({
+        variant: "destructive",
+        title: unlinkMode ? "연결 해제 실패" : "부모 락카 변경 실패",
+        description: "처리 중 오류가 발생했습니다.",
+      });
+      setShowChangeParentConfirm(false);
+    }
+  };
+
   // Calculate additional fee if entry time exists
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const additionalFeeInfo = entryTime && isInUse
@@ -1530,9 +1652,16 @@ export default function LockerOptionsDialog({
                 <Button variant="secondary" onClick={handleSwapClick} data-testid="button-swap">
                   락카교체
                 </Button>
-                <Button variant="secondary" onClick={handleLinkClick} data-testid="button-link">
-                  락카묶기
-                </Button>
+                {!parentLockerNumber && (
+                  <Button variant="secondary" onClick={handleLinkClick} data-testid="button-link">
+                    락카묶기
+                  </Button>
+                )}
+                {parentLockerNumber && (
+                  <Button variant="secondary" onClick={handleChangeParentClick} data-testid="button-change-parent">
+                    부모락카 변경/해제
+                  </Button>
+                )}
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
@@ -1841,6 +1970,90 @@ export default function LockerOptionsDialog({
               onClick={handleLinkConfirm} 
               className="bg-blue-600 hover:bg-blue-700"
               data-testid="button-link-confirm-ok"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Parent locker change/unlink dialog */}
+      <Dialog open={showChangeParentDialog} onOpenChange={setShowChangeParentDialog}>
+        <DialogContent className="sm:max-w-[400px]" data-testid="dialog-change-parent">
+          <DialogHeader>
+            <DialogTitle>부모 락카 변경/해제 - {lockerNumber}번</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-blue-600 dark:text-blue-400">
+                현재 {lockerNumber}번 락카는 {parentLockerNumber}번 부모 락카에 연결되어 있습니다.
+              </p>
+            </div>
+            
+            <p className="text-sm text-muted-foreground">
+              • 새로운 부모 락카 번호를 입력하면 해당 락카로 변경됩니다<br/>
+              • 빈 칸으로 두고 확인하면 부모 락카 연결이 해제됩니다
+            </p>
+            
+            <div className="space-y-2">
+              <Label htmlFor="new-parent-locker">새 부모 락카 번호 (빈 칸 = 연결 해제)</Label>
+              <Input
+                id="new-parent-locker"
+                type="number"
+                value={newParentLocker}
+                onChange={(e) => setNewParentLocker(e.target.value)}
+                placeholder="빈 칸으로 두면 연결 해제"
+                data-testid="input-new-parent-locker"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowChangeParentDialog(false)} data-testid="button-change-parent-cancel">
+              취소
+            </Button>
+            <Button onClick={handleChangeParentSubmit} data-testid="button-change-parent-submit">
+              확인
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Parent locker change/unlink confirmation dialog */}
+      <AlertDialog open={showChangeParentConfirm} onOpenChange={setShowChangeParentConfirm}>
+        <AlertDialogContent data-testid="dialog-change-parent-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-blue-600">
+              {unlinkMode ? "부모 락카 연결 해제 확인" : "부모 락카 변경 확인"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-600 dark:text-blue-400">
+                  {unlinkMode ? (
+                    <>
+                      {lockerNumber}번 락카의 부모 락카({parentLockerNumber}번) 연결을 해제합니다.
+                      <br/><br/>
+                      • {lockerNumber}번은 독립된 락카로 전환됩니다<br/>
+                      • 기존 입실 정보는 유지됩니다
+                    </>
+                  ) : (
+                    <>
+                      {lockerNumber}번 락카의 부모를 {parentLockerNumber}번에서 {newParentLocker}번으로 변경합니다.
+                      <br/><br/>
+                      • {newParentLocker}번 퇴실 시 {lockerNumber}번도 함께 퇴실됩니다<br/>
+                      • 기존 입실 정보는 유지됩니다
+                    </>
+                  )}
+                </p>
+              </div>
+              <p className="font-medium">계속하시겠습니까?</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-change-parent-confirm-cancel">취소</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleChangeParentConfirm} 
+              className="bg-blue-600 hover:bg-blue-700"
+              data-testid="button-change-parent-confirm-ok"
             >
               확인
             </AlertDialogAction>
