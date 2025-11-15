@@ -463,11 +463,18 @@ export default function Home() {
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
     } else if (state === 'in-use') {
-      // Always show options dialog for in-use lockers (including child lockers)
-      // Child lockers will show "부모락카 변경/해제" button in the dialog
-      setNewLockerInfo(null);
-      setSelectedLocker(lockerNumber);
-      setDialogOpen(true);
+      // Check if this is a child locker
+      const parentLockerNumber = lockerParents[lockerNumber];
+      if (parentLockerNumber) {
+        // Child locker: show alert only
+        setChildLockerAlertParent(parentLockerNumber);
+        setChildLockerAlertOpen(true);
+      } else {
+        // Parent or independent locker: open options dialog
+        setNewLockerInfo(null);
+        setSelectedLocker(lockerNumber);
+        setDialogOpen(true);
+      }
     }
   };
 
