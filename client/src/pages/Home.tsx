@@ -5,6 +5,7 @@ import LockerOptionsDialog from "@/components/LockerOptionsDialog";
 import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Menu, X, Maximize2, ChevronDown } from "lucide-react";
 import {
@@ -92,6 +93,11 @@ export default function Home() {
   const [barcodeTestDialogOpen, setBarcodeTestDialogOpen] = useState(false);
   const [testBarcodeInput, setTestBarcodeInput] = useState("");
 
+  // RFID scanning state
+  const [isRfidEnabled, setIsRfidEnabled] = useState(false);
+  const [rfidStatus, setRfidStatus] = useState<string>("");
+  const [lastRfidScan, setLastRfidScan] = useState<string | null>(null);
+
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
@@ -133,6 +139,69 @@ export default function Home() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Process scanned RFID (shared logic for Web NFC API)
+  const processScannedRfid = useCallback((rfidUid: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
+    // Look up locker number by RFID UID
+    const lockerNumber = localDb.getLockerNumberByRfid(rfidUid);
+    
+    if (!lockerNumber) {
+      toast({
+        title: "RFID 미등록",
+        description: "등록되지 않은 RFID 태그입니다.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    // Log the scan (for anti-fraud tracking)
+    try {
+      localDb.addScanLog(lockerNumber);
+    } catch (error) {
+      console.error('Failed to log RFID scan:', error);
+    }
+    
+    // Check if locker is currently in use
+    const isInUse = currentActiveLockers.some(log => log.lockerNumber === lockerNumber);
+    
+    if (!isInUse) {
+      // Empty locker: set new locker info and open dialog
+      const timeType = getTimeType(currentTime);
+      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+      
+      setNewLockerInfo({ lockerNumber, timeType, basePrice });
+      setSelectedLocker(lockerNumber);
+      setDialogOpen(true);
+      
+      toast({
+        title: "RFID 스캔 성공",
+        description: `${lockerNumber}번 락카 입실`,
+      });
+      
+      return true;
+    } else {
+      // Occupied locker: check child locker protection
+      const parentLockerNumber = lockerParentsMap[lockerNumber];
+      
+      if (parentLockerNumber !== null && parentLockerNumber !== undefined) {
+        // This is a child locker
+        setChildLockerParent(parentLockerNumber);
+        setChildLockerAlertOpen(true);
+        return false;
+      } else {
+        // Regular locker: open exit dialog
+        setSelectedLocker(lockerNumber);
+        setDialogOpen(true);
+        
+        toast({
+          title: "RFID 스캔 성공",
+          description: `${lockerNumber}번 락카 퇴실`,
+        });
+        
+        return true;
+      }
+    }
+  }, [currentTime, dayPrice, nightPrice, toast]);
 
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
   const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
@@ -248,6 +317,83 @@ export default function Home() {
       document.removeEventListener('keypress', handleBarcodeScan);
     };
   }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
+
+  // Web NFC API for RFID scanning (13.56MHz NFC tags)
+  useEffect(() => {
+    // Check if Web NFC is supported
+    if (!('NDEFReader' in window)) {
+      setRfidStatus("Web NFC API를 지원하지 않는 브라우저입니다. Chrome for Android를 사용하세요.");
+      return;
+    }
+
+    // Check if HTTPS (required for Web NFC)
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+      setRfidStatus("RFID 스캔은 HTTPS 연결이 필요합니다.");
+      return;
+    }
+
+    const startRfidScanning = async () => {
+      try {
+        const ndef = new (window as any).NDEFReader();
+        
+        // Request permission and start scanning
+        await ndef.scan();
+        
+        setIsRfidEnabled(true);
+        setRfidStatus("RFID 스캔 활성화됨 - 락카키를 태블릿에 가져다 대세요");
+
+        ndef.onreading = (event: any) => {
+          // Skip if a dialog is open
+          if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
+            return;
+          }
+
+          // Get RFID UID from serial number
+          const rfidUid = event.serialNumber.toUpperCase();
+          
+          // Prevent duplicate scans (within 1 second)
+          if (lastRfidScan === rfidUid) {
+            const timeSinceLastScan = Date.now() - (activeLockersRef.current as any).lastRfidScanTime;
+            if (timeSinceLastScan < 1000) {
+              return;
+            }
+          }
+
+          setLastRfidScan(rfidUid);
+          (activeLockersRef.current as any).lastRfidScanTime = Date.now();
+
+          // Get current locker parents map
+          const currentLockerParents: { [key: number]: number | null } = {};
+          activeLockersRef.current.forEach(log => {
+            currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+          });
+
+          // Process RFID scan
+          processScannedRfid(rfidUid, currentLockerParents, activeLockersRef.current);
+        };
+
+        ndef.onreadingerror = (error: any) => {
+          console.error('RFID reading error:', error);
+          setRfidStatus(`RFID 읽기 오류: ${error.message || '알 수 없는 오류'}`);
+        };
+
+      } catch (error: any) {
+        console.error('Failed to start RFID scanning:', error);
+        
+        if (error.name === 'NotAllowedError') {
+          setRfidStatus("RFID 스캔 권한이 거부되었습니다. 브라우저 설정에서 NFC 권한을 허용해주세요.");
+        } else if (error.name === 'NotSupportedError') {
+          setRfidStatus("이 기기에서 NFC를 지원하지 않습니다.");
+        } else {
+          setRfidStatus(`RFID 스캔 시작 실패: ${error.message || '알 수 없는 오류'}`);
+        }
+        
+        setIsRfidEnabled(false);
+      }
+    };
+
+    startRfidScanning();
+  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedRfid, lastRfidScan]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -1101,10 +1247,21 @@ export default function Home() {
               >
                 {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </Button>
-              <p className="tabular-nums">
-                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="tabular-nums">
+                  <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                  <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+                </p>
+                {rfidStatus && (
+                  <Badge 
+                    variant={isRfidEnabled ? "default" : "secondary"}
+                    className="text-xs w-fit"
+                    data-testid="badge-rfid-status"
+                  >
+                    {isRfidEnabled ? "RFID 활성화" : rfidStatus}
+                  </Badge>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Button
