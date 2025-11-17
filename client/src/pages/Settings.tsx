@@ -225,7 +225,7 @@ export default function Settings() {
 
 
   const handleManualBarcodeRegister = () => {
-    if (!manualLockerNumber || !manualBarcodeInput.trim()) {
+    if (!manualLockerNumber || manualLockerNumber <= 0 || !manualBarcodeInput.trim()) {
       toast({
         title: "입력 필요",
         description: "락카 번호와 바코드를 모두 입력해주세요.",
@@ -247,7 +247,7 @@ export default function Settings() {
     } else {
       toast({
         title: "바코드 등록 실패",
-        description: "바코드 등록 중 오류가 발생했습니다.",
+        description: "이미 등록된 바코드이거나 오류가 발생했습니다.",
         variant: "destructive",
       });
     }

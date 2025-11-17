@@ -1279,6 +1279,15 @@ export default function Home() {
                 onChange={(e) => setTestBarcodeInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
+                    if (!testBarcodeInput.trim()) {
+                      toast({
+                        title: "입력 필요",
+                        description: "바코드를 입력해주세요.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    
                     const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
                     if (lockerNumber) {
                       toast({
@@ -1311,6 +1320,15 @@ export default function Home() {
             </Button>
             <Button
               onClick={() => {
+                if (!testBarcodeInput.trim()) {
+                  toast({
+                    title: "입력 필요",
+                    description: "바코드를 입력해주세요.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
                 const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
                 if (lockerNumber) {
                   toast({
