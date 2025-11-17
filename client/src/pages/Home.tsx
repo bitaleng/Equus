@@ -155,6 +155,13 @@ export default function Home() {
         const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
         
         if (lockerNumber) {
+          // Log the scan (for anti-fraud tracking)
+          try {
+            localDb.addScanLog(lockerNumber);
+          } catch (error) {
+            console.error('Failed to log scan:', error);
+          }
+          
           // Check if this is a child locker
           const parentLockerNumber = lockerParents[lockerNumber];
           if (parentLockerNumber) {

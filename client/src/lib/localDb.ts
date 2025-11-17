@@ -5123,8 +5123,9 @@ export function addScanLog(lockerNumber: number): string {
   if (!db) throw new Error('Database not initialized');
   
   const id = crypto.randomUUID();
-  const scanTime = new Date().toISOString();
-  const businessDay = getBusinessDay(scanTime);
+  const now = new Date();
+  const scanTime = now.toISOString();
+  const businessDay = getBusinessDay(now);
   
   try {
     db.run(
