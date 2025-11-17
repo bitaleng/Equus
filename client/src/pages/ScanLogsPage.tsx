@@ -56,7 +56,7 @@ export default function ScanLogsPage() {
 
       if (useTimeFilter && startDate && endDate) {
         const startISO = new Date(startDate).toISOString();
-        const endISO = new Date(endDate + 'T23:59:59.999').toISOString();
+        const endISO = new Date(endDate).toISOString();
         fetchedLogs = localDb.getScanLogs(startISO, endISO);
       } else {
         fetchedLogs = localDb.getScanLogs();
@@ -235,23 +235,31 @@ export default function ScanLogsPage() {
                     className="mr-2"
                     data-testid="checkbox-use-time-filter"
                   />
-                  날짜 범위 필터
+                  기간 필터
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    disabled={!useTimeFilter}
-                    data-testid="input-start-date"
-                  />
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    disabled={!useTimeFilter}
-                    data-testid="input-end-date"
-                  />
+                  <div className="space-y-1">
+                    <Label htmlFor="start-datetime" className="text-xs text-muted-foreground">시작</Label>
+                    <Input
+                      id="start-datetime"
+                      type="datetime-local"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      disabled={!useTimeFilter}
+                      data-testid="input-start-date"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="end-datetime" className="text-xs text-muted-foreground">종료</Label>
+                    <Input
+                      id="end-datetime"
+                      type="datetime-local"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      disabled={!useTimeFilter}
+                      data-testid="input-end-date"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
