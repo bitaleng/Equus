@@ -1,4 +1,4 @@
-import { Home, FileText, Settings, Receipt, Calculator } from "lucide-react";
+import { Home, FileText, Settings, Receipt, Calculator, ScanBarcode } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -20,6 +20,11 @@ const items = [
     title: "상세 기록",
     url: "/logs",
     icon: FileText,
+  },
+  {
+    title: "스캔정보",
+    url: "/scan-logs",
+    icon: ScanBarcode,
   },
   {
     title: "시스템 설정",

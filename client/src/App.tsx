@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { PasswordAuth } from "@/components/PasswordAuth";
 import Home from "@/pages/Home";
 import LogsPage from "@/pages/LogsPage";
+import ScanLogsPage from "@/pages/ScanLogsPage";
 import Settings from "@/pages/Settings";
 import ExpensesPage from "@/pages/ExpensesPage";
 import ClosingPage from "@/pages/ClosingPage";
@@ -24,6 +25,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/logs" component={LogsPage} />
+      <Route path="/scan-logs" component={ScanLogsPage} />
       <Route path="/settings" component={Settings} />
       <Route path="/expenses" component={ExpensesPage} />
       <Route path="/closing" component={ClosingPage} />
