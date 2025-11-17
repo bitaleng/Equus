@@ -134,6 +134,47 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // Process scanned barcode (shared logic for both hardware scanner and manual test)
+  const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }) => {
+    // Look up locker number by barcode
+    const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
+    
+    if (!lockerNumber) {
+      toast({
+        title: "바코드 미등록",
+        description: "등록되지 않은 바코드입니다.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    
+    // Log the scan (for anti-fraud tracking)
+    try {
+      localDb.addScanLog(lockerNumber);
+    } catch (error) {
+      console.error('Failed to log scan:', error);
+    }
+    
+    // Check if this is a child locker
+    const parentLockerNumber = lockerParentsMap[lockerNumber];
+    if (parentLockerNumber) {
+      // Child locker: show alert only
+      setChildLockerParent(parentLockerNumber);
+      setChildLockerAlertOpen(true);
+    } else {
+      // Parent or independent locker: open dialog
+      setSelectedLocker(lockerNumber);
+      setDialogOpen(true);
+      
+      toast({
+        title: "락카 선택",
+        description: `${lockerNumber}번 락카가 선택되었습니다.`,
+      });
+    }
+    
+    return true;
+  }, [toast]);
+
   // Global barcode scanner listener
   useEffect(() => {
     let barcodeBuffer = '';
@@ -163,40 +204,13 @@ export default function Home() {
         const barcode = barcodeBuffer;
         barcodeBuffer = '';
         
-        // Look up locker number by barcode
-        const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
+        // Build current locker parents map
+        const currentLockerParents: { [key: number]: number | null } = {};
+        activeLockersRef.current.forEach(log => {
+          currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+        });
         
-        if (lockerNumber) {
-          // Log the scan (for anti-fraud tracking)
-          try {
-            localDb.addScanLog(lockerNumber);
-          } catch (error) {
-            console.error('Failed to log scan:', error);
-          }
-          
-          // Check if this is a child locker
-          const parentLockerNumber = lockerParents[lockerNumber];
-          if (parentLockerNumber) {
-            // Child locker: show alert only
-            setChildLockerParent(parentLockerNumber);
-            setChildLockerAlertOpen(true);
-          } else {
-            // Parent or independent locker: open dialog
-            setSelectedLocker(lockerNumber);
-            setDialogOpen(true);
-            
-            toast({
-              title: "락카 선택",
-              description: `${lockerNumber}번 락카가 선택되었습니다.`,
-            });
-          }
-        } else {
-          toast({
-            title: "바코드 미등록",
-            description: "등록되지 않은 바코드입니다.",
-            variant: "destructive",
-          });
-        }
+        processScannedBarcode(barcode, currentLockerParents);
         
         e.preventDefault();
         return;
@@ -214,7 +228,7 @@ export default function Home() {
     return () => {
       document.removeEventListener('keypress', handleBarcodeScan);
     };
-  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, toast]);
+  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -1288,18 +1302,16 @@ export default function Home() {
                       return;
                     }
                     
-                    const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
-                    if (lockerNumber) {
-                      toast({
-                        title: "바코드 확인 완료",
-                        description: `${testBarcodeInput.trim()} → ${lockerNumber}번 락카`,
-                      });
-                    } else {
-                      toast({
-                        title: "바코드 미등록",
-                        description: "등록되지 않은 바코드입니다.",
-                        variant: "destructive",
-                      });
+                    // Build current locker parents map
+                    const currentLockerParents: { [key: number]: number | null } = {};
+                    activeLockers.forEach(log => {
+                      currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+                    });
+                    
+                    const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents);
+                    if (success) {
+                      setBarcodeTestDialogOpen(false);
+                      setTestBarcodeInput("");
                     }
                   }
                 }}
@@ -1329,18 +1341,16 @@ export default function Home() {
                   return;
                 }
                 
-                const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
-                if (lockerNumber) {
-                  toast({
-                    title: "바코드 확인 완료",
-                    description: `${testBarcodeInput.trim()} → ${lockerNumber}번 락카`,
-                  });
-                } else {
-                  toast({
-                    title: "바코드 미등록",
-                    description: "등록되지 않은 바코드입니다.",
-                    variant: "destructive",
-                  });
+                // Build current locker parents map
+                const currentLockerParents: { [key: number]: number | null } = {};
+                activeLockers.forEach(log => {
+                  currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+                });
+                
+                const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents);
+                if (success) {
+                  setBarcodeTestDialogOpen(false);
+                  setTestBarcodeInput("");
                 }
               }}
               data-testid="button-test-barcode"
