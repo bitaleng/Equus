@@ -97,6 +97,8 @@ export default function Home() {
   const [isRfidEnabled, setIsRfidEnabled] = useState(false);
   const [rfidStatus, setRfidStatus] = useState<string>("");
   const [lastRfidScan, setLastRfidScan] = useState<string | null>(null);
+  const [showNfcButton, setShowNfcButton] = useState(false);
+  const ndefReaderRef = useRef<any>(null);
 
   // Unregistered RFID quick registration dialog
   const [unregisteredRfidDialogOpen, setUnregisteredRfidDialogOpen] = useState(false);
@@ -397,6 +399,90 @@ export default function Home() {
     };
   }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
 
+  // Setup NFC reading handler
+  const setupNfcReader = useCallback((ndef: any) => {
+    ndefReaderRef.current = ndef;
+
+    ndef.onreading = (event: any) => {
+      // Skip if a dialog is open
+      if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
+        return;
+      }
+
+      // Get RFID UID from serial number
+      const rfidUid = event.serialNumber.toUpperCase();
+      
+      // Prevent duplicate scans (within 1 second)
+      const lastScanTime = (activeLockersRef.current as any).lastRfidScanTime;
+      if (lastScanTime && Date.now() - lastScanTime < 1000) {
+        return;
+      }
+
+      setLastRfidScan(rfidUid);
+      (activeLockersRef.current as any).lastRfidScanTime = Date.now();
+
+      // Get current locker parents map
+      const currentLockerParents: { [key: number]: number | null } = {};
+      activeLockersRef.current.forEach(log => {
+        currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+      });
+
+      // Process RFID scan
+      processScannedRfid(rfidUid, currentLockerParents, activeLockersRef.current);
+    };
+
+    ndef.onreadingerror = (error: any) => {
+      console.error('RFID reading error:', error);
+      toast({
+        title: "RFID 읽기 오류",
+        description: error.message || "알 수 없는 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    };
+  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedRfid, toast]);
+
+  // Start NFC scanning
+  const startNfcScanning = useCallback(async () => {
+    try {
+      const ndef = new (window as any).NDEFReader();
+      await ndef.scan();
+      
+      setupNfcReader(ndef);
+      setIsRfidEnabled(true);
+      setShowNfcButton(false);
+      
+      toast({
+        title: "NFC 스캔 활성화",
+        description: "락카키를 핸드폰에 가져다 대면 자동으로 인식됩니다.",
+      });
+    } catch (error: any) {
+      console.error('Failed to start RFID scanning:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        toast({
+          title: "NFC 권한 거부",
+          description: "브라우저 설정에서 NFC 권한을 허용해주세요.",
+          variant: "destructive",
+        });
+      } else if (error.name === 'NotSupportedError') {
+        toast({
+          title: "NFC 미지원",
+          description: "이 기기에서 NFC를 지원하지 않습니다.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "NFC 스캔 실패",
+          description: error.message || "알 수 없는 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+      
+      setIsRfidEnabled(false);
+      setShowNfcButton(true);
+    }
+  }, [setupNfcReader, toast]);
+
   // Web NFC API for RFID scanning (13.56MHz NFC tags)
   useEffect(() => {
     // Check if warning was already dismissed
@@ -412,72 +498,37 @@ export default function Home() {
 
     // Check if HTTPS (required for Web NFC)
     if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      setRfidStatus("RFID 스캔은 HTTPS 연결이 필요합니다.");
       return;
     }
 
-    const startRfidScanning = async () => {
+    // Check NFC permission status
+    const checkNfcPermission = async () => {
       try {
-        const ndef = new (window as any).NDEFReader();
+        const permissionStatus = await (navigator as any).permissions.query({ name: 'nfc' });
         
-        // Request permission and start scanning
-        await ndef.scan();
-        
-        setIsRfidEnabled(true);
-        setRfidStatus("RFID 스캔 활성화됨 - 락카키를 태블릿에 가져다 대세요");
-
-        ndef.onreading = (event: any) => {
-          // Skip if a dialog is open
-          if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
-            return;
-          }
-
-          // Get RFID UID from serial number
-          const rfidUid = event.serialNumber.toUpperCase();
-          
-          // Prevent duplicate scans (within 1 second)
-          if (lastRfidScan === rfidUid) {
-            const timeSinceLastScan = Date.now() - (activeLockersRef.current as any).lastRfidScanTime;
-            if (timeSinceLastScan < 1000) {
-              return;
-            }
-          }
-
-          setLastRfidScan(rfidUid);
-          (activeLockersRef.current as any).lastRfidScanTime = Date.now();
-
-          // Get current locker parents map
-          const currentLockerParents: { [key: number]: number | null } = {};
-          activeLockersRef.current.forEach(log => {
-            currentLockerParents[log.lockerNumber] = log.parentLocker || null;
-          });
-
-          // Process RFID scan
-          processScannedRfid(rfidUid, currentLockerParents, activeLockersRef.current);
-        };
-
-        ndef.onreadingerror = (error: any) => {
-          console.error('RFID reading error:', error);
-          setRfidStatus(`RFID 읽기 오류: ${error.message || '알 수 없는 오류'}`);
-        };
-
-      } catch (error: any) {
-        console.error('Failed to start RFID scanning:', error);
-        
-        if (error.name === 'NotAllowedError') {
-          setRfidStatus("RFID 스캔 권한이 거부되었습니다. 브라우저 설정에서 NFC 권한을 허용해주세요.");
-        } else if (error.name === 'NotSupportedError') {
-          setRfidStatus("이 기기에서 NFC를 지원하지 않습니다.");
+        if (permissionStatus.state === 'granted') {
+          // Permission already granted - auto start scanning
+          startNfcScanning();
         } else {
-          setRfidStatus(`RFID 스캔 시작 실패: ${error.message || '알 수 없는 오류'}`);
+          // Permission not granted - show button
+          setShowNfcButton(true);
         }
         
-        setIsRfidEnabled(false);
+        // Listen for permission changes
+        permissionStatus.onchange = () => {
+          if (permissionStatus.state === 'granted') {
+            startNfcScanning();
+          }
+        };
+      } catch (error) {
+        console.error('Failed to check NFC permission:', error);
+        // If permission check fails, show button to let user try
+        setShowNfcButton(true);
       }
     };
 
-    startRfidScanning();
-  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedRfid, lastRfidScan]);
+    checkNfcPermission();
+  }, [startNfcScanning]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -1342,8 +1393,19 @@ export default function Home() {
                     className="text-xs w-fit"
                     data-testid="badge-rfid-status"
                   >
-                    RFID 활성화
+                    NFC 활성화
                   </Badge>
+                )}
+                {showNfcButton && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={startNfcScanning}
+                    data-testid="button-start-nfc"
+                    className="text-xs"
+                  >
+                    NFC 스캔 시작
+                  </Button>
                 )}
               </div>
             </div>
