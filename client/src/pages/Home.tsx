@@ -17,6 +17,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getBusinessDayRange, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
@@ -79,6 +89,8 @@ export default function Home() {
   const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
+  const [barcodeTestDialogOpen, setBarcodeTestDialogOpen] = useState(false);
+  const [testBarcodeInput, setTestBarcodeInput] = useState("");
 
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
@@ -1058,7 +1070,18 @@ export default function Home() {
                 <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
               </p>
             </div>
-            <h1 className="text-xl font-semibold">입실 관리</h1>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBarcodeTestDialogOpen(true)}
+                data-testid="button-barcode-test"
+                className="text-xs"
+              >
+                바코드테스트
+              </Button>
+              <h1 className="text-xl font-semibold">입실 관리</h1>
+            </div>
           </div>
           
           {/* 2행: 빈락카/주간야간/요금 (좌측) | 범례 (우측) */}
@@ -1235,6 +1258,80 @@ export default function Home() {
         description="패턴을 그려서 오늘현황 및 매출집계 패널을 열어주세요."
         testId="dialog-panel-pattern"
       />
+
+      {/* Barcode Test Dialog */}
+      <Dialog open={barcodeTestDialogOpen} onOpenChange={setBarcodeTestDialogOpen}>
+        <DialogContent data-testid="dialog-barcode-test">
+          <DialogHeader>
+            <DialogTitle>바코드 테스트</DialogTitle>
+            <DialogDescription>
+              바코드를 입력하여 등록된 락카 번호를 확인할 수 있습니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="test-barcode-input">바코드 입력</Label>
+              <Input
+                id="test-barcode-input"
+                type="text"
+                placeholder="바코드를 입력하세요"
+                value={testBarcodeInput}
+                onChange={(e) => setTestBarcodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
+                    if (lockerNumber) {
+                      toast({
+                        title: "바코드 확인 완료",
+                        description: `${testBarcodeInput.trim()} → ${lockerNumber}번 락카`,
+                      });
+                    } else {
+                      toast({
+                        title: "바코드 미등록",
+                        description: "등록되지 않은 바코드입니다.",
+                        variant: "destructive",
+                      });
+                    }
+                  }
+                }}
+                data-testid="input-test-barcode"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBarcodeTestDialogOpen(false);
+                setTestBarcodeInput("");
+              }}
+              data-testid="button-cancel-test"
+            >
+              닫기
+            </Button>
+            <Button
+              onClick={() => {
+                const lockerNumber = localDb.getLockerNumberByBarcode(testBarcodeInput.trim());
+                if (lockerNumber) {
+                  toast({
+                    title: "바코드 확인 완료",
+                    description: `${testBarcodeInput.trim()} → ${lockerNumber}번 락카`,
+                  });
+                } else {
+                  toast({
+                    title: "바코드 미등록",
+                    description: "등록되지 않은 바코드입니다.",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              data-testid="button-test-barcode"
+            >
+              테스트
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
