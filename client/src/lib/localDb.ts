@@ -743,6 +743,17 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 15: Create rfid_mappings table for RFID tag mappings
+    db.run(`
+      CREATE TABLE IF NOT EXISTS rfid_mappings (
+        id TEXT PRIMARY KEY,
+        rfid_uid TEXT NOT NULL UNIQUE,
+        locker_number INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -921,7 +932,18 @@ function createTables() {
     )
   `);
 
-  // Scan logs table (바코드 스캔 기록 추적)
+  // RFID mappings table (RFID 매핑: 락카키 RFID ↔ 락카번호)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS rfid_mappings (
+      id TEXT PRIMARY KEY,
+      rfid_uid TEXT NOT NULL UNIQUE,
+      locker_number INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  // Scan logs table (바코드/RFID 스캔 기록 추적)
   db.run(`
     CREATE TABLE IF NOT EXISTS scan_logs (
       id TEXT PRIMARY KEY,
@@ -948,7 +970,8 @@ export function forceRegenerateDatabase() {
     // Drop all existing tables
     const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
                    'system_metadata', 'additional_fee_events', 'additional_revenue_items', 
-                   'rental_transactions', 'expenses', 'closing_days', 'barcode_mappings', 'scan_logs'];
+                   'rental_transactions', 'expenses', 'closing_days', 'barcode_mappings', 
+                   'rfid_mappings', 'scan_logs'];
     
     tables.forEach(table => {
       try {
@@ -5104,6 +5127,150 @@ export function deleteBarcodeMappingById(id: string): boolean {
     return true;
   } catch (error) {
     console.error('Error deleting barcode mapping by id:', error);
+    return false;
+  }
+}
+
+// ============================================================================
+// RFID Mappings (RFID 매핑 관리)
+// ============================================================================
+
+export function saveRfidMapping(rfidUid: string, lockerNumber: number): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const now = new Date().toISOString();
+    const id = crypto.randomUUID();
+    
+    // Check if RFID UID already exists
+    const existing = db.exec(
+      'SELECT id, locker_number FROM rfid_mappings WHERE rfid_uid = ?',
+      [rfidUid]
+    );
+    
+    if (existing.length > 0 && existing[0].values.length > 0) {
+      // Update existing mapping
+      const existingLockerNumber = existing[0].values[0][1] as number;
+      
+      if (existingLockerNumber === lockerNumber) {
+        // Same mapping already exists
+        return true;
+      }
+      
+      // Update to new locker number
+      db.run(
+        'UPDATE rfid_mappings SET locker_number = ?, updated_at = ? WHERE rfid_uid = ?',
+        [lockerNumber, now, rfidUid]
+      );
+    } else {
+      // Insert new mapping
+      db.run(
+        'INSERT INTO rfid_mappings (id, rfid_uid, locker_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+        [id, rfidUid, lockerNumber, now, now]
+      );
+    }
+    
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error saving RFID mapping:', error);
+    return false;
+  }
+}
+
+export function getLockerNumberByRfid(rfidUid: string): number | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT locker_number FROM rfid_mappings WHERE rfid_uid = ?',
+      [rfidUid]
+    );
+    
+    if (result.length > 0 && result[0].values.length > 0) {
+      return result[0].values[0][0] as number;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting locker number by RFID:', error);
+    return null;
+  }
+}
+
+export function getRfidByLockerNumber(lockerNumber: number): string | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT rfid_uid FROM rfid_mappings WHERE locker_number = ?',
+      [lockerNumber]
+    );
+    
+    if (result.length > 0 && result[0].values.length > 0) {
+      return result[0].values[0][0] as string;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error getting RFID by locker number:', error);
+    return null;
+  }
+}
+
+export function getAllRfidMappings(): Array<{
+  id: string;
+  rfidUid: string;
+  lockerNumber: number;
+  createdAt: string;
+  updatedAt: string;
+}> {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      'SELECT id, rfid_uid, locker_number, created_at, updated_at FROM rfid_mappings ORDER BY locker_number'
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return [];
+    }
+    
+    return result[0].values.map((row: any) => ({
+      id: row[0],
+      rfidUid: row[1],
+      lockerNumber: row[2],
+      createdAt: row[3],
+      updatedAt: row[4],
+    }));
+  } catch (error) {
+    console.error('Error getting all RFID mappings:', error);
+    return [];
+  }
+}
+
+export function deleteRfidMapping(rfidUid: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    db.run('DELETE FROM rfid_mappings WHERE rfid_uid = ?', [rfidUid]);
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error deleting RFID mapping:', error);
+    return false;
+  }
+}
+
+export function deleteRfidMappingById(id: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    db.run('DELETE FROM rfid_mappings WHERE id = ?', [id]);
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error deleting RFID mapping by id:', error);
     return false;
   }
 }

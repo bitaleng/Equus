@@ -147,6 +147,15 @@ export const barcodeMappings = pgTable("barcode_mappings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// RFID Mappings Table - RFID 매핑 (락카키 RFID ↔ 락카번호)
+export const rfidMappings = pgTable("rfid_mappings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  rfidUid: varchar("rfid_uid").notNull().unique(), // RFID UID (13.56MHz NFC 태그 고유 ID)
+  lockerNumber: integer("locker_number").notNull(), // 락카 번호
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Insert Schemas
 export const insertLockerLogSchema = createInsertSchema(lockerLogs).omit({
   id: true,
@@ -304,6 +313,17 @@ export const updateBarcodeMappingSchema = z.object({
   lockerNumber: z.number().optional(),
 });
 
+export const insertRfidMappingSchema = createInsertSchema(rfidMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateRfidMappingSchema = z.object({
+  rfidUid: z.string().optional(),
+  lockerNumber: z.number().optional(),
+});
+
 // Types
 export type InsertLockerLog = z.infer<typeof insertLockerLogSchema>;
 export type LockerLog = typeof lockerLogs.$inferSelect;
@@ -336,3 +356,7 @@ export type UpdateClosingDay = z.infer<typeof updateClosingDaySchema>;
 export type BarcodeMapping = typeof barcodeMappings.$inferSelect;
 export type InsertBarcodeMapping = z.infer<typeof insertBarcodeMappingSchema>;
 export type UpdateBarcodeMapping = z.infer<typeof updateBarcodeMappingSchema>;
+
+export type RfidMapping = typeof rfidMappings.$inferSelect;
+export type InsertRfidMapping = z.infer<typeof insertRfidMappingSchema>;
+export type UpdateRfidMapping = z.infer<typeof updateRfidMappingSchema>;
