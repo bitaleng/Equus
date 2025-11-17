@@ -93,25 +93,10 @@ export default function Home() {
   const [barcodeTestDialogOpen, setBarcodeTestDialogOpen] = useState(false);
   const [testBarcodeInput, setTestBarcodeInput] = useState("");
 
-  // RFID scanning state
-  const [isRfidEnabled, setIsRfidEnabled] = useState(false);
-  const [rfidStatus, setRfidStatus] = useState<string>("");
-  const [lastRfidScan, setLastRfidScan] = useState<string | null>(null);
-  const [showNfcButton, setShowNfcButton] = useState(false);
-  const ndefReaderRef = useRef<any>(null);
-
-  // Unregistered RFID quick registration dialog
-  const [unregisteredRfidDialogOpen, setUnregisteredRfidDialogOpen] = useState(false);
-  const [unregisteredRfidUid, setUnregisteredRfidUid] = useState<string>("");
-  const [selectedLockerForRfid, setSelectedLockerForRfid] = useState<number | null>(null);
-
   // Barcode test button visibility (hidden by default, toggle with 5 clicks on title)
   const [showBarcodeTest, setShowBarcodeTest] = useState(false);
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Web NFC warning dialog
-  const [nfcWarningOpen, setNfcWarningOpen] = useState(false);
 
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
@@ -180,67 +165,6 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Process scanned RFID (shared logic for Web NFC API)
-  const processScannedRfid = useCallback((rfidUid: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
-    // Look up locker number by RFID UID
-    const lockerNumber = localDb.getLockerNumberByRfid(rfidUid);
-    
-    if (!lockerNumber) {
-      // Open quick registration dialog
-      setUnregisteredRfidUid(rfidUid);
-      setUnregisteredRfidDialogOpen(true);
-      return false;
-    }
-    
-    // Log the scan (for anti-fraud tracking)
-    try {
-      localDb.addScanLog(lockerNumber);
-    } catch (error) {
-      console.error('Failed to log RFID scan:', error);
-    }
-    
-    // Check if locker is currently in use
-    const isInUse = currentActiveLockers.some(log => log.lockerNumber === lockerNumber);
-    
-    if (!isInUse) {
-      // Empty locker: set new locker info and open dialog
-      const timeType = getTimeType(currentTime);
-      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
-      
-      setNewLockerInfo({ lockerNumber, timeType, basePrice });
-      setSelectedLocker(lockerNumber);
-      setDialogOpen(true);
-      
-      toast({
-        title: "RFID 스캔 성공",
-        description: `${lockerNumber}번 락카 입실`,
-      });
-      
-      return true;
-    } else {
-      // Occupied locker: check child locker protection
-      const parentLockerNumber = lockerParentsMap[lockerNumber];
-      
-      if (parentLockerNumber !== null && parentLockerNumber !== undefined) {
-        // This is a child locker
-        setChildLockerParent(parentLockerNumber);
-        setChildLockerAlertOpen(true);
-        return false;
-      } else {
-        // Regular locker: open exit dialog
-        setSelectedLocker(lockerNumber);
-        setDialogOpen(true);
-        
-        toast({
-          title: "RFID 스캔 성공",
-          description: `${lockerNumber}번 락카 퇴실`,
-        });
-        
-        return true;
-      }
-    }
-  }, [currentTime, dayPrice, nightPrice, toast]);
-
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
   const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
     // Look up locker number by barcode
@@ -301,49 +225,6 @@ export default function Home() {
     return true;
   }, [toast, currentTime, dayPrice, nightPrice]);
 
-  // Handle RFID quick registration
-  const handleRfidQuickRegister = useCallback(() => {
-    if (!selectedLockerForRfid || !unregisteredRfidUid) {
-      toast({
-        title: "입력 필요",
-        description: "락카 번호를 선택해주세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const success = localDb.saveRfidMapping(unregisteredRfidUid, selectedLockerForRfid);
-    
-    if (success) {
-      toast({
-        title: "RFID 등록 완료",
-        description: `${selectedLockerForRfid}번 락카에 RFID가 등록되었습니다.`,
-      });
-      
-      // Close dialog and reset
-      setUnregisteredRfidDialogOpen(false);
-      setUnregisteredRfidUid("");
-      setSelectedLockerForRfid(null);
-      
-      // Fetch fresh active lockers to ensure child locker protection works correctly
-      const freshActiveLockers = localDb.getActiveLockers();
-      const freshLockerParents: { [key: number]: number | null } = {};
-      freshActiveLockers.forEach(log => {
-        freshLockerParents[log.lockerNumber] = log.parentLocker || null;
-      });
-      
-      // Now call processScannedRfid with fresh data and the registered UID
-      // The mapping is now saved, so getLockerNumberByRfid will succeed
-      processScannedRfid(unregisteredRfidUid, freshLockerParents, freshActiveLockers);
-    } else {
-      toast({
-        title: "RFID 등록 실패",
-        description: "이미 등록된 RFID이거나 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    }
-  }, [selectedLockerForRfid, unregisteredRfidUid, processScannedRfid, toast]);
-
   // Global barcode scanner listener
   useEffect(() => {
     let barcodeBuffer = '';
@@ -398,137 +279,6 @@ export default function Home() {
       document.removeEventListener('keypress', handleBarcodeScan);
     };
   }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
-
-  // Setup NFC reading handler
-  const setupNfcReader = useCallback((ndef: any) => {
-    ndefReaderRef.current = ndef;
-
-    ndef.onreading = (event: any) => {
-      // Skip if a dialog is open
-      if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
-        return;
-      }
-
-      // Get RFID UID from serial number
-      const rfidUid = event.serialNumber.toUpperCase();
-      
-      // Prevent duplicate scans (within 1 second)
-      const lastScanTime = (activeLockersRef.current as any).lastRfidScanTime;
-      if (lastScanTime && Date.now() - lastScanTime < 1000) {
-        return;
-      }
-
-      setLastRfidScan(rfidUid);
-      (activeLockersRef.current as any).lastRfidScanTime = Date.now();
-
-      // Get current locker parents map
-      const currentLockerParents: { [key: number]: number | null } = {};
-      activeLockersRef.current.forEach(log => {
-        currentLockerParents[log.lockerNumber] = log.parentLocker || null;
-      });
-
-      // Process RFID scan
-      processScannedRfid(rfidUid, currentLockerParents, activeLockersRef.current);
-    };
-
-    ndef.onreadingerror = (error: any) => {
-      console.error('RFID reading error:', error);
-      toast({
-        title: "RFID 읽기 오류",
-        description: error.message || "알 수 없는 오류가 발생했습니다.",
-        variant: "destructive",
-      });
-    };
-  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedRfid, toast]);
-
-  // Start NFC scanning
-  const startNfcScanning = useCallback(async () => {
-    try {
-      const ndef = new (window as any).NDEFReader();
-      await ndef.scan();
-      
-      setupNfcReader(ndef);
-      setIsRfidEnabled(true);
-      setShowNfcButton(false);
-      
-      toast({
-        title: "NFC 스캔 활성화",
-        description: "락카키를 핸드폰에 가져다 대면 자동으로 인식됩니다.",
-      });
-    } catch (error: any) {
-      console.error('Failed to start RFID scanning:', error);
-      
-      if (error.name === 'NotAllowedError') {
-        toast({
-          title: "NFC 권한 거부",
-          description: "브라우저 설정에서 NFC 권한을 허용해주세요.",
-          variant: "destructive",
-        });
-      } else if (error.name === 'NotSupportedError') {
-        toast({
-          title: "NFC 미지원",
-          description: "이 기기에서 NFC를 지원하지 않습니다.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "NFC 스캔 실패",
-          description: error.message || "알 수 없는 오류가 발생했습니다.",
-          variant: "destructive",
-        });
-      }
-      
-      setIsRfidEnabled(false);
-      setShowNfcButton(true);
-    }
-  }, [setupNfcReader, toast]);
-
-  // Web NFC API for RFID scanning (13.56MHz NFC tags)
-  useEffect(() => {
-    // Check if warning was already dismissed
-    const warningDismissed = localStorage.getItem('nfc_warning_dismissed') === 'true';
-
-    // Check if Web NFC is supported
-    if (!('NDEFReader' in window)) {
-      if (!warningDismissed) {
-        setNfcWarningOpen(true);
-      }
-      return;
-    }
-
-    // Check if HTTPS (required for Web NFC)
-    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-      return;
-    }
-
-    // Check NFC permission status
-    const checkNfcPermission = async () => {
-      try {
-        const permissionStatus = await (navigator as any).permissions.query({ name: 'nfc' });
-        
-        if (permissionStatus.state === 'granted') {
-          // Permission already granted - auto start scanning
-          startNfcScanning();
-        } else {
-          // Permission not granted - show button
-          setShowNfcButton(true);
-        }
-        
-        // Listen for permission changes
-        permissionStatus.onchange = () => {
-          if (permissionStatus.state === 'granted') {
-            startNfcScanning();
-          }
-        };
-      } catch (error) {
-        console.error('Failed to check NFC permission:', error);
-        // If permission check fails, show button to let user try
-        setShowNfcButton(true);
-      }
-    };
-
-    checkNfcPermission();
-  }, [startNfcScanning]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -1382,32 +1132,10 @@ export default function Home() {
               >
                 {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </Button>
-              <div className="flex flex-col gap-1">
-                <p className="tabular-nums">
-                  <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                  <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-                </p>
-                {isRfidEnabled && (
-                  <Badge 
-                    variant="default"
-                    className="text-xs w-fit"
-                    data-testid="badge-rfid-status"
-                  >
-                    NFC 활성화
-                  </Badge>
-                )}
-                {showNfcButton && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={startNfcScanning}
-                    data-testid="button-start-nfc"
-                    className="text-xs"
-                  >
-                    NFC 스캔 시작
-                  </Button>
-                )}
-              </div>
+              <p className="tabular-nums">
+                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+              </p>
             </div>
             <div className="flex items-center gap-2">
               {showBarcodeTest && (
@@ -1596,37 +1324,6 @@ export default function Home() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Web NFC API Warning Dialog */}
-      <AlertDialog open={nfcWarningOpen} onOpenChange={setNfcWarningOpen}>
-        <AlertDialogContent data-testid="dialog-nfc-warning">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Web NFC API 미지원</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p className="text-base">
-                현재 브라우저에서 Web NFC API를 지원하지 않습니다.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                RFID 락카키 스캔 기능을 사용하려면 <span className="font-semibold">Chrome for Android</span>를 사용하세요.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                외부 USB RFID 리더기(키보드 모드)는 정상 작동합니다.
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction 
-              onClick={() => {
-                setNfcWarningOpen(false);
-                localStorage.setItem('nfc_warning_dismissed', 'true');
-              }}
-              data-testid="button-nfc-warning-ok"
-            >
-              확인
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Pattern Lock Dialog for Left Panel Expansion */}
       <PatternLockDialog
         open={showPatternDialog}
@@ -1720,67 +1417,6 @@ export default function Home() {
               data-testid="button-test-barcode"
             >
               테스트
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Unregistered RFID Quick Registration Dialog */}
-      <Dialog open={unregisteredRfidDialogOpen} onOpenChange={setUnregisteredRfidDialogOpen}>
-        <DialogContent data-testid="dialog-rfid-quick-register">
-          <DialogHeader>
-            <DialogTitle>RFID 즉시 등록</DialogTitle>
-            <DialogDescription>
-              등록되지 않은 RFID 태그가 감지되었습니다. 락카 번호를 선택하여 등록하세요.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="rfid-uid-display">RFID UID</Label>
-              <Input
-                id="rfid-uid-display"
-                type="text"
-                value={unregisteredRfidUid}
-                readOnly
-                className="font-mono bg-muted"
-                data-testid="input-rfid-uid-display"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="locker-select-rfid">락카 번호 선택</Label>
-              <select
-                id="locker-select-rfid"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                value={selectedLockerForRfid || ""}
-                onChange={(e) => setSelectedLockerForRfid(e.target.value ? parseInt(e.target.value) : null)}
-                data-testid="select-locker-for-rfid"
-              >
-                <option value="" disabled>락카 번호를 선택하세요</option>
-                {lockerGroups.flatMap(group => 
-                  Array.from({ length: group.endNumber - group.startNumber + 1 }, (_, i) => group.startNumber + i)
-                ).map(num => (
-                  <option key={num} value={num}>{num}번</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setUnregisteredRfidDialogOpen(false);
-                setUnregisteredRfidUid("");
-                setSelectedLockerForRfid(null);
-              }}
-              data-testid="button-cancel-rfid-register"
-            >
-              취소
-            </Button>
-            <Button
-              onClick={handleRfidQuickRegister}
-              data-testid="button-confirm-rfid-register"
-            >
-              등록
             </Button>
           </DialogFooter>
         </DialogContent>
