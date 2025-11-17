@@ -129,6 +129,17 @@ export default function Settings() {
   const [manualBarcodeInput, setManualBarcodeInput] = useState("");
   const [manualLockerNumber, setManualLockerNumber] = useState<number | null>(null);
 
+  // RFID mappings states
+  const [rfidMappings, setRfidMappings] = useState<Array<{
+    id: string;
+    rfidUid: string;
+    lockerNumber: number;
+    createdAt: string;
+    updatedAt: string;
+  }>>([]);
+  const [manualRfidInput, setManualRfidInput] = useState("");
+  const [manualRfidLockerNumber, setManualRfidLockerNumber] = useState<number | null>(null);
+
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -160,6 +171,7 @@ export default function Settings() {
     loadRevenueItems();
     loadExpenseCategories();
     loadBarcodeMappings();
+    loadRfidMappings();
     
     // Load cash register from localStorage
     const savedCashRegister = localStorage.getItem('cash_register');
@@ -186,6 +198,10 @@ export default function Settings() {
 
   const loadBarcodeMappings = () => {
     setBarcodeMappings(localDb.getAllBarcodeMappings());
+  };
+
+  const loadRfidMappings = () => {
+    setRfidMappings(localDb.getAllRfidMappings());
   };
 
   const handleStartBarcodeScan = (lockerNumber: number) => {
@@ -267,6 +283,55 @@ export default function Settings() {
         toast({
           title: "바코드 삭제 실패",
           description: "바코드 삭제 중 오류가 발생했습니다.",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleManualRfidRegister = () => {
+    if (!manualRfidLockerNumber || manualRfidLockerNumber <= 0 || !manualRfidInput.trim()) {
+      toast({
+        title: "입력 필요",
+        description: "락카 번호와 RFID UID를 모두 입력해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const success = localDb.saveRfidMapping(manualRfidInput.trim(), manualRfidLockerNumber);
+    
+    if (success) {
+      loadRfidMappings();
+      setManualRfidInput("");
+      setManualRfidLockerNumber(null);
+      toast({
+        title: "RFID 등록 완료",
+        description: `${manualRfidLockerNumber}번 락카에 RFID가 등록되었습니다.`,
+      });
+    } else {
+      toast({
+        title: "RFID 등록 실패",
+        description: "이미 등록된 RFID이거나 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteRfidMapping = (id: string, lockerNumber: number) => {
+    if (confirm(`${lockerNumber}번 락카의 RFID 매핑을 삭제하시겠습니까?`)) {
+      const success = localDb.deleteRfidMappingById(id);
+      
+      if (success) {
+        loadRfidMappings();
+        toast({
+          title: "RFID 삭제 완료",
+          description: "RFID 매핑이 삭제되었습니다.",
+        });
+      } else {
+        toast({
+          title: "RFID 삭제 실패",
+          description: "RFID 삭제 중 오류가 발생했습니다.",
           variant: "destructive",
         });
       }
@@ -1281,6 +1346,111 @@ export default function Settings() {
                           size="icon"
                           onClick={() => handleDeleteBarcodeMapping(mapping.id, mapping.lockerNumber)}
                           data-testid={`button-delete-barcode-${mapping.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* RFID 관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Barcode className="h-5 w-5" />
+                    RFID 관리
+                  </CardTitle>
+                  <CardDescription>
+                    락카키 RFID 태그를 등록하여 락카번호와 매핑할 수 있습니다 (13.56MHz NFC)
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* 수동 입력 모드 */}
+              <div className="mb-6 p-4 border rounded-lg bg-muted/50">
+                <h4 className="font-medium mb-3">RFID UID 수동 입력</h4>
+                <p className="text-sm text-muted-foreground mb-4">
+                  RFID 리더기로 읽은 UID를 직접 입력하거나, 입실관리 페이지에서 Web NFC로 자동 등록할 수 있습니다
+                </p>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="manual-rfid-locker-select">락카 번호 선택</Label>
+                    <select
+                      id="manual-rfid-locker-select"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1"
+                      value={manualRfidLockerNumber || ""}
+                      onChange={(e) => setManualRfidLockerNumber(e.target.value ? parseInt(e.target.value) : null)}
+                      data-testid="select-manual-rfid-locker-number"
+                    >
+                      <option value="" disabled>락카 번호를 선택하세요</option>
+                      {lockerGroups.flatMap(group => 
+                        Array.from({ length: group.endNumber - group.startNumber + 1 }, (_, i) => group.startNumber + i)
+                      ).map(num => (
+                        <option key={num} value={num}>{num}번</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-rfid-input">RFID UID 입력</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        id="manual-rfid-input"
+                        type="text"
+                        placeholder="RFID UID를 입력하세요 (예: 04A1B2C3D4E5F6)"
+                        value={manualRfidInput}
+                        onChange={(e) => setManualRfidInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleManualRfidRegister();
+                          }
+                        }}
+                        data-testid="input-manual-rfid"
+                      />
+                      <Button
+                        onClick={handleManualRfidRegister}
+                        data-testid="button-manual-rfid-register"
+                      >
+                        등록
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-4">
+                <h4 className="font-medium mb-3">등록된 RFID ({rfidMappings.length}개)</h4>
+                {rfidMappings.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">
+                    등록된 RFID가 없습니다
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {rfidMappings.map((mapping) => (
+                      <div
+                        key={mapping.id}
+                        className="flex items-center justify-between p-3 border rounded-lg"
+                        data-testid={`rfid-${mapping.id}`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <span className="font-medium">{mapping.lockerNumber}번</span>
+                            <span className="text-sm text-muted-foreground font-mono">
+                              {mapping.rfidUid}
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteRfidMapping(mapping.id, mapping.lockerNumber)}
+                          data-testid={`button-delete-rfid-${mapping.id}`}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
