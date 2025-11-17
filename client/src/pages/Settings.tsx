@@ -126,6 +126,8 @@ export default function Settings() {
   const [scanningLockerNumber, setScanningLockerNumber] = useState<number | null>(null);
   const [scannedBarcode, setScannedBarcode] = useState("");
   const [selectedBarcodeLocker, setSelectedBarcodeLocker] = useState<number | null>(null);
+  const [manualBarcodeInput, setManualBarcodeInput] = useState("");
+  const [manualLockerNumber, setManualLockerNumber] = useState<number | null>(null);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -221,6 +223,35 @@ export default function Settings() {
     setScannedBarcode("");
   };
 
+
+  const handleManualBarcodeRegister = () => {
+    if (!manualLockerNumber || !manualBarcodeInput.trim()) {
+      toast({
+        title: "입력 필요",
+        description: "락카 번호와 바코드를 모두 입력해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const success = localDb.saveBarcodeMapping(manualBarcodeInput.trim(), manualLockerNumber);
+    
+    if (success) {
+      loadBarcodeMappings();
+      setManualBarcodeInput("");
+      setManualLockerNumber(null);
+      toast({
+        title: "바코드 등록 완료",
+        description: `${manualLockerNumber}번 락카에 바코드가 등록되었습니다.`,
+      });
+    } else {
+      toast({
+        title: "바코드 등록 실패",
+        description: "바코드 등록 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleDeleteBarcodeMapping = (id: string, lockerNumber: number) => {
     if (confirm(`${lockerNumber}번 락카의 바코드 매핑을 삭제하시겠습니까?`)) {
@@ -1135,7 +1166,9 @@ export default function Settings() {
                 </div>
               )}
 
-              <div className="mb-4">
+              {/* 자동 스캔 모드 */}
+              <div className="mb-6">
+                <h4 className="font-medium mb-3">자동 스캔 등록</h4>
                 <Label htmlFor="locker-select">락카 번호 선택</Label>
                 <div className="flex gap-2 mt-2">
                   <select
@@ -1170,6 +1203,54 @@ export default function Settings() {
                     <Barcode className="h-4 w-4 mr-2" />
                     스캔 시작
                   </Button>
+                </div>
+              </div>
+
+              {/* 수동 입력 모드 */}
+              <div className="mb-6 p-4 border rounded-lg bg-muted/50">
+                <h4 className="font-medium mb-3">수동 입력 등록 (바코드 테스트용)</h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="manual-locker-select">락카 번호 선택</Label>
+                    <select
+                      id="manual-locker-select"
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring mt-1"
+                      value={manualLockerNumber || ""}
+                      onChange={(e) => setManualLockerNumber(e.target.value ? parseInt(e.target.value) : null)}
+                      data-testid="select-manual-locker-number"
+                    >
+                      <option value="" disabled>락카 번호를 선택하세요</option>
+                      {lockerGroups.flatMap(group => 
+                        Array.from({ length: group.endNumber - group.startNumber + 1 }, (_, i) => group.startNumber + i)
+                      ).map(num => (
+                        <option key={num} value={num}>{num}번</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-barcode-input">바코드 입력</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input
+                        id="manual-barcode-input"
+                        type="text"
+                        placeholder="바코드를 입력하세요"
+                        value={manualBarcodeInput}
+                        onChange={(e) => setManualBarcodeInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleManualBarcodeRegister();
+                          }
+                        }}
+                        data-testid="input-manual-barcode"
+                      />
+                      <Button
+                        onClick={handleManualBarcodeRegister}
+                        data-testid="button-manual-register"
+                      >
+                        등록
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
