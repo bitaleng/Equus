@@ -14,7 +14,7 @@ Preferred communication style: Simple, everyday language.
 The application uses React with TypeScript, Wouter for routing, and Vite for building. UI components are styled with shadcn/ui and Tailwind CSS, prioritizing accessibility and customizability. The layout is optimized for desktop/tablet with a touch-first design, featuring high-contrast visuals and tactile feedback.
 
 ### Technical Implementations
-The system operates as a PWA with offline capabilities, utilizing a Service Worker for caching. All operations are client-side, with no backend API calls. Business logic includes custom business day calculations (e.g., 10:00 AM boundary) and time-based pricing, with all datetime operations using Korea Standard Time (KST) via `date-fns-tz`. Data is stored locally using SQLite WASM (`sql.js`) persisted in `localStorage`, across tables like `locker_logs`, `locker_daily_summaries`, `system_metadata`, `expenses`, and `closing_days`.
+The system operates as a PWA with offline capabilities, utilizing a Service Worker for caching. All operations are client-side, with no backend API calls. Business logic includes custom business day calculations (e.g., 10:00 AM boundary) and time-based pricing, with all datetime operations using Korea Standard Time (KST) via `date-fns-tz`. Data is stored locally using SQLite WASM (`sql.js`) persisted in `localStorage`, across tables like `locker_logs`, `locker_daily_summaries`, `system_metadata`, `expenses`, `closing_days`, and `scan_logs`.
 
 ### Feature Specifications
 Key features include:
@@ -25,6 +25,7 @@ Key features include:
 - Robust handling of additional fees, ensuring independent payment method tracking.
 - Accurate revenue reporting for rental items, distinguishing rental fees from deposit handling.
 - Enhanced logging and filtering for historical data, including detailed statistics.
+- Barcode scan logging system for anti-theft monitoring, tracking all barcode scans with processed status and business day tracking.
 - Data export functionality to Excel (.xlsx) and PDF.
 - Automated data cleanup for records older than one year and manual data reset options.
 
