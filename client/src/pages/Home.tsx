@@ -135,7 +135,7 @@ export default function Home() {
   }, []);
 
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
-  const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }) => {
+  const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
     // Look up locker number by barcode
     const lockerNumber = localDb.getLockerNumberByBarcode(barcode);
     
@@ -155,14 +155,15 @@ export default function Home() {
       console.error('Failed to log scan:', error);
     }
     
-    // Check if this is a child locker
-    const parentLockerNumber = lockerParentsMap[lockerNumber];
-    if (parentLockerNumber) {
-      // Child locker: show alert only
-      setChildLockerParent(parentLockerNumber);
-      setChildLockerAlertOpen(true);
-    } else {
-      // Parent or independent locker: open dialog
+    // Check if locker is currently in use
+    const isInUse = currentActiveLockers.some(log => log.lockerNumber === lockerNumber);
+    
+    if (!isInUse) {
+      // Empty locker: set new locker info and open dialog
+      const timeType = getTimeType(currentTime);
+      const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+      
+      setNewLockerInfo({ lockerNumber, timeType, basePrice });
       setSelectedLocker(lockerNumber);
       setDialogOpen(true);
       
@@ -170,10 +171,28 @@ export default function Home() {
         title: "락카 선택",
         description: `${lockerNumber}번 락카가 선택되었습니다.`,
       });
+    } else {
+      // Locker in use: check if this is a child locker
+      const parentLockerNumber = lockerParentsMap[lockerNumber];
+      if (parentLockerNumber) {
+        // Child locker: show alert only
+        setChildLockerParent(parentLockerNumber);
+        setChildLockerAlertOpen(true);
+      } else {
+        // Parent or independent locker: open dialog
+        setNewLockerInfo(null);
+        setSelectedLocker(lockerNumber);
+        setDialogOpen(true);
+        
+        toast({
+          title: "락카 선택",
+          description: `${lockerNumber}번 락카가 선택되었습니다.`,
+        });
+      }
     }
     
     return true;
-  }, [toast]);
+  }, [toast, currentTime, dayPrice, nightPrice]);
 
   // Global barcode scanner listener
   useEffect(() => {
@@ -210,7 +229,7 @@ export default function Home() {
           currentLockerParents[log.lockerNumber] = log.parentLocker || null;
         });
         
-        processScannedBarcode(barcode, currentLockerParents);
+        processScannedBarcode(barcode, currentLockerParents, activeLockersRef.current);
         
         e.preventDefault();
         return;
@@ -1308,7 +1327,7 @@ export default function Home() {
                       currentLockerParents[log.lockerNumber] = log.parentLocker || null;
                     });
                     
-                    const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents);
+                    const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents, activeLockers);
                     if (success) {
                       setBarcodeTestDialogOpen(false);
                       setTestBarcodeInput("");
@@ -1347,7 +1366,7 @@ export default function Home() {
                   currentLockerParents[log.lockerNumber] = log.parentLocker || null;
                 });
                 
-                const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents);
+                const success = processScannedBarcode(testBarcodeInput.trim(), currentLockerParents, activeLockers);
                 if (success) {
                   setBarcodeTestDialogOpen(false);
                   setTestBarcodeInput("");
