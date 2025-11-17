@@ -732,6 +732,17 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 14: Create scan_logs table for tracking all barcode scans
+    db.run(`
+      CREATE TABLE IF NOT EXISTS scan_logs (
+        id TEXT PRIMARY KEY,
+        locker_number INTEGER NOT NULL,
+        scan_time TEXT NOT NULL,
+        business_day TEXT NOT NULL,
+        processed INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -910,6 +921,17 @@ function createTables() {
     )
   `);
 
+  // Scan logs table (바코드 스캔 기록 추적)
+  db.run(`
+    CREATE TABLE IF NOT EXISTS scan_logs (
+      id TEXT PRIMARY KEY,
+      locker_number INTEGER NOT NULL,
+      scan_time TEXT NOT NULL,
+      business_day TEXT NOT NULL,
+      processed INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
   saveDatabase();
 }
 
@@ -926,7 +948,7 @@ export function forceRegenerateDatabase() {
     // Drop all existing tables
     const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
                    'system_metadata', 'additional_fee_events', 'additional_revenue_items', 
-                   'rental_transactions', 'expenses', 'closing_days', 'barcode_mappings'];
+                   'rental_transactions', 'expenses', 'closing_days', 'barcode_mappings', 'scan_logs'];
     
     tables.forEach(table => {
       try {
@@ -5083,5 +5105,163 @@ export function deleteBarcodeMappingById(id: string): boolean {
   } catch (error) {
     console.error('Error deleting barcode mapping by id:', error);
     return false;
+  }
+}
+
+// ==================== Scan Logs Management ====================
+
+export interface ScanLog {
+  id: string;
+  lockerNumber: number;
+  scanTime: string;
+  businessDay: string;
+  processed: number;
+}
+
+// Add scan log when barcode is scanned
+export function addScanLog(lockerNumber: number): string {
+  if (!db) throw new Error('Database not initialized');
+  
+  const id = crypto.randomUUID();
+  const scanTime = new Date().toISOString();
+  const businessDay = getBusinessDay(scanTime);
+  
+  try {
+    db.run(
+      `INSERT INTO scan_logs (id, locker_number, scan_time, business_day, processed)
+       VALUES (?, ?, ?, ?, 0)`,
+      [id, lockerNumber, scanTime, businessDay]
+    );
+    saveDatabase();
+    return id;
+  } catch (error) {
+    console.error('Error adding scan log:', error);
+    throw error;
+  }
+}
+
+// Get scan logs with optional date filtering
+export function getScanLogs(startDate?: string, endDate?: string): ScanLog[] {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    let query = 'SELECT * FROM scan_logs';
+    const params: any[] = [];
+    
+    if (startDate && endDate) {
+      query += ' WHERE scan_time >= ? AND scan_time < ?';
+      params.push(startDate, endDate);
+    } else if (startDate) {
+      query += ' WHERE scan_time >= ?';
+      params.push(startDate);
+    } else if (endDate) {
+      query += ' WHERE scan_time < ?';
+      params.push(endDate);
+    }
+    
+    query += ' ORDER BY scan_time DESC';
+    
+    const result = db.exec(query, params);
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return [];
+    }
+    
+    return result[0].values.map((row: any) => ({
+      id: row[0],
+      lockerNumber: row[1],
+      scanTime: row[2],
+      businessDay: row[3],
+      processed: row[4],
+    }));
+  } catch (error) {
+    console.error('Error getting scan logs:', error);
+    return [];
+  }
+}
+
+// Mark scan as processed when check-in is completed
+export function markScanAsProcessed(scanId: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    db.run(
+      'UPDATE scan_logs SET processed = 1 WHERE id = ?',
+      [scanId]
+    );
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error marking scan as processed:', error);
+    return false;
+  }
+}
+
+// Get unprocessed scans (scans without check-in)
+export function getUnprocessedScans(businessDay?: string): ScanLog[] {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    let query = 'SELECT * FROM scan_logs WHERE processed = 0';
+    const params: any[] = [];
+    
+    if (businessDay) {
+      query += ' AND business_day = ?';
+      params.push(businessDay);
+    }
+    
+    query += ' ORDER BY scan_time DESC';
+    
+    const result = db.exec(query, params);
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return [];
+    }
+    
+    return result[0].values.map((row: any) => ({
+      id: row[0],
+      lockerNumber: row[1],
+      scanTime: row[2],
+      businessDay: row[3],
+      processed: row[4],
+    }));
+  } catch (error) {
+    console.error('Error getting unprocessed scans:', error);
+    return [];
+  }
+}
+
+// Get scan statistics for a business day
+export function getScanStats(businessDay: string): {
+  totalScans: number;
+  processedScans: number;
+  unprocessedScans: number;
+} {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      `SELECT 
+        COUNT(*) as total,
+        SUM(CASE WHEN processed = 1 THEN 1 ELSE 0 END) as processed,
+        SUM(CASE WHEN processed = 0 THEN 1 ELSE 0 END) as unprocessed
+       FROM scan_logs
+       WHERE business_day = ?`,
+      [businessDay]
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { totalScans: 0, processedScans: 0, unprocessedScans: 0 };
+    }
+    
+    const row = result[0].values[0];
+    return {
+      totalScans: row[0] as number,
+      processedScans: row[1] as number,
+      unprocessedScans: row[2] as number,
+    };
+  } catch (error) {
+    console.error('Error getting scan stats:', error);
+    return { totalScans: 0, processedScans: 0, unprocessedScans: 0 };
   }
 }
