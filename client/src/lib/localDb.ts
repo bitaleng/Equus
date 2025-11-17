@@ -5266,3 +5266,37 @@ export function getScanStats(businessDay: string): {
     return { totalScans: 0, processedScans: 0, unprocessedScans: 0 };
   }
 }
+
+// Mark the most recent unprocessed scan for a locker as processed
+export function markLatestScanAsProcessedByLocker(lockerNumber: number): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    // Find the most recent unprocessed scan for this locker
+    const result = db.exec(
+      `SELECT id FROM scan_logs 
+       WHERE locker_number = ? AND processed = 0 
+       ORDER BY scan_time DESC 
+       LIMIT 1`,
+      [lockerNumber]
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      // No unprocessed scan found - this is normal (e.g., manual locker click without barcode scan)
+      return false;
+    }
+    
+    const scanId = result[0].values[0][0] as string;
+    
+    // Mark it as processed
+    db.run(
+      'UPDATE scan_logs SET processed = 1 WHERE id = ?',
+      [scanId]
+    );
+    saveDatabase();
+    return true;
+  } catch (error) {
+    console.error('Error marking latest scan as processed:', error);
+    return false;
+  }
+}
