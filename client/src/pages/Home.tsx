@@ -103,6 +103,14 @@ export default function Home() {
   const [unregisteredRfidUid, setUnregisteredRfidUid] = useState<string>("");
   const [selectedLockerForRfid, setSelectedLockerForRfid] = useState<number | null>(null);
 
+  // Barcode test button visibility (hidden by default, toggle with 5 clicks on title)
+  const [showBarcodeTest, setShowBarcodeTest] = useState(false);
+  const clickCountRef = useRef(0);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Web NFC warning dialog
+  const [nfcWarningOpen, setNfcWarningOpen] = useState(false);
+
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
@@ -125,6 +133,31 @@ export default function Home() {
     } else {
       // Collapsing panel - no pattern required
       setIsPanelCollapsed(true);
+    }
+  };
+
+  // Toggle barcode test button with 5 consecutive clicks on title
+  const handleTitleClick = () => {
+    clickCountRef.current += 1;
+
+    // Clear existing timer
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+
+    // Reset count after 2 seconds of inactivity
+    clickTimerRef.current = setTimeout(() => {
+      clickCountRef.current = 0;
+    }, 2000);
+
+    // Toggle on 5th click
+    if (clickCountRef.current >= 5) {
+      setShowBarcodeTest(prev => !prev);
+      clickCountRef.current = 0;
+      toast({
+        title: showBarcodeTest ? "바코드 테스트 숨김" : "바코드 테스트 표시",
+        description: showBarcodeTest ? "바코드 테스트 버튼이 숨겨졌습니다." : "바코드 테스트 버튼이 표시되었습니다.",
+      });
     }
   };
   
@@ -366,9 +399,14 @@ export default function Home() {
 
   // Web NFC API for RFID scanning (13.56MHz NFC tags)
   useEffect(() => {
+    // Check if warning was already dismissed
+    const warningDismissed = localStorage.getItem('nfc_warning_dismissed') === 'true';
+
     // Check if Web NFC is supported
     if (!('NDEFReader' in window)) {
-      setRfidStatus("Web NFC API를 지원하지 않는 브라우저입니다. Chrome for Android를 사용하세요.");
+      if (!warningDismissed) {
+        setNfcWarningOpen(true);
+      }
       return;
     }
 
@@ -1298,28 +1336,36 @@ export default function Home() {
                   <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                   <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
                 </p>
-                {rfidStatus && (
+                {isRfidEnabled && (
                   <Badge 
-                    variant={isRfidEnabled ? "default" : "secondary"}
+                    variant="default"
                     className="text-xs w-fit"
                     data-testid="badge-rfid-status"
                   >
-                    {isRfidEnabled ? "RFID 활성화" : rfidStatus}
+                    RFID 활성화
                   </Badge>
                 )}
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setBarcodeTestDialogOpen(true)}
-                data-testid="button-barcode-test"
-                className="text-xs"
+              {showBarcodeTest && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBarcodeTestDialogOpen(true)}
+                  data-testid="button-barcode-test"
+                  className="text-xs"
+                >
+                  바코드테스트
+                </Button>
+              )}
+              <h1 
+                className="text-xl font-semibold cursor-pointer select-none" 
+                onClick={handleTitleClick}
+                data-testid="title-entry-management"
               >
-                바코드테스트
-              </Button>
-              <h1 className="text-xl font-semibold">입실 관리</h1>
+                입실 관리
+              </h1>
             </div>
           </div>
           
@@ -1481,6 +1527,37 @@ export default function Home() {
             <AlertDialogAction 
               onClick={() => setChildLockerAlertOpen(false)}
               data-testid="button-child-locker-ok"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Web NFC API Warning Dialog */}
+      <AlertDialog open={nfcWarningOpen} onOpenChange={setNfcWarningOpen}>
+        <AlertDialogContent data-testid="dialog-nfc-warning">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Web NFC API 미지원</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="text-base">
+                현재 브라우저에서 Web NFC API를 지원하지 않습니다.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                RFID 락카키 스캔 기능을 사용하려면 <span className="font-semibold">Chrome for Android</span>를 사용하세요.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                외부 USB RFID 리더기(키보드 모드)는 정상 작동합니다.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction 
+              onClick={() => {
+                setNfcWarningOpen(false);
+                localStorage.setItem('nfc_warning_dismissed', 'true');
+              }}
+              data-testid="button-nfc-warning-ok"
             >
               확인
             </AlertDialogAction>
