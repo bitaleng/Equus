@@ -98,6 +98,11 @@ export default function Home() {
   const [rfidStatus, setRfidStatus] = useState<string>("");
   const [lastRfidScan, setLastRfidScan] = useState<string | null>(null);
 
+  // Unregistered RFID quick registration dialog
+  const [unregisteredRfidDialogOpen, setUnregisteredRfidDialogOpen] = useState(false);
+  const [unregisteredRfidUid, setUnregisteredRfidUid] = useState<string>("");
+  const [selectedLockerForRfid, setSelectedLockerForRfid] = useState<number | null>(null);
+
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
@@ -146,11 +151,9 @@ export default function Home() {
     const lockerNumber = localDb.getLockerNumberByRfid(rfidUid);
     
     if (!lockerNumber) {
-      toast({
-        title: "RFID 미등록",
-        description: "등록되지 않은 RFID 태그입니다.",
-        variant: "destructive",
-      });
+      // Open quick registration dialog
+      setUnregisteredRfidUid(rfidUid);
+      setUnregisteredRfidDialogOpen(true);
       return false;
     }
     
@@ -262,6 +265,49 @@ export default function Home() {
     
     return true;
   }, [toast, currentTime, dayPrice, nightPrice]);
+
+  // Handle RFID quick registration
+  const handleRfidQuickRegister = useCallback(() => {
+    if (!selectedLockerForRfid || !unregisteredRfidUid) {
+      toast({
+        title: "입력 필요",
+        description: "락카 번호를 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const success = localDb.saveRfidMapping(unregisteredRfidUid, selectedLockerForRfid);
+    
+    if (success) {
+      toast({
+        title: "RFID 등록 완료",
+        description: `${selectedLockerForRfid}번 락카에 RFID가 등록되었습니다.`,
+      });
+      
+      // Close dialog and reset
+      setUnregisteredRfidDialogOpen(false);
+      setUnregisteredRfidUid("");
+      setSelectedLockerForRfid(null);
+      
+      // Fetch fresh active lockers to ensure child locker protection works correctly
+      const freshActiveLockers = localDb.getActiveLockers();
+      const freshLockerParents: { [key: number]: number | null } = {};
+      freshActiveLockers.forEach(log => {
+        freshLockerParents[log.lockerNumber] = log.parentLocker || null;
+      });
+      
+      // Now call processScannedRfid with fresh data and the registered UID
+      // The mapping is now saved, so getLockerNumberByRfid will succeed
+      processScannedRfid(unregisteredRfidUid, freshLockerParents, freshActiveLockers);
+    } else {
+      toast({
+        title: "RFID 등록 실패",
+        description: "이미 등록된 RFID이거나 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    }
+  }, [selectedLockerForRfid, unregisteredRfidUid, processScannedRfid, toast]);
 
   // Global barcode scanner listener
   useEffect(() => {
@@ -1535,6 +1581,67 @@ export default function Home() {
               data-testid="button-test-barcode"
             >
               테스트
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unregistered RFID Quick Registration Dialog */}
+      <Dialog open={unregisteredRfidDialogOpen} onOpenChange={setUnregisteredRfidDialogOpen}>
+        <DialogContent data-testid="dialog-rfid-quick-register">
+          <DialogHeader>
+            <DialogTitle>RFID 즉시 등록</DialogTitle>
+            <DialogDescription>
+              등록되지 않은 RFID 태그가 감지되었습니다. 락카 번호를 선택하여 등록하세요.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rfid-uid-display">RFID UID</Label>
+              <Input
+                id="rfid-uid-display"
+                type="text"
+                value={unregisteredRfidUid}
+                readOnly
+                className="font-mono bg-muted"
+                data-testid="input-rfid-uid-display"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="locker-select-rfid">락카 번호 선택</Label>
+              <select
+                id="locker-select-rfid"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                value={selectedLockerForRfid || ""}
+                onChange={(e) => setSelectedLockerForRfid(e.target.value ? parseInt(e.target.value) : null)}
+                data-testid="select-locker-for-rfid"
+              >
+                <option value="" disabled>락카 번호를 선택하세요</option>
+                {lockerGroups.flatMap(group => 
+                  Array.from({ length: group.endNumber - group.startNumber + 1 }, (_, i) => group.startNumber + i)
+                ).map(num => (
+                  <option key={num} value={num}>{num}번</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setUnregisteredRfidDialogOpen(false);
+                setUnregisteredRfidUid("");
+                setSelectedLockerForRfid(null);
+              }}
+              data-testid="button-cancel-rfid-register"
+            >
+              취소
+            </Button>
+            <Button
+              onClick={handleRfidQuickRegister}
+              data-testid="button-confirm-rfid-register"
+            >
+              등록
             </Button>
           </DialogFooter>
         </DialogContent>
