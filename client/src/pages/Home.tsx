@@ -646,6 +646,9 @@ export default function Home() {
         });
       }
 
+      // Mark the most recent scan for this locker as processed
+      localDb.markLatestScanAsProcessedByLocker(newLockerInfo.lockerNumber);
+
       setNewLockerInfo(null);
       setDialogOpen(false);
       loadData();
