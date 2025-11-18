@@ -101,6 +101,8 @@ export default function Home() {
   // NFC scan state
   const [isNfcScanning, setIsNfcScanning] = useState(false);
   const [nfcSupported, setNfcSupported] = useState(false);
+  const ndefReaderRef = useRef<any>(null);
+  const ndefHandlerRef = useRef<any>(null);
 
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
@@ -236,7 +238,7 @@ export default function Home() {
     return true;
   }, [toast, currentTime, dayPrice, nightPrice]);
 
-  // Handle NFC scan
+  // Handle NFC scan toggle
   const handleNfcScan = useCallback(async () => {
     if (!('NDEFReader' in window)) {
       toast({
@@ -247,33 +249,34 @@ export default function Home() {
       return;
     }
 
-    setIsNfcScanning(true);
-    let timeoutId: NodeJS.Timeout | null = null;
-    
+    // If already scanning, stop it
+    if (isNfcScanning) {
+      setIsNfcScanning(false);
+      if (ndefReaderRef.current && ndefHandlerRef.current) {
+        ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+      }
+      ndefReaderRef.current = null;
+      ndefHandlerRef.current = null;
+      toast({
+        title: "NFC 감지 중지",
+        description: "NFC 자동 감지가 중지되었습니다.",
+      });
+      return;
+    }
+
+    // Start NFC scanning
     try {
       const ndef = new (window as any).NDEFReader();
+      ndefReaderRef.current = ndef;
       
       toast({
-        title: "NFC 스캔 준비 중",
-        description: "락카키를 스마트폰 후면에 가져다 대세요 (10초 대기)",
+        title: "NFC 자동 감지 시작",
+        description: "락카키를 핸드폰에 가져다 대면 자동으로 인식됩니다.",
       });
-
-      // Set timeout for scan
-      timeoutId = setTimeout(() => {
-        setIsNfcScanning(false);
-        toast({
-          title: "스캔 시간 초과",
-          description: "NFC 스캔이 시간 초과되었습니다. 다시 시도해주세요.",
-          variant: "destructive",
-        });
-      }, 10000);
 
       await ndef.scan();
 
       const handleReading = ({ serialNumber }: any) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        setIsNfcScanning(false);
-        
         // Convert serial number to UID format
         const uid = serialNumber.toUpperCase().replace(/:/g, "");
         
@@ -337,16 +340,12 @@ export default function Home() {
             });
           }
         }
-        
-        // Remove event listener after successful scan
-        ndef.removeEventListener("reading", handleReading);
       };
 
+      ndefHandlerRef.current = handleReading;
       ndef.addEventListener("reading", handleReading);
 
       ndef.addEventListener("readingerror", () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        setIsNfcScanning(false);
         toast({
           title: "NFC 읽기 실패",
           description: "NFC 태그를 읽을 수 없습니다. 다시 시도해주세요.",
@@ -354,8 +353,9 @@ export default function Home() {
         });
       });
 
+      setIsNfcScanning(true);
+
     } catch (error: any) {
-      if (timeoutId) clearTimeout(timeoutId);
       setIsNfcScanning(false);
       
       if (error.name === 'NotAllowedError') {
@@ -372,7 +372,16 @@ export default function Home() {
         });
       }
     }
-  }, [toast, currentTime, dayPrice, nightPrice]);
+  }, [isNfcScanning, toast, currentTime, dayPrice, nightPrice]);
+
+  // Cleanup NFC listener on unmount
+  useEffect(() => {
+    return () => {
+      if (ndefReaderRef.current && ndefHandlerRef.current) {
+        ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+      }
+    };
+  }, []);
 
   // Global barcode scanner listener
   useEffect(() => {
@@ -1292,11 +1301,10 @@ export default function Home() {
                   variant={isNfcScanning ? "default" : "outline"}
                   size="sm"
                   onClick={handleNfcScan}
-                  disabled={isNfcScanning}
                   data-testid="button-nfc-scan"
                   className="text-xs"
                 >
-                  {isNfcScanning ? "NFC 스캔 중..." : "NFC 스캔"}
+                  {isNfcScanning ? "감지 중지" : "자동감지"}
                 </Button>
               )}
               {showBarcodeTest && (
