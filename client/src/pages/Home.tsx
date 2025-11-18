@@ -1285,6 +1285,18 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {nfcSupported && (
+                <Button
+                  variant={isNfcScanning ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleNfcScan}
+                  disabled={isNfcScanning}
+                  data-testid="button-nfc-scan"
+                  className="text-xs"
+                >
+                  {isNfcScanning ? "NFC 스캔 중..." : "NFC 스캔"}
+                </Button>
+              )}
               {showBarcodeTest && (
                 <Button
                   variant="outline"
