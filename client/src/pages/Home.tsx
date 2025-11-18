@@ -103,6 +103,7 @@ export default function Home() {
   const [nfcSupported, setNfcSupported] = useState(false);
   const ndefReaderRef = useRef<any>(null);
   const ndefHandlerRef = useRef<any>(null);
+  const ndefErrorHandlerRef = useRef<any>(null);
 
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
@@ -260,11 +261,17 @@ export default function Home() {
     // If already scanning, stop it
     if (isNfcScanning) {
       setIsNfcScanning(false);
-      if (ndefReaderRef.current && ndefHandlerRef.current) {
-        ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+      if (ndefReaderRef.current) {
+        if (ndefHandlerRef.current) {
+          ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+        }
+        if (ndefErrorHandlerRef.current) {
+          ndefReaderRef.current.removeEventListener("readingerror", ndefErrorHandlerRef.current);
+        }
       }
       ndefReaderRef.current = null;
       ndefHandlerRef.current = null;
+      ndefErrorHandlerRef.current = null;
       toast({
         title: "NFC 감지 중지",
         description: "NFC 자동 감지가 중지되었습니다.",
@@ -323,7 +330,9 @@ export default function Home() {
         
         if (!isInUse) {
           // Empty locker: set new locker info and open dialog
-          const timeType = getTimeType(currentTime);
+          // Use current time at the moment of scan, not the time when scanning started
+          const scanTime = new Date();
+          const timeType = getTimeType(scanTime);
           const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
           
           setNewLockerInfo({ lockerNumber, timeType, basePrice });
@@ -358,13 +367,16 @@ export default function Home() {
       ndefHandlerRef.current = handleReading;
       ndef.addEventListener("reading", handleReading);
 
-      ndef.addEventListener("readingerror", () => {
+      const handleError = () => {
         toast({
           title: "NFC 읽기 실패",
           description: "NFC 태그를 읽을 수 없습니다. 다시 시도해주세요.",
           variant: "destructive",
         });
-      });
+      };
+
+      ndefErrorHandlerRef.current = handleError;
+      ndef.addEventListener("readingerror", handleError);
 
       setIsNfcScanning(true);
 
@@ -390,8 +402,13 @@ export default function Home() {
   // Cleanup NFC listener on unmount
   useEffect(() => {
     return () => {
-      if (ndefReaderRef.current && ndefHandlerRef.current) {
-        ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+      if (ndefReaderRef.current) {
+        if (ndefHandlerRef.current) {
+          ndefReaderRef.current.removeEventListener("reading", ndefHandlerRef.current);
+        }
+        if (ndefErrorHandlerRef.current) {
+          ndefReaderRef.current.removeEventListener("readingerror", ndefErrorHandlerRef.current);
+        }
       }
     };
   }, []);
