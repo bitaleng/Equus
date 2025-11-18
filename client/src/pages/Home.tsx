@@ -236,6 +236,142 @@ export default function Home() {
     return true;
   }, [toast, currentTime, dayPrice, nightPrice]);
 
+  // Handle NFC scan
+  const handleNfcScan = useCallback(async () => {
+    if (!('NDEFReader' in window)) {
+      toast({
+        title: "NFC 미지원",
+        description: "이 브라우저는 Web NFC API를 지원하지 않습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsNfcScanning(true);
+    
+    try {
+      const ndef = new (window as any).NDEFReader();
+      
+      toast({
+        title: "NFC 스캔 준비 중",
+        description: "락카키를 스마트폰 후면에 가져다 대세요 (10초 대기)",
+      });
+
+      // Set timeout for scan
+      const timeoutId = setTimeout(() => {
+        setIsNfcScanning(false);
+        toast({
+          title: "스캔 시간 초과",
+          description: "NFC 스캔이 시간 초과되었습니다. 다시 시도해주세요.",
+          variant: "destructive",
+        });
+      }, 10000);
+
+      await ndef.scan();
+
+      const handleReading = ({ serialNumber }: any) => {
+        clearTimeout(timeoutId);
+        setIsNfcScanning(false);
+        
+        // Convert serial number to UID format
+        const uid = serialNumber.toUpperCase().replace(/:/g, "");
+        
+        // Look up locker number by RFID UID
+        const lockerNumber = localDb.getLockerNumberByRfid(uid);
+        
+        if (!lockerNumber) {
+          toast({
+            title: "RFID 미등록",
+            description: "등록되지 않은 RFID입니다. 시스템 설정에서 먼저 등록해주세요.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        // Log the scan (for anti-fraud tracking)
+        try {
+          localDb.addScanLog(lockerNumber);
+        } catch (error) {
+          console.error('Failed to log scan:', error);
+        }
+        
+        // Build current locker parents map
+        const currentLockerParents: { [key: number]: number | null } = {};
+        activeLockersRef.current.forEach(log => {
+          currentLockerParents[log.lockerNumber] = log.parentLocker || null;
+        });
+        
+        // Check if locker is currently in use
+        const isInUse = activeLockersRef.current.some(log => log.lockerNumber === lockerNumber);
+        
+        if (!isInUse) {
+          // Empty locker: set new locker info and open dialog
+          const timeType = getTimeType(currentTime);
+          const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
+          
+          setNewLockerInfo({ lockerNumber, timeType, basePrice });
+          setSelectedLocker(lockerNumber);
+          setDialogOpen(true);
+          
+          toast({
+            title: "NFC 스캔 완료",
+            description: `${lockerNumber}번 락카가 선택되었습니다.`,
+          });
+        } else {
+          // Locker in use: check if this is a child locker
+          const parentLockerNumber = currentLockerParents[lockerNumber];
+          if (parentLockerNumber) {
+            // Child locker: show alert only
+            setChildLockerParent(parentLockerNumber);
+            setChildLockerAlertOpen(true);
+          } else {
+            // Parent or independent locker: open dialog
+            setNewLockerInfo(null);
+            setSelectedLocker(lockerNumber);
+            setDialogOpen(true);
+            
+            toast({
+              title: "NFC 스캔 완료",
+              description: `${lockerNumber}번 락카가 선택되었습니다.`,
+            });
+          }
+        }
+        
+        // Remove event listener after successful scan
+        ndef.removeEventListener("reading", handleReading);
+      };
+
+      ndef.addEventListener("reading", handleReading);
+
+      ndef.addEventListener("readingerror", () => {
+        clearTimeout(timeoutId);
+        setIsNfcScanning(false);
+        toast({
+          title: "NFC 읽기 실패",
+          description: "NFC 태그를 읽을 수 없습니다. 다시 시도해주세요.",
+          variant: "destructive",
+        });
+      });
+
+    } catch (error: any) {
+      setIsNfcScanning(false);
+      
+      if (error.name === 'NotAllowedError') {
+        toast({
+          title: "NFC 권한 거부",
+          description: "NFC 사용 권한이 필요합니다. 브라우저 설정에서 NFC 권한을 허용해주세요.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "NFC 스캔 실패",
+          description: `오류: ${error.message || '알 수 없는 오류'}`,
+          variant: "destructive",
+        });
+      }
+    }
+  }, [toast, currentTime, dayPrice, nightPrice]);
+
   // Global barcode scanner listener
   useEffect(() => {
     let barcodeBuffer = '';
