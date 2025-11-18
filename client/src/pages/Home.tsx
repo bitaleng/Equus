@@ -98,6 +98,10 @@ export default function Home() {
   const clickCountRef = useRef(0);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // NFC scan state
+  const [isNfcScanning, setIsNfcScanning] = useState(false);
+  const [nfcSupported, setNfcSupported] = useState(false);
+
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
@@ -163,6 +167,13 @@ export default function Home() {
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // Check NFC support
+  useEffect(() => {
+    if ('NDEFReader' in window) {
+      setNfcSupported(true);
+    }
   }, []);
 
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
