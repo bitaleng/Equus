@@ -248,6 +248,7 @@ export default function Home() {
     }
 
     setIsNfcScanning(true);
+    let timeoutId: NodeJS.Timeout | null = null;
     
     try {
       const ndef = new (window as any).NDEFReader();
@@ -258,7 +259,7 @@ export default function Home() {
       });
 
       // Set timeout for scan
-      const timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         setIsNfcScanning(false);
         toast({
           title: "스캔 시간 초과",
@@ -270,7 +271,7 @@ export default function Home() {
       await ndef.scan();
 
       const handleReading = ({ serialNumber }: any) => {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         setIsNfcScanning(false);
         
         // Convert serial number to UID format
@@ -344,7 +345,7 @@ export default function Home() {
       ndef.addEventListener("reading", handleReading);
 
       ndef.addEventListener("readingerror", () => {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         setIsNfcScanning(false);
         toast({
           title: "NFC 읽기 실패",
@@ -354,6 +355,7 @@ export default function Home() {
       });
 
     } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
       setIsNfcScanning(false);
       
       if (error.name === 'NotAllowedError') {
