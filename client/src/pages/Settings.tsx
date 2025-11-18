@@ -139,6 +139,8 @@ export default function Settings() {
   }>>([]);
   const [manualRfidInput, setManualRfidInput] = useState("");
   const [manualRfidLockerNumber, setManualRfidLockerNumber] = useState<number | null>(null);
+  const [isNfcScanning, setIsNfcScanning] = useState(false);
+  const [nfcSupported, setNfcSupported] = useState(false);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -181,6 +183,11 @@ export default function Settings() {
       } catch (error) {
         console.error('Failed to load cash register data:', error);
       }
+    }
+    
+    // Check NFC support
+    if ('NDEFReader' in window) {
+      setNfcSupported(true);
     }
   }, []);
 
@@ -315,6 +322,90 @@ export default function Settings() {
         description: "이미 등록된 RFID이거나 오류가 발생했습니다.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleNfcScan = async () => {
+    if (!manualRfidLockerNumber || manualRfidLockerNumber <= 0) {
+      toast({
+        title: "락카 번호 선택 필요",
+        description: "먼저 락카 번호를 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!('NDEFReader' in window)) {
+      toast({
+        title: "NFC 미지원",
+        description: "이 브라우저는 Web NFC API를 지원하지 않습니다. USB RFID 리더기를 사용하세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsNfcScanning(true);
+    
+    try {
+      const ndef = new (window as any).NDEFReader();
+      
+      toast({
+        title: "NFC 스캔 준비 중",
+        description: `${manualRfidLockerNumber}번 락카키를 스마트폰 후면에 가져다 대세요 (5초 대기)`,
+      });
+
+      // Set timeout for scan
+      const timeoutId = setTimeout(() => {
+        setIsNfcScanning(false);
+        toast({
+          title: "스캔 시간 초과",
+          description: "NFC 스캔이 시간 초과되었습니다. 다시 시도해주세요.",
+          variant: "destructive",
+        });
+      }, 5000);
+
+      await ndef.scan();
+
+      ndef.addEventListener("reading", ({ serialNumber }: any) => {
+        clearTimeout(timeoutId);
+        setIsNfcScanning(false);
+        
+        // Convert serial number to UID format
+        const uid = serialNumber.toUpperCase().replace(/:/g, "");
+        setManualRfidInput(uid);
+        
+        toast({
+          title: "NFC 스캔 완료",
+          description: `UID: ${uid}`,
+        });
+      });
+
+      ndef.addEventListener("readingerror", () => {
+        clearTimeout(timeoutId);
+        setIsNfcScanning(false);
+        toast({
+          title: "NFC 읽기 실패",
+          description: "NFC 태그를 읽을 수 없습니다. 다시 시도해주세요.",
+          variant: "destructive",
+        });
+      });
+
+    } catch (error: any) {
+      setIsNfcScanning(false);
+      
+      if (error.name === 'NotAllowedError') {
+        toast({
+          title: "NFC 권한 거부",
+          description: "NFC 사용 권한이 필요합니다. 브라우저 설정에서 NFC 권한을 허용해주세요.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "NFC 스캔 실패",
+          description: `오류: ${error.message || '알 수 없는 오류'}`,
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -1375,9 +1466,9 @@ export default function Settings() {
             <CardContent>
               {/* 수동 입력 모드 */}
               <div className="mb-6 p-4 border rounded-lg bg-muted/50">
-                <h4 className="font-medium mb-3">RFID UID 수동 입력</h4>
+                <h4 className="font-medium mb-3">RFID UID 등록</h4>
                 <p className="text-sm text-muted-foreground mb-4">
-                  RFID 리더기로 읽은 UID를 직접 입력하거나, 입실관리 페이지에서 Web NFC로 자동 등록할 수 있습니다
+                  USB RFID 리더기로 스캔한 UID가 자동으로 입력되거나, Web NFC로 스캔하거나, 수동으로 입력할 수 있습니다
                 </p>
                 <div className="space-y-3">
                   <div>
@@ -1411,10 +1502,22 @@ export default function Settings() {
                             handleManualRfidRegister();
                           }
                         }}
+                        disabled={isNfcScanning}
                         data-testid="input-manual-rfid"
                       />
+                      {nfcSupported && (
+                        <Button
+                          variant="outline"
+                          onClick={handleNfcScan}
+                          disabled={isNfcScanning || !manualRfidLockerNumber}
+                          data-testid="button-nfc-scan"
+                        >
+                          {isNfcScanning ? "스캔 중..." : "NFC 스캔"}
+                        </Button>
+                      )}
                       <Button
                         onClick={handleManualRfidRegister}
+                        disabled={isNfcScanning}
                         data-testid="button-manual-rfid-register"
                       >
                         등록
