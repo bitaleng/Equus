@@ -26,6 +26,7 @@ Key features include:
 - Accurate revenue reporting for rental items, distinguishing rental fees from deposit handling.
 - Enhanced logging and filtering for historical data, including detailed statistics.
 - Barcode scan logging system for anti-theft monitoring, tracking all barcode scans with processed status and business day tracking.
+- NFC scanning capability for RFID locker keys on NFC-capable devices (user-triggered, 10-second timeout with proper cleanup).
 - Data export functionality to Excel (.xlsx) and PDF.
 - Automated data cleanup for records older than one year and manual data reset options.
 
