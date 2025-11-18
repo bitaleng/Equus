@@ -107,6 +107,9 @@ export default function Home() {
   // Ref to store latest activeLockers for barcode scanner
   const activeLockersRef = useRef<LockerLog[]>([]);
   
+  // Ref to track dialog state for NFC scanning
+  const dialogOpenRef = useRef(false);
+  
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -177,6 +180,11 @@ export default function Home() {
       setNfcSupported(true);
     }
   }, []);
+
+  // Update dialogOpenRef when dialogOpen changes
+  useEffect(() => {
+    dialogOpenRef.current = dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog || barcodeTestDialogOpen;
+  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, barcodeTestDialogOpen]);
 
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
   const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
@@ -277,6 +285,11 @@ export default function Home() {
       await ndef.scan();
 
       const handleReading = ({ serialNumber }: any) => {
+        // Skip if any dialog is open
+        if (dialogOpenRef.current) {
+          return;
+        }
+        
         // Convert serial number to UID format
         const uid = serialNumber.toUpperCase().replace(/:/g, "");
         
