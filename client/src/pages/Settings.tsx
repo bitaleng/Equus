@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3 } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -157,6 +157,13 @@ export default function Settings() {
   // Data management section collapsible states
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
   const [showDataManagementAuth, setShowDataManagementAuth] = useState(false);
+
+  // Data export/import states
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false);
+  const [importFileData, setImportFileData] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cash register (시재금) states
   const [cashRegister, setCashRegister] = useState({
@@ -667,6 +674,106 @@ export default function Settings() {
         description: "영업일 재계산 중 오류가 발생했습니다.",
         variant: "destructive",
       });
+    }
+  };
+
+  // Export database to JSON file
+  const handleExportData = () => {
+    setIsExporting(true);
+    try {
+      const result = localDb.exportDatabase();
+      
+      if (!result.success || !result.data) {
+        throw new Error(result.error || '데이터 내보내기 실패');
+      }
+      
+      // Create download link
+      const blob = new Blob([result.data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      link.href = url;
+      link.download = `equus-backup-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "데이터 내보내기 완료",
+        description: "모든 데이터가 파일로 저장되었습니다. 다른 태블릿으로 전송하여 사용할 수 있습니다.",
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: "내보내기 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Handle file selection for import
+  const handleImportFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setImportFileData(content);
+      setImportConfirmOpen(true);
+    };
+    reader.onerror = () => {
+      toast({
+        title: "파일 읽기 실패",
+        description: "파일을 읽는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsText(file);
+    
+    // Reset input so same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Confirm and execute import
+  const handleConfirmImport = () => {
+    if (!importFileData) return;
+    
+    setIsImporting(true);
+    try {
+      const result = localDb.importDatabase(importFileData);
+      
+      if (!result.success) {
+        throw new Error(result.error || '데이터 가져오기 실패');
+      }
+      
+      toast({
+        title: "데이터 복원 완료",
+        description: result.message || "데이터를 성공적으로 복원했습니다.",
+      });
+      
+      setImportConfirmOpen(false);
+      setImportFileData(null);
+      
+      // Reload page to reflect imported data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('Import error:', error);
+      toast({
+        title: "가져오기 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -1669,6 +1776,54 @@ export default function Settings() {
               </CardHeader>
               <CollapsibleContent>
                 <CardContent className="space-y-4">
+              {/* Data Backup/Restore Section */}
+              <div className="p-4 border border-green-500/50 rounded-lg bg-green-500/5">
+                <div className="flex items-start gap-3">
+                  <Database className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-medium text-green-600 dark:text-green-400 mb-1">데이터 백업 및 복원</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      모든 데이터를 파일로 내보내거나 다른 태블릿에서 백업한 데이터를 가져올 수 있습니다.
+                      <br />
+                      <span className="text-xs">
+                        • 입실 기록, 매출 정보, 시스템 설정, 대여품목, 바코드/RFID 맵핑 등 모든 데이터 포함<br />
+                        • 다른 태블릿으로 데이터 이동 시 사용<br />
+                        • 카카오톡, 이메일, USB 등으로 백업 파일 전송 가능
+                      </span>
+                    </p>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button
+                        onClick={handleExportData}
+                        disabled={isExporting}
+                        data-testid="button-export-data"
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {isExporting ? "내보내는 중..." : "데이터 내보내기"}
+                      </Button>
+                      <Button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isImporting}
+                        variant="outline"
+                        data-testid="button-import-data"
+                        className="border-green-600 text-green-600 hover:bg-green-500/10 dark:text-green-400"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        {isImporting ? "가져오는 중..." : "데이터 가져오기"}
+                      </Button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".json"
+                        onChange={handleImportFileSelect}
+                        className="hidden"
+                        data-testid="input-import-file"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
               <div className="p-4 border border-primary/50 rounded-lg bg-primary/5">
                 <div className="flex items-start gap-3">
                   <Database className="h-5 w-5 text-primary mt-0.5" />
@@ -2027,6 +2182,43 @@ export default function Settings() {
               data-testid="button-confirm-reset"
             >
               초기화
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import Confirmation Dialog */}
+      <AlertDialog open={importConfirmOpen} onOpenChange={setImportConfirmOpen}>
+        <AlertDialogContent data-testid="dialog-import-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              데이터 가져오기 확인
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              백업 파일의 데이터를 가져오면 <strong className="text-orange-600 dark:text-orange-400">현재 태블릿의 모든 데이터가 삭제되고</strong> 백업 파일의 데이터로 교체됩니다.
+              <br />
+              <br />
+              <strong className="text-destructive">이 작업은 되돌릴 수 없습니다.</strong>
+              <br />
+              <br />
+              계속하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              disabled={isImporting}
+              data-testid="button-import-cancel"
+            >
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmImport}
+              disabled={isImporting}
+              className="bg-orange-600 hover:bg-orange-700"
+              data-testid="button-import-confirm"
+            >
+              {isImporting ? "가져오는 중..." : "확인"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

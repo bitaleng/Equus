@@ -5467,3 +5467,255 @@ export function markLatestScanAsProcessedByLocker(lockerNumber: number): boolean
     return false;
   }
 }
+
+// Export all database tables and localStorage settings to JSON
+export function exportDatabase(): {
+  success: boolean;
+  data?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const exportData: any = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      appName: 'EQUUS Hotel Management System',
+      tables: {},
+      localStorage: {}
+    };
+    
+    // Helper function to export a table
+    const exportTable = (tableName: string) => {
+      const result = db!.exec(`SELECT * FROM ${tableName}`);
+      if (result.length === 0 || result[0].values.length === 0) {
+        return [];
+      }
+      
+      const columns = result[0].columns;
+      return result[0].values.map((row: any) => {
+        const obj: any = {};
+        columns.forEach((col, idx) => {
+          obj[col] = row[idx];
+        });
+        return obj;
+      });
+    };
+    
+    // Export all tables
+    const tables = [
+      'locker_logs',
+      'locker_daily_summaries',
+      'system_metadata',
+      'locker_groups',
+      'additional_fee_events',
+      'additional_revenue_items',
+      'rental_transactions',
+      'expenses',
+      'closing_days',
+      'expense_categories',
+      'barcode_mappings',
+      'rfid_mappings',
+      'scan_logs'
+    ];
+    
+    tables.forEach(tableName => {
+      try {
+        exportData.tables[tableName] = exportTable(tableName);
+      } catch (error) {
+        console.warn(`Failed to export table ${tableName}:`, error);
+        exportData.tables[tableName] = [];
+      }
+    });
+    
+    // Export localStorage settings (excluding database itself)
+    const localStorageKeys = [
+      'settings',
+      'staff_pattern',
+      'staff_password',
+      'cash_register',
+      'last_settlement_reminder_date',
+      'daily_memo'
+    ];
+    
+    localStorageKeys.forEach(key => {
+      try {
+        const value = localStorage.getItem(key);
+        if (value !== null) {
+          exportData.localStorage[key] = value;
+        }
+      } catch (error) {
+        console.warn(`Failed to export localStorage key ${key}:`, error);
+      }
+    });
+    
+    const jsonString = JSON.stringify(exportData, null, 2);
+    return { success: true, data: jsonString };
+  } catch (error) {
+    console.error('Error exporting database:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// Import database from JSON
+export function importDatabase(jsonString: string): {
+  success: boolean;
+  message?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const importData = JSON.parse(jsonString);
+    
+    // Validate import data structure
+    if (!importData.version || !importData.tables) {
+      return { success: false, error: '유효하지 않은 백업 파일 형식입니다.' };
+    }
+    
+    if (importData.appName !== 'EQUUS Hotel Management System') {
+      return { success: false, error: '이 파일은 EQUUS 시스템 백업 파일이 아닙니다.' };
+    }
+    
+    console.log(`Importing database backup from ${importData.exportDate}`);
+    
+    // Clear existing data from all tables
+    const tables = [
+      'scan_logs',
+      'rfid_mappings',
+      'barcode_mappings',
+      'expense_categories',
+      'closing_days',
+      'expenses',
+      'rental_transactions',
+      'additional_revenue_items',
+      'additional_fee_events',
+      'locker_groups',
+      'locker_daily_summaries',
+      'locker_logs',
+      'system_metadata'
+    ];
+    
+    // Delete in reverse order to avoid foreign key issues
+    tables.forEach(tableName => {
+      try {
+        db!.run(`DELETE FROM ${tableName}`);
+        console.log(`Cleared table: ${tableName}`);
+      } catch (error) {
+        console.warn(`Failed to clear table ${tableName}:`, error);
+      }
+    });
+    
+    // Clear localStorage settings (except authenticated and database)
+    const localStorageKeys = [
+      'settings',
+      'staff_pattern',
+      'staff_password',
+      'cash_register',
+      'last_settlement_reminder_date',
+      'daily_memo'
+    ];
+    
+    localStorageKeys.forEach(key => {
+      try {
+        localStorage.removeItem(key);
+        console.log(`Cleared localStorage key: ${key}`);
+      } catch (error) {
+        console.warn(`Failed to clear localStorage key ${key}:`, error);
+      }
+    });
+    
+    // Import data for each table
+    const importTable = (tableName: string, data: any[]) => {
+      if (!data || data.length === 0) {
+        console.log(`No data to import for ${tableName}`);
+        return;
+      }
+      
+      const firstRow = data[0];
+      const columns = Object.keys(firstRow);
+      const placeholders = columns.map(() => '?').join(', ');
+      const columnNames = columns.join(', ');
+      
+      const insertQuery = `INSERT INTO ${tableName} (${columnNames}) VALUES (${placeholders})`;
+      
+      let imported = 0;
+      data.forEach((row: any) => {
+        try {
+          const values = columns.map(col => row[col]);
+          db!.run(insertQuery, values);
+          imported++;
+        } catch (error) {
+          console.warn(`Failed to import row in ${tableName}:`, error);
+        }
+      });
+      
+      console.log(`Imported ${imported}/${data.length} rows for ${tableName}`);
+    };
+    
+    // Import tables in order (system_metadata first, then others)
+    const importOrder = [
+      'system_metadata',
+      'locker_groups',
+      'locker_logs',
+      'locker_daily_summaries',
+      'additional_fee_events',
+      'additional_revenue_items',
+      'rental_transactions',
+      'expenses',
+      'closing_days',
+      'expense_categories',
+      'barcode_mappings',
+      'rfid_mappings',
+      'scan_logs'
+    ];
+    
+    importOrder.forEach(tableName => {
+      if (importData.tables[tableName]) {
+        importTable(tableName, importData.tables[tableName]);
+      }
+    });
+    
+    // Import localStorage settings
+    if (importData.localStorage) {
+      localStorageKeys.forEach(key => {
+        if (importData.localStorage[key] !== undefined) {
+          try {
+            localStorage.setItem(key, importData.localStorage[key]);
+            console.log(`Restored localStorage key: ${key}`);
+          } catch (error) {
+            console.warn(`Failed to restore localStorage key ${key}:`, error);
+          }
+        }
+      });
+    }
+    
+    // Save database to localStorage
+    saveDatabase();
+    
+    const totalRows = Object.values(importData.tables).reduce(
+      (sum: number, table: any) => sum + (Array.isArray(table) ? table.length : 0),
+      0
+    );
+    
+    const totalLocalStorage = importData.localStorage ? Object.keys(importData.localStorage).length : 0;
+    
+    return {
+      success: true,
+      message: `${importData.exportDate}에 백업된 데이터를 성공적으로 복원했습니다. (${totalRows}개 레코드 + ${totalLocalStorage}개 설정)`
+    };
+  } catch (error) {
+    console.error('Error importing database:', error);
+    
+    // Provide more specific error messages
+    if (error instanceof SyntaxError) {
+      return { success: false, error: 'JSON 파일 형식이 올바르지 않습니다.' };
+    }
+    
+    return { success: false, error: `가져오기 실패: ${String(error)}` };
+  }
+}
