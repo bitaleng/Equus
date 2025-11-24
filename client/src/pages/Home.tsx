@@ -66,11 +66,18 @@ interface LockerGroup {
   sortOrder: number;
 }
 
+interface OpenDialog {
+  lockerNumber: number;
+  isMinimized: boolean;
+  timeType: '주간' | '야간';
+  basePrice: number;
+  newLockerInfo?: { lockerNumber: number, timeType: '주간' | '야간', basePrice: number } | null;
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [selectedLocker, setSelectedLocker] = useState<number | null>(null);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [openDialogs, setOpenDialogs] = useState<Map<number, OpenDialog>>(new Map());
   const [childLockerAlertOpen, setChildLockerAlertOpen] = useState(false);
   const [childLockerParent, setChildLockerParent] = useState<number | null>(null);
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
