@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -141,6 +141,7 @@ export default function Settings() {
   const [manualRfidLockerNumber, setManualRfidLockerNumber] = useState<number | null>(null);
   const [isNfcScanning, setIsNfcScanning] = useState(false);
   const [nfcSupported, setNfcSupported] = useState(false);
+  const rfidInputRef = useRef<HTMLInputElement>(null);
 
   // Password change states
   const [currentPassword, setCurrentPassword] = useState("");
@@ -190,6 +191,14 @@ export default function Settings() {
       setNfcSupported(true);
     }
   }, []);
+
+  // Auto-focus RFID input when locker number is selected
+  useEffect(() => {
+    if (manualRfidLockerNumber && rfidInputRef.current) {
+      rfidInputRef.current.focus();
+      rfidInputRef.current.select();
+    }
+  }, [manualRfidLockerNumber]);
 
   const loadLockerGroups = () => {
     setLockerGroups(localDb.getLockerGroups());
@@ -1493,6 +1502,7 @@ export default function Settings() {
                     <div className="flex gap-2 mt-1">
                       <Input
                         id="manual-rfid-input"
+                        ref={rfidInputRef}
                         type="text"
                         placeholder="RFID UID를 입력하세요 (예: 04A1B2C3D4E5F6)"
                         value={manualRfidInput}
