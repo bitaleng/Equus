@@ -118,6 +118,9 @@ export default function Home() {
   // Ref to track dialog state for NFC scanning
   const dialogOpenRef = useRef(false);
   
+  // Popup workspace visibility toggle
+  const [popupsVisible, setPopupsVisible] = useState(true);
+  
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -231,6 +234,9 @@ export default function Home() {
         newLockerInfo: { lockerNumber, timeType, basePrice }
       }));
       
+      // Show popup workspace when barcode scanned
+      setPopupsVisible(true);
+      
       toast({
         title: "락카 선택",
         description: `${lockerNumber}번 락카가 선택되었습니다.`,
@@ -250,6 +256,9 @@ export default function Home() {
           timeType: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
           basePrice: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
         }));
+        
+        // Show popup workspace when barcode scanned
+        setPopupsVisible(true);
         
         toast({
           title: "락카 선택",
@@ -357,6 +366,9 @@ export default function Home() {
             newLockerInfo: { lockerNumber, timeType, basePrice }
           }));
           
+          // Show popup workspace when NFC scanned
+          setPopupsVisible(true);
+          
           toast({
             title: "NFC 스캔 완료",
             description: `${lockerNumber}번 락카가 선택되었습니다.`,
@@ -376,6 +388,9 @@ export default function Home() {
               timeType: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
               basePrice: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
             }));
+            
+            // Show popup workspace when NFC scanned
+            setPopupsVisible(true);
             
             toast({
               title: "NFC 스캔 완료",
@@ -774,6 +789,9 @@ export default function Home() {
         basePrice,
         newLockerInfo: { lockerNumber, timeType, basePrice }
       }));
+      
+      // Show popup workspace when locker is clicked
+      setPopupsVisible(true);
     } else if (state === 'in-use') {
       // Check if this is a child locker
       const parentLockerNumber = lockerParents[lockerNumber];
@@ -791,6 +809,9 @@ export default function Home() {
             timeType: entry.timeType,
             basePrice: entry.basePrice
           }));
+          
+          // Show popup workspace when locker is clicked
+          setPopupsVisible(true);
         }
       }
     }
@@ -1334,6 +1355,8 @@ export default function Home() {
                     timeType: existingEntry.timeType,
                     basePrice: existingEntry.basePrice
                   }));
+                  // Show popup workspace
+                  setPopupsVisible(true);
                 }
               }}
               isLockerPanelCollapsed={isLockerPanelCollapsed}
@@ -1515,8 +1538,17 @@ export default function Home() {
         </div>
       )}
 
+      {/* Backdrop - Click to hide popups temporarily */}
+      {openDialogs.size > 0 && popupsVisible && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-40"
+          onClick={() => setPopupsVisible(false)}
+          title="클릭하여 임시로 숨기기"
+        />
+      )}
+
       {/* Multi-Popup Workspace - Split Screen Right Panel */}
-      {openDialogs.size > 0 && (
+      {openDialogs.size > 0 && popupsVisible && (
         <div className="fixed right-0 top-0 bottom-0 w-[45%] bg-muted/95 backdrop-blur-sm border-l-4 border-primary shadow-2xl z-50 flex flex-col">
           {/* Workspace Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground">
@@ -1526,15 +1558,26 @@ export default function Home() {
                 {openDialogs.size}명
               </span>
             </div>
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={() => setOpenDialogs(new Map())}
-              className="text-primary-foreground hover:bg-primary-foreground/20"
-              title="모두 닫기 (ESC)"
-            >
-              ✕
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => setPopupsVisible(false)}
+                className="text-primary-foreground hover:bg-primary-foreground/20"
+                title="임시로 숨기기"
+              >
+                ⊟
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => setOpenDialogs(new Map())}
+                className="text-primary-foreground hover:bg-primary-foreground/20"
+                title="모두 닫기 (ESC)"
+              >
+                ✕
+              </Button>
+            </div>
           </div>
           
           {/* Scrollable Popup Stack */}
@@ -1670,6 +1713,25 @@ export default function Home() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Floating "Show Workspace" Button - Only visible when popups are hidden */}
+      {openDialogs.size > 0 && !popupsVisible && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <Button
+            size="lg"
+            onClick={() => setPopupsVisible(true)}
+            className="shadow-2xl px-6 py-6 text-base font-semibold"
+            data-testid="button-show-workspace"
+          >
+            <span className="flex items-center gap-2">
+              📋 작업공간 보기
+              <span className="px-2 py-1 rounded-full bg-primary-foreground text-primary text-sm font-bold ml-2">
+                {openDialogs.size}
+              </span>
+            </span>
+          </Button>
         </div>
       )}
 
