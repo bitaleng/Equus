@@ -1517,7 +1517,7 @@ export default function Home() {
 
       {/* Multi-Popup Grid System */}
       {openDialogs.size > 0 && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 pointer-events-none">
           <div className={`grid gap-4 w-full h-full max-w-7xl max-h-[90vh] ${
             openDialogs.size === 1 ? 'grid-cols-1' :
             openDialogs.size === 2 ? 'grid-cols-2' :
@@ -1534,7 +1534,7 @@ export default function Home() {
               return (
                 <div 
                   key={lockerNumber}
-                  className={`bg-background rounded-lg border-2 border-primary shadow-2xl overflow-hidden ${
+                  className={`bg-background rounded-lg border-2 border-primary shadow-2xl overflow-hidden pointer-events-auto ${
                     dialogInfo.isMinimized ? 'opacity-60' : ''
                   }`}
                   onClick={() => {
