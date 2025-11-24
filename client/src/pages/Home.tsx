@@ -781,6 +781,13 @@ export default function Home() {
       const timeType = getTimeType(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
+      // Log the locker click (for scan tracking)
+      try {
+        localDb.addScanLog(lockerNumber);
+      } catch (error) {
+        console.error('Failed to log locker click:', error);
+      }
+      
       // Add to openDialogs for multi-popup display
       setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
         lockerNumber,
@@ -880,6 +887,13 @@ export default function Home() {
         paymentCard,
         paymentTransfer,
       });
+
+      // Mark the scan log as processed (if there was a scan)
+      try {
+        localDb.markLatestScanAsProcessedByLocker(lockerNumber);
+      } catch (error) {
+        console.error('Failed to mark scan log as processed:', error);
+      }
 
       // Create rental transaction records for each rented item (at check-in)
       // NOTE: Rental items are SEPARATE revenue from locker entry fee
