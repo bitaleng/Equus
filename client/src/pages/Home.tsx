@@ -189,10 +189,10 @@ export default function Home() {
     }
   }, []);
 
-  // Update dialogOpenRef when dialogOpen changes
+  // Update dialogOpenRef when openDialogs changes
   useEffect(() => {
-    dialogOpenRef.current = dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog || barcodeTestDialogOpen;
-  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, barcodeTestDialogOpen]);
+    dialogOpenRef.current = openDialogs.size > 0 || childLockerAlertOpen || settlementReminderOpen || showPatternDialog || barcodeTestDialogOpen;
+  }, [openDialogs, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, barcodeTestDialogOpen]);
 
   // Process scanned barcode (shared logic for both hardware scanner and manual test)
   const processScannedBarcode = useCallback((barcode: string, lockerParentsMap: { [key: number]: number | null }, currentActiveLockers: LockerLog[]) => {
@@ -219,13 +219,17 @@ export default function Home() {
     const isInUse = currentActiveLockers.some(log => log.lockerNumber === lockerNumber);
     
     if (!isInUse) {
-      // Empty locker: set new locker info and open dialog
+      // Empty locker: add to openDialogs for multi-popup display
       const timeType = getTimeType(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
-      setNewLockerInfo({ lockerNumber, timeType, basePrice });
-      setSelectedLocker(lockerNumber);
-      setDialogOpen(true);
+      setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+        lockerNumber,
+        isMinimized: false,
+        timeType,
+        basePrice,
+        newLockerInfo: { lockerNumber, timeType, basePrice }
+      }));
       
       toast({
         title: "락카 선택",
@@ -239,10 +243,13 @@ export default function Home() {
         setChildLockerParent(parentLockerNumber);
         setChildLockerAlertOpen(true);
       } else {
-        // Parent or independent locker: open dialog
-        setNewLockerInfo(null);
-        setSelectedLocker(lockerNumber);
-        setDialogOpen(true);
+        // Parent or independent locker: add to openDialogs
+        setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+          lockerNumber,
+          isMinimized: false,
+          timeType: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
+          basePrice: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
+        }));
         
         toast({
           title: "락카 선택",
