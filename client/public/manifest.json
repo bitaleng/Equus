@@ -1,6 +1,6 @@
 {
-  "name": "휴게텔 입실관리 시스템",
-  "short_name": "휴게텔 관리",
+  "name": "EQUUS MANAGEMENTS",
+  "short_name": "EQUUS",
   "description": "태블릿 최적화 휴게텔 입실 관리 시스템",
   "start_url": "/",
   "display": "standalone",
