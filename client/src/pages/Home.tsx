@@ -343,15 +343,19 @@ export default function Home() {
         const isInUse = activeLockersRef.current.some(log => log.lockerNumber === lockerNumber);
         
         if (!isInUse) {
-          // Empty locker: set new locker info and open dialog
+          // Empty locker: add to openDialogs for multi-popup display
           // Use current time at the moment of scan, not the time when scanning started
           const scanTime = new Date();
           const timeType = getTimeType(scanTime);
           const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
           
-          setNewLockerInfo({ lockerNumber, timeType, basePrice });
-          setSelectedLocker(lockerNumber);
-          setDialogOpen(true);
+          setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+            lockerNumber,
+            isMinimized: false,
+            timeType,
+            basePrice,
+            newLockerInfo: { lockerNumber, timeType, basePrice }
+          }));
           
           toast({
             title: "NFC 스캔 완료",
@@ -365,10 +369,13 @@ export default function Home() {
             setChildLockerParent(parentLockerNumber);
             setChildLockerAlertOpen(true);
           } else {
-            // Parent or independent locker: open dialog
-            setNewLockerInfo(null);
-            setSelectedLocker(lockerNumber);
-            setDialogOpen(true);
+            // Parent or independent locker: add to openDialogs
+            setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+              lockerNumber,
+              isMinimized: false,
+              timeType: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
+              basePrice: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
+            }));
             
             toast({
               title: "NFC 스캔 완료",
@@ -433,8 +440,8 @@ export default function Home() {
     let lastKeyTime = 0;
     
     const handleBarcodeScan = (e: KeyboardEvent) => {
-      // Skip if a dialog is open
-      if (dialogOpen || childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
+      // Allow barcode scanning even when dialogs are open (for multi-popup)
+      if (childLockerAlertOpen || settlementReminderOpen || showPatternDialog) {
         return;
       }
       
@@ -480,7 +487,7 @@ export default function Home() {
     return () => {
       document.removeEventListener('keypress', handleBarcodeScan);
     };
-  }, [dialogOpen, childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
+  }, [childLockerAlertOpen, settlementReminderOpen, showPatternDialog, processScannedBarcode]);
 
   // Keyboard shortcut: H key for overview mode
   useEffect(() => {
@@ -492,6 +499,14 @@ export default function Home() {
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
         
         setOverviewMode(prev => !prev);
+      }
+      
+      // ESC key closes all minimized dialogs
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+        
+        setOpenDialogs(new Map());
       }
     };
 
@@ -751,9 +766,14 @@ export default function Home() {
       const timeType = getTimeType(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
-      setNewLockerInfo({ lockerNumber, timeType, basePrice });
-      setSelectedLocker(lockerNumber);
-      setDialogOpen(true);
+      // Add to openDialogs for multi-popup display
+      setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+        lockerNumber,
+        isMinimized: false,
+        timeType,
+        basePrice,
+        newLockerInfo: { lockerNumber, timeType, basePrice }
+      }));
     } else if (state === 'in-use') {
       // Check if this is a child locker
       const parentLockerNumber = lockerParents[lockerNumber];
@@ -762,19 +782,22 @@ export default function Home() {
         setChildLockerParent(parentLockerNumber);
         setChildLockerAlertOpen(true);
       } else {
-        // Parent or independent locker: open options dialog
-        setNewLockerInfo(null);
-        setSelectedLocker(lockerNumber);
-        setDialogOpen(true);
+        // Parent or independent locker: add to openDialogs
+        const entry = activeLockers.find(log => log.lockerNumber === lockerNumber);
+        if (entry) {
+          setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+            lockerNumber,
+            isMinimized: false,
+            timeType: entry.timeType,
+            basePrice: entry.basePrice
+          }));
+        }
       }
     }
   };
 
-  const selectedEntry = selectedLocker && !newLockerInfo
-    ? activeLockers.find(log => log.lockerNumber === selectedLocker)
-    : null;
-
   const handleApplyOption = async (
+    lockerNumber: number,
     option: string, 
     customAmount?: number, 
     notes?: string, 
@@ -791,6 +814,12 @@ export default function Home() {
     paymentCard?: number,
     paymentTransfer?: number
   ) => {
+    // Get dialog info for this locker
+    const dialogInfo = openDialogs.get(lockerNumber);
+    if (!dialogInfo) return;
+    
+    const newLockerInfo = dialogInfo.newLockerInfo;
+    
     // Handle new locker entry
     if (newLockerInfo) {
       const now = new Date();
@@ -882,13 +911,18 @@ export default function Home() {
       // Mark the most recent scan for this locker as processed
       localDb.markLatestScanAsProcessedByLocker(newLockerInfo.lockerNumber);
 
-      setNewLockerInfo(null);
-      setDialogOpen(false);
+      // Remove this dialog from openDialogs
+      setOpenDialogs(prev => {
+        const next = new Map(prev);
+        next.delete(lockerNumber);
+        return next;
+      });
       loadData();
       return;
     }
 
-    // Handle existing entry update
+    // Handle existing entry update - find by lockerNumber in activeLockers
+    const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
@@ -1027,6 +1061,7 @@ export default function Home() {
   };
 
   const handleCheckout = async (
+    lockerNumber: number,
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: Array<{
       itemId: string;
@@ -1046,6 +1081,7 @@ export default function Home() {
       discount?: number;
     }
   ) => {
+    const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
     const now = new Date();
@@ -1198,12 +1234,18 @@ export default function Home() {
     // Automatically unlink child lockers when parent checks out
     localDb.unlinkChildLockers(selectedEntry.lockerNumber, now.toISOString());
     
+    // Remove this dialog from openDialogs
+    setOpenDialogs(prev => {
+      const next = new Map(prev);
+      next.delete(lockerNumber);
+      return next;
+    });
+    
     loadData();
-    setDialogOpen(false);
-    setSelectedLocker(null);
   };
 
-  const handleCancel = async () => {
+  const handleCancel = async (lockerNumber: number) => {
+    const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
     localDb.updateEntry(selectedEntry.id, { 
@@ -1214,12 +1256,18 @@ export default function Home() {
     // Automatically cancel child lockers when parent is cancelled
     localDb.cancelChildLockers(selectedEntry.lockerNumber);
     
+    // Remove this dialog from openDialogs
+    setOpenDialogs(prev => {
+      const next = new Map(prev);
+      next.delete(lockerNumber);
+      return next;
+    });
+    
     loadData();
-    setDialogOpen(false);
-    setSelectedLocker(null);
   };
 
-  const handleSwap = (fromLocker: number, toLocker: number) => {
+  const handleSwap = (lockerNumber: number, toLocker: number) => {
+    const fromLocker = lockerNumber;
     const result = localDb.swapLockers(fromLocker, toLocker);
     
     if (result.success) {
@@ -1228,9 +1276,15 @@ export default function Home() {
         description: result.message,
         className: "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800",
       });
+      
+      // Remove this dialog from openDialogs
+      setOpenDialogs(prev => {
+        const next = new Map(prev);
+        next.delete(lockerNumber);
+        return next;
+      });
+      
       loadData();
-      setDialogOpen(false);
-      setSelectedLocker(null);
     } else {
       toast({
         title: "오류",
@@ -1271,8 +1325,16 @@ export default function Home() {
               entries={todayEntries}
               isExpanded={isLockerPanelCollapsed}
               onRowClick={(entry) => {
-                setSelectedLocker(entry.lockerNumber);
-                setDialogOpen(true);
+                // Add to openDialogs for multi-popup display
+                const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+                if (existingEntry) {
+                  setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                    lockerNumber: entry.lockerNumber,
+                    isMinimized: false,
+                    timeType: existingEntry.timeType,
+                    basePrice: existingEntry.basePrice
+                  }));
+                }
               }}
               isLockerPanelCollapsed={isLockerPanelCollapsed}
               onToggleLockerPanel={handleToggleLockerPanel}
@@ -1453,37 +1515,82 @@ export default function Home() {
         </div>
       )}
 
-      {/* Options Dialog */}
-      {(selectedEntry || newLockerInfo) && (
-        <LockerOptionsDialog
-          open={dialogOpen}
-          onClose={() => {
-            setDialogOpen(false);
-            setNewLockerInfo(null);
-          }}
-          lockerNumber={selectedEntry?.lockerNumber || newLockerInfo?.lockerNumber || 0}
-          basePrice={selectedEntry?.basePrice || newLockerInfo?.basePrice || 0}
-          timeType={selectedEntry?.timeType || newLockerInfo?.timeType || '주간'}
-          entryTime={selectedEntry?.entryTime}
-          currentNotes={selectedEntry?.notes}
-          currentPaymentMethod={selectedEntry?.paymentMethod}
-          currentPaymentCash={selectedEntry?.paymentCash}
-          currentPaymentCard={selectedEntry?.paymentCard}
-          currentPaymentTransfer={selectedEntry?.paymentTransfer}
-          currentOptionType={selectedEntry?.optionType}
-          currentOptionAmount={selectedEntry?.optionAmount}
-          currentFinalPrice={selectedEntry?.finalPrice}
-          discountAmount={discountAmount}
-          foreignerPrice={foreignerPrice}
-          dayPrice={dayPrice}
-          nightPrice={nightPrice}
-          isInUse={!!selectedEntry}
-          currentLockerLogId={selectedEntry?.id}
-          onApply={handleApplyOption}
-          onCheckout={handleCheckout}
-          onCancel={handleCancel}
-          onSwap={handleSwap}
-        />
+      {/* Multi-Popup Grid System */}
+      {openDialogs.size > 0 && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className={`grid gap-4 w-full h-full max-w-7xl max-h-[90vh] ${
+            openDialogs.size === 1 ? 'grid-cols-1' :
+            openDialogs.size === 2 ? 'grid-cols-2' :
+            openDialogs.size === 3 ? 'grid-cols-3' :
+            openDialogs.size === 4 ? 'grid-cols-2 grid-rows-2' :
+            openDialogs.size <= 6 ? 'grid-cols-3 grid-rows-2' :
+            openDialogs.size <= 9 ? 'grid-cols-3 grid-rows-3' :
+            'grid-cols-4 grid-rows-3'
+          }`}>
+            {Array.from(openDialogs.entries()).map(([lockerNumber, dialogInfo]) => {
+              const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
+              const newLockerInfo = dialogInfo.newLockerInfo;
+              
+              return (
+                <div 
+                  key={lockerNumber}
+                  className={`bg-background rounded-lg border-2 border-primary shadow-2xl overflow-hidden ${
+                    dialogInfo.isMinimized ? 'opacity-60' : ''
+                  }`}
+                  onClick={() => {
+                    if (dialogInfo.isMinimized) {
+                      setOpenDialogs(prev => {
+                        const next = new Map(prev);
+                        const info = next.get(lockerNumber);
+                        if (info) {
+                          next.set(lockerNumber, { ...info, isMinimized: false });
+                        }
+                        return next;
+                      });
+                    }
+                  }}
+                >
+                  <LockerOptionsDialog
+                    open={true}
+                    onClose={() => {
+                      setOpenDialogs(prev => {
+                        const next = new Map(prev);
+                        next.delete(lockerNumber);
+                        return next;
+                      });
+                    }}
+                    lockerNumber={lockerNumber}
+                    basePrice={selectedEntry?.basePrice || newLockerInfo?.basePrice || 0}
+                    timeType={selectedEntry?.timeType || newLockerInfo?.timeType || '주간'}
+                    entryTime={selectedEntry?.entryTime}
+                    currentNotes={selectedEntry?.notes}
+                    currentPaymentMethod={selectedEntry?.paymentMethod}
+                    currentPaymentCash={selectedEntry?.paymentCash}
+                    currentPaymentCard={selectedEntry?.paymentCard}
+                    currentPaymentTransfer={selectedEntry?.paymentTransfer}
+                    currentOptionType={selectedEntry?.optionType}
+                    currentOptionAmount={selectedEntry?.optionAmount}
+                    currentFinalPrice={selectedEntry?.finalPrice}
+                    discountAmount={discountAmount}
+                    foreignerPrice={foreignerPrice}
+                    dayPrice={dayPrice}
+                    nightPrice={nightPrice}
+                    isInUse={!!selectedEntry}
+                    currentLockerLogId={selectedEntry?.id}
+                    onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer) => 
+                      handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer)
+                    }
+                    onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment) => 
+                      handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment)
+                    }
+                    onCancel={() => handleCancel(lockerNumber)}
+                    onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Settlement Reminder Dialog */}
