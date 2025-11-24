@@ -1138,9 +1138,9 @@ export default function LockerOptionsDialog({
                     <span className="text-muted-foreground">입실 날짜</span>
                     <span className="font-medium">{entryDateTime.dateStr}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">입실 시간</span>
-                    <span className="font-medium">{entryDateTime.timeStr}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">입실 시간</span>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{entryDateTime.timeStr}</span>
                   </div>
                 </>
               )}
