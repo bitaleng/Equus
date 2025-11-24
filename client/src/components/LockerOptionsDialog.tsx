@@ -1108,14 +1108,26 @@ export default function LockerOptionsDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto" data-testid="dialog-locker-options">
-          <DialogHeader>
-            <DialogTitle className="text-xl">
+      {/* Main Popup Card - No Dialog wrapper for multi-popup support */}
+      {open && (
+        <div className="flex flex-col h-full bg-background rounded-lg overflow-hidden" data-testid="dialog-locker-options">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
+            <h2 className="text-xl font-semibold">
               락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
-            </DialogTitle>
-          </DialogHeader>
+            </h2>
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={handleCloseClick}
+              className="h-8 w-8"
+            >
+              ✕
+            </Button>
+          </div>
           
+          {/* Content - scrollable */}
+          <div className="flex-1 overflow-y-auto px-6">
           <div className="space-y-4 py-4">
             {/* 입실 정보 섹션 */}
             <div className="space-y-2">
@@ -1646,7 +1658,8 @@ export default function LockerOptionsDialog({
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/10">
             {isInUse ? (
               <>
                 <Button variant="destructive" onClick={handleCancelClick} data-testid="button-cancel">
@@ -1723,9 +1736,10 @@ export default function LockerOptionsDialog({
                 </Button>
               </>
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+          </div>
+        </div>
+      )}
 
       {/* Warning Alert for rental items and additional fees */}
       <AlertDialog open={showWarningAlert} onOpenChange={setShowWarningAlert}>
