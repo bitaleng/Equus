@@ -178,9 +178,10 @@ export function calculateFinalPrice(
  * 추가요금 계산 함수
  * 
  * 규칙 (내국인):
- * 1. 주간 입실 (07:00-18:59): 첫 체크포인트에 5,000원, 두 번째 체크포인트부터 15,000원
- * 2. 야간 입실 >= 19:00: 첫 체크포인트 무료, 두 번째 체크포인트부터 15,000원
- * 3. 야간 입실 < 07:00: 첫 체크포인트부터 15,000원
+ * 1. 주간 입실: 같은 영업일의 체크포인트(01:00)를 넘기면 추가요금(야간-주간 차액)
+ *    - 이후 매 24시간(다음 01:00)마다 야간요금 추가
+ * 2. 야간 입실: 다음 영업일의 체크포인트(01:00)를 넘기면 추가요금(야간요금)
+ *    - 이후 매 24시간(다음 01:00)마다 야간요금 추가
  * 
  * 규칙 (외국인):
  * - 입실 시각 기준 설정된 주기마다 외국인요금(foreignerPrice) 추가
@@ -236,27 +237,28 @@ export function calculateAdditionalFee(
     };
   }
   
-  // 내국인: 설정된 체크포인트 시간 기준 계산
+  // 내국인: 영업일 기준 체크포인트 계산
   // Validate and clamp domesticCheckpointHour (must be 0-23)
   const validCheckpointHour = Math.max(0, Math.min(23, domesticCheckpointHour));
   
-  const entryHour = entrySeoul.getHours();
-  const entryMinute = entrySeoul.getMinutes();
+  // 입실 시간의 영업일 계산 (10:00 AM 기준)
+  const entryBusinessDay = getBusinessDay(entry);
+  const [year, month, day] = entryBusinessDay.split('-').map(Number);
   
-  // 입실일의 체크포인트 시간 계산: 입실 시간이 체크포인트 이전이면 같은 날, 이후면 다음 날
+  // 첫 체크포인트 계산: 영업일 기준으로 결정
   const firstCheckpoint = new Date(entrySeoul);
-  firstCheckpoint.setMinutes(0, 0, 0);
+  firstCheckpoint.setFullYear(year, month - 1, day);
+  firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
   
-  // 입실 시간이 체크포인트 이전인지 확인
-  const entryBeforeCheckpoint = entryHour < validCheckpointHour || (entryHour === validCheckpointHour && entryMinute === 0);
-  
-  if (entryBeforeCheckpoint) {
-    // 같은 날 체크포인트 시간
-    firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
-  } else {
-    // 다음 날 체크포인트 시간
+  if (entryTimeType === '주간') {
+    // 주간 입실: 같은 영업일의 다음 날 01:00가 첫 체크포인트
+    // 예: 11/26 14:00 주간 입실 → 11/27 01:00 첫 체크포인트
     firstCheckpoint.setDate(firstCheckpoint.getDate() + 1);
-    firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
+  } else {
+    // 야간 입실: 다음 영업일의 다음 날 01:00가 첫 체크포인트
+    // 예: 11/26 23:00 야간 입실(영업일 11/26) → 11/28 01:00 첫 체크포인트
+    // 예: 11/27 00:44 야간 입실(영업일 11/26) → 11/28 01:00 첫 체크포인트
+    firstCheckpoint.setDate(firstCheckpoint.getDate() + 2);
   }
   
   // 현재 시간이 첫 체크포인트를 넘지 않았으면 추가요금 없음
@@ -269,37 +271,21 @@ export function calculateAdditionalFee(
   const midnightsPassed = Math.floor(timeDiff / (24 * 60 * 60 * 1000)) + 1; // +1은 첫 체크포인트
   
   let additionalFee = 0;
-  let additionalFeeCount = 0; // 추가요금 발생 횟수
+  let additionalFeeCount = 0;
   
-  // 케이스 분류:
-  // 1. 주간 입실 (07:00-18:59): 첫 01:00에 차액(5,000원)
   if (entryTimeType === '주간') {
+    // 주간 입실: 첫 체크포인트에 차액(야간-주간), 이후 체크포인트마다 야간요금
     additionalFee = (nightPrice - dayPrice); // 첫 01:00: 5,000원
-    additionalFeeCount = midnightsPassed; // 주간 입실은 모든 01:00이 추가요금
+    additionalFeeCount = midnightsPassed;
     
-    // 두 번째 01:00부터 야간요금 추가
+    // 두 번째 체크포인트부터 야간요금 추가
     if (midnightsPassed > 1) {
       additionalFee += (midnightsPassed - 1) * nightPrice;
     }
-  }
-  // 2. 야간 입실 >= 19:00: 첫 01:00 무료, 두 번째 01:00부터 야간요금
-  else if (entryHour >= 19) {
-    // 첫 01:00(내일 01:00)까지는 무료
-    if (midnightsPassed === 1) {
-      additionalFee = 0;
-      additionalFeeCount = 0;
-    }
-    // 두 번째 01:00부터 야간요금
-    else if (midnightsPassed > 1) {
-      additionalFee = (midnightsPassed - 1) * nightPrice;
-      additionalFeeCount = midnightsPassed - 1; // 첫 01:00 제외
-    }
-  }
-  // 3. 야간 입실 < 07:00: 첫 01:00(오늘 01:00)부터 야간요금
-  else {
-    // 새벽에 입실한 경우 첫 01:00부터 야간요금
+  } else {
+    // 야간 입실: 모든 체크포인트에 야간요금
     additionalFee = midnightsPassed * nightPrice;
-    additionalFeeCount = midnightsPassed; // 모든 01:00이 추가요금
+    additionalFeeCount = midnightsPassed;
   }
   
   return {
