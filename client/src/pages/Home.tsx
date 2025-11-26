@@ -1471,11 +1471,11 @@ export default function Home() {
             </div>
           </div>
           
-          {/* 2행: 빈락카/주간야간/요금 (좌측) | 범례 (우측) */}
+          {/* 2행: 사용중 락카수/총방문인원 (좌측) | 범례 (우측) */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground ml-12">
-              <span>빈 락커: {emptyLockerCount}개</span>
-              <span>{getTimeType(currentTime)} ({getBasePrice(getTimeType(currentTime), dayPrice, nightPrice).toLocaleString()}원)</span>
+              <span>사용중: {activeLockers.length}개</span>
+              <span>방문객: {summary?.totalVisitors || 0}명</span>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
