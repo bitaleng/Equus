@@ -1366,7 +1366,7 @@ export default function LockerOptionsDialog({
                   })()}
                 </>
               ) : (
-                <div className="flex gap-3">
+                <div className="flex gap-6">
                   <Button
                     type="button"
                     variant={paymentMethod === 'cash' ? 'default' : 'outline'}
