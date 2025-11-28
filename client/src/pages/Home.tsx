@@ -6,6 +6,7 @@ import TodayStatusTable from "@/components/TodayStatusTable";
 import SalesSummary from "@/components/SalesSummary";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
 import { Menu, X, Maximize2, ChevronDown } from "lucide-react";
 import {
@@ -1350,76 +1351,87 @@ export default function Home() {
   }));
 
   return (
-    <div className="h-full w-full flex bg-background">
-      {/* Left Panel - Collapsible */}
-      {!isPanelCollapsed && (
-        <div className={`border-r flex flex-col ${isLockerPanelCollapsed ? 'flex-1' : 'w-[40%]'}`}>
-          {/* Today Status */}
-          <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
-            <TodayStatusTable
-              entries={todayEntries}
-              isExpanded={isLockerPanelCollapsed}
-              onRowClick={(entry) => {
-                // Add to openDialogs for multi-popup display
-                const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
-                if (existingEntry) {
-                  setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
-                    lockerNumber: entry.lockerNumber,
-                    isMinimized: false,
-                    timeType: existingEntry.timeType,
-                    basePrice: existingEntry.basePrice
-                  }));
-                  // Show popup workspace
-                  setPopupsVisible(true);
-                }
-              }}
-              isLockerPanelCollapsed={isLockerPanelCollapsed}
-              onToggleLockerPanel={handleToggleLockerPanel}
-            />
-          </div>
+    <div className="h-full w-full bg-background">
+      <ResizablePanelGroup direction="horizontal" className="h-full">
+        {/* Left Panel - Collapsible */}
+        {!isPanelCollapsed && (
+          <>
+            <ResizablePanel 
+              defaultSize={isLockerPanelCollapsed ? 100 : 40} 
+              minSize={20} 
+              maxSize={isLockerPanelCollapsed ? 100 : 70}
+              className="flex flex-col"
+            >
+              <div className="h-full border-r flex flex-col">
+                {/* Today Status */}
+                <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
+                  <TodayStatusTable
+                    entries={todayEntries}
+                    isExpanded={isLockerPanelCollapsed}
+                    onRowClick={(entry) => {
+                      // Add to openDialogs for multi-popup display
+                      const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+                      if (existingEntry) {
+                        setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                          lockerNumber: entry.lockerNumber,
+                          isMinimized: false,
+                          timeType: existingEntry.timeType,
+                          basePrice: existingEntry.basePrice
+                        }));
+                        // Show popup workspace
+                        setPopupsVisible(true);
+                      }
+                    }}
+                    isLockerPanelCollapsed={isLockerPanelCollapsed}
+                    onToggleLockerPanel={handleToggleLockerPanel}
+                  />
+                </div>
 
-          {/* Sales Summary */}
-          {!isSalesSummaryCollapsed && (
-            <div className="flex-[2] p-6 overflow-auto">
-              <SalesSummary
-                date={getBusinessDay(currentTime, businessDayStartHour)}
-                totalVisitors={summary?.totalVisitors || 0}
-                totalSales={summary?.totalSales || 0}
-                cancellations={summary?.cancellations || 0}
-                foreignerCount={summary?.foreignerCount || 0}
-                dayVisitors={summary?.dayVisitors || 0}
-                nightVisitors={summary?.nightVisitors || 0}
-                additionalFeeSales={additionalFeeSales}
-                rentalRevenue={rentalRevenue}
-                totalExpenses={totalExpenses}
-                onExpenseAdded={loadData}
-                isCollapsed={isSalesSummaryCollapsed}
-                onToggleCollapse={() => setIsSalesSummaryCollapsed(!isSalesSummaryCollapsed)}
-              />
-            </div>
-          )}
+                {/* Sales Summary */}
+                {!isSalesSummaryCollapsed && (
+                  <div className="flex-[2] p-6 overflow-auto">
+                    <SalesSummary
+                      date={getBusinessDay(currentTime, businessDayStartHour)}
+                      totalVisitors={summary?.totalVisitors || 0}
+                      totalSales={summary?.totalSales || 0}
+                      cancellations={summary?.cancellations || 0}
+                      foreignerCount={summary?.foreignerCount || 0}
+                      dayVisitors={summary?.dayVisitors || 0}
+                      nightVisitors={summary?.nightVisitors || 0}
+                      additionalFeeSales={additionalFeeSales}
+                      rentalRevenue={rentalRevenue}
+                      totalExpenses={totalExpenses}
+                      onExpenseAdded={loadData}
+                      isCollapsed={isSalesSummaryCollapsed}
+                      onToggleCollapse={() => setIsSalesSummaryCollapsed(!isSalesSummaryCollapsed)}
+                    />
+                  </div>
+                )}
 
-          {/* Sales Summary Collapsed Toggle Button */}
-          {isSalesSummaryCollapsed && (
-            <div className="p-3 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsSalesSummaryCollapsed(false)}
-                className="w-full"
-                data-testid="button-expand-sales"
-              >
-                <ChevronDown className="h-4 w-4 mr-2" />
-                매출집계 펼치기
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+                {/* Sales Summary Collapsed Toggle Button */}
+                {isSalesSummaryCollapsed && (
+                  <div className="p-3 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsSalesSummaryCollapsed(false)}
+                      className="w-full"
+                      data-testid="button-expand-sales"
+                    >
+                      <ChevronDown className="h-4 w-4 mr-2" />
+                      매출집계 펼치기
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </ResizablePanel>
+            {!isLockerPanelCollapsed && <ResizableHandle withHandle />}
+          </>
+        )}
 
-      {/* Right Panel - Locker Grid */}
-      {!isLockerPanelCollapsed && (
-        <div className="flex-1 flex flex-col">
+        {/* Right Panel - Locker Grid */}
+        {!isLockerPanelCollapsed && (
+          <ResizablePanel defaultSize={isPanelCollapsed ? 100 : 60} className="flex flex-col">
         {/* Header */}
         <div className="p-6 border-b">
           {/* 1행: 햄버거 + 날짜/시간 (좌측) | 입실 관리 (우측) */}
@@ -1549,8 +1561,9 @@ export default function Home() {
             </div>
           )}
           </div>
-        </div>
-      )}
+          </ResizablePanel>
+        )}
+      </ResizablePanelGroup>
 
       {/* Backdrop - Click to hide popups temporarily */}
       {openDialogs.size > 0 && popupsVisible && (
