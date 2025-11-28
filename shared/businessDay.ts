@@ -237,28 +237,38 @@ export function calculateAdditionalFee(
     };
   }
   
-  // 내국인: 영업일 기준 체크포인트 계산
+  // 내국인: 체크포인트 계산
   // Validate and clamp domesticCheckpointHour (must be 0-23)
   const validCheckpointHour = Math.max(0, Math.min(23, domesticCheckpointHour));
   
-  // 입실 시간의 영업일 계산 (10:00 AM 기준)
-  const entryBusinessDay = getBusinessDay(entry);
-  const [year, month, day] = entryBusinessDay.split('-').map(Number);
-  
-  // 첫 체크포인트 계산: 영업일 기준으로 결정
+  // 첫 체크포인트 계산
   const firstCheckpoint = new Date(entrySeoul);
-  firstCheckpoint.setFullYear(year, month - 1, day);
   firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
+  firstCheckpoint.setMilliseconds(0);
   
   if (entryTimeType === '주간') {
-    // 주간 입실: 같은 영업일의 다음 날 01:00가 첫 체크포인트
-    // 예: 11/26 14:00 주간 입실 → 11/27 01:00 첫 체크포인트
+    // 주간 입실: 실제 입실 날짜 + 1일의 01:00가 첫 체크포인트
+    // 핵심: 영업일이 아닌 "실제 입실 날짜"를 기준으로 함
+    // 예: 11/28 08:47 주간 입실 → 11/29 01:00 첫 체크포인트
+    // 예: 11/27 14:00 주간 입실 → 11/28 01:00 첫 체크포인트
+    const entryDate = entrySeoul.getDate();
+    const entryMonth = entrySeoul.getMonth();
+    const entryYear = entrySeoul.getFullYear();
+    
+    firstCheckpoint.setFullYear(entryYear, entryMonth, entryDate);
     firstCheckpoint.setDate(firstCheckpoint.getDate() + 1);
+    firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
   } else {
-    // 야간 입실: 다음 영업일의 다음 날 01:00가 첫 체크포인트
-    // 예: 11/26 23:00 야간 입실(영업일 11/26) → 11/28 01:00 첫 체크포인트
-    // 예: 11/27 00:44 야간 입실(영업일 11/26) → 11/28 01:00 첫 체크포인트
+    // 야간 입실: 영업일 + 2일의 01:00가 첫 체크포인트
+    // 영업일 기준으로 계산 (10:00 AM 이전 입실은 전날 영업일)
+    // 예: 11/27 23:00 야간 입실(영업일 11/27) → 11/29 01:00 첫 체크포인트
+    // 예: 11/28 02:00 야간 입실(영업일 11/27) → 11/29 01:00 첫 체크포인트
+    const entryBusinessDay = getBusinessDay(entry);
+    const [year, month, day] = entryBusinessDay.split('-').map(Number);
+    
+    firstCheckpoint.setFullYear(year, month - 1, day);
     firstCheckpoint.setDate(firstCheckpoint.getDate() + 2);
+    firstCheckpoint.setHours(validCheckpointHour, 0, 0, 0);
   }
   
   // 현재 시간이 첫 체크포인트를 넘지 않았으면 추가요금 없음
