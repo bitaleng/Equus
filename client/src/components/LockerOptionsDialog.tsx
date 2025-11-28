@@ -116,7 +116,7 @@ export default function LockerOptionsDialog({
   const [isForeigner, setIsForeigner] = useState(false);
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentPaymentMethod);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(isInUse ? currentPaymentMethod : null);
   const [paymentCash, setPaymentCash] = useState<string>("");
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
@@ -364,7 +364,8 @@ export default function LockerOptionsDialog({
   // Initialize state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
-      setPaymentMethod(currentPaymentMethod);
+      // For existing entries (isInUse), use current payment method. For new entries, set to null (must select)
+      setPaymentMethod(isInUse ? currentPaymentMethod : null);
       
       // Parse rental items from notes (legacy)
       const blanketPresent = currentNotes?.includes('담요') || false;
@@ -417,7 +418,7 @@ export default function LockerOptionsDialog({
       setIsForeigner(false);
       setIsDirectPrice(false);
       setDirectPrice("");
-      setPaymentMethod('card');
+      setPaymentMethod(null);
       setShowCheckoutConfirm(false);
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
@@ -542,6 +543,16 @@ export default function LockerOptionsDialog({
   const handleProcessEntry = () => {
     playClickSound();
     
+    // Validate payment method selection (required for new entries)
+    if (!useSplitPayment && !paymentMethod) {
+      toast({
+        title: "지불방식 미선택",
+        description: "현금, 카드, 이체 중 하나를 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
     let optionAmount: number | undefined;
 
@@ -593,7 +604,9 @@ export default function LockerOptionsDialog({
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
     
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    // paymentMethod is guaranteed to be non-null here due to validation above or split payment
+    const finalPaymentMethod = paymentMethod || 'cash';
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     setDialogOpen(false);
   };
 
@@ -651,7 +664,9 @@ export default function LockerOptionsDialog({
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
     
-    onApply(optionType, optionAmount, generatedNotes, paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    // paymentMethod should be set for existing entries (isInUse)
+    const finalPaymentMethod = paymentMethod || 'cash';
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
     
     // Mark as resolved to prevent warning on next open
     setCheckoutResolved(true);
@@ -751,12 +766,15 @@ export default function LockerOptionsDialog({
       }
     }
     
+    // paymentMethod should be set for existing entries (isInUse)
+    const finalPaymentMethod = paymentMethod || 'cash';
+    
     // Check if there are any rental items
     if (selectedRentalItems.size > 0) {
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
+      onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
     }
   };
 
@@ -829,7 +847,9 @@ export default function LockerOptionsDialog({
       }
     }
     
-    onCheckout(paymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
+    // paymentMethod should be set for existing entries (isInUse)
+    const finalPaymentMethod = paymentMethod || 'cash';
+    onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
   };
 
   const handleWarningResolved = () => {
@@ -1346,16 +1366,35 @@ export default function LockerOptionsDialog({
                   })()}
                 </>
               ) : (
-                <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as 'card' | 'cash' | 'transfer')}>
-                  <SelectTrigger data-testid="select-payment-method">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">현금</SelectItem>
-                    <SelectItem value="card">카드</SelectItem>
-                    <SelectItem value="transfer">계좌이체</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant={paymentMethod === 'cash' ? 'default' : 'outline'}
+                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'cash' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    onClick={() => setPaymentMethod('cash')}
+                    data-testid="button-payment-cash"
+                  >
+                    현금
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMethod === 'card' ? 'default' : 'outline'}
+                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    onClick={() => setPaymentMethod('card')}
+                    data-testid="button-payment-card"
+                  >
+                    카드
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={paymentMethod === 'transfer' ? 'default' : 'outline'}
+                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'transfer' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    onClick={() => setPaymentMethod('transfer')}
+                    data-testid="button-payment-transfer"
+                  >
+                    이체
+                  </Button>
+                </div>
               )}
             </div>
 
