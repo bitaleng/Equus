@@ -20,13 +20,74 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as localDb from "@/lib/localDb";
 import { formatPaymentMethod } from "@/lib/utils";
 import { getBusinessDay, getBusinessDayRange } from "@shared/businessDay";
+
+/**
+ * 영업일 입력 파싱 함수
+ * 예: "25-27" → [25, 26, 27]
+ * 예: "25, 27" → [25, 27]
+ * 예: "25-27, 29" → [25, 26, 27, 29]
+ * 예: "25" → [25]
+ */
+function parseBusinessDaysInput(input: string): number[] {
+  if (!input.trim()) return [];
+  
+  const days = new Set<number>();
+  const parts = input.split(',').map(p => p.trim());
+  
+  for (const part of parts) {
+    if (part.includes('-')) {
+      // 범위: "25-27"
+      const [startStr, endStr] = part.split('-').map(s => s.trim());
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      
+      if (!isNaN(start) && !isNaN(end) && start <= end && start >= 1 && end <= 31) {
+        for (let d = start; d <= end; d++) {
+          days.add(d);
+        }
+      }
+    } else {
+      // 단일 일자: "25"
+      const day = parseInt(part, 10);
+      if (!isNaN(day) && day >= 1 && day <= 31) {
+        days.add(day);
+      }
+    }
+  }
+  
+  return Array.from(days).sort((a, b) => a - b);
+}
+
+/**
+ * 영업일 배열을 시작/종료 시간 범위 배열로 변환
+ * @param days 일자 배열 (예: [25, 26, 27])
+ * @param yearMonth 연월 문자열 (예: "2025-11")
+ * @param businessDayStartHour 영업일 시작 시각 (기본값: 10)
+ * @returns 시작/종료 시간 범위 배열
+ */
+function getBusinessDayRangesForDays(
+  days: number[],
+  yearMonth: string,
+  businessDayStartHour: number = 10
+): { start: Date; end: Date; businessDay: string }[] {
+  if (days.length === 0 || !yearMonth) return [];
+  
+  const [year, month] = yearMonth.split('-').map(Number);
+  if (isNaN(year) || isNaN(month)) return [];
+  
+  return days.map(day => {
+    // 해당 영업일의 시작 시간 생성 (KST 기준)
+    const businessDayDate = new Date(year, month - 1, day, businessDayStartHour + 1, 0, 0);
+    return getBusinessDayRange(businessDayDate, businessDayStartHour);
+  });
+}
 
 interface LogEntry {
   id: string;
@@ -100,6 +161,16 @@ export default function LogsPage() {
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
   const [additionalFeeFilter, setAdditionalFeeFilter] = useState<string>("all");
   
+  // 영업일 자동 조회
+  const [showBusinessDayFilter, setShowBusinessDayFilter] = useState(false);
+  const [businessDayYearMonth, setBusinessDayYearMonth] = useState<string>(() => {
+    // 기본값: 현재 연월
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [businessDayInput, setBusinessDayInput] = useState<string>("");
+  const [activeBusinessDays, setActiveBusinessDays] = useState<string[]>([]); // 현재 조회 중인 영업일들
+  
   // Rental transaction filters
   const [showRentalFilters, setShowRentalFilters] = useState(false);
   const [rentalItemFilter, setRentalItemFilter] = useState<string>("all");
@@ -110,11 +181,20 @@ export default function LogsPage() {
   const [rentalEndDate, setRentalEndDate] = useState<string>("");
   const [rentalUseTimeFilter, setRentalUseTimeFilter] = useState(false);
   const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
+  
+  // 추가매출 영업일 자동 조회
+  const [showRentalBusinessDayFilter, setShowRentalBusinessDayFilter] = useState(false);
+  const [rentalBusinessDayYearMonth, setRentalBusinessDayYearMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [rentalBusinessDayInput, setRentalBusinessDayInput] = useState<string>("");
+  const [activeRentalBusinessDays, setActiveRentalBusinessDays] = useState<string[]>([]);
 
   // Load data on mount and when filters change
   useEffect(() => {
     loadLogs();
-  }, [startDate, endDate, useTimeFilter]);
+  }, [startDate, endDate, useTimeFilter, activeBusinessDays]);
   
   // Auto-refresh when component mounts (navigating to this page)
   useEffect(() => {
@@ -141,7 +221,38 @@ export default function LogsPage() {
       let feeEvents: AdditionalFeeEvent[];
       let rentalTxns: RentalTransaction[];
       
-      if (useTimeFilter && startDate && endDate) {
+      // 영업일 자동 조회가 활성화된 경우
+      if (activeBusinessDays.length > 0) {
+        const allResults: LogEntry[] = [];
+        const allFeeEvents: AdditionalFeeEvent[] = [];
+        const allRentalTxns: RentalTransaction[] = [];
+        
+        // 각 영업일에 대해 데이터 조회
+        for (const businessDay of activeBusinessDays) {
+          const businessDayDate = new Date(businessDay + 'T12:00:00'); // KST 정오로 설정
+          const range = getBusinessDayRange(businessDayDate, businessDayStartHour);
+          
+          const startISO = range.start.toISOString();
+          const endISO = range.end.toISOString();
+          
+          const dayResult = localDb.getEntriesByDateTimeRange(startISO, endISO);
+          const dayFeeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
+          const dayRentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
+          
+          allResults.push(...dayResult);
+          allFeeEvents.push(...dayFeeEvents);
+          allRentalTxns.push(...dayRentalTxns);
+        }
+        
+        // 중복 제거 (ID 기준)
+        const uniqueResults = Array.from(new Map(allResults.map(r => [r.id, r])).values());
+        const uniqueFeeEvents = Array.from(new Map(allFeeEvents.map(e => [e.id, e])).values());
+        const uniqueRentalTxns = Array.from(new Map(allRentalTxns.map(t => [t.id, t])).values());
+        
+        result = uniqueResults;
+        feeEvents = uniqueFeeEvents;
+        rentalTxns = uniqueRentalTxns;
+      } else if (useTimeFilter && startDate && endDate) {
         // Time-based filtering: Convert datetime-local to ISO strings for UTC comparison
         console.log('[LogsPage] DateTime filter inputs:', { startDate, endDate, useTimeFilter });
         
@@ -466,7 +577,9 @@ export default function LogsPage() {
             <div>
               <h1 className="text-xl font-semibold">입출 기록 로그</h1>
               <p className="text-xs text-muted-foreground mt-1">
-                {startDate && endDate
+                {activeBusinessDays.length > 0
+                  ? `영업일 ${activeBusinessDays.map(d => d.split('-')[2]).join(', ')}일 - ${logs.length}건`
+                  : startDate && endDate
                   ? `${startDate} ~ ${endDate} 매출 - ${logs.length}건`
                   : startDate
                   ? `${startDate} 매출 - ${logs.length}건`
@@ -507,10 +620,86 @@ export default function LogsPage() {
               필터
             </Button>
 
+            {/* 영업일 자동 조회 버튼 */}
+            {!showBusinessDayFilter ? (
+              <Button 
+                variant={activeBusinessDays.length > 0 ? "default" : "outline"}
+                onClick={() => {
+                  setShowBusinessDayFilter(true);
+                  setShowDateFilter(false);
+                }}
+                data-testid="button-show-business-day-filter"
+              >
+                <Zap className="h-4 w-4 mr-2" />
+                영업일 조회
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  type="month"
+                  value={businessDayYearMonth}
+                  onChange={(e) => setBusinessDayYearMonth(e.target.value)}
+                  className="w-36"
+                  data-testid="input-business-day-month"
+                />
+                <Input
+                  type="text"
+                  value={businessDayInput}
+                  onChange={(e) => setBusinessDayInput(e.target.value)}
+                  placeholder="예: 25-27 또는 25, 27"
+                  className="w-40"
+                  data-testid="input-business-day"
+                />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const days = parseBusinessDaysInput(businessDayInput);
+                    if (days.length > 0 && businessDayYearMonth) {
+                      const businessDays = days.map(d => 
+                        `${businessDayYearMonth}-${String(d).padStart(2, '0')}`
+                      );
+                      setActiveBusinessDays(businessDays);
+                      setStartDate("");
+                      setEndDate("");
+                    }
+                  }}
+                  data-testid="button-apply-business-day"
+                >
+                  조회
+                </Button>
+                {activeBusinessDays.length > 0 && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      setActiveBusinessDays([]);
+                      setBusinessDayInput("");
+                    }}
+                    data-testid="button-clear-business-day"
+                  >
+                    초기화
+                  </Button>
+                )}
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => {
+                    setShowBusinessDayFilter(false);
+                  }}
+                  data-testid="button-hide-business-day-filter"
+                >
+                  닫기
+                </Button>
+              </div>
+            )}
+
             {!showDateFilter ? (
               <Button 
                 variant="outline" 
-                onClick={() => setShowDateFilter(true)}
+                onClick={() => {
+                  setShowDateFilter(true);
+                  setShowBusinessDayFilter(false);
+                }}
                 data-testid="button-show-date-filter"
               >
                 <Calendar className="h-4 w-4 mr-2" />
@@ -538,7 +727,10 @@ export default function LogsPage() {
                     id="start-date"
                     type={useTimeFilter ? "datetime-local" : "date"}
                     value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    onChange={(e) => {
+                      setStartDate(e.target.value);
+                      setActiveBusinessDays([]); // 기간 조회 시 영업일 조회 해제
+                    }}
                     className={useTimeFilter ? "w-52" : "w-40"}
                     data-testid="input-start-date"
                   />
@@ -551,7 +743,10 @@ export default function LogsPage() {
                     id="end-date"
                     type={useTimeFilter ? "datetime-local" : "date"}
                     value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
+                    onChange={(e) => {
+                      setEndDate(e.target.value);
+                      setActiveBusinessDays([]); // 기간 조회 시 영업일 조회 해제
+                    }}
                     className={useTimeFilter ? "w-52" : "w-40"}
                     data-testid="input-end-date"
                   />
@@ -840,8 +1035,24 @@ export default function LogsPage() {
         // Apply rental filters
         let filteredRentals = [...rentalTransactions];
         
-        // Date/Time filter for rental section
-        if (rentalStartDate || rentalEndDate) {
+        // 영업일 자동 조회 필터 for rental section
+        if (activeRentalBusinessDays.length > 0) {
+          filteredRentals = filteredRentals.filter(txn => {
+            const rentalDate = new Date(txn.rentalTime);
+            
+            // 각 영업일에 대해 시간 범위 확인
+            for (const businessDay of activeRentalBusinessDays) {
+              const businessDayDate = new Date(businessDay + 'T12:00:00');
+              const range = getBusinessDayRange(businessDayDate, businessDayStartHour);
+              
+              if (rentalDate >= range.start && rentalDate <= range.end) {
+                return true;
+              }
+            }
+            return false;
+          });
+        } else if (rentalStartDate || rentalEndDate) {
+          // Date/Time filter for rental section
           filteredRentals = filteredRentals.filter(txn => {
             const rentalDate = new Date(txn.rentalTime);
             
@@ -911,7 +1122,7 @@ export default function LogsPage() {
           return sum;
         }, 0);
         
-        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all" || rentalLockerNumberFilter !== "" || rentalStartDate !== "" || rentalEndDate !== "";
+        const hasRentalFilters = rentalItemFilter !== "all" || rentalPaymentFilter !== "all" || rentalDepositFilter !== "all" || rentalLockerNumberFilter !== "" || rentalStartDate !== "" || rentalEndDate !== "" || activeRentalBusinessDays.length > 0;
         
         return (
           <Collapsible open={isRentalSectionOpen} onOpenChange={setIsRentalSectionOpen} className="mt-6">
@@ -957,6 +1168,78 @@ export default function LogsPage() {
                   <Filter className="h-3 w-3 mr-2" />
                   필터
                 </Button>
+                
+                {/* 추가매출 영업일 자동 조회 */}
+                {!showRentalBusinessDayFilter ? (
+                  <Button 
+                    variant={activeRentalBusinessDays.length > 0 ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setShowRentalBusinessDayFilter(true)}
+                    data-testid="button-show-rental-business-day-filter"
+                  >
+                    <Zap className="h-3 w-3 mr-2" />
+                    영업일 조회
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="month"
+                      value={rentalBusinessDayYearMonth}
+                      onChange={(e) => setRentalBusinessDayYearMonth(e.target.value)}
+                      className="w-32 h-8"
+                      data-testid="input-rental-business-day-month"
+                    />
+                    <Input
+                      type="text"
+                      value={rentalBusinessDayInput}
+                      onChange={(e) => setRentalBusinessDayInput(e.target.value)}
+                      placeholder="예: 25-27"
+                      className="w-28 h-8"
+                      data-testid="input-rental-business-day"
+                    />
+                    <Button
+                      size="sm"
+                      className="h-8"
+                      onClick={() => {
+                        const days = parseBusinessDaysInput(rentalBusinessDayInput);
+                        if (days.length > 0 && rentalBusinessDayYearMonth) {
+                          const businessDays = days.map(d => 
+                            `${rentalBusinessDayYearMonth}-${String(d).padStart(2, '0')}`
+                          );
+                          setActiveRentalBusinessDays(businessDays);
+                          setRentalStartDate("");
+                          setRentalEndDate("");
+                        }
+                      }}
+                      data-testid="button-apply-rental-business-day"
+                    >
+                      조회
+                    </Button>
+                    {activeRentalBusinessDays.length > 0 && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="h-8"
+                        onClick={() => {
+                          setActiveRentalBusinessDays([]);
+                          setRentalBusinessDayInput("");
+                        }}
+                        data-testid="button-clear-rental-business-day"
+                      >
+                        초기화
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="h-8"
+                      onClick={() => setShowRentalBusinessDayFilter(false)}
+                      data-testid="button-hide-rental-business-day-filter"
+                    >
+                      닫기
+                    </Button>
+                  </div>
+                )}
                 
                 {showRentalFilters && (
                   <>
@@ -1023,6 +1306,8 @@ export default function LogsPage() {
                           setRentalStartDate("");
                           setRentalEndDate("");
                           setRentalUseTimeFilter(false);
+                          setActiveRentalBusinessDays([]);
+                          setRentalBusinessDayInput("");
                         }}
                         data-testid="button-clear-rental-filters"
                       >
