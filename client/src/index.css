@@ -396,14 +396,32 @@
   }
 }
 
-/* 후불결제 락카 버튼 애니메이션 (노란색 ↔ 퍼플블루) */
+/* 후불결제 락카 버튼 싸이렌 애니메이션 (노란색 ↔ 퍼플블루) */
+@keyframes deferred-siren {
+  0%, 100% {
+    background-color: #FFD700; /* 노란색 (주간) */
+    color: #1a1a2e;
+    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+  }
+  50% {
+    background-color: #7B68EE; /* 퍼플블루 (야간) */
+    color: white;
+    box-shadow: 0 0 15px rgba(123, 104, 238, 0.6);
+  }
+}
+
+.animate-deferred-siren {
+  animation: deferred-siren 1.5s ease-in-out infinite;
+}
+
+/* 기존 pulse-deferred도 유지 (하위 호환성) */
 @keyframes pulse-deferred {
   0%, 100% {
-    background-color: #FFD700; /* 노란색 */
+    background-color: #FFD700;
     color: #1a1a2e;
   }
   50% {
-    background-color: #7B68EE; /* 퍼플블루 */
+    background-color: #7B68EE;
     color: white;
   }
 }

@@ -16,11 +16,12 @@ interface LockerButtonProps {
 }
 
 export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false }: LockerButtonProps) {
-  // 후불결제 애니메이션 색상 변화
+  // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과)
   const getDeferredPaymentStyles = () => {
     return `
-      animate-pulse-deferred 
-      text-white border-2 border-pink-400
+      animate-deferred-siren 
+      text-white border-2 border-white/50
+      shadow-lg shadow-purple-500/30
     `;
   };
   
