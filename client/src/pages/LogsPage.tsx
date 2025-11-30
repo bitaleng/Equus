@@ -106,6 +106,7 @@ interface LogEntry {
   cancelled: boolean;
   notes?: string;
   additionalFees?: number; // Total additional fees from checkout
+  deferredPayment?: boolean; // 후불결제 여부
 }
 
 interface AdditionalFeeEvent {
@@ -438,7 +439,13 @@ export default function LogsPage() {
   // Get display price for a log entry
   // For cross-business-day checkouts, shows only additional fees
   // For same-day checkouts, shows full final price (base + additional)
+  // For deferred payment entries, shows 0 until payment is completed
   const getDisplayPrice = (log: LogEntry): number => {
+    // 후불결제인 경우 0원 표시 (결제 완료 전까지)
+    if (log.deferredPayment) {
+      return 0;
+    }
+    
     const isAdditionalFeeOnly = (log as any).additionalFeeOnly === true;
     
     // 추가요금 전용 행: finalPrice 그대로 (이미 추가요금만)
@@ -1006,7 +1013,14 @@ export default function LogsPage() {
                       )}
                     </TableCell>
                     <TableCell className={`font-semibold text-base ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
-                      {getDisplayPrice(log).toLocaleString()}원
+                      <div className="flex items-center gap-1.5">
+                        <span>{getDisplayPrice(log).toLocaleString()}원</span>
+                        {log.deferredPayment && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
+                            후불
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       {formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer)}
