@@ -63,7 +63,8 @@ interface LockerOptionsDialogProps {
   nightPrice?: number;
   currentLockerLogId?: string;
   currentDeferredPayment?: boolean; // 현재 후불결제 상태
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean) => void;
+  currentCustomerMemo?: string; // 현재 손님 메모
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -105,6 +106,7 @@ export default function LockerOptionsDialog({
   nightPrice = 15000,
   currentLockerLogId,
   currentDeferredPayment = false, // 현재 후불결제 상태
+  currentCustomerMemo = "", // 현재 손님 메모
   onApply,
   onCheckout,
   onCancel,
@@ -127,6 +129,7 @@ export default function LockerOptionsDialog({
   const [useSplitPayment, setUseSplitPayment] = useState(false);
   const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부 (신규 입실용)
   const [isCurrentlyDeferred, setIsCurrentlyDeferred] = useState(false); // 현재 락카의 후불결제 상태 (기존 입실용)
+  const [customerMemo, setCustomerMemo] = useState(""); // 손님 메모
   
   // Additional fee payment states
   const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
@@ -405,9 +408,11 @@ export default function LockerOptionsDialog({
       if (isInUse) {
         setIsCurrentlyDeferred(currentDeferredPayment || false);
         setIsDeferredPayment(currentDeferredPayment || false);
+        setCustomerMemo(currentCustomerMemo || "");
       } else {
         setIsCurrentlyDeferred(false);
         setIsDeferredPayment(false);
+        setCustomerMemo("");
       }
       
       // Parse rental items from notes (legacy)
@@ -464,9 +469,10 @@ export default function LockerOptionsDialog({
       setPaymentMethod(null);
       setShowCheckoutConfirm(false);
       setIsDeferredPayment(false); // 후불결제 상태도 초기화
+      setCustomerMemo(""); // 손님 메모 초기화
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, currentCustomerMemo, isInUse]);
 
   const calculateFinalPrice = () => {
     // 우선순위 1: 요금직접입력
@@ -725,14 +731,14 @@ export default function LockerOptionsDialog({
     // 후불결제 시 결제 금액을 0원으로 처리
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo);
       setDialogOpen(false);
       return;
     }
     
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo);
     setDialogOpen(false);
   };
 
@@ -793,7 +799,7 @@ export default function LockerOptionsDialog({
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo);
     
     // Save return_completed status for rental items
     returnCompletedItems.forEach(itemId => {
@@ -2029,6 +2035,26 @@ export default function LockerOptionsDialog({
                 </div>
               </div>
             )}
+            
+            {/* 손님 메모 입력 */}
+            <div className="space-y-2 mt-4 p-4 rounded-lg bg-muted/30 border">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="customer-memo" className="text-sm font-semibold flex items-center gap-2">
+                  📝 손님 메모
+                </Label>
+                {customerMemo && (
+                  <span className="text-xs text-muted-foreground">(저장됨)</span>
+                )}
+              </div>
+              <Textarea
+                id="customer-memo"
+                placeholder="손님에 관한 특별한 인상이나 특이사항을 기록하세요. 예: 야간요금 냈으므로 추가요금발생시 전액할인"
+                value={customerMemo}
+                onChange={(e) => setCustomerMemo(e.target.value)}
+                className="min-h-[60px] resize-none text-sm"
+                data-testid="input-customer-memo"
+              />
+            </div>
           </div>
 
           {/* Footer */}
