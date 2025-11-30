@@ -841,7 +841,8 @@ export default function Home() {
     }>,
     paymentCash?: number,
     paymentCard?: number,
-    paymentTransfer?: number
+    paymentTransfer?: number,
+    deferredPayment?: boolean // 후불결제 여부
   ) => {
     // Get dialog info for this locker
     const dialogInfo = openDialogs.get(lockerNumber);
@@ -890,6 +891,7 @@ export default function Home() {
         paymentCard,
         paymentTransfer,
         entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
+        deferredPayment: deferredPayment || false,  // 후불결제 여부
       });
 
       // Mark the scan log as processed (if there was a scan)
