@@ -62,7 +62,7 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   currentLockerLogId?: string;
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number) => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -121,6 +121,7 @@ export default function LockerOptionsDialog({
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
   const [useSplitPayment, setUseSplitPayment] = useState(false);
+  const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부
   
   // Additional fee payment states
   const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
@@ -431,6 +432,7 @@ export default function LockerOptionsDialog({
       setDirectPrice("");
       setPaymentMethod(null);
       setShowCheckoutConfirm(false);
+      setIsDeferredPayment(false); // 후불결제 상태도 초기화
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
   }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved]);
@@ -554,8 +556,8 @@ export default function LockerOptionsDialog({
   const handleProcessEntry = () => {
     playClickSound();
     
-    // Validate payment method selection (required for new entries)
-    if (!useSplitPayment && !paymentMethod) {
+    // 후불결제가 아닌 경우에만 지불방식 검증
+    if (!isDeferredPayment && !useSplitPayment && !paymentMethod) {
       toast({
         title: "지불방식 미선택",
         description: "현금, 카드, 이체 중 하나를 선택해주세요.",
@@ -615,9 +617,17 @@ export default function LockerOptionsDialog({
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
     
+    // 후불결제 시 결제 금액을 0원으로 처리
+    if (isDeferredPayment) {
+      // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true);
+      setDialogOpen(false);
+      return;
+    }
+    
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false);
     setDialogOpen(false);
   };
 
@@ -677,7 +687,7 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false);
     
     // Save return_completed status for rental items
     returnCompletedItems.forEach(itemId => {
@@ -1287,28 +1297,70 @@ export default function LockerOptionsDialog({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">지불방식</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="split-payment" 
-                    checked={useSplitPayment}
-                    onCheckedChange={(checked) => {
-                      setUseSplitPayment(checked as boolean);
-                      // When switching to split payment, clear all fields
-                      if (checked) {
-                        setPaymentCash("");
-                        setPaymentCard("");
-                        setPaymentTransfer("");
-                      }
-                    }}
-                    data-testid="checkbox-split-payment"
-                  />
-                  <Label htmlFor="split-payment" className="text-sm cursor-pointer font-normal">
-                    분리결제
-                  </Label>
+                <div className="flex items-center gap-4">
+                  {/* 후불결제 옵션 - 입실 시에만 표시 */}
+                  {!isInUse && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="deferred-payment" 
+                        checked={isDeferredPayment}
+                        onCheckedChange={(checked) => {
+                          setIsDeferredPayment(checked as boolean);
+                          // 후불결제 선택 시 지불방식 관련 상태 초기화
+                          if (checked) {
+                            setPaymentMethod(null);
+                            setUseSplitPayment(false);
+                            setPaymentCash("");
+                            setPaymentCard("");
+                            setPaymentTransfer("");
+                          }
+                        }}
+                        data-testid="checkbox-deferred-payment"
+                      />
+                      <Label htmlFor="deferred-payment" className="text-sm cursor-pointer font-normal text-pink-600 dark:text-pink-400">
+                        후불결제
+                      </Label>
+                    </div>
+                  )}
+                  
+                  {/* 분리결제 옵션 - 후불결제가 아닐 때만 표시 */}
+                  {!isDeferredPayment && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="split-payment" 
+                        checked={useSplitPayment}
+                        onCheckedChange={(checked) => {
+                          setUseSplitPayment(checked as boolean);
+                          // When switching to split payment, clear all fields
+                          if (checked) {
+                            setPaymentCash("");
+                            setPaymentCard("");
+                            setPaymentTransfer("");
+                          }
+                        }}
+                        data-testid="checkbox-split-payment"
+                      />
+                      <Label htmlFor="split-payment" className="text-sm cursor-pointer font-normal">
+                        분리결제
+                      </Label>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {useSplitPayment ? (
+              {/* 후불결제 안내 */}
+              {isDeferredPayment && (
+                <div className="p-4 rounded-lg bg-pink-50 dark:bg-pink-950 border border-pink-200 dark:border-pink-800">
+                  <p className="text-sm text-pink-700 dark:text-pink-300 font-medium">
+                    후불결제: 퇴실 시 결제 예정
+                  </p>
+                  <p className="text-xs text-pink-600 dark:text-pink-400 mt-1">
+                    입실 처리 후 퇴실 시 결제를 받습니다.
+                  </p>
+                </div>
+              )}
+              
+              {!isDeferredPayment && useSplitPayment ? (
                 <>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -1393,7 +1445,7 @@ export default function LockerOptionsDialog({
                     );
                   })()}
                 </>
-              ) : (
+              ) : !isDeferredPayment ? (
                 <div className="flex gap-9">
                   <Button
                     type="button"
@@ -1423,7 +1475,7 @@ export default function LockerOptionsDialog({
                     이체
                   </Button>
                 </div>
-              )}
+              ) : null}
             </div>
 
             {/* 추가요금 섹션 - 추가요금이 있을 때만 표시 */}
