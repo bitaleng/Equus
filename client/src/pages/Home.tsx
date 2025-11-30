@@ -629,7 +629,8 @@ export default function Home() {
         })
         .map(event => {
           return {
-            id: `additionalfee_${event.id}`,
+            // CRITICAL: Use lockerLogId as the id so reverseCheckout can find the correct record
+            id: event.lockerLogId,
             lockerNumber: event.lockerNumber,
             entryTime: null, // Always display empty entry time for additional fees
             exitTime: event.checkoutTime,
