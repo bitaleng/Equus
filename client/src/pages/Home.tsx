@@ -716,6 +716,7 @@ export default function Home() {
   const lockerTimeTypes: { [key: number]: 'day' | 'night' } = {};
   const lockerEntryTimes: { [key: number]: Date } = {};
   const lockerParents: { [key: number]: number | null } = {};
+  const lockerDeferredPayments: { [key: number]: boolean } = {}; // 후불결제 여부
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -723,6 +724,7 @@ export default function Home() {
       additionalFeeCounts[i] = 0;
       lockerTimeTypes[i] = 'day';
       lockerParents[i] = null;
+      lockerDeferredPayments[i] = false;
     }
   });
   
@@ -730,6 +732,7 @@ export default function Home() {
     lockerStates[log.lockerNumber] = 'in-use';
     lockerEntryTimes[log.lockerNumber] = new Date(log.entryTime);
     lockerParents[log.lockerNumber] = log.parentLocker || null;
+    lockerDeferredPayments[log.lockerNumber] = (log as any).deferredPayment || false; // 후불결제 여부
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -1588,6 +1591,7 @@ export default function Home() {
                         onClick={() => handleLockerClick(num)}
                         isExpanded={isPanelCollapsed && !overviewMode}
                         parentLocker={lockerParents[num] || null}
+                        deferredPayment={lockerDeferredPayments[num] || false}
                       />
                     ))}
                   </div>

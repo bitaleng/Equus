@@ -12,14 +12,28 @@ interface LockerButtonProps {
   onClick: () => void;
   isExpanded?: boolean; // 패널 접힌 상태 (true = 패널 접힘, 버튼 크게)
   parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
+  deferredPayment?: boolean; // 후불결제 여부
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false }: LockerButtonProps) {
+  // 후불결제 애니메이션 색상 변화
+  const getDeferredPaymentStyles = () => {
+    return `
+      animate-pulse-deferred 
+      text-white border-2 border-pink-400
+    `;
+  };
+  
   const getButtonStyles = () => {
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
+      // 0순위: 후불결제 -> 노란색↔퍼플블루 애니메이션 (추가요금보다 우선)
+      if (deferredPayment) {
+        return getDeferredPaymentStyles();
+      }
+      
       // 1순위: 추가요금 있음 -> 무조건 레드
       if (additionalFeeCount > 0) {
         return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
@@ -56,6 +70,8 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     if (status === 'in-use') {
       // 자식 락카인 경우 "사용중" 텍스트 숨김
       if (parentLocker) return null;
+      // 후불결제인 경우 '후불결제' 표시
+      if (deferredPayment) return '후불결제';
       // 추가요금이 있으면 횟수만 표시
       if (additionalFeeCount > 0) return `추가 ${additionalFeeCount}회`;
       return '사용중';

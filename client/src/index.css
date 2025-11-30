@@ -395,3 +395,19 @@
     }
   }
 }
+
+/* 후불결제 락카 버튼 애니메이션 (노란색 ↔ 퍼플블루) */
+@keyframes pulse-deferred {
+  0%, 100% {
+    background-color: #FFD700; /* 노란색 */
+    color: #1a1a2e;
+  }
+  50% {
+    background-color: #7B68EE; /* 퍼플블루 */
+    color: white;
+  }
+}
+
+.animate-pulse-deferred {
+  animation: pulse-deferred 2s ease-in-out infinite;
+}
