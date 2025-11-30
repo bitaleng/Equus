@@ -133,6 +133,9 @@ export default function LockerOptionsDialog({
   const [additionalFeePaymentTransfer, setAdditionalFeePaymentTransfer] = useState<string>("");
   const [useAdditionalFeeSplitPayment, setUseAdditionalFeeSplitPayment] = useState(false);
   const [additionalFeeDiscount, setAdditionalFeeDiscount] = useState<string>("");
+  const [additionalFeeFullDiscount, setAdditionalFeeFullDiscount] = useState(false); // 전액 할인
+  const [additionalFeePartialDiscount, setAdditionalFeePartialDiscount] = useState(false); // 일부 할인
+  const [additionalFeeResolved, setAdditionalFeeResolved] = useState(false); // 추가요금 완납 처리
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
@@ -172,10 +175,14 @@ export default function LockerOptionsDialog({
   const previousLockerRef = useRef<number | null>(null);
   const { toast } = useToast();
 
-  // Reset checkoutResolved when dialog opens
+  // Reset checkoutResolved and additional fee discount when dialog opens
   useEffect(() => {
     if (open) {
       setCheckoutResolved(false);
+      setAdditionalFeeResolved(false);
+      setAdditionalFeeFullDiscount(false);
+      setAdditionalFeePartialDiscount(false);
+      setAdditionalFeeDiscount("");
       initialOpenRef.current = true;
     }
   }, [open]);
@@ -1704,6 +1711,114 @@ export default function LockerOptionsDialog({
                     </Select>
                   )}
                 </div>
+
+                {/* 현금영수증 발급 체크박스 */}
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="additional-fee-receipt" 
+                    data-testid="checkbox-additional-fee-receipt"
+                  />
+                  <Label htmlFor="additional-fee-receipt" className="text-xs cursor-pointer font-normal text-orange-600 dark:text-orange-400">
+                    현금영수증 발급 (+10% 부가세)
+                  </Label>
+                </div>
+
+                {/* 추가요금 할인 섹션 */}
+                <div className="space-y-2 pt-2 border-t border-orange-200 dark:border-orange-800">
+                  <Label className="text-sm font-semibold text-orange-700 dark:text-orange-300">추가요금 할인</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="additional-fee-full-discount" 
+                        checked={additionalFeeFullDiscount}
+                        onCheckedChange={(checked) => {
+                          setAdditionalFeeFullDiscount(checked as boolean);
+                          if (checked) {
+                            setAdditionalFeePartialDiscount(false);
+                            setAdditionalFeeDiscount(String(additionalFeeInfo.additionalFee));
+                          } else {
+                            setAdditionalFeeDiscount("");
+                          }
+                        }}
+                        data-testid="checkbox-additional-fee-full-discount"
+                      />
+                      <Label htmlFor="additional-fee-full-discount" className="text-sm cursor-pointer font-normal text-red-600 dark:text-red-400">
+                        전액 할인
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="additional-fee-partial-discount" 
+                        checked={additionalFeePartialDiscount}
+                        onCheckedChange={(checked) => {
+                          setAdditionalFeePartialDiscount(checked as boolean);
+                          if (checked) {
+                            setAdditionalFeeFullDiscount(false);
+                            setAdditionalFeeDiscount("");
+                          } else {
+                            setAdditionalFeeDiscount("");
+                          }
+                        }}
+                        data-testid="checkbox-additional-fee-partial-discount"
+                      />
+                      <Label htmlFor="additional-fee-partial-discount" className="text-sm cursor-pointer font-normal text-red-600 dark:text-red-400">
+                        일부 할인
+                      </Label>
+                    </div>
+                  </div>
+                  
+                  {/* 일부 할인 금액 입력 */}
+                  {additionalFeePartialDiscount && (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        placeholder="할인 금액 입력"
+                        value={additionalFeeDiscount}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 0;
+                          if (value <= additionalFeeInfo.additionalFee) {
+                            setAdditionalFeeDiscount(e.target.value);
+                          }
+                        }}
+                        className="flex-1"
+                        data-testid="input-additional-fee-discount"
+                      />
+                      <span className="text-sm text-muted-foreground">원</span>
+                    </div>
+                  )}
+                  
+                  {/* 할인 적용 후 최종 추가요금 표시 */}
+                  {(additionalFeeFullDiscount || (additionalFeePartialDiscount && additionalFeeDiscount)) && (
+                    <div className="flex justify-between text-sm pt-2">
+                      <span className="text-orange-700 dark:text-orange-300">할인 적용 후 추가요금</span>
+                      <span className="font-bold text-orange-700 dark:text-orange-300">
+                        {(additionalFeeInfo.additionalFee - (parseInt(additionalFeeDiscount) || 0)).toLocaleString()}원
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 추가요금완납 버튼 */}
+                <Button
+                  type="button"
+                  className={`w-full h-12 text-base font-semibold ${
+                    additionalFeeResolved 
+                      ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed' 
+                      : 'bg-green-600 hover:bg-green-700'
+                  }`}
+                  onClick={() => {
+                    setAdditionalFeeResolved(true);
+                    setCheckoutResolved(true);
+                    toast({
+                      title: "추가요금 완납",
+                      description: "추가요금이 완납 처리되었습니다. 퇴실 버튼이 활성화됩니다.",
+                    });
+                  }}
+                  disabled={additionalFeeResolved}
+                  data-testid="button-additional-fee-complete"
+                >
+                  {additionalFeeResolved ? '추가요금 완납됨 ✓' : '추가요금완납'}
+                </Button>
               </div>
             )}
 
