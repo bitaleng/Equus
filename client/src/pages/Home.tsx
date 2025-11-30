@@ -73,7 +73,6 @@ interface OpenDialog {
   timeType: '주간' | '야간';
   basePrice: number;
   newLockerInfo?: { lockerNumber: number, timeType: '주간' | '야간', basePrice: number } | null;
-  dialogOpenedAt: Date;  // 옵션창이 처음 열린 시간 (입실시간으로 사용)
 }
 
 export default function Home() {
@@ -852,8 +851,10 @@ export default function Home() {
     
     // Handle new locker entry
     if (newLockerInfo) {
-      const now = new Date();
-      const businessDay = getBusinessDay(now, businessDayStartHour);
+      // 옵션창이 열린 시간(스캔 시간)을 입실시간으로 사용
+      // 스캔 로그가 없는 경우(예외 상황) 현재 시간 사용
+      const dialogOpenedTime = localDb.getLatestUnprocessedScanTime(lockerNumber) || new Date();
+      const businessDay = getBusinessDay(dialogOpenedTime, businessDayStartHour);
       let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
       let finalPrice = newLockerInfo.basePrice;
       let optionAmount: number | undefined;
@@ -888,6 +889,7 @@ export default function Home() {
         paymentCash,
         paymentCard,
         paymentTransfer,
+        entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
       });
 
       // Mark the scan log as processed (if there was a scan)
@@ -933,7 +935,7 @@ export default function Home() {
             rentalFee: item.rentalFee,
             depositAmount: item.depositAmount,
             depositStatus: item.depositStatus,
-            rentalTime: now,
+            rentalTime: dialogOpenedTime,  // 옵션창 열린 시간 사용
             returnTime: null,
             businessDay: businessDay,
             paymentMethod: itemPaymentMethod,

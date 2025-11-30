@@ -1024,6 +1024,7 @@ function generateId(): string {
 }
 
 // Entry operations
+// entryTime: 옵션창이 열린 시간 (스캔 시간). 지정하지 않으면 현재 시간 사용
 export function createEntry(entry: {
   lockerNumber: number;
   timeType: string;
@@ -1038,11 +1039,13 @@ export function createEntry(entry: {
   paymentCard?: number;
   paymentTransfer?: number;
   rentalItems?: string[];
+  entryTime?: Date;  // 입실시간 (옵션창 열린 시간으로 기록, 미지정 시 현재시간)
 }): string {
   if (!db) throw new Error('Database not initialized');
 
   const id = generateId();
-  const now = new Date().toISOString();
+  // 입실시간: 지정된 시간(옵션창 열린 시간) 또는 현재 시간
+  const entryTimeISO = entry.entryTime ? entry.entryTime.toISOString() : new Date().toISOString();
   const rentalItemsJson = entry.rentalItems && entry.rentalItems.length > 0 
     ? JSON.stringify(entry.rentalItems) 
     : null;
@@ -1056,7 +1059,7 @@ export function createEntry(entry: {
     [
       id,
       entry.lockerNumber,
-      now,
+      entryTimeISO,
       entry.businessDay,
       entry.timeType,
       entry.basePrice,
@@ -5451,6 +5454,33 @@ export function getScanStats(businessDay: string): {
   } catch (error) {
     console.error('Error getting scan stats:', error);
     return { totalScans: 0, processedScans: 0, unprocessedScans: 0 };
+  }
+}
+
+// Get the scan time of the most recent unprocessed scan for a locker
+// This is used to record the entry time as the time the dialog was opened (scan time)
+// instead of the time the check-in button was pressed
+export function getLatestUnprocessedScanTime(lockerNumber: number): Date | null {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    const result = db.exec(
+      `SELECT scan_time FROM scan_logs 
+       WHERE locker_number = ? AND processed = 0 
+       ORDER BY scan_time DESC 
+       LIMIT 1`,
+      [lockerNumber]
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return null;
+    }
+    
+    const scanTimeStr = result[0].values[0][0] as string;
+    return new Date(scanTimeStr);
+  } catch (error) {
+    console.error('Error getting latest unprocessed scan time:', error);
+    return null;
   }
 }
 
