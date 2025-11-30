@@ -758,6 +758,14 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 16: Add deferred_payment column to locker_logs (후불결제 여부)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN deferred_payment INTEGER DEFAULT 0`);
+      console.log('Added deferred_payment column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -1041,6 +1049,7 @@ export function createEntry(entry: {
   paymentTransfer?: number;
   rentalItems?: string[];
   entryTime?: Date;  // 입실시간 (옵션창 열린 시간으로 기록, 미지정 시 현재시간)
+  deferredPayment?: boolean;  // 후불결제 여부
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1055,8 +1064,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1072,7 +1081,8 @@ export function createEntry(entry: {
       entry.paymentCash || null,
       entry.paymentCard || null,
       entry.paymentTransfer || null,
-      rentalItemsJson
+      rentalItemsJson,
+      entry.deferredPayment ? 1 : 0
     ]
   );
 
@@ -1144,6 +1154,10 @@ export function updateEntry(id: string, updates: any) {
     sets.push('additional_fees = ?');
     values.push(updates.additionalFees);
   }
+  if (updates.deferredPayment !== undefined) {
+    sets.push('deferred_payment = ?');
+    values.push(updates.deferredPayment ? 1 : 0);
+  }
 
   if (sets.length > 0) {
     values.push(id);
@@ -1160,6 +1174,157 @@ export function updateEntry(id: string, updates: any) {
     }
 
     saveDatabase();
+  }
+}
+
+// 퇴실 취소 (퇴실 처리된 락카를 다시 사용 중 상태로 복구)
+export function reverseCheckout(logId: string): { success: boolean; message: string; deletedAdditionalFee?: number } {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    // 1. 해당 로그 조회
+    const result = db.exec(
+      `SELECT * FROM locker_logs WHERE id = ?`,
+      [logId]
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { success: false, message: '해당 기록을 찾을 수 없습니다.' };
+    }
+    
+    const columns = result[0].columns;
+    const row = result[0].values[0];
+    const logData: any = {};
+    columns.forEach((col, idx) => {
+      logData[col] = row[idx];
+    });
+    
+    // 2. 이미 체크아웃된 상태인지 확인
+    if (logData.status !== 'checked_out') {
+      return { success: false, message: '이미 사용 중인 락카입니다.' };
+    }
+    
+    const lockerNumber = logData.locker_number;
+    const businessDay = logData.business_day;
+    
+    // 3. 해당 락카에 이미 다른 손님이 입실했는지 확인
+    const newEntryResult = db.exec(
+      `SELECT id FROM locker_logs 
+       WHERE locker_number = ? AND status = 'in_use'`,
+      [lockerNumber]
+    );
+    
+    if (newEntryResult.length > 0 && newEntryResult[0].values.length > 0) {
+      return { success: false, message: '해당 락카에 새로운 손님이 이미 입실했습니다.' };
+    }
+    
+    // 4. 추가요금 이벤트 삭제 (퇴실 시 기록된 추가요금)
+    let deletedAdditionalFee = 0;
+    const additionalFeeResult = db.exec(
+      `SELECT fee_amount FROM additional_fee_events WHERE locker_log_id = ?`,
+      [logId]
+    );
+    
+    if (additionalFeeResult.length > 0 && additionalFeeResult[0].values.length > 0) {
+      deletedAdditionalFee = additionalFeeResult[0].values[0][0] as number;
+      db.run(`DELETE FROM additional_fee_events WHERE locker_log_id = ?`, [logId]);
+    }
+    
+    // 5. 상태를 in_use로 변경하고 exit_time을 null로 설정
+    db.run(
+      `UPDATE locker_logs 
+       SET status = 'in_use', exit_time = NULL 
+       WHERE id = ?`,
+      [logId]
+    );
+    
+    // 6. 일일 요약 업데이트
+    updateDailySummary(businessDay);
+    saveDatabase();
+    
+    return { 
+      success: true, 
+      message: `${lockerNumber}번 락카의 퇴실이 취소되었습니다.`,
+      deletedAdditionalFee
+    };
+    
+  } catch (error) {
+    console.error('퇴실 취소 오류:', error);
+    return { success: false, message: '퇴실 취소 중 오류가 발생했습니다.' };
+  }
+}
+
+// 후불결제 완료 처리 (deferredPayment를 false로 변경)
+export function completeDeferredPayment(logId: string, paymentInfo?: {
+  paymentMethod?: string;
+  paymentCash?: number;
+  paymentCard?: number;
+  paymentTransfer?: number;
+}): { success: boolean; message: string } {
+  if (!db) throw new Error('Database not initialized');
+  
+  try {
+    // 1. 해당 로그 조회
+    const result = db.exec(
+      `SELECT * FROM locker_logs WHERE id = ?`,
+      [logId]
+    );
+    
+    if (result.length === 0 || result[0].values.length === 0) {
+      return { success: false, message: '해당 기록을 찾을 수 없습니다.' };
+    }
+    
+    const columns = result[0].columns;
+    const row = result[0].values[0];
+    const logData: any = {};
+    columns.forEach((col, idx) => {
+      logData[col] = row[idx];
+    });
+    
+    // 2. 후불결제 상태인지 확인
+    if (!logData.deferred_payment) {
+      return { success: false, message: '후불결제 상태가 아닙니다.' };
+    }
+    
+    // 3. 후불결제 해제 및 결제 정보 업데이트
+    let updateQuery = `UPDATE locker_logs SET deferred_payment = 0`;
+    const params: any[] = [];
+    
+    if (paymentInfo?.paymentMethod) {
+      updateQuery += `, payment_method = ?`;
+      params.push(paymentInfo.paymentMethod);
+    }
+    if (paymentInfo?.paymentCash !== undefined) {
+      updateQuery += `, payment_cash = ?`;
+      params.push(paymentInfo.paymentCash);
+    }
+    if (paymentInfo?.paymentCard !== undefined) {
+      updateQuery += `, payment_card = ?`;
+      params.push(paymentInfo.paymentCard);
+    }
+    if (paymentInfo?.paymentTransfer !== undefined) {
+      updateQuery += `, payment_transfer = ?`;
+      params.push(paymentInfo.paymentTransfer);
+    }
+    
+    updateQuery += ` WHERE id = ?`;
+    params.push(logId);
+    
+    db.run(updateQuery, params);
+    
+    // 4. 일일 요약 업데이트
+    const businessDay = logData.business_day;
+    updateDailySummary(businessDay);
+    saveDatabase();
+    
+    return { 
+      success: true, 
+      message: `${logData.locker_number}번 락카의 결제가 완료되었습니다.`
+    };
+    
+  } catch (error) {
+    console.error('결제 완료 처리 오류:', error);
+    return { success: false, message: '결제 완료 처리 중 오류가 발생했습니다.' };
   }
 }
 
