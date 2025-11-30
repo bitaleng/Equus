@@ -466,7 +466,7 @@ export default function LockerOptionsDialog({
       setIsDeferredPayment(false); // 후불결제 상태도 초기화
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
 
   const calculateFinalPrice = () => {
     // 우선순위 1: 요금직접입력
