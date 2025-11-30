@@ -221,6 +221,10 @@ function migrateDatabase() {
     try {
       db.run(`ALTER TABLE rental_transactions ADD COLUMN payment_transfer INTEGER`);
     } catch (e) {}
+    try {
+      db.run(`ALTER TABLE rental_transactions ADD COLUMN return_completed INTEGER DEFAULT 0`);
+      console.log('Added return_completed column to rental_transactions');
+    } catch (e) {}
     
     // expenses
     try {
@@ -876,6 +880,7 @@ function createTables() {
       payment_transfer INTEGER,
       deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
       revenue INTEGER NOT NULL DEFAULT 0,
+      return_completed INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -3685,6 +3690,7 @@ export function updateRentalTransaction(id: string, updates: {
   paymentCard?: number;
   paymentTransfer?: number;
   revenue?: number;
+  returnCompleted?: boolean;
 }) {
   if (!db) throw new Error('Database not initialized');
   
@@ -3804,14 +3810,28 @@ export function updateRentalTransaction(id: string, updates: {
     }
   }
   
-  db.run(
-    `UPDATE rental_transactions 
-     SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
-         payment_cash = ?, payment_card = ?, payment_transfer = ?, updated_at = ?
-     WHERE id = ?`,
-    [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
-     adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, new Date().toISOString(), id]
-  );
+  // Handle return_completed update
+  const returnCompletedValue = updates.returnCompleted !== undefined ? (updates.returnCompleted ? 1 : 0) : null;
+  
+  if (returnCompletedValue !== null) {
+    db.run(
+      `UPDATE rental_transactions 
+       SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
+           payment_cash = ?, payment_card = ?, payment_transfer = ?, return_completed = ?, updated_at = ?
+       WHERE id = ?`,
+      [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
+       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, returnCompletedValue, new Date().toISOString(), id]
+    );
+  } else {
+    db.run(
+      `UPDATE rental_transactions 
+       SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
+           payment_cash = ?, payment_card = ?, payment_transfer = ?, updated_at = ?
+       WHERE id = ?`,
+      [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
+       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, new Date().toISOString(), id]
+    );
+  }
   
   saveDatabase();
 }

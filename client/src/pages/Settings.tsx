@@ -68,6 +68,7 @@ interface AdditionalRevenueItem {
 
 interface RevenueItemFormData {
   name: string;
+  billingType: 'rental' | 'simple';  // 'rental' = 대여형(대여비+보증금), 'simple' = 단순판매형(금액만)
   rentalFee: string;
   depositAmount: string;
 }
@@ -102,6 +103,7 @@ export default function Settings() {
   const [editingRevenueItem, setEditingRevenueItem] = useState<AdditionalRevenueItem | null>(null);
   const [revenueItemFormData, setRevenueItemFormData] = useState<RevenueItemFormData>({
     name: "",
+    billingType: "rental",
     rentalFee: "",
     depositAmount: "",
   });
@@ -825,16 +827,20 @@ export default function Settings() {
 
   const handleAddRevenueItem = () => {
     setEditingRevenueItem(null);
-    setRevenueItemFormData({ name: "", rentalFee: "", depositAmount: "" });
+    setRevenueItemFormData({ name: "", billingType: "rental", rentalFee: "", depositAmount: "" });
     setIsRevenueItemDialogOpen(true);
   };
 
   const handleEditRevenueItem = (item: AdditionalRevenueItem) => {
     setEditingRevenueItem(item);
+    // Determine billingType based on existing data
+    const hasBothFees = (item.rentalFee || 0) > 0 || (item.depositAmount || 0) > 0;
+    const billingType = hasBothFees && (item.depositAmount || 0) > 0 ? "rental" : "simple";
     setRevenueItemFormData({
       name: item.name,
-      rentalFee: String(item.rentalFee),
-      depositAmount: String(item.depositAmount),
+      billingType: billingType,
+      rentalFee: String(item.rentalFee || 0),
+      depositAmount: String(item.depositAmount || 0),
     });
     setIsRevenueItemDialogOpen(true);
   };
@@ -860,29 +866,30 @@ export default function Settings() {
 
   const handleSaveRevenueItem = () => {
     try {
+      // 단순판매형인 경우 rentalFee에 금액을 저장하고 depositAmount는 0
       const data = {
         name: revenueItemFormData.name,
         rentalFee: parseInt(revenueItemFormData.rentalFee) || 0,
-        depositAmount: parseInt(revenueItemFormData.depositAmount) || 0,
+        depositAmount: revenueItemFormData.billingType === 'simple' ? 0 : (parseInt(revenueItemFormData.depositAmount) || 0),
       };
       
       if (editingRevenueItem) {
         localDb.updateAdditionalRevenueItem(editingRevenueItem.id, data);
         toast({
           title: "항목 수정 완료",
-          description: "대여 항목이 수정되었습니다.",
+          description: "추가매출 항목이 수정되었습니다.",
         });
       } else {
         localDb.createAdditionalRevenueItem(data);
         toast({
           title: "항목 생성 완료",
-          description: "새 대여 항목이 생성되었습니다.",
+          description: "새 추가매출 항목이 생성되었습니다.",
         });
       }
       loadRevenueItems();
       setIsRevenueItemDialogOpen(false);
       setEditingRevenueItem(null);
-      setRevenueItemFormData({ name: "", rentalFee: "", depositAmount: "" });
+      setRevenueItemFormData({ name: "", billingType: "rental", rentalFee: "", depositAmount: "" });
     } catch (error) {
       toast({
         title: "저장 실패",
@@ -1230,46 +1237,60 @@ export default function Settings() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {revenueItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                      data-testid={`revenue-item-${item.id}`}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">{item.name}</h4>
-                          {item.isDefault === 1 && (
-                            <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
-                              기본
+                  {revenueItems.map((item) => {
+                    // 단순판매형: 보증금이 0이고 대여비만 있는 경우
+                    const isSimpleType = (item.depositAmount || 0) === 0;
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                        data-testid={`revenue-item-${item.id}`}
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{item.name}</h4>
+                            {item.isDefault === 1 && (
+                              <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded">
+                                기본
+                              </span>
+                            )}
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              isSimpleType 
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' 
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            }`}>
+                              {isSimpleType ? '단순판매' : '대여형'}
                             </span>
-                          )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {isSimpleType ? (
+                              <>가격: ₩{item.rentalFee?.toLocaleString() ?? '0'}</>
+                            ) : (
+                              <>대여비: ₩{item.rentalFee?.toLocaleString() ?? '0'} | 보증금: ₩{item.depositAmount?.toLocaleString() ?? '0'}</>
+                            )}
+                          </p>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          대여비: ₩{item.rentalFee?.toLocaleString() ?? '0'} | 
-                          보증금: ₩{item.depositAmount?.toLocaleString() ?? '0'}
-                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEditRevenueItem(item)}
+                            data-testid={`button-edit-revenue-${item.id}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteRevenueItem(item.id)}
+                            data-testid={`button-delete-revenue-${item.id}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEditRevenueItem(item)}
-                          data-testid={`button-edit-revenue-${item.id}`}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteRevenueItem(item.id)}
-                          data-testid={`button-delete-revenue-${item.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -2009,10 +2030,10 @@ export default function Settings() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingRevenueItem ? "대여 항목 수정" : "새 대여 항목 추가"}
+              {editingRevenueItem ? "추가매출 항목 수정" : "새 추가매출 항목 추가"}
             </DialogTitle>
             <DialogDescription>
-              대여 항목의 이름, 대여비, 보증금을 설정하세요
+              추가매출 항목의 이름과 청구 유형을 설정하세요
             </DialogDescription>
           </DialogHeader>
 
@@ -2023,16 +2044,86 @@ export default function Settings() {
                 id="revenue-item-name"
                 value={revenueItemFormData.name}
                 onChange={(e) => setRevenueItemFormData({ ...revenueItemFormData, name: e.target.value })}
-                placeholder="예: 롱타올, 담요"
+                placeholder="예: 롱타올, 담요, 음료수"
                 data-testid="input-revenue-item-name"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            {/* 청구 유형 선택 */}
+            <div className="space-y-3">
+              <Label>청구 유형</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                    revenueItemFormData.billingType === 'rental' 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-muted hover:border-primary/50'
+                  }`}
+                  onClick={() => setRevenueItemFormData({ ...revenueItemFormData, billingType: 'rental' })}
+                  data-testid="button-billing-type-rental"
+                >
+                  <div className="font-medium text-sm">대여형</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    대여비 + 보증금 (담요, 롱타올 등)
+                  </div>
+                </div>
+                <div
+                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                    revenueItemFormData.billingType === 'simple' 
+                      ? 'border-primary bg-primary/10' 
+                      : 'border-muted hover:border-primary/50'
+                  }`}
+                  onClick={() => setRevenueItemFormData({ ...revenueItemFormData, billingType: 'simple', depositAmount: '0' })}
+                  data-testid="button-billing-type-simple"
+                >
+                  <div className="font-medium text-sm">단순판매형</div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    금액만 (음료수, 과자 등)
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 대여형: 대여비 + 보증금 입력 */}
+            {revenueItemFormData.billingType === 'rental' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rental-fee">대여비 (원)</Label>
+                  <Input
+                    id="rental-fee"
+                    type="number"
+                    value={revenueItemFormData.rentalFee}
+                    onChange={(e) => setRevenueItemFormData({ 
+                      ...revenueItemFormData, 
+                      rentalFee: e.target.value 
+                    })}
+                    placeholder="0"
+                    data-testid="input-rental-fee"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="deposit-amount">보증금 (원)</Label>
+                  <Input
+                    id="deposit-amount"
+                    type="number"
+                    value={revenueItemFormData.depositAmount}
+                    onChange={(e) => setRevenueItemFormData({ 
+                      ...revenueItemFormData, 
+                      depositAmount: e.target.value 
+                    })}
+                    placeholder="0"
+                    data-testid="input-deposit-amount"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 단순판매형: 금액만 입력 */}
+            {revenueItemFormData.billingType === 'simple' && (
               <div className="space-y-2">
-                <Label htmlFor="rental-fee">대여비 (원)</Label>
+                <Label htmlFor="simple-price">판매가격 (원)</Label>
                 <Input
-                  id="rental-fee"
+                  id="simple-price"
                   type="number"
                   value={revenueItemFormData.rentalFee}
                   onChange={(e) => setRevenueItemFormData({ 
@@ -2040,24 +2131,10 @@ export default function Settings() {
                     rentalFee: e.target.value 
                   })}
                   placeholder="0"
-                  data-testid="input-rental-fee"
+                  data-testid="input-simple-price"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="deposit-amount">보증금 (원)</Label>
-                <Input
-                  id="deposit-amount"
-                  type="number"
-                  value={revenueItemFormData.depositAmount}
-                  onChange={(e) => setRevenueItemFormData({ 
-                    ...revenueItemFormData, 
-                    depositAmount: e.target.value 
-                  })}
-                  placeholder="0"
-                  data-testid="input-deposit-amount"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           <DialogFooter>

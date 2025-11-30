@@ -161,6 +161,7 @@ export default function LockerOptionsDialog({
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
   const [rentalPaymentMethods, setRentalPaymentMethods] = useState<Map<string, 'cash' | 'card' | 'transfer'>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
+  const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
   
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
@@ -225,21 +226,31 @@ export default function LockerOptionsDialog({
         const newSelected = new Set<string>();
         const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
         const newPaymentMethods = new Map<string, 'cash' | 'card' | 'transfer'>();
+        const newReturnCompleted = new Set<string>();
         
         rentals.forEach(txn => {
           newSelected.add(txn.itemId);
           newStatuses.set(txn.itemId, txn.depositStatus);
           newPaymentMethods.set(txn.itemId, txn.paymentMethod || 'cash');
+          // Load return_completed status
+          if (txn.return_completed === 1 || txn.returnCompleted === 1) {
+            newReturnCompleted.add(txn.itemId);
+          }
         });
         
         setSelectedRentalItems(newSelected);
         setDepositStatuses(newStatuses);
         setRentalPaymentMethods(newPaymentMethods);
+        setReturnCompletedItems(newReturnCompleted);
         
         // Auto-show warning alert if there are rental items or additional fees
         // Only show once when dialog first opens
         if (initialOpenRef.current && !checkoutResolved && entryTime) {
-          const hasRentalItems = rentals.length > 0;
+          // 반납완료되지 않은 대여품목만 체크
+          const unresolvedRentals = rentals.filter(txn => 
+            txn.return_completed !== 1 && txn.returnCompleted !== 1
+          );
+          const hasRentalItems = unresolvedRentals.length > 0;
           
           // Calculate additional fee to check if there are additional charges
           const isCurrentlyForeigner = currentOptionType === 'foreigner';
@@ -667,6 +678,19 @@ export default function LockerOptionsDialog({
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal);
+    
+    // Save return_completed status for rental items
+    returnCompletedItems.forEach(itemId => {
+      const txn = currentRentalTransactions.find(t => t.itemId === itemId);
+      if (txn) {
+        localDb.updateRentalTransaction(txn.id, {
+          returnCompleted: true,
+          depositStatus: depositStatuses.get(itemId) || txn.depositStatus,
+          paymentMethod: rentalPaymentMethods.get(itemId) || txn.paymentMethod,
+          returnTime: new Date(),
+        });
+      }
+    });
     
     // Mark as resolved to prevent warning on next open
     setCheckoutResolved(true);
@@ -1174,17 +1198,21 @@ export default function LockerOptionsDialog({
                 <span className="font-semibold">{basePrice.toLocaleString()}원</span>
               </div>
               
-              {/* 대여 물품 안내 */}
-              {isInUse && currentRentalTransactions.length > 0 && (
+              {/* 대여 물품 안내 - 반납완료된 항목 제외 */}
+              {isInUse && currentRentalTransactions.filter(txn => 
+                !returnCompletedItems.has(txn.itemId)
+              ).length > 0 && (
                 <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
                   <span className="text-red-700 dark:text-red-300 font-semibold">
-                    {currentRentalTransactions.map(txn => {
-                      if (txn.depositAmount > 0) {
-                        return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
-                      } else {
-                        return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 없음)`;
-                      }
-                    }).join(', ')}
+                    {currentRentalTransactions
+                      .filter(txn => !returnCompletedItems.has(txn.itemId))
+                      .map(txn => {
+                        if (txn.depositAmount > 0) {
+                          return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
+                        } else {
+                          return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 없음)`;
+                        }
+                      }).join(', ')}
                   </span>
                 </div>
               )}
@@ -1601,7 +1629,10 @@ export default function LockerOptionsDialog({
                               data-testid={`checkbox-rental-${itemId}`}
                             />
                             <Label htmlFor={`rental-${itemId}`} className="text-sm cursor-pointer font-normal">
-                              {item.name} (대여비: {item.rentalFee?.toLocaleString() ?? '0'}원, 보증금: {item.depositAmount?.toLocaleString() ?? '0'}원)
+                              {item.name} {(item.depositAmount || 0) === 0 
+                                ? `(가격: ${item.rentalFee?.toLocaleString() ?? '0'}원)`
+                                : `(대여비: ${item.rentalFee?.toLocaleString() ?? '0'}원, 보증금: ${item.depositAmount?.toLocaleString() ?? '0'}원)`
+                              }
                             </Label>
                           </div>
                         </div>
@@ -1609,7 +1640,15 @@ export default function LockerOptionsDialog({
                         {/* 대여 물품 옵션 - 체크박스 선택된 경우에만 표시 */}
                         {isChecked && (
                           <div className="ml-6 space-y-3">
-                            {/* 보증금 처리 */}
+                            {/* 반납완료 표시 */}
+                            {returnCompletedItems.has(itemId) && (
+                              <div className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
+                                ✓ 반납완료 ({(item.depositAmount || 0) === 0 ? '처리완료' : depositStatus === 'refunded' ? '환급' : depositStatus === 'forfeited' ? '몰수' : '처리됨'})
+                              </div>
+                            )}
+                            
+                            {/* 보증금 처리 - 대여형(보증금 있음)이고 반납완료되지 않은 경우에만 표시 */}
+                            {!returnCompletedItems.has(itemId) && (item.depositAmount || 0) > 0 && (
                             <div className="space-y-2">
                               <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
                                 보증금 처리
@@ -1635,11 +1674,6 @@ export default function LockerOptionsDialog({
                                   <SelectValue placeholder="보증금 처리를 선택하세요" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  {/* 보증금 없음 */}
-                                  {item.depositAmount === 0 && (
-                                    <SelectItem value="none">없음 (보증금 없음)</SelectItem>
-                                  )}
-                                  
                                   {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
                                   {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
                                     <SelectItem value="received">받음 (입실 시)</SelectItem>
@@ -1659,9 +1693,29 @@ export default function LockerOptionsDialog({
                                   {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
                                 </p>
                               )}
+                              
+                              {/* 반납완료 버튼 - 이미 대여 중이고 보증금 처리(환급/몰수)가 선택된 경우에만 표시 */}
+                              {isInUse && isAlreadyRented && (depositStatus === 'refunded' || depositStatus === 'forfeited') && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="mt-2 text-blue-600 border-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-400 dark:hover:bg-blue-950"
+                                  onClick={() => {
+                                    const newReturnCompleted = new Set(returnCompletedItems);
+                                    newReturnCompleted.add(itemId);
+                                    setReturnCompletedItems(newReturnCompleted);
+                                  }}
+                                  data-testid={`button-return-complete-${itemId}`}
+                                >
+                                  반납완료
+                                </Button>
+                              )}
                             </div>
+                            )}
 
-                            {/* 결제방식 */}
+                            {/* 결제방식 - 반납완료되지 않은 경우에만 표시 */}
+                            {!returnCompletedItems.has(itemId) && (
                             <div className="space-y-2">
                               <Label htmlFor={`rental-payment-${itemId}`} className="text-xs text-muted-foreground">
                                 결제방식
@@ -1687,6 +1741,7 @@ export default function LockerOptionsDialog({
                                 </SelectContent>
                               </Select>
                             </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1786,29 +1841,32 @@ export default function LockerOptionsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-orange-600">확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              {currentRentalTransactions.length > 0 && (
+              {/* 반납완료되지 않은 대여품목만 표시 */}
+              {currentRentalTransactions.filter(txn => !returnCompletedItems.has(txn.itemId)).length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
                   <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
-                  {currentRentalTransactions.map((txn) => {
-                    const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
-                    return (
-                      <div key={txn.id} className="flex items-start gap-2">
-                        <span className="text-2xl">📦</span>
-                        <div className="flex-1">
-                          <p className="font-medium text-orange-700 dark:text-orange-300">
-                            {txn.itemName} 회수하세요
-                          </p>
-                          {txn.depositAmount > 0 && (
-                            <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
-                              {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
-                              {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
-                              {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
+                  {currentRentalTransactions
+                    .filter(txn => !returnCompletedItems.has(txn.itemId))
+                    .map((txn) => {
+                      const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
+                      return (
+                        <div key={txn.id} className="flex items-start gap-2">
+                          <span className="text-2xl">📦</span>
+                          <div className="flex-1">
+                            <p className="font-medium text-orange-700 dark:text-orange-300">
+                              {txn.itemName} 회수하세요
                             </p>
-                          )}
+                            {txn.depositAmount > 0 && (
+                              <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
+                                {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
+                                {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
+                                {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
                 </div>
               )}
               {additionalFeeInfo.additionalFee > 0 && (
@@ -1825,9 +1883,6 @@ export default function LockerOptionsDialog({
             <AlertDialogCancel onClick={handleWarningClose} data-testid="button-warning-close">
               닫기
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleWarningResolved} className="bg-green-600 hover:bg-green-700" data-testid="button-warning-resolved">
-              해결
-            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
