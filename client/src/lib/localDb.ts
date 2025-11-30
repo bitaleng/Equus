@@ -1250,12 +1250,29 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     }
     
     // 5. 상태를 in_use로 변경하고 exit_time을 null로 설정
-    db.run(
-      `UPDATE locker_logs 
-       SET status = 'in_use', exit_time = NULL 
-       WHERE id = ?`,
-      [logId]
-    );
+    // CRITICAL FIX: 같은 영업일 추가요금의 경우, finalPrice에서 추가요금을 차감해야 함
+    // (같은 영업일 퇴실 시 finalPrice에 추가요금이 포함되어 있음)
+    const isSameDayAdditionalFee = deletedAdditionalFee > 0 && additionalFeeBusinessDay === businessDay;
+    
+    if (isSameDayAdditionalFee) {
+      // 같은 영업일: finalPrice에서 추가요금 차감
+      const currentFinalPrice = logData.final_price as number;
+      const revertedFinalPrice = currentFinalPrice - deletedAdditionalFee;
+      db.run(
+        `UPDATE locker_logs 
+         SET status = 'in_use', exit_time = NULL, final_price = ?
+         WHERE id = ?`,
+        [revertedFinalPrice, logId]
+      );
+    } else {
+      // 다른 영업일 또는 추가요금 없음: finalPrice 유지
+      db.run(
+        `UPDATE locker_logs 
+         SET status = 'in_use', exit_time = NULL 
+         WHERE id = ?`,
+        [logId]
+      );
+    }
     
     // 6. 일일 요약 업데이트 (입실 영업일)
     updateDailySummary(businessDay);
