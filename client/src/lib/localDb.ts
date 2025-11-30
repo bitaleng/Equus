@@ -766,6 +766,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 17: Add customer_memo column to locker_logs (손님 메모)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN customer_memo TEXT`);
+      console.log('Added customer_memo column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -799,7 +807,8 @@ function createTables() {
       rental_items TEXT,
       additional_fees INTEGER DEFAULT 0,
       parent_locker INTEGER,
-      deferred_payment INTEGER DEFAULT 0
+      deferred_payment INTEGER DEFAULT 0,
+      customer_memo TEXT
     )
   `);
 
@@ -1050,6 +1059,7 @@ export function createEntry(entry: {
   rentalItems?: string[];
   entryTime?: Date;  // 입실시간 (옵션창 열린 시간으로 기록, 미지정 시 현재시간)
   deferredPayment?: boolean;  // 후불결제 여부
+  customerMemo?: string;  // 손님 메모
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1064,8 +1074,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1082,7 +1092,8 @@ export function createEntry(entry: {
       entry.paymentCard || null,
       entry.paymentTransfer || null,
       rentalItemsJson,
-      entry.deferredPayment ? 1 : 0
+      entry.deferredPayment ? 1 : 0,
+      entry.customerMemo || null
     ]
   );
 
@@ -1157,6 +1168,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.deferredPayment !== undefined) {
     sets.push('deferred_payment = ?');
     values.push(updates.deferredPayment ? 1 : 0);
+  }
+  if (updates.customerMemo !== undefined) {
+    sets.push('customer_memo = ?');
+    values.push(updates.customerMemo || null);
   }
 
   if (sets.length > 0) {
