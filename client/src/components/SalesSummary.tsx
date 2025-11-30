@@ -200,7 +200,7 @@ export default function SalesSummary({
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">순매출</p>
-              <p className="text-2xl font-semibold text-primary" data-testid="text-net-profit">
+              <p className="text-lg font-medium" data-testid="text-net-profit">
                 {netProfit.toLocaleString()}원
               </p>
             </div>
