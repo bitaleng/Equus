@@ -2100,10 +2100,14 @@ export default function LockerOptionsDialog({
                   data-testid="button-checkout"
                   disabled={(() => {
                     // Check if any existing rental transaction with deposit needs deposit resolution
-                    // ONLY check items that are still selected
+                    // ONLY check items that are still selected AND not yet return-completed
                     const hasUnresolvedExistingRentals = currentRentalTransactions.some(txn => {
                       // Skip if item is not selected anymore (user unchecked it)
                       if (!selectedRentalItems.has(txn.itemId)) {
+                        return false;
+                      }
+                      // CRITICAL FIX: Skip items that are already return-completed
+                      if (returnCompletedItems.has(txn.itemId)) {
                         return false;
                       }
                       // Skip items with zero deposit
@@ -2121,6 +2125,10 @@ export default function LockerOptionsDialog({
                     
                     // Check if any newly selected rental item with deposit has invalid deposit status for checkout
                     const hasUnresolvedNewRentals = Array.from(selectedRentalItems).some(itemId => {
+                      // CRITICAL FIX: Skip items that are already return-completed
+                      if (returnCompletedItems.has(itemId)) {
+                        return false;
+                      }
                       // Skip items that are already in currentRentalTransactions
                       if (currentRentalTransactions.some(txn => txn.itemId === itemId)) {
                         return false;
@@ -2136,7 +2144,11 @@ export default function LockerOptionsDialog({
                     });
                     
                     // Check if there are additional fees or rental items but not resolved yet
-                    const hasIssues = selectedRentalItems.size > 0 || additionalFeeInfo.additionalFee > 0;
+                    // CRITICAL FIX: Exclude return-completed items from the count
+                    const unresolvedRentalCount = Array.from(selectedRentalItems).filter(
+                      itemId => !returnCompletedItems.has(itemId)
+                    ).length;
+                    const hasIssues = unresolvedRentalCount > 0 || additionalFeeInfo.additionalFee > 0;
                     
                     // 후불결제 상태인 경우 퇴실 비활성화 (결제 완료 먼저 필요)
                     if (isCurrentlyDeferred) {
