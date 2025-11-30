@@ -472,7 +472,8 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                         padding: 'var(--fluid-padding, 0.75rem)' 
                       } : undefined}
                     >
-                      {entry.finalPrice.toLocaleString()}원
+                      {/* 후불결제인 경우 0원으로 표시, 결제완료 후 실제 금액 표시 */}
+                      {entry.deferredPayment ? '0원' : `${entry.finalPrice.toLocaleString()}원`}
                     </TableCell>
                     <TableCell 
                       style={isExpanded ? { 
