@@ -998,7 +998,8 @@ export default function Home() {
       paymentMethod,
       paymentCash,
       paymentCard,
-      paymentTransfer
+      paymentTransfer,
+      deferredPayment: deferredPayment || false
     });
     
     // Handle rental items for existing entry (if saving changes)
@@ -1764,8 +1765,9 @@ export default function Home() {
                           nightPrice={nightPrice}
                           isInUse={!!selectedEntry}
                           currentLockerLogId={selectedEntry?.id}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer)
+                          currentDeferredPayment={(selectedEntry as any)?.deferredPayment || false}
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment) => 
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment) => 
                             handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment)

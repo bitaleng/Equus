@@ -62,6 +62,7 @@ interface LockerOptionsDialogProps {
   dayPrice?: number;
   nightPrice?: number;
   currentLockerLogId?: string;
+  currentDeferredPayment?: boolean; // 현재 후불결제 상태
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
@@ -103,6 +104,7 @@ export default function LockerOptionsDialog({
   dayPrice = 10000,
   nightPrice = 15000,
   currentLockerLogId,
+  currentDeferredPayment = false, // 현재 후불결제 상태
   onApply,
   onCheckout,
   onCancel,
@@ -398,6 +400,15 @@ export default function LockerOptionsDialog({
     if (open) {
       // For existing entries (isInUse), use current payment method. For new entries, set to null (must select)
       setPaymentMethod(isInUse ? currentPaymentMethod : null);
+      
+      // 후불결제 상태 초기화 (기존 입실인 경우)
+      if (isInUse) {
+        setIsCurrentlyDeferred(currentDeferredPayment || false);
+        setIsDeferredPayment(currentDeferredPayment || false);
+      } else {
+        setIsCurrentlyDeferred(false);
+        setIsDeferredPayment(false);
+      }
       
       // Parse rental items from notes (legacy)
       const blanketPresent = currentNotes?.includes('담요') || false;
@@ -781,7 +792,8 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false);
+    // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment);
     
     // Save return_completed status for rental items
     returnCompletedItems.forEach(itemId => {
