@@ -877,17 +877,21 @@ export default function LockerOptionsDialog({
     } | undefined = undefined;
     
     if (additionalFeeInfo.additionalFee > 0) {
+      // 할인 적용된 추가요금 계산
+      const discountAmount = parseInt(additionalFeeDiscount) || 0;
+      const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+      
       if (useAdditionalFeeSplitPayment) {
-        // 추가요금 분리결제 검증
+        // 추가요금 분리결제 검증 (할인 적용된 금액 기준)
         const addCashVal = parseInt(additionalFeePaymentCash) || 0;
         const addCardVal = parseInt(additionalFeePaymentCard) || 0;
         const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
         const addTotal = addCashVal + addCardVal + addTransferVal;
         
-        if (addTotal !== additionalFeeInfo.additionalFee) {
+        if (addTotal !== discountedAdditionalFee) {
           toast({
             title: "결제 금액 오류",
-            description: `추가요금 분리결제 합계(${addTotal.toLocaleString()}원)가 추가요금(${additionalFeeInfo.additionalFee.toLocaleString()}원)과 일치하지 않습니다.`,
+            description: `추가요금 분리결제 합계(${addTotal.toLocaleString()}원)가 할인 적용된 추가요금(${discountedAdditionalFee.toLocaleString()}원)과 일치하지 않습니다.`,
             variant: "destructive",
           });
           return;
@@ -898,16 +902,16 @@ export default function LockerOptionsDialog({
           cash: addCashVal > 0 ? addCashVal : undefined,
           card: addCardVal > 0 ? addCardVal : undefined,
           transfer: addTransferVal > 0 ? addTransferVal : undefined,
-          discount: parseInt(additionalFeeDiscount) || undefined,
+          discount: discountAmount > 0 ? discountAmount : undefined,
         };
       } else {
-        // 추가요금 단일결제
+        // 추가요금 단일결제 (할인 적용된 금액 사용)
         additionalFeePayment = {
           method: additionalFeePaymentMethod,
-          cash: additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
-          card: additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
-          transfer: additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
-          discount: parseInt(additionalFeeDiscount) || undefined,
+          cash: additionalFeePaymentMethod === 'cash' ? discountedAdditionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? discountedAdditionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? discountedAdditionalFee : undefined,
+          discount: discountAmount > 0 ? discountAmount : undefined,
         };
       }
     }
@@ -968,8 +972,12 @@ export default function LockerOptionsDialog({
     } | undefined = undefined;
     
     if (additionalFeeInfo.additionalFee > 0) {
+      // 할인 적용된 추가요금 계산
+      const discountAmount = parseInt(additionalFeeDiscount) || 0;
+      const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+      
       if (useAdditionalFeeSplitPayment) {
-        // 추가요금 분리결제
+        // 추가요금 분리결제 (할인 적용된 금액 기준)
         const addCashVal = parseInt(additionalFeePaymentCash) || 0;
         const addCardVal = parseInt(additionalFeePaymentCard) || 0;
         const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
@@ -979,16 +987,16 @@ export default function LockerOptionsDialog({
           cash: addCashVal > 0 ? addCashVal : undefined,
           card: addCardVal > 0 ? addCardVal : undefined,
           transfer: addTransferVal > 0 ? addTransferVal : undefined,
-          discount: parseInt(additionalFeeDiscount) || undefined,
+          discount: discountAmount > 0 ? discountAmount : undefined,
         };
       } else {
-        // 추가요금 단일결제
+        // 추가요금 단일결제 (할인 적용된 금액 사용)
         additionalFeePayment = {
           method: additionalFeePaymentMethod,
-          cash: additionalFeePaymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
-          card: additionalFeePaymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
-          transfer: additionalFeePaymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
-          discount: parseInt(additionalFeeDiscount) || undefined,
+          cash: additionalFeePaymentMethod === 'cash' ? discountedAdditionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? discountedAdditionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? discountedAdditionalFee : undefined,
+          discount: discountAmount > 0 ? discountAmount : undefined,
         };
       }
     }

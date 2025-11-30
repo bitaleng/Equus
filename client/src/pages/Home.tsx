@@ -1184,7 +1184,10 @@ export default function Home() {
       // CRITICAL FIX: Update finalPrice to include additional fee for correct display
       // Base price payment stays in locker_logs
       // Additional fee payment goes to additional_fee_events table for independent tracking
-      const updatedFinalPrice = selectedEntry.finalPrice + additionalFeeInfo.additionalFee;
+      // 추가요금 할인 반영: 할인이 있으면 할인된 금액으로 finalPrice 업데이트
+      const additionalFeeDiscountAmount = additionalFeePayment?.discount || 0;
+      const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - additionalFeeDiscountAmount);
+      const updatedFinalPrice = selectedEntry.finalPrice + discountedAdditionalFee;
       
       // DO NOT store additionalFees in locker_logs.additional_fees column for same-day checkouts
       // It's already tracked in additional_fee_events table below
@@ -1204,23 +1207,23 @@ export default function Home() {
     // Create additional fee event for ALL checkouts with additional fees
     // This ensures payment method independence between entry and additional fees
     if (additionalFeeInfo.additionalFee > 0) {
+      // 할인 계산: 원래 추가요금에서 할인금액 차감
+      const discountAmount = additionalFeePayment?.discount || 0;
+      const discountedFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+      
       const addFeePayment = additionalFeePayment || {
         method: paymentMethod,
-        cash: paymentMethod === 'cash' ? additionalFeeInfo.additionalFee : undefined,
-        card: paymentMethod === 'card' ? additionalFeeInfo.additionalFee : undefined,
-        transfer: paymentMethod === 'transfer' ? additionalFeeInfo.additionalFee : undefined,
+        cash: paymentMethod === 'cash' ? discountedFee : undefined,
+        card: paymentMethod === 'card' ? discountedFee : undefined,
+        transfer: paymentMethod === 'transfer' ? discountedFee : undefined,
       };
-      
-      // Apply discount if provided
-      const originalAmount = additionalFeeInfo.additionalFee + (addFeePayment.discount || 0);
-      const discountAmount = addFeePayment.discount || 0;
       
       localDb.createAdditionalFeeEvent({
         lockerLogId: selectedEntry.id,
         lockerNumber: selectedEntry.lockerNumber,
         checkoutTime: now,
-        feeAmount: additionalFeeInfo.additionalFee,
-        originalFeeAmount: discountAmount > 0 ? originalAmount : undefined,
+        feeAmount: discountedFee,  // 할인 적용된 금액 기록
+        originalFeeAmount: discountAmount > 0 ? additionalFeeInfo.additionalFee : undefined,  // 할인 전 원래 금액
         discountAmount: discountAmount,
         businessDay: checkoutBusinessDay,
         paymentMethod: addFeePayment.method,
