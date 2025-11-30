@@ -1233,15 +1233,19 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
       return { success: false, message: '해당 락카에 새로운 손님이 이미 입실했습니다.' };
     }
     
-    // 4. 추가요금 이벤트 삭제 (퇴실 시 기록된 추가요금)
+    // 4. 추가요금 이벤트 조회 및 삭제 (퇴실 시 기록된 추가요금)
+    // 추가요금은 퇴실 시점의 영업일에 기록되므로 해당 영업일도 업데이트 필요
     let deletedAdditionalFee = 0;
+    let additionalFeeBusinessDay: string | null = null;
+    
     const additionalFeeResult = db.exec(
-      `SELECT fee_amount FROM additional_fee_events WHERE locker_log_id = ?`,
+      `SELECT fee_amount, business_day FROM additional_fee_events WHERE locker_log_id = ?`,
       [logId]
     );
     
     if (additionalFeeResult.length > 0 && additionalFeeResult[0].values.length > 0) {
       deletedAdditionalFee = additionalFeeResult[0].values[0][0] as number;
+      additionalFeeBusinessDay = additionalFeeResult[0].values[0][1] as string;
       db.run(`DELETE FROM additional_fee_events WHERE locker_log_id = ?`, [logId]);
     }
     
@@ -1253,8 +1257,14 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
       [logId]
     );
     
-    // 6. 일일 요약 업데이트
+    // 6. 일일 요약 업데이트 (입실 영업일)
     updateDailySummary(businessDay);
+    
+    // 7. 추가요금이 있었다면 퇴실 영업일 요약도 업데이트 (입실/퇴실 영업일이 다른 경우)
+    if (additionalFeeBusinessDay && additionalFeeBusinessDay !== businessDay) {
+      updateDailySummary(additionalFeeBusinessDay);
+    }
+    
     saveDatabase();
     
     return { 
