@@ -790,7 +790,8 @@ function createTables() {
       payment_transfer INTEGER,
       rental_items TEXT,
       additional_fees INTEGER DEFAULT 0,
-      parent_locker INTEGER
+      parent_locker INTEGER,
+      deferred_payment INTEGER DEFAULT 0
     )
   `);
 
