@@ -396,17 +396,15 @@
   }
 }
 
-/* 후불결제 락카 버튼 싸이렌 애니메이션 (노란색 ↔ 퍼플블루) */
+/* 후불결제 락카 버튼 싸이렌 애니메이션 (노란색 ↔ 퍼플블루) - blur 효과 제거 */
 @keyframes deferred-siren {
   0%, 100% {
     background-color: #FFD700; /* 노란색 (주간) */
     color: #1a1a2e;
-    box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
   }
   50% {
     background-color: #7B68EE; /* 퍼플블루 (야간) */
     color: white;
-    box-shadow: 0 0 15px rgba(123, 104, 238, 0.6);
   }
 }
 

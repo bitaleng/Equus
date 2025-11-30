@@ -884,19 +884,26 @@ export default function Home() {
         optionAmount = customAmount;
       }
 
+      // 후불결제인 경우: 결제금액을 0으로 설정 (결제완료 버튼 눌렀을 때 실제 금액 기록)
+      // finalPrice는 유지 (나중에 결제완료 시 참조용)
+      // 일일요약(updateDailySummary)에서 deferred_payment=1인 항목은 매출에서 자동 제외됨
+      const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
+      const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
+      const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
+
       const lockerLogId = await localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
         timeType: newLockerInfo.timeType,
         basePrice: newLockerInfo.basePrice,
-        finalPrice,
+        finalPrice,  // 원래 가격 유지 (할인 등 적용된 최종가격)
         businessDay,
         optionType,
         optionAmount,
         notes,
         paymentMethod,
-        paymentCash,
-        paymentCard,
-        paymentTransfer,
+        paymentCash: actualPaymentCash,
+        paymentCard: actualPaymentCard,
+        paymentTransfer: actualPaymentTransfer,
         entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
         deferredPayment: deferredPayment || false,  // 후불결제 여부
         customerMemo: customerMemo || undefined,  // 손님 메모
@@ -995,15 +1002,21 @@ export default function Home() {
       optionAmount = customAmount;
     }
 
+    // 후불결제인 경우: 결제금액을 0으로 설정
+    // finalPrice는 유지 (일일요약에서 deferred_payment=1인 항목은 매출에서 자동 제외됨)
+    const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
+    const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
+    const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
+
     localDb.updateEntry(selectedEntry.id, { 
       optionType, 
       optionAmount, 
       finalPrice, 
       notes, 
       paymentMethod,
-      paymentCash,
-      paymentCard,
-      paymentTransfer,
+      paymentCash: actualPaymentCash,
+      paymentCard: actualPaymentCard,
+      paymentTransfer: actualPaymentTransfer,
       deferredPayment: deferredPayment || false,
       customerMemo: customerMemo || undefined,  // 손님 메모
     });
