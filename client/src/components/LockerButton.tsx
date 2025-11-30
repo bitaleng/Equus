@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getBusinessDayRange } from "@shared/businessDay";
 import { Link2, MessageSquare } from "lucide-react";
 
@@ -122,26 +122,24 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     </Button>
   );
 
-  // 메모가 있는 경우 툴팁으로 감싸기
+  // 메모가 있는 경우 Popover로 감싸기 (터치/클릭으로 열림 - 태블릿 지원)
   if (customerMemo && customerMemo.trim()) {
     return (
-      <TooltipProvider delayDuration={300}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {buttonContent}
-          </TooltipTrigger>
-          <TooltipContent 
-            side="top" 
-            className="max-w-[250px] p-3 text-sm"
-            data-testid={`tooltip-memo-${number}`}
-          >
-            <div className="flex items-start gap-2">
-              <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-              <p className="whitespace-pre-wrap break-words">{customerMemo}</p>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <Popover>
+        <PopoverTrigger asChild>
+          {buttonContent}
+        </PopoverTrigger>
+        <PopoverContent 
+          side="top" 
+          className="max-w-[250px] p-3 text-sm"
+          data-testid={`popover-memo-${number}`}
+        >
+          <div className="flex items-start gap-2">
+            <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+            <p className="whitespace-pre-wrap break-words">{customerMemo}</p>
+          </div>
+        </PopoverContent>
+      </Popover>
     );
   }
 
