@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { getBusinessDayRange } from "@shared/businessDay";
-import { Link2 } from "lucide-react";
+import { Link2, MessageSquare } from "lucide-react";
 
 interface LockerButtonProps {
   number: number;
@@ -13,9 +14,10 @@ interface LockerButtonProps {
   isExpanded?: boolean; // 패널 접힌 상태 (true = 패널 접힘, 버튼 크게)
   parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
   deferredPayment?: boolean; // 후불결제 여부
+  customerMemo?: string; // 손님 메모
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo }: LockerButtonProps) {
   // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과)
   const getDeferredPaymentStyles = () => {
     return `
@@ -89,7 +91,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     }
   };
 
-  return (
+  const buttonContent = (
     <Button
       onClick={handleClick}
       disabled={status === 'disabled'}
@@ -98,11 +100,18 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         transition-all duration-100
         active:scale-95
         flex flex-col items-center justify-center gap-0.5
+        relative
         ${isExpanded ? 'min-h-[80px] text-lg' : 'min-h-[56px] text-base'}
         ${getButtonStyles()}
       `}
       data-testid={`locker-${number}`}
     >
+      {/* 메모 아이콘 - 우측 상단 */}
+      {customerMemo && customerMemo.trim() && (
+        <div className="absolute top-1 right-1">
+          <MessageSquare className={`${isExpanded ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'} opacity-80`} />
+        </div>
+      )}
       <span className={isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}>{number}</span>
       {getStatusText() && <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>}
       {parentLocker && (
@@ -113,4 +122,29 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       )}
     </Button>
   );
+
+  // 메모가 있는 경우 툴팁으로 감싸기
+  if (customerMemo && customerMemo.trim()) {
+    return (
+      <TooltipProvider delayDuration={300}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {buttonContent}
+          </TooltipTrigger>
+          <TooltipContent 
+            side="top" 
+            className="max-w-[250px] p-3 text-sm"
+            data-testid={`tooltip-memo-${number}`}
+          >
+            <div className="flex items-start gap-2">
+              <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+              <p className="whitespace-pre-wrap break-words">{customerMemo}</p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return buttonContent;
 }

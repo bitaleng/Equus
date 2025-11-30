@@ -717,6 +717,7 @@ export default function Home() {
   const lockerEntryTimes: { [key: number]: Date } = {};
   const lockerParents: { [key: number]: number | null } = {};
   const lockerDeferredPayments: { [key: number]: boolean } = {}; // 후불결제 여부
+  const lockerCustomerMemos: { [key: number]: string } = {}; // 손님 메모
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -725,6 +726,7 @@ export default function Home() {
       lockerTimeTypes[i] = 'day';
       lockerParents[i] = null;
       lockerDeferredPayments[i] = false;
+      lockerCustomerMemos[i] = '';
     }
   });
   
@@ -733,6 +735,7 @@ export default function Home() {
     lockerEntryTimes[log.lockerNumber] = new Date(log.entryTime);
     lockerParents[log.lockerNumber] = log.parentLocker || null;
     lockerDeferredPayments[log.lockerNumber] = (log as any).deferredPayment || false; // 후불결제 여부
+    lockerCustomerMemos[log.lockerNumber] = (log as any).customerMemo || ''; // 손님 메모
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -1596,6 +1599,7 @@ export default function Home() {
                         isExpanded={isPanelCollapsed && !overviewMode}
                         parentLocker={lockerParents[num] || null}
                         deferredPayment={lockerDeferredPayments[num] || false}
+                        customerMemo={lockerCustomerMemos[num] || ''}
                       />
                     ))}
                   </div>
