@@ -20,7 +20,8 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap } from "lucide-react";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap, MessageSquare } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -107,6 +108,7 @@ interface LogEntry {
   notes?: string;
   additionalFees?: number; // Total additional fees from checkout
   deferredPayment?: boolean; // 후불결제 여부
+  customerMemo?: string; // 손님 메모
 }
 
 interface AdditionalFeeEvent {
@@ -1033,7 +1035,33 @@ export default function LogsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {log.notes || '-'}
+                      <div className="flex items-center gap-2">
+                        <span>{log.notes || '-'}</span>
+                        {log.customerMemo && log.customerMemo.trim() && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button 
+                                className="p-1 rounded hover:bg-yellow-100 dark:hover:bg-yellow-200 transition-colors"
+                                data-testid={`memo-icon-${log.id}`}
+                              >
+                                <MessageSquare className="w-4 h-4 text-yellow-600" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                              side="left" 
+                              align="center"
+                              sideOffset={8}
+                              className="max-w-[250px] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
+                              data-testid={`popover-memo-log-${log.id}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
+                                <p className="whitespace-pre-wrap break-words text-gray-900">{log.customerMemo}</p>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                   );
