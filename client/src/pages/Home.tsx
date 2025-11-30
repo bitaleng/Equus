@@ -1334,6 +1334,7 @@ export default function Home() {
   };
 
   const todayEntries = todayAllEntries.map(log => ({
+    id: log.id,
     lockerNumber: log.lockerNumber,
     entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
     timeType: log.timeType,
@@ -1351,7 +1352,35 @@ export default function Home() {
     additionalFeeOnly: log.additionalFeeOnly,
     hasSameDayFee: (log as any).hasSameDayFee || false,
     parentLocker: log.parentLocker || null,
+    deferredPayment: (log as any).deferredPayment || false,
   }));
+  
+  // 퇴실 취소 핸들러
+  const handleReverseCheckout = (entry: { id?: string; lockerNumber: number }) => {
+    if (!entry.id) {
+      toast({
+        title: "오류",
+        description: "퇴실 취소에 필요한 정보가 없습니다.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const result = localDb.reverseCheckout(entry.id);
+    if (result.success) {
+      toast({
+        title: "퇴실 취소 완료",
+        description: result.message,
+      });
+      loadData();
+    } else {
+      toast({
+        title: "퇴실 취소 실패",
+        description: result.message,
+        variant: "destructive"
+      });
+    }
+  };
 
   return (
     <div className="h-full w-full bg-background">
@@ -1371,6 +1400,7 @@ export default function Home() {
                   <TodayStatusTable
                     entries={todayEntries}
                     isExpanded={isLockerPanelCollapsed}
+                    onReverseCheckout={handleReverseCheckout}
                     onRowClick={(entry) => {
                       // Add to openDialogs for multi-popup display
                       const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);

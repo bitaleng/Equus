@@ -25,8 +25,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Filter, FileText, Menu, Maximize2 } from "lucide-react";
+import { X, Filter, FileText, Menu, Maximize2, Undo2 } from "lucide-react";
 import { formatPaymentMethod } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface LockerEntry {
   lockerNumber: number;
@@ -45,6 +55,8 @@ interface LockerEntry {
   additionalFeeOnly?: boolean; // 추가요금만 있는 항목 (방문자 수에서 제외)
   hasSameDayFee?: boolean; // 같은 영업일 내 추가요금 발생 여부
   parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우, 방문자 수에서 제외)
+  deferredPayment?: boolean; // 후불결제 여부
+  id?: string; // 퇴실 취소용 로그 ID
 }
 
 interface TodayStatusTableProps {
@@ -53,11 +65,14 @@ interface TodayStatusTableProps {
   onRowClick?: (entry: LockerEntry) => void;
   isLockerPanelCollapsed?: boolean;
   onToggleLockerPanel?: () => void;
+  onReverseCheckout?: (entry: LockerEntry) => void; // 퇴실 취소 콜백
 }
 
-export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel }: TodayStatusTableProps) {
+export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel, onReverseCheckout }: TodayStatusTableProps) {
   const [lockerNumberInput, setLockerNumberInput] = useState("");
   const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
+  const [reverseCheckoutDialogOpen, setReverseCheckoutDialogOpen] = useState(false);
+  const [selectedEntryForReverse, setSelectedEntryForReverse] = useState<LockerEntry | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
@@ -352,9 +367,15 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
               </TableRow>
             ) : (
               displayedEntries.map((entry, index) => {
-                const statusText = entry.cancelled ? '취소' : entry.status === 'in_use' ? '입실중' : '퇴실';
+                // 상태 텍스트: 취소 > 후불결제 미수 > 입실중 > 퇴실
+                let statusText = entry.cancelled ? '취소' : entry.status === 'in_use' ? '입실중' : '퇴실';
+                if (entry.deferredPayment && !entry.cancelled) {
+                  statusText = '미수';
+                }
                 const statusColor = entry.cancelled 
                   ? 'bg-destructive/10 text-destructive' 
+                  : entry.deferredPayment
+                  ? 'bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300'
                   : entry.status === 'in_use' 
                   ? 'bg-primary/10 text-primary' 
                   : 'bg-muted text-muted-foreground';
@@ -415,6 +436,17 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                             추가
                           </span>
                         )}
+                        {entry.deferredPayment && (
+                          <span 
+                            className="rounded whitespace-nowrap bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300"
+                            style={isExpanded ? { 
+                              fontSize: 'var(--fluid-badge, 0.875rem)', 
+                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
+                            } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                          >
+                            후불
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell 
@@ -447,15 +479,32 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                         padding: 'var(--fluid-padding, 0.75rem)' 
                       } : undefined}
                     >
-                      <span 
-                        className={`rounded whitespace-nowrap ${statusColor}`}
-                        style={isExpanded ? { 
-                          fontSize: 'var(--fluid-badge, 0.875rem)', 
-                          padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
-                        } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
-                      >
-                        {statusText}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span 
+                          className={`rounded whitespace-nowrap ${statusColor}`}
+                          style={isExpanded ? { 
+                            fontSize: 'var(--fluid-badge, 0.875rem)', 
+                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
+                          } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                        >
+                          {statusText}
+                        </span>
+                        {/* 퇴실 취소 버튼 - 퇴실 상태일 때만 표시 */}
+                        {entry.status === 'checked_out' && !entry.cancelled && onReverseCheckout && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEntryForReverse(entry);
+                              setReverseCheckoutDialogOpen(true);
+                            }}
+                            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                            title="퇴실 취소"
+                            data-testid={`button-reverse-checkout-${entry.lockerNumber}`}
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -464,6 +513,44 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
           </TableBody>
         </Table>
       </div>
+      
+      {/* 퇴실 취소 확인 Dialog */}
+      <AlertDialog open={reverseCheckoutDialogOpen} onOpenChange={setReverseCheckoutDialogOpen}>
+        <AlertDialogContent data-testid="dialog-reverse-checkout">
+          <AlertDialogHeader>
+            <AlertDialogTitle>퇴실 취소 확인</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="mb-3">
+                  {selectedEntryForReverse?.lockerNumber}번 락카의 퇴실을 취소하시겠습니까?
+                </p>
+                <p className="mb-2 font-medium">퇴실 취소 시:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  <li>락카가 다시 <span className="font-semibold">"입실중"</span> 상태로 변경됩니다</li>
+                  <li>퇴실 시 기록된 추가요금이 삭제됩니다</li>
+                  <li>매출 집계에서 해당 금액이 제외됩니다</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-reverse">취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedEntryForReverse && onReverseCheckout) {
+                  onReverseCheckout(selectedEntryForReverse);
+                }
+                setSelectedEntryForReverse(null);
+                setReverseCheckoutDialogOpen(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-reverse"
+            >
+              퇴실 취소
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       
       {/* Memo Dialog */}
       <Dialog open={memoDialogOpen} onOpenChange={setMemoDialogOpen}>

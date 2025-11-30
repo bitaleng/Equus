@@ -2336,7 +2336,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       }
       
       // Convert boolean fields
-      if (col === 'cancelled') {
+      if (col === 'cancelled' || col === 'deferred_payment') {
         value = value === 1;
       }
       
