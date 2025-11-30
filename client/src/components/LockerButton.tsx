@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getBusinessDayRange } from "@shared/businessDay";
 import { Link2, MessageSquare } from "lucide-react";
 
@@ -122,28 +121,8 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     </Button>
   );
 
-  // 메모가 있는 경우 Popover로 감싸기 (터치/클릭으로 열림 - 태블릿 지원)
-  if (customerMemo && customerMemo.trim()) {
-    return (
-      <Popover>
-        <PopoverTrigger asChild>
-          {buttonContent}
-        </PopoverTrigger>
-        <PopoverContent 
-          side="right" 
-          align="start"
-          sideOffset={8}
-          className="max-w-[250px] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
-          data-testid={`popover-memo-${number}`}
-        >
-          <div className="flex items-start gap-2">
-            <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
-            <p className="whitespace-pre-wrap break-words text-gray-900">{customerMemo}</p>
-          </div>
-        </PopoverContent>
-      </Popover>
-    );
-  }
-
+  // 메모가 있는 경우 - 버튼 클릭 시 팝오버가 열리면 경고창 오버레이와 충돌하므로
+  // 버튼에 메모 아이콘만 표시하고, 메모 내용은 다이얼로그에서 확인하도록 변경
+  // (기존 Popover 제거 - 경고창 오버레이와 충돌 문제 해결)
   return buttonContent;
 }

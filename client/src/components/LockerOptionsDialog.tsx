@@ -825,14 +825,8 @@ export default function LockerOptionsDialog({
   const handleCheckoutClick = () => {
     playClickSound();
     
-    // Check if there are rental items or additional fees
-    const hasRentalItems = selectedRentalItems.size > 0;
-    const hasAdditionalFee = additionalFeeInfo.additionalFee > 0;
-    
-    if ((hasRentalItems || hasAdditionalFee) && !checkoutResolved) {
-      setShowWarningAlert(true);
-      return;
-    }
+    // NOTE: Warning check removed - warning already shows when dialog first opens
+    // Redundant check was causing infinite loop when user clicked checkout after warning close
     
     // 기본요금과 추가요금을 독립적으로 처리
     const computedFinalPrice = calculateFinalPrice();
