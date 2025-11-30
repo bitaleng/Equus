@@ -1420,8 +1420,8 @@ export default function LockerOptionsDialog({
                         }}
                         data-testid="checkbox-deferred-payment"
                       />
-                      <Label htmlFor="deferred-payment" className="text-sm cursor-pointer font-normal text-pink-600 dark:text-pink-400">
-                        후불결제
+                      <Label htmlFor="deferred-payment" className="text-sm cursor-pointer font-normal text-orange-600 dark:text-orange-400">
+                        후불결제 (미수)
                       </Label>
                     </div>
                   )}
@@ -1453,12 +1453,9 @@ export default function LockerOptionsDialog({
 
               {/* 후불결제 안내 */}
               {isDeferredPayment && (
-                <div className="p-4 rounded-lg bg-pink-50 dark:bg-pink-950 border border-pink-200 dark:border-pink-800">
-                  <p className="text-sm text-pink-700 dark:text-pink-300 font-medium">
-                    후불결제: 퇴실 시 결제 예정
-                  </p>
-                  <p className="text-xs text-pink-600 dark:text-pink-400 mt-1">
-                    입실 처리 후 퇴실 시 결제를 받습니다.
+                <div className="p-3 rounded-lg bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800">
+                  <p className="text-sm text-orange-700 dark:text-orange-300">
+                    결제 없이 입실 처리됩니다. 매출에 0원으로 기록됩니다.
                   </p>
                 </div>
               )}
