@@ -26,19 +26,19 @@
 
   --card-border: 210 5% 90%;
 
-  --sidebar: 210 4% 94%;
+  --sidebar: 220 8% 20%;
 
-  --sidebar-foreground: 210 6% 12%;
+  --sidebar-foreground: 220 5% 65%;
 
-  --sidebar-border: 210 5% 86%;
+  --sidebar-border: 220 8% 25%;
 
   --sidebar-primary: 215 85% 48%;
 
-  --sidebar-primary-foreground: 210 10% 98%;
+  --sidebar-primary-foreground: 0 0% 100%;
 
-  --sidebar-accent: 210 6% 88%;
+  --sidebar-accent: 220 8% 28%;
 
-  --sidebar-accent-foreground: 210 8% 18%;
+  --sidebar-accent-foreground: 0 0% 100%;
 
   --sidebar-ring: 215 85% 48%;
 
