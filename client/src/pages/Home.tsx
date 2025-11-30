@@ -73,6 +73,7 @@ interface OpenDialog {
   timeType: '주간' | '야간';
   basePrice: number;
   newLockerInfo?: { lockerNumber: number, timeType: '주간' | '야간', basePrice: number } | null;
+  dialogOpenedAt: Date;  // 옵션창이 처음 열린 시간 (입실시간으로 사용)
 }
 
 export default function Home() {
