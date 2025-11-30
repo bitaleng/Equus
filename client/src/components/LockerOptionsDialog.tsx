@@ -79,6 +79,7 @@ interface LockerOptionsDialogProps {
   ) => void;
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
+  onPaymentComplete?: () => void; // 후불결제 완료 시 데이터 새로고침용 콜백
 }
 
 export default function LockerOptionsDialog({
@@ -106,6 +107,7 @@ export default function LockerOptionsDialog({
   onCheckout,
   onCancel,
   onSwap,
+  onPaymentComplete,
 }: LockerOptionsDialogProps) {
   // Load settings
   const settings = localDb.getSettings();
@@ -121,7 +123,8 @@ export default function LockerOptionsDialog({
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
   const [useSplitPayment, setUseSplitPayment] = useState(false);
-  const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부
+  const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부 (신규 입실용)
+  const [isCurrentlyDeferred, setIsCurrentlyDeferred] = useState(false); // 현재 락카의 후불결제 상태 (기존 입실용)
   
   // Additional fee payment states
   const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
@@ -290,15 +293,25 @@ export default function LockerOptionsDialog({
     }
   }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, checkoutResolved]);
 
-  // Load parent locker info when dialog opens
+  // Load parent locker info and deferred payment status when dialog opens
   useEffect(() => {
     if (open && isInUse) {
       const lockerLog = localDb.getActiveLockers().find(log => log.lockerNumber === lockerNumber);
-      if (lockerLog && lockerLog.parentLocker) {
-        setParentLockerNumber(lockerLog.parentLocker);
+      if (lockerLog) {
+        // 부모 락카 정보
+        if (lockerLog.parentLocker) {
+          setParentLockerNumber(lockerLog.parentLocker);
+        } else {
+          setParentLockerNumber(null);
+        }
+        // 후불결제 상태 로드
+        setIsCurrentlyDeferred((lockerLog as any).deferredPayment || false);
       } else {
         setParentLockerNumber(null);
+        setIsCurrentlyDeferred(false);
       }
+    } else if (!isInUse) {
+      setIsCurrentlyDeferred(false);
     }
   }, [open, isInUse, lockerNumber]);
 
@@ -553,6 +566,80 @@ export default function LockerOptionsDialog({
     return true;
   };
 
+  // 후불결제 완료 처리
+  const handleCompleteDeferredPayment = () => {
+    playClickSound();
+    
+    // 결제 방식 검증
+    if (!useSplitPayment && !paymentMethod) {
+      toast({
+        title: "지불방식 미선택",
+        description: "현금, 카드, 이체 중 하나를 선택해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const computedFinalPrice = calculateFinalPrice();
+    
+    // 분리결제 검증
+    if (useSplitPayment && !validateMixedPayment(computedFinalPrice)) {
+      return;
+    }
+    
+    // 결제 금액 계산
+    let cashVal: number | undefined;
+    let cardVal: number | undefined;
+    let transferVal: number | undefined;
+    
+    if (useSplitPayment) {
+      cashVal = parseInt(paymentCash) || undefined;
+      cardVal = parseInt(paymentCard) || undefined;
+      transferVal = parseInt(paymentTransfer) || undefined;
+    } else {
+      if (paymentMethod === 'cash') {
+        cashVal = computedFinalPrice;
+      } else if (paymentMethod === 'card') {
+        cardVal = computedFinalPrice;
+      } else if (paymentMethod === 'transfer') {
+        transferVal = computedFinalPrice;
+      }
+    }
+    
+    // DB 업데이트: 후불결제 해제 및 결제 정보 기록
+    if (currentLockerLogId) {
+      const result = localDb.completeDeferredPayment(currentLockerLogId, {
+        paymentMethod: paymentMethod || 'cash',
+        paymentCash: cashVal,
+        paymentCard: cardVal,
+        paymentTransfer: transferVal
+      });
+      
+      if (result.success) {
+        toast({
+          title: "결제 완료",
+          description: `${lockerNumber}번 락카 후불결제가 완료되었습니다. (${computedFinalPrice.toLocaleString()}원)`,
+        });
+        
+        // 데이터 새로고침 콜백 호출 (loadData)
+        if (onPaymentComplete) {
+          onPaymentComplete();
+        }
+        
+        // 다이얼로그 닫기
+        // isCurrentlyDeferred는 로컬에서 리셋하지 않고 다음 열림 시 DB에서 가져옴
+        playCloseSound();
+        onClose();
+      } else {
+        toast({
+          title: "결제 완료 실패",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+  
   const handleProcessEntry = () => {
     playClickSound();
     
@@ -1293,12 +1380,28 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
+            {/* 후불결제 상태 배너 - 사용중이고 후불결제 상태인 경우 */}
+            {isInUse && isCurrentlyDeferred && (
+              <div className="p-4 rounded-lg bg-gradient-to-r from-yellow-100 via-pink-100 to-purple-100 dark:from-yellow-950 dark:via-pink-950 dark:to-purple-950 border-2 border-pink-300 dark:border-pink-700 animate-pulse">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-lg font-bold text-pink-700 dark:text-pink-300">
+                      미결제 금액: {calculateFinalPrice().toLocaleString()}원
+                    </p>
+                    <p className="text-sm text-pink-600 dark:text-pink-400 mt-1">
+                      후불결제 대기 중 - 아래에서 결제 방식을 선택 후 결제 완료 버튼을 눌러주세요.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 지불방식 */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">지불방식</Label>
                 <div className="flex items-center gap-4">
-                  {/* 후불결제 옵션 - 입실 시에만 표시 */}
+                  {/* 후불결제 옵션 - 입실 시에만 표시 (후불결제 상태가 아닐 때) */}
                   {!isInUse && (
                     <div className="flex items-center space-x-2">
                       <Checkbox 
@@ -1323,8 +1426,8 @@ export default function LockerOptionsDialog({
                     </div>
                   )}
                   
-                  {/* 분리결제 옵션 - 후불결제가 아닐 때만 표시 */}
-                  {!isDeferredPayment && (
+                  {/* 분리결제 옵션 - 후불결제가 아닐 때 또는 후불결제 상태인 경우 표시 */}
+                  {(!isDeferredPayment || isCurrentlyDeferred) && (
                     <div className="flex items-center space-x-2">
                       <Checkbox 
                         id="split-payment" 
@@ -1360,7 +1463,7 @@ export default function LockerOptionsDialog({
                 </div>
               )}
               
-              {!isDeferredPayment && useSplitPayment ? (
+              {(!isDeferredPayment || isCurrentlyDeferred) && useSplitPayment ? (
                 <>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
@@ -1445,7 +1548,7 @@ export default function LockerOptionsDialog({
                     );
                   })()}
                 </>
-              ) : !isDeferredPayment ? (
+              ) : (!isDeferredPayment || isCurrentlyDeferred) ? (
                 <div className="flex gap-9">
                   <Button
                     type="button"
@@ -1822,6 +1925,17 @@ export default function LockerOptionsDialog({
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
+                {/* 후불결제 완료 버튼 - 후불결제 상태인 경우만 표시 */}
+                {isCurrentlyDeferred && (
+                  <Button 
+                    onClick={handleCompleteDeferredPayment} 
+                    className="bg-gradient-to-r from-yellow-500 to-pink-500 hover:from-yellow-600 hover:to-pink-600 text-white font-bold"
+                    data-testid="button-complete-payment"
+                    disabled={!useSplitPayment && !paymentMethod}
+                  >
+                    결제 완료
+                  </Button>
+                )}
                 <Button 
                   onClick={handleCheckoutClick} 
                   className="bg-primary" 
@@ -1866,8 +1980,14 @@ export default function LockerOptionsDialog({
                     // Check if there are additional fees or rental items but not resolved yet
                     const hasIssues = selectedRentalItems.size > 0 || additionalFeeInfo.additionalFee > 0;
                     
+                    // 후불결제 상태인 경우 퇴실 비활성화 (결제 완료 먼저 필요)
+                    if (isCurrentlyDeferred) {
+                      return true;
+                    }
+                    
                     return (hasIssues && !checkoutResolved) || hasUnresolvedExistingRentals || hasUnresolvedNewRentals;
                   })()}
+                  title={isCurrentlyDeferred ? "후불결제 완료 후 퇴실 가능" : undefined}
                 >
                   퇴실
                 </Button>

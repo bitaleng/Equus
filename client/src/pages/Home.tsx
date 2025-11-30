@@ -1744,6 +1744,7 @@ export default function Home() {
                               next.delete(lockerNumber);
                               return next;
                             });
+                            loadData(); // 다이얼로그 닫힐 때 데이터 새로고침 (후불결제 완료 등 반영)
                           }}
                           lockerNumber={lockerNumber}
                           basePrice={selectedEntry?.basePrice || newLockerInfo?.basePrice || 0}
@@ -1771,6 +1772,7 @@ export default function Home() {
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}
+                          onPaymentComplete={() => loadData()} // 후불결제 완료 시 데이터 새로고침
                         />
                       </div>
                     </div>
