@@ -667,7 +667,8 @@ export default function Home() {
       // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
       // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
       // 자식 락카(parentLocker가 있는 락카)도 방문인원에서 제외 (한 손님이 여러 락카 사용)
-      const activeSales = entries.filter(e => !e.cancelled).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
+      // 후불결제(deferredPayment = true)는 매출에서 제외 - 결제완료 시점에만 반영
+      const activeSales = entries.filter(e => !e.cancelled && !e.deferredPayment).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
       const totalVisitors = entries.filter(e => !e.cancelled && !e.parentLocker).length;
       const cancellations = entries.filter(e => e.cancelled).length;
       const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !e.parentLocker).length;
