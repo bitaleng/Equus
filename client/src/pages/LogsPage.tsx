@@ -466,8 +466,8 @@ export default function LogsPage() {
       return log.finalPrice;
     }
     
-    // 추가요금이 없으면 finalPrice 그대로 (배지는 hasAdditionalFeeRecord로 표시)
-    if (!log.additionalFees || log.additionalFees === 0) {
+    // 추가요금 기록이 없으면 finalPrice 그대로
+    if (!(log as any).hasAdditionalFeeRecord) {
       return log.finalPrice;
     }
     
@@ -478,9 +478,9 @@ export default function LogsPage() {
     const entryBusinessDay = log.businessDay 
       || getBusinessDay(new Date(log.entryTime), businessDayStartHour);
     
-    // 다른 영업일 퇴실: 추가요금만 표시
+    // 다른 영업일 퇴실: 추가요금만 표시 (할인으로 0원일 수도 있음)
     if (exitBusinessDay !== entryBusinessDay) {
-      return log.additionalFees;
+      return log.additionalFees || 0;
     }
     
     // 같은 영업일 퇴실: finalPrice 그대로 (base + additional)
