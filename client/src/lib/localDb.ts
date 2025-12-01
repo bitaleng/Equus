@@ -1261,9 +1261,15 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     
     // 4-1. 추가요금이 복구되면 자동입력된 추가요금 할인 메모 삭제
     let updatedCustomerMemo = logData.customer_memo || '';
-    if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
+    console.log('[reverseCheckout] deletedAdditionalFee:', deletedAdditionalFee);
+    console.log('[reverseCheckout] 원본 메모:', JSON.stringify(updatedCustomerMemo));
+    
+    // 추가요금이 있었던 경우에만 메모 필터링
+    if (updatedCustomerMemo) {
       // 줄 단위로 필터링: "추가요금"과 ("전액할인" 또는 "할인 받음")을 모두 포함하는 줄 제거
       const lines = updatedCustomerMemo.split('\n');
+      console.log('[reverseCheckout] 줄 수:', lines.length, '내용:', lines);
+      
       updatedCustomerMemo = lines
         .filter((line: string) => {
           // 줄이 "추가요금"을 포함하면서 "전액할인" 또는 "할인 받음"도 포함하면 제외
@@ -1271,8 +1277,12 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
           const hasFullDiscount = line.includes('전액할인');
           const hasPartialDiscount = line.includes('할인 받음');
           
+          console.log('[reverseCheckout] 줄 분석:', JSON.stringify(line), 
+            '추가요금:', hasAdditionalFee, '전액할인:', hasFullDiscount, '할인받음:', hasPartialDiscount);
+          
           // 추가요금 메모면서 할인 정보가 있으면 제거
           if (hasAdditionalFee && (hasFullDiscount || hasPartialDiscount)) {
+            console.log('[reverseCheckout] >>> 이 줄 삭제됨');
             return false; // 이 줄 제거
           }
           return true;
@@ -1280,6 +1290,8 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
         .join('\n')
         .replace(/\n\n+/g, '\n')
         .trim();
+      
+      console.log('[reverseCheckout] 필터링 후 메모:', JSON.stringify(updatedCustomerMemo));
     }
     
     // 5. 상태를 in_use로 변경하고 exit_time을 null로 설정
