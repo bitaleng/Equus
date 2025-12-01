@@ -12,16 +12,6 @@ import { useToast } from "@/hooks/use-toast";
 import { createExpense, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
 
-const EXPENSE_CATEGORIES = [
-  '인건비',
-  '공과금',
-  '식자재',
-  '소모품',
-  '수리비',
-  '통신비',
-  '기타',
-];
-
 const PAYMENT_METHODS = [
   { value: 'cash', label: '현금' },
   { value: 'card', label: '카드' },
@@ -66,18 +56,16 @@ export default function SalesSummary({
   
   const [isSalesOpen, setIsSalesOpen] = useState(true);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
-  const [category, setCategory] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
+  const [expenseItem, setExpenseItem] = useState('');
   const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState('1');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
 
   const handleAddExpense = () => {
-    if (!category) {
+    if (!expenseItem.trim()) {
       toast({
         variant: "destructive",
         title: "입력 오류",
-        description: "카테고리를 선택해주세요.",
+        description: "지출항목을 입력해주세요.",
       });
       return;
     }
@@ -91,7 +79,6 @@ export default function SalesSummary({
       return;
     }
 
-    const finalCategory = category === '기타' && customCategory ? customCategory : category;
     const now = new Date();
     const kstNow = formatInTimeZone(now, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
     const expenseDate = kstNow.split(' ')[0];
@@ -103,9 +90,9 @@ export default function SalesSummary({
     createExpense({
       date: expenseDate,
       time: expenseTime,
-      category: finalCategory,
+      category: expenseItem.trim(),
       amount: Number(amount),
-      quantity: Number(quantity),
+      quantity: 1,
       paymentMethod,
       businessDay,
       notes: undefined,
@@ -113,13 +100,11 @@ export default function SalesSummary({
 
     toast({
       title: "지출 등록 완료",
-      description: `${finalCategory} ${Number(amount).toLocaleString()}원이 등록되었습니다.`,
+      description: `${expenseItem.trim()} ${Number(amount).toLocaleString()}원이 등록되었습니다.`,
     });
 
-    setCategory('');
-    setCustomCategory('');
+    setExpenseItem('');
     setAmount('');
-    setQuantity('1');
     setPaymentMethod('cash');
     setExpenseDialogOpen(false);
     
@@ -241,34 +226,16 @@ export default function SalesSummary({
           
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="quick-category">카테고리</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger id="quick-category" data-testid="select-quick-category">
-                  <SelectValue placeholder="카테고리 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {EXPENSE_CATEGORIES.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="quick-expense-item">지출항목</Label>
+              <Input
+                id="quick-expense-item"
+                type="text"
+                value={expenseItem}
+                onChange={(e) => setExpenseItem(e.target.value)}
+                placeholder="지출항목 입력 (예: 음료수, 세제 등)"
+                data-testid="input-quick-expense-item"
+              />
             </div>
-
-            {category === '기타' && (
-              <div className="space-y-2">
-                <Label htmlFor="quick-custom-category">직접 입력</Label>
-                <Input
-                  id="quick-custom-category"
-                  type="text"
-                  value={customCategory}
-                  onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="카테고리명 입력"
-                  data-testid="input-quick-custom-category"
-                />
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="quick-amount">금액 (원)</Label>
@@ -279,18 +246,6 @@ export default function SalesSummary({
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="금액 입력"
                 data-testid="input-quick-amount"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="quick-quantity">수량</Label>
-              <Input
-                id="quick-quantity"
-                type="number"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                min="1"
-                data-testid="input-quick-quantity"
               />
             </div>
 
