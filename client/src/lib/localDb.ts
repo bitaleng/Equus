@@ -1448,15 +1448,15 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         // additional_fee_events도 0개 이상일 수 있으므로 검증 안함
       }
 
-      // Add note about the move to the customer's notes
+      // Add note about the move to the customer's customer_memo (메모 아이콘으로만 표시됨)
       const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       const moveNote = `[${timestamp}] 락카이동: ${fromLockerNumber}번 → ${toLockerNumber}번`;
-      const existingNotes = fromData?.notes || '';
-      const updatedNotes = existingNotes ? `${existingNotes}\n${moveNote}` : moveNote;
+      const existingMemo = fromData?.customerMemo || '';
+      const updatedMemo = existingMemo ? `${existingMemo}\n${moveNote}` : moveNote;
       
       db.run(
-        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
-        [updatedNotes, toLockerNumber]
+        `UPDATE locker_logs SET customer_memo = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [updatedMemo, toLockerNumber]
       );
 
       // Commit transaction
@@ -1568,25 +1568,25 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         );
       }
 
-      // Add notes about the swap to both customers' notes
+      // Add notes about the swap to both customers' customer_memo (메모 아이콘으로만 표시됨)
       const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       
-      // Update notes for the locker that was originally at fromLockerNumber (now at toLockerNumber)
+      // Update customer_memo for the locker that was originally at fromLockerNumber (now at toLockerNumber)
       const fromSwapNote = `[${timestamp}] 락카교환: ${fromLockerNumber}번 ↔ ${toLockerNumber}번`;
-      const fromExistingNotes = fromData?.notes || '';
-      const fromUpdatedNotes = fromExistingNotes ? `${fromExistingNotes}\n${fromSwapNote}` : fromSwapNote;
+      const fromExistingMemo = fromData?.customerMemo || '';
+      const fromUpdatedMemo = fromExistingMemo ? `${fromExistingMemo}\n${fromSwapNote}` : fromSwapNote;
       db.run(
-        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
-        [fromUpdatedNotes, toLockerNumber]
+        `UPDATE locker_logs SET customer_memo = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [fromUpdatedMemo, toLockerNumber]
       );
       
-      // Update notes for the locker that was originally at toLockerNumber (now at fromLockerNumber)
+      // Update customer_memo for the locker that was originally at toLockerNumber (now at fromLockerNumber)
       const toSwapNote = `[${timestamp}] 락카교환: ${toLockerNumber}번 ↔ ${fromLockerNumber}번`;
-      const toExistingNotes = toData?.notes || '';
-      const toUpdatedNotes = toExistingNotes ? `${toExistingNotes}\n${toSwapNote}` : toSwapNote;
+      const toExistingMemo = toData?.customerMemo || '';
+      const toUpdatedMemo = toExistingMemo ? `${toExistingMemo}\n${toSwapNote}` : toSwapNote;
       db.run(
-        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
-        [toUpdatedNotes, fromLockerNumber]
+        `UPDATE locker_logs SET customer_memo = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [toUpdatedMemo, fromLockerNumber]
       );
 
       // Commit transaction
@@ -2046,7 +2046,7 @@ export function setParentChildLinks(
       );
     }
 
-    // Add note about linking/unlinking to parent locker's notes
+    // Add note about linking/unlinking to parent locker's customer_memo (메모 아이콘으로만 표시됨)
     if (toAdd.length > 0 || toRemove.length > 0) {
       const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       const linkNotes: string[] = [];
@@ -2058,13 +2058,13 @@ export function setParentChildLinks(
         linkNotes.push(`[${timestamp}] 락카묶기해제: ${toRemove.join(', ')}번 해제`);
       }
       
-      const existingNotes = parentData?.notes || '';
+      const existingMemo = parentData?.customerMemo || '';
       const newNoteText = linkNotes.join('\n');
-      const updatedNotes = existingNotes ? `${existingNotes}\n${newNoteText}` : newNoteText;
+      const updatedMemo = existingMemo ? `${existingMemo}\n${newNoteText}` : newNoteText;
       
       db.run(
-        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
-        [updatedNotes, parentLockerNumber]
+        `UPDATE locker_logs SET customer_memo = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [updatedMemo, parentLockerNumber]
       );
     }
 
