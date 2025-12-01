@@ -1846,23 +1846,32 @@ export default function LockerOptionsDialog({
                   }`}
                   onClick={() => {
                     // 추가요금 정보를 메모에 자동 기록
-                    const discountAmount = parseInt(additionalFeeDiscount) || 0;
-                    const finalAmount = additionalFeeInfo.additionalFee - discountAmount;
-                    const discountType = additionalFeeFullDiscount ? '전액할인' : additionalFeePartialDiscount ? '일부할인' : '할인없음';
+                    let additionalFeeMemo = '';
                     
-                    const additionalFeeMemo = `[추가요금 처리] 원가: ${additionalFeeInfo.additionalFee.toLocaleString()}원, 할인(${discountType}): ${discountAmount.toLocaleString()}원, 실수령: ${finalAmount.toLocaleString()}원`;
+                    if (additionalFeeFullDiscount) {
+                      // 전액할인인 경우
+                      additionalFeeMemo = `추가요금 총 ${additionalFeeInfo.additionalFee.toLocaleString()}원 전액할인`;
+                    } else if (additionalFeePartialDiscount) {
+                      // 일부할인인 경우
+                      const discountAmount = parseInt(additionalFeeDiscount) || 0;
+                      if (discountAmount > 0) {
+                        additionalFeeMemo = `추가요금 총 ${additionalFeeInfo.additionalFee.toLocaleString()}원중 ${discountAmount.toLocaleString()}원 할인 받음`;
+                      }
+                    }
                     
-                    // 기존 메모에 추가 (기존 메모가 있으면 줄 바꿈 후 추가)
-                    const updatedMemo = customerMemo.trim() 
-                      ? `${customerMemo}\n${additionalFeeMemo}` 
-                      : additionalFeeMemo;
+                    // 할인이 있는 경우에만 메모에 추가
+                    if (additionalFeeMemo) {
+                      const updatedMemo = customerMemo.trim() 
+                        ? `${customerMemo}\n${additionalFeeMemo}` 
+                        : additionalFeeMemo;
+                      setCustomerMemo(updatedMemo);
+                    }
                     
-                    setCustomerMemo(updatedMemo);
                     setAdditionalFeeResolved(true);
                     setCheckoutResolved(true);
                     toast({
                       title: "추가요금 완납",
-                      description: "추가요금이 완납 처리되고 메모에 기록되었습니다. 퇴실 버튼이 활성화됩니다.",
+                      description: "추가요금이 완납 처리되었습니다. 퇴실 버튼이 활성화됩니다.",
                     });
                   }}
                   disabled={additionalFeeResolved}
