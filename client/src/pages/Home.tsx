@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -122,6 +123,13 @@ export default function Home() {
   // Popup workspace visibility toggle
   const [popupsVisible, setPopupsVisible] = useState(true);
   
+  // UI Layout Mode: 'toggle' (기존 토글 방식) or 'tab' (탭 전환 방식)
+  const [uiLayoutMode, setUiLayoutMode] = useState<'toggle' | 'tab'>(() => {
+    const saved = localStorage.getItem('uiLayoutMode');
+    return (saved === 'tab' || saved === 'toggle') ? saved : 'toggle';
+  });
+  const [activeTab, setActiveTab] = useState<'locker' | 'status'>('locker');
+  
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -141,6 +149,17 @@ export default function Home() {
     } else {
       // Collapsing panel - no pattern required
       setIsPanelCollapsed(true);
+    }
+  };
+
+  // UI Layout Mode 변경 핸들러
+  const handleLayoutModeChange = (mode: 'toggle' | 'tab') => {
+    setUiLayoutMode(mode);
+    localStorage.setItem('uiLayoutMode', mode);
+    // 탭 모드로 변경 시 패널 상태 초기화
+    if (mode === 'tab') {
+      setIsPanelCollapsed(false);
+      setIsLockerPanelCollapsed(false);
     }
   };
 
