@@ -178,7 +178,16 @@ export default function LockerOptionsDialog({
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
   const previousLockerRef = useRef<number | null>(null);
+  const memoTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
+  
+  // Auto-adjust memo textarea height
+  useEffect(() => {
+    if (memoTextareaRef.current) {
+      memoTextareaRef.current.style.height = 'auto';
+      memoTextareaRef.current.style.height = Math.max(60, memoTextareaRef.current.scrollHeight) + 'px';
+    }
+  }, [customerMemo]);
 
   // Reset checkoutResolved and additional fee discount when dialog opens
   useEffect(() => {
@@ -2049,11 +2058,12 @@ export default function LockerOptionsDialog({
                 )}
               </div>
               <Textarea
+                ref={memoTextareaRef}
                 id="customer-memo"
                 placeholder="손님에 관한 특별한 인상이나 특이사항을 기록하세요. 예: 야간요금 냈으므로 추가요금발생시 전액할인"
                 value={customerMemo}
                 onChange={(e) => setCustomerMemo(e.target.value)}
-                className="min-h-[60px] resize-none text-sm bg-white dark:bg-gray-900 border-0"
+                className="min-h-[60px] resize-none text-sm bg-white dark:bg-gray-900 border-0 overflow-hidden"
                 data-testid="input-customer-memo"
               />
             </div>
