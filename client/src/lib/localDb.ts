@@ -1262,11 +1262,11 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     // 4-1. 추가요금이 복구되면 자동입력된 추가요금 할인 메모 삭제
     let updatedCustomerMemo = logData.customer_memo || '';
     if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
-      // 패턴 1: "추가요금 총 XXX원 전액할인"
-      // 패턴 2: "추가요금 총 XXX원중 XXX원 할인 받음"
+      // 패턴 1: "추가요금 총 XXX원 전액할인" (쉼표 포함 처리)
+      // 패턴 2: "추가요금 총 XXX원중 XXX원 할인 받음" (쉼표 포함 처리)
       const additionalFeePatterns = [
-        /추가요금\s*총\s*\d+원\s*전액할인\n?/g,  // 전액할인 패턴
-        /추가요금\s*총\s*\d+원중\s*\d+원\s*할인\s*받음\n?/g  // 부분할인 패턴
+        /추가요금\s*총\s*[\d,]+원\s*전액할인\n?/g,  // 전액할인 패턴 (쉼표 포함)
+        /추가요금\s*총\s*[\d,]+원중\s*[\d,]+원\s*할인\s*받음\n?/g  // 부분할인 패턴 (쉼표 포함)
       ];
       
       for (const pattern of additionalFeePatterns) {
