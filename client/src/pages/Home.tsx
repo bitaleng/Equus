@@ -1532,7 +1532,7 @@ export default function Home() {
     <div className="h-full w-full bg-background">
       {/* 탭 모드 UI */}
       {uiLayoutMode === 'tab' ? (
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'locker' | 'status')} className="h-full flex flex-col">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'locker' | 'status')} className="h-full flex flex-col overflow-hidden">
           {/* 탭 헤더 */}
           <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
             <div className="flex items-center gap-4">
@@ -1571,7 +1571,7 @@ export default function Home() {
           </div>
 
           {/* 입실 관리 탭 */}
-          <TabsContent value="locker" className="flex-1 flex flex-col mt-0 overflow-hidden">
+          <TabsContent value="locker" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
             {/* 락카 상태 정보 */}
             <div className="flex items-center justify-between px-6 py-3 border-b">
               <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
@@ -1605,7 +1605,7 @@ export default function Home() {
           </TabsContent>
 
           {/* 오늘현황 탭 */}
-          <TabsContent value="status" className="flex-1 flex flex-col mt-0 overflow-hidden">
+          <TabsContent value="status" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
             {renderTodayStatusWithSales()}
           </TabsContent>
         </Tabs>
