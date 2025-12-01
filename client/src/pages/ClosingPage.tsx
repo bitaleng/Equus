@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, CheckCircle, Calculator, Calendar, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, Calculator, Calendar, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { Link } from 'wouter';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -465,6 +468,157 @@ export default function ClosingPage() {
     });
   };
 
+  // Export to Excel
+  const handleExportExcel = () => {
+    const data = [
+      ['정산 보고서', '', '', '', ''],
+      ['영업일', businessDay, '', '', ''],
+      ['시작 시간', startTime, '종료 시간', endTime, ''],
+      ['', '', '', '', ''],
+      ['매출 내역', '현금', '카드', '계좌이체', '합계'],
+      ['입실 기본요금', baseEntrySales.cash, baseEntrySales.card, baseEntrySales.transfer, baseEntrySales.total],
+      ['추가요금', additionalFeeSales.cash, additionalFeeSales.card, additionalFeeSales.transfer, additionalFeeSales.total],
+      ['입실 총합', entrySales.cash, entrySales.card, entrySales.transfer, entrySales.total],
+      ['대여수익', rentalSales.cash, rentalSales.card, rentalSales.transfer, rentalSales.total],
+      ['매출 총합', totalEntrySales.cash, totalEntrySales.card, totalEntrySales.transfer, totalEntrySales.total],
+      ['', '', '', '', ''],
+      ['지출 내역', '', '', '', ''],
+      ['현금 지출', expenseSummary.cashExpenses, '', '', ''],
+      ['카드 지출', expenseSummary.cardExpenses, '', '', ''],
+      ['계좌이체 지출', expenseSummary.transferExpenses, '', '', ''],
+      ['지출 총합', expenseSummary.totalExpenses, '', '', ''],
+      ['', '', '', '', ''],
+      ['시재금 현황', '', '', '', ''],
+      ['시재금 (시작)', parseInt(openingFloat) || 0, '', '', ''],
+      ['목표 시재금', parseInt(targetFloat) || 0, '', '', ''],
+      ['예상 현금', expectedCash, '', '', ''],
+      ['실제 현금', parseInt(actualCash) || 0, '', '', ''],
+      ['과부족', discrepancy, '', '', ''],
+      ['은행 입금액', parseInt(bankDeposit) || 0, '', '', ''],
+      ['', '', '', '', ''],
+      ['순수익', totalEntrySales.total - expenseSummary.totalExpenses, '', '', ''],
+    ];
+
+    if (memo) {
+      data.push(['', '', '', '', '']);
+      data.push(['일일 메모', memo, '', '', '']);
+    }
+    if (notes) {
+      data.push(['정산 메모', notes, '', '', '']);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '정산');
+    XLSX.writeFile(wb, `정산_${businessDay}.xlsx`);
+
+    toast({
+      title: '엑셀 내보내기 완료',
+      description: `정산_${businessDay}.xlsx 파일이 다운로드되었습니다.`,
+    });
+  };
+
+  // Export to PDF
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(18);
+    doc.text(`Settlement Report - ${businessDay}`, 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Hours: ${startTime} - ${endTime}`, 14, 30);
+    
+    // Sales Table
+    const salesData = [
+      ['Entry Base', baseEntrySales.cash.toLocaleString(), baseEntrySales.card.toLocaleString(), baseEntrySales.transfer.toLocaleString(), baseEntrySales.total.toLocaleString()],
+      ['Additional Fee', additionalFeeSales.cash.toLocaleString(), additionalFeeSales.card.toLocaleString(), additionalFeeSales.transfer.toLocaleString(), additionalFeeSales.total.toLocaleString()],
+      ['Entry Total', entrySales.cash.toLocaleString(), entrySales.card.toLocaleString(), entrySales.transfer.toLocaleString(), entrySales.total.toLocaleString()],
+      ['Rental', rentalSales.cash.toLocaleString(), rentalSales.card.toLocaleString(), rentalSales.transfer.toLocaleString(), rentalSales.total.toLocaleString()],
+      ['Total Sales', totalEntrySales.cash.toLocaleString(), totalEntrySales.card.toLocaleString(), totalEntrySales.transfer.toLocaleString(), totalEntrySales.total.toLocaleString()],
+    ];
+
+    (doc as any).autoTable({
+      head: [['Category', 'Cash', 'Card', 'Transfer', 'Total']],
+      body: salesData,
+      startY: 40,
+      theme: 'grid',
+      headStyles: { fillColor: [66, 139, 202] },
+    });
+
+    const finalY1 = (doc as any).lastAutoTable.finalY;
+
+    // Expense Table
+    const expenseData = [
+      ['Cash', expenseSummary.cashExpenses.toLocaleString()],
+      ['Card', expenseSummary.cardExpenses.toLocaleString()],
+      ['Transfer', expenseSummary.transferExpenses.toLocaleString()],
+      ['Total', expenseSummary.totalExpenses.toLocaleString()],
+    ];
+
+    (doc as any).autoTable({
+      head: [['Expenses', 'Amount']],
+      body: expenseData,
+      startY: finalY1 + 10,
+      theme: 'grid',
+      headStyles: { fillColor: [217, 83, 79] },
+    });
+
+    const finalY2 = (doc as any).lastAutoTable.finalY;
+
+    // Cash Register Table
+    const cashData = [
+      ['Opening Float', (parseInt(openingFloat) || 0).toLocaleString()],
+      ['Target Float', (parseInt(targetFloat) || 0).toLocaleString()],
+      ['Expected Cash', expectedCash.toLocaleString()],
+      ['Actual Cash', (parseInt(actualCash) || 0).toLocaleString()],
+      ['Discrepancy', discrepancy.toLocaleString()],
+      ['Bank Deposit', (parseInt(bankDeposit) || 0).toLocaleString()],
+    ];
+
+    (doc as any).autoTable({
+      head: [['Cash Register', 'Amount']],
+      body: cashData,
+      startY: finalY2 + 10,
+      theme: 'grid',
+      headStyles: { fillColor: [91, 192, 222] },
+    });
+
+    let finalY = (doc as any).lastAutoTable.finalY;
+
+    // Net Profit
+    doc.setFontSize(14);
+    doc.text(`Net Profit: ${(totalEntrySales.total - expenseSummary.totalExpenses).toLocaleString()} KRW`, 14, finalY + 15);
+    finalY += 25;
+
+    // Memos section
+    if (memo || notes) {
+      const memoData: string[][] = [];
+      if (memo) {
+        memoData.push(['Daily Memo', memo.substring(0, 100) + (memo.length > 100 ? '...' : '')]);
+      }
+      if (notes) {
+        memoData.push(['Settlement Notes', notes.substring(0, 100) + (notes.length > 100 ? '...' : '')]);
+      }
+      
+      (doc as any).autoTable({
+        head: [['Type', 'Content']],
+        body: memoData,
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [92, 184, 92] },
+        columnStyles: { 1: { cellWidth: 120 } },
+      });
+    }
+
+    doc.save(`정산_${businessDay}.pdf`);
+
+    toast({
+      title: 'PDF 내보내기 완료',
+      description: `정산_${businessDay}.pdf 파일이 다운로드되었습니다.`,
+    });
+  };
+
   // Calculate pending closings (only for days with saved closing data)
   const pendingClosings = availableBusinessDays.filter(day => {
     const closing = getClosingDay(day);
@@ -527,6 +681,22 @@ export default function ClosingPage() {
           </div>
 
           <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={handleExportExcel}
+              data-testid="button-export-excel"
+            >
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              엑셀
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={handleExportPDF}
+              data-testid="button-export-pdf"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              PDF
+            </Button>
             <Button 
               variant="outline"
               onClick={() => {

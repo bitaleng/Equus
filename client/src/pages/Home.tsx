@@ -1414,7 +1414,11 @@ export default function Home() {
 
   return (
     <div className="h-full w-full bg-background">
-      <ResizablePanelGroup direction="horizontal" className="h-full">
+      <ResizablePanelGroup 
+        direction="horizontal" 
+        className="h-full"
+        key={`panel-group-${isPanelCollapsed}-${isLockerPanelCollapsed}`}
+      >
         {/* Left Panel - Collapsible */}
         {!isPanelCollapsed && (
           <>

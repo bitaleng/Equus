@@ -35,7 +35,6 @@ import {
   updateExpense,
   deleteExpense,
   getSettings,
-  getExpenseCategories,
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 
@@ -63,15 +62,12 @@ export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState({ cashTotal: 0, cardTotal: 0, transferTotal: 0, total: 0 });
   const [businessDay, setBusinessDay] = useState('');
-  const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
 
   // Form state
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [category, setCategory] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
   const [amount, setAmount] = useState('');
-  const [quantity, setQuantity] = useState('1');
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
   const [notes, setNotes] = useState('');
 
@@ -81,9 +77,7 @@ export default function ExpensesPage() {
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
   const [editCategory, setEditCategory] = useState('');
-  const [editCustomCategory, setEditCustomCategory] = useState('');
   const [editAmount, setEditAmount] = useState('');
-  const [editQuantity, setEditQuantity] = useState('');
   const [editPaymentMethod, setEditPaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
   const [editNotes, setEditNotes] = useState('');
 
@@ -95,10 +89,6 @@ export default function ExpensesPage() {
     const settings = getSettings();
     const currentBusinessDay = getBusinessDay(new Date(), settings.businessDayStartHour);
     setBusinessDay(currentBusinessDay);
-    
-    // Load expense categories from database
-    const categories = getExpenseCategories();
-    setExpenseCategories(categories.map((cat: any) => cat.name));
 
     const now = new Date();
     const kstNow = formatInTimeZone(now, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
@@ -122,12 +112,10 @@ export default function ExpensesPage() {
   };
 
   const handleAddExpense = () => {
-    const finalCategory = category === 'custom' ? customCategory : category;
-
-    if (!finalCategory.trim()) {
+    if (!category.trim()) {
       toast({
-        title: '카테고리 입력 필요',
-        description: '지출 카테고리를 선택하거나 입력해주세요.',
+        title: '지출항목 입력 필요',
+        description: '지출항목을 입력해주세요.',
         variant: 'destructive',
       });
       return;
@@ -143,22 +131,12 @@ export default function ExpensesPage() {
       return;
     }
 
-    const quantityNum = parseInt(quantity);
-    if (isNaN(quantityNum) || quantityNum <= 0) {
-      toast({
-        title: '수량 입력 오류',
-        description: '올바른 수량을 입력해주세요.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     createExpense({
       date,
       time,
-      category: finalCategory,
+      category: category.trim(),
       amount: amountNum,
-      quantity: quantityNum,
+      quantity: 1,
       paymentMethod,
       businessDay,
       notes: notes.trim() || undefined,
@@ -166,14 +144,12 @@ export default function ExpensesPage() {
 
     toast({
       title: '지출 등록 완료',
-      description: `${finalCategory} 지출이 등록되었습니다.`,
+      description: `${category} 지출이 등록되었습니다.`,
     });
 
     // Reset form
     setCategory('');
-    setCustomCategory('');
     setAmount('');
-    setQuantity('1');
     setNotes('');
 
     loadExpenses(businessDay);
@@ -183,18 +159,8 @@ export default function ExpensesPage() {
     setEditingExpense(expense);
     setEditDate(expense.date);
     setEditTime(expense.time);
-    
-    // Check if category is one of predefined categories
-    if (expenseCategories.includes(expense.category)) {
-      setEditCategory(expense.category);
-      setEditCustomCategory('');
-    } else {
-      setEditCategory('custom');
-      setEditCustomCategory(expense.category);
-    }
-    
+    setEditCategory(expense.category);
     setEditAmount(expense.amount.toString());
-    setEditQuantity(expense.quantity.toString());
     setEditPaymentMethod(expense.paymentMethod);
     setEditNotes(expense.notes || '');
     setEditDialogOpen(true);
@@ -203,12 +169,10 @@ export default function ExpensesPage() {
   const handleSaveEdit = () => {
     if (!editingExpense) return;
 
-    const finalCategory = editCategory === 'custom' ? editCustomCategory : editCategory;
-
-    if (!finalCategory.trim()) {
+    if (!editCategory.trim()) {
       toast({
-        title: '카테고리 입력 필요',
-        description: '지출 카테고리를 선택하거나 입력해주세요.',
+        title: '지출항목 입력 필요',
+        description: '지출항목을 입력해주세요.',
         variant: 'destructive',
       });
       return;
@@ -224,22 +188,12 @@ export default function ExpensesPage() {
       return;
     }
 
-    const quantityNum = parseInt(editQuantity);
-    if (isNaN(quantityNum) || quantityNum <= 0) {
-      toast({
-        title: '수량 입력 오류',
-        description: '올바른 수량을 입력해주세요.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     updateExpense(editingExpense.id, {
       date: editDate,
       time: editTime,
-      category: finalCategory,
+      category: editCategory.trim(),
       amount: amountNum,
-      quantity: quantityNum,
+      quantity: 1,
       paymentMethod: editPaymentMethod,
       notes: editNotes.trim() || undefined,
     });
@@ -375,33 +329,15 @@ export default function ExpensesPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">카테고리</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger data-testid="select-category">
-                    <SelectValue placeholder="선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {expenseCategories.map((cat) => (
-                      <SelectItem key={cat} value={cat}>
-                        {cat}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="category">지출항목</Label>
+                <Input
+                  id="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="예: 커피, 식비, 청소용품"
+                  data-testid="input-category"
+                />
               </div>
-
-              {category === 'custom' && (
-                <div className="space-y-2">
-                  <Label htmlFor="customCategory">카테고리 입력</Label>
-                  <Input
-                    id="customCategory"
-                    value={customCategory}
-                    onChange={(e) => setCustomCategory(e.target.value)}
-                    placeholder="예: 마케팅비"
-                    data-testid="input-custom-category"
-                  />
-                </div>
-              )}
 
               <div className="space-y-2">
                 <Label htmlFor="amount">금액</Label>
@@ -412,18 +348,6 @@ export default function ExpensesPage() {
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="10000"
                   data-testid="input-expense-amount"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="quantity">수량</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  placeholder="1"
-                  data-testid="input-expense-quantity"
                 />
               </div>
 
@@ -476,9 +400,8 @@ export default function ExpensesPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="text-left p-2">날짜/시간</th>
-                    <th className="text-left p-2">카테고리</th>
+                    <th className="text-left p-2">지출항목</th>
                     <th className="text-right p-2">금액</th>
-                    <th className="text-center p-2">수량</th>
                     <th className="text-center p-2">결제방법</th>
                     <th className="text-left p-2">메모</th>
                     <th className="text-center p-2">작업</th>
@@ -487,7 +410,7 @@ export default function ExpensesPage() {
                 <tbody>
                   {expenses.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center p-8 text-muted-foreground">
+                      <td colSpan={6} className="text-center p-8 text-muted-foreground">
                         등록된 지출이 없습니다
                       </td>
                     </tr>
@@ -504,7 +427,6 @@ export default function ExpensesPage() {
                         <td className="p-2 text-right font-semibold">
                           {formatKoreanCurrency(expense.amount)}
                         </td>
-                        <td className="p-2 text-center">{expense.quantity}</td>
                         <td className="p-2 text-center">
                           <span className="text-xs px-2 py-1 rounded-full bg-muted">
                             {getPaymentMethodLabel(expense.paymentMethod)}
@@ -579,55 +501,25 @@ export default function ExpensesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="editCategory">카테고리</Label>
-              <Select value={editCategory} onValueChange={setEditCategory}>
-                <SelectTrigger data-testid="select-edit-category">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {expenseCategories.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="editCategory">지출항목</Label>
+              <Input
+                id="editCategory"
+                value={editCategory}
+                onChange={(e) => setEditCategory(e.target.value)}
+                placeholder="예: 커피, 식비, 청소용품"
+                data-testid="input-edit-category"
+              />
             </div>
 
-            {editCategory === 'custom' && (
-              <div className="space-y-2">
-                <Label htmlFor="editCustomCategory">카테고리 입력</Label>
-                <Input
-                  id="editCustomCategory"
-                  value={editCustomCategory}
-                  onChange={(e) => setEditCustomCategory(e.target.value)}
-                  data-testid="input-edit-custom-category"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="editAmount">금액</Label>
-                <Input
-                  id="editAmount"
-                  type="number"
-                  value={editAmount}
-                  onChange={(e) => setEditAmount(e.target.value)}
-                  data-testid="input-edit-amount"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="editQuantity">수량</Label>
-                <Input
-                  id="editQuantity"
-                  type="number"
-                  value={editQuantity}
-                  onChange={(e) => setEditQuantity(e.target.value)}
-                  data-testid="input-edit-quantity"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="editAmount">금액</Label>
+              <Input
+                id="editAmount"
+                type="number"
+                value={editAmount}
+                onChange={(e) => setEditAmount(e.target.value)}
+                data-testid="input-edit-amount"
+              />
             </div>
 
             <div className="space-y-2">

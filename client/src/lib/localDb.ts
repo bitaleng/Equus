@@ -1448,6 +1448,17 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         // additional_fee_events도 0개 이상일 수 있으므로 검증 안함
       }
 
+      // Add note about the move to the customer's notes
+      const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      const moveNote = `[${timestamp}] 락카이동: ${fromLockerNumber}번 → ${toLockerNumber}번`;
+      const existingNotes = fromData?.notes || '';
+      const updatedNotes = existingNotes ? `${existingNotes}\n${moveNote}` : moveNote;
+      
+      db.run(
+        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [updatedNotes, toLockerNumber]
+      );
+
       // Commit transaction
       db.run('COMMIT');
       
@@ -1556,6 +1567,27 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
           [toLockerNumber, fromData.id]
         );
       }
+
+      // Add notes about the swap to both customers' notes
+      const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      
+      // Update notes for the locker that was originally at fromLockerNumber (now at toLockerNumber)
+      const fromSwapNote = `[${timestamp}] 락카교환: ${fromLockerNumber}번 ↔ ${toLockerNumber}번`;
+      const fromExistingNotes = fromData?.notes || '';
+      const fromUpdatedNotes = fromExistingNotes ? `${fromExistingNotes}\n${fromSwapNote}` : fromSwapNote;
+      db.run(
+        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [fromUpdatedNotes, toLockerNumber]
+      );
+      
+      // Update notes for the locker that was originally at toLockerNumber (now at fromLockerNumber)
+      const toSwapNote = `[${timestamp}] 락카교환: ${toLockerNumber}번 ↔ ${fromLockerNumber}번`;
+      const toExistingNotes = toData?.notes || '';
+      const toUpdatedNotes = toExistingNotes ? `${toExistingNotes}\n${toSwapNote}` : toSwapNote;
+      db.run(
+        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [toUpdatedNotes, fromLockerNumber]
+      );
 
       // Commit transaction
       db.run('COMMIT');
@@ -2011,6 +2043,28 @@ export function setParentChildLinks(
           parentData.timeType,
           parentLockerNumber
         ]
+      );
+    }
+
+    // Add note about linking/unlinking to parent locker's notes
+    if (toAdd.length > 0 || toRemove.length > 0) {
+      const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      const linkNotes: string[] = [];
+      
+      if (toAdd.length > 0) {
+        linkNotes.push(`[${timestamp}] 락카묶기: ${toAdd.join(', ')}번 추가`);
+      }
+      if (toRemove.length > 0) {
+        linkNotes.push(`[${timestamp}] 락카묶기해제: ${toRemove.join(', ')}번 해제`);
+      }
+      
+      const existingNotes = parentData?.notes || '';
+      const newNoteText = linkNotes.join('\n');
+      const updatedNotes = existingNotes ? `${existingNotes}\n${newNoteText}` : newNoteText;
+      
+      db.run(
+        `UPDATE locker_logs SET notes = ? WHERE locker_number = ? AND status = 'in_use'`,
+        [updatedNotes, parentLockerNumber]
       );
     }
 
