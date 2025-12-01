@@ -1431,54 +1431,232 @@ export default function Home() {
     }
   };
 
+  // 락카 그리드 렌더링 함수 (토글/탭 모드 공용)
+  const renderLockerGrid = (isFullWidth: boolean = false) => (
+    <div className={`flex-1 overflow-auto ${isFullWidth ? 'p-8' : 'p-6'}`}>
+      {lockerGroups.length === 0 ? (
+        <div className="text-center text-muted-foreground py-8">
+          <p>락커 그룹이 설정되지 않았습니다.</p>
+          <p className="text-sm mt-2">설정 페이지에서 락커 그룹을 추가해주세요.</p>
+        </div>
+      ) : (
+        <div className="space-y-8 w-full">
+          {lockerGroups.map((group) => (
+            <div key={group.id} className="w-full">
+              <h3 className={`text-lg font-semibold mb-3 ${isFullWidth ? "text-center" : ""}`}>
+                {group.name}
+                {overviewMode && <span className="ml-2 text-xs text-muted-foreground">(전체보기: H)</span>}
+              </h3>
+              <div className={`grid w-full ${
+                overviewMode 
+                  ? "grid-cols-12 gap-2" 
+                  : isFullWidth 
+                    ? "grid-cols-8 gap-4" 
+                    : "grid-cols-8 gap-2 max-w-4xl"
+              }`}>
+                {Array.from(
+                  { length: group.endNumber - group.startNumber + 1 },
+                  (_, i) => group.startNumber + i
+                ).map((num) => (
+                  <LockerButton
+                    key={num}
+                    number={num}
+                    status={lockerStates[num] || 'empty'}
+                    additionalFeeCount={additionalFeeCounts[num] || 0}
+                    timeType={lockerTimeTypes[num] || 'day'}
+                    entryTime={lockerEntryTimes[num]}
+                    businessDayStartHour={businessDayStartHour}
+                    onClick={() => handleLockerClick(num)}
+                    isExpanded={isFullWidth}
+                    parentLocker={lockerParents[num] || null}
+                    deferredPayment={lockerDeferredPayments[num] || false}
+                    customerMemo={lockerCustomerMemos[num] || ''}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // 오늘현황 + 매출집계 렌더링 함수 (탭 모드용 - 좌우 배치)
+  const renderTodayStatusWithSales = () => (
+    <div className="flex-1 flex overflow-hidden">
+      {/* 왼쪽: 오늘입실현황 테이블 */}
+      <div className="flex-[3] border-r overflow-hidden">
+        <TodayStatusTable
+          entries={todayEntries}
+          isExpanded={true}
+          onReverseCheckout={handleReverseCheckout}
+          onRowClick={(entry) => {
+            const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+            if (existingEntry) {
+              setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                lockerNumber: entry.lockerNumber,
+                isMinimized: false,
+                timeType: existingEntry.timeType,
+                basePrice: existingEntry.basePrice
+              }));
+              setPopupsVisible(true);
+            }
+          }}
+          isLockerPanelCollapsed={false}
+          onToggleLockerPanel={() => {}}
+          hideToggleButton={true}
+        />
+      </div>
+      {/* 오른쪽: 매출집계 */}
+      <div className="flex-[2] p-6 overflow-auto">
+        <SalesSummary
+          date={getBusinessDay(currentTime, businessDayStartHour)}
+          totalVisitors={summary?.totalVisitors || 0}
+          totalSales={summary?.totalSales || 0}
+          cancellations={summary?.cancellations || 0}
+          foreignerCount={summary?.foreignerCount || 0}
+          dayVisitors={summary?.dayVisitors || 0}
+          nightVisitors={summary?.nightVisitors || 0}
+          additionalFeeSales={additionalFeeSales}
+          rentalRevenue={rentalRevenue}
+          totalExpenses={totalExpenses}
+          onExpenseAdded={loadData}
+          isCollapsed={false}
+          onToggleCollapse={() => {}}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="h-full w-full bg-background">
-      <ResizablePanelGroup 
-        direction="horizontal" 
-        className="h-full"
-        key={`panel-group-${isPanelCollapsed}-${isLockerPanelCollapsed}`}
-      >
-        {/* Left Panel - Collapsible */}
-        {!isPanelCollapsed && (
-          <>
-            <ResizablePanel 
-              defaultSize={isLockerPanelCollapsed ? 100 : 40} 
-              minSize={20} 
-              maxSize={isLockerPanelCollapsed ? 100 : 70}
-              className="flex flex-col"
-            >
-              <div className="h-full border-r flex flex-col">
-                {/* Today Status */}
-                <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
-                  <TodayStatusTable
-                    entries={todayEntries}
-                    isExpanded={isLockerPanelCollapsed}
-                    onReverseCheckout={handleReverseCheckout}
-                    onRowClick={(entry) => {
-                      // Add to openDialogs for multi-popup display
-                      const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
-                      if (existingEntry) {
-                        setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
-                          lockerNumber: entry.lockerNumber,
-                          isMinimized: false,
-                          timeType: existingEntry.timeType,
-                          basePrice: existingEntry.basePrice
-                        }));
-                        // Show popup workspace
-                        setPopupsVisible(true);
-                      }
-                    }}
-                    isLockerPanelCollapsed={isLockerPanelCollapsed}
-                    onToggleLockerPanel={handleToggleLockerPanel}
-                  />
-                </div>
+      {/* 탭 모드 UI */}
+      {uiLayoutMode === 'tab' ? (
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'locker' | 'status')} className="h-full flex flex-col">
+          {/* 탭 헤더 */}
+          <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+            <div className="flex items-center gap-4">
+              <TabsList>
+                <TabsTrigger value="locker" data-testid="tab-locker">입실 관리</TabsTrigger>
+                <TabsTrigger value="status" data-testid="tab-status">오늘현황</TabsTrigger>
+              </TabsList>
+              <p className="tabular-nums">
+                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {nfcSupported && activeTab === 'locker' && (
+                <Button
+                  variant={isNfcScanning ? "default" : "outline"}
+                  size="sm"
+                  onClick={handleNfcScan}
+                  data-testid="button-nfc-scan-tab"
+                  className="text-xs"
+                >
+                  {isNfcScanning ? "감지 중지" : "자동감지"}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleLayoutModeChange('toggle')}
+                data-testid="button-mode-toggle"
+                title="토글 모드로 전환"
+              >
+                <Columns className="h-4 w-4 mr-1" />
+                토글모드
+              </Button>
+            </div>
+          </div>
 
-                {/* Sales Summary */}
-                {!isSalesSummaryCollapsed && (
-                  <div className="flex-[2] p-6 overflow-auto">
-                    <SalesSummary
-                      date={getBusinessDay(currentTime, businessDayStartHour)}
-                      totalVisitors={summary?.totalVisitors || 0}
+          {/* 입실 관리 탭 */}
+          <TabsContent value="locker" className="flex-1 flex flex-col mt-0 overflow-hidden">
+            {/* 락카 상태 정보 */}
+            <div className="flex items-center justify-between px-6 py-3 border-b">
+              <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                <span>사용중: {activeLockers.length}개</span>
+                <span>방문객: {summary?.totalVisitors || 0}명</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
+                  <span className="text-xs">빈락카</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
+                  <span className="text-xs">이전영업일</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
+                  <span className="text-xs">주간</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
+                  <span className="text-xs">야간</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
+                  <span className="text-xs">추가요금</span>
+                </div>
+              </div>
+            </div>
+            {renderLockerGrid(true)}
+          </TabsContent>
+
+          {/* 오늘현황 탭 */}
+          <TabsContent value="status" className="flex-1 flex flex-col mt-0 overflow-hidden">
+            {renderTodayStatusWithSales()}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        /* 토글 모드 UI (기존) */
+        <ResizablePanelGroup 
+          direction="horizontal" 
+          className="h-full"
+          key={`panel-group-${isPanelCollapsed}-${isLockerPanelCollapsed}`}
+        >
+          {/* Left Panel - Collapsible */}
+          {!isPanelCollapsed && (
+            <>
+              <ResizablePanel 
+                defaultSize={isLockerPanelCollapsed ? 100 : 40} 
+                minSize={20} 
+                maxSize={isLockerPanelCollapsed ? 100 : 70}
+                className="flex flex-col"
+              >
+                <div className="h-full border-r flex flex-col">
+                  {/* Today Status */}
+                  <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
+                    <TodayStatusTable
+                      entries={todayEntries}
+                      isExpanded={isLockerPanelCollapsed}
+                      onReverseCheckout={handleReverseCheckout}
+                      onRowClick={(entry) => {
+                        // Add to openDialogs for multi-popup display
+                        const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+                        if (existingEntry) {
+                          setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                            lockerNumber: entry.lockerNumber,
+                            isMinimized: false,
+                            timeType: existingEntry.timeType,
+                            basePrice: existingEntry.basePrice
+                          }));
+                          // Show popup workspace
+                          setPopupsVisible(true);
+                        }
+                      }}
+                      isLockerPanelCollapsed={isLockerPanelCollapsed}
+                      onToggleLockerPanel={handleToggleLockerPanel}
+                    />
+                  </div>
+
+                  {/* Sales Summary */}
+                  {!isSalesSummaryCollapsed && (
+                    <div className="flex-[2] p-6 overflow-auto">
+                      <SalesSummary
+                        date={getBusinessDay(currentTime, businessDayStartHour)}
+                        totalVisitors={summary?.totalVisitors || 0}
                       totalSales={summary?.totalSales || 0}
                       cancellations={summary?.cancellations || 0}
                       foreignerCount={summary?.foreignerCount || 0}
@@ -1559,6 +1737,17 @@ export default function Home() {
                   바코드테스트
                 </Button>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleLayoutModeChange('tab')}
+                data-testid="button-mode-tab"
+                title="탭 모드로 전환"
+                className="text-xs"
+              >
+                <LayoutGrid className="h-4 w-4 mr-1" />
+                탭모드
+              </Button>
               <h1 
                 className="text-xl font-semibold cursor-pointer select-none" 
                 onClick={handleTitleClick}
@@ -1652,6 +1841,7 @@ export default function Home() {
           </ResizablePanel>
         )}
       </ResizablePanelGroup>
+      )}
 
       {/* Backdrop - Click to hide popups temporarily */}
       {openDialogs.size > 0 && popupsVisible && (

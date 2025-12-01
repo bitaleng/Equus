@@ -66,9 +66,10 @@ interface TodayStatusTableProps {
   isLockerPanelCollapsed?: boolean;
   onToggleLockerPanel?: () => void;
   onReverseCheckout?: (entry: LockerEntry) => void; // 퇴실 취소 콜백
+  hideToggleButton?: boolean; // 탭 모드에서 토글 버튼 숨김
 }
 
-export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel, onReverseCheckout }: TodayStatusTableProps) {
+export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel, onReverseCheckout, hideToggleButton = false }: TodayStatusTableProps) {
   const [lockerNumberInput, setLockerNumberInput] = useState("");
   const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
   const [reverseCheckoutDialogOpen, setReverseCheckoutDialogOpen] = useState(false);
@@ -166,7 +167,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
             <FileText className="h-4 w-4 mr-1" />
             메모
           </Button>
-          {onToggleLockerPanel && (
+          {onToggleLockerPanel && !hideToggleButton && (
             <Button 
               variant="ghost" 
               size="icon" 
