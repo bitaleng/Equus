@@ -109,6 +109,7 @@ interface LogEntry {
   additionalFees?: number; // Total additional fees from checkout
   deferredPayment?: boolean; // 후불결제 여부
   customerMemo?: string; // 손님 메모
+  businessDay?: string; // 영업일 (YYYY-MM-DD format)
 }
 
 interface AdditionalFeeEvent {
@@ -324,8 +325,12 @@ export default function LogsPage() {
       const logsWithFees = result.map(log => {
         const additionalFeeEvents = localDb.getAdditionalFeeEventsByLockerLog(log.id);
         const totalAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
+        // Map businessDay field from database (business_day column)
+        const businessDay = (log as any).businessDay || 
+          (log.entryTime ? getBusinessDay(new Date(log.entryTime), businessDayStartHour) : '');
         return {
           ...log,
+          businessDay,
           additionalFees: ((log as any).additionalFees || 0) + totalAdditionalFees,
           hasAdditionalFeeRecord: additionalFeeEvents.length > 0 || ((log as any).additionalFees || 0) > 0
         };
@@ -461,7 +466,7 @@ export default function LogsPage() {
       return log.finalPrice;
     }
     
-    // 추가요금이 없으면 finalPrice 그대로
+    // 추가요금이 없으면 finalPrice 그대로 (배지는 hasAdditionalFeeRecord로 표시)
     if (!log.additionalFees || log.additionalFees === 0) {
       return log.finalPrice;
     }
@@ -469,8 +474,8 @@ export default function LogsPage() {
     // 퇴실 시 영업일 계산
     const exitBusinessDay = getBusinessDay(new Date(log.exitTime), businessDayStartHour);
     
-    // 입실 시 영업일 (businessDay 필드가 없으면 entryTime으로 계산)
-    const entryBusinessDay = (log as any).businessDay 
+    // 입실 시 영업일: businessDay 필드 직접 사용 (데이터베이스에서 매핑됨)
+    const entryBusinessDay = log.businessDay 
       || getBusinessDay(new Date(log.entryTime), businessDayStartHour);
     
     // 다른 영업일 퇴실: 추가요금만 표시
