@@ -65,6 +65,11 @@ export default function ClosingPage() {
   const [businessDay, setBusinessDay] = useState('');
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [availableBusinessDays, setAvailableBusinessDays] = useState<string[]>([]);
+  
+  // 년/월/일 분리 선택을 위한 상태
+  const [selectedYear, setSelectedYear] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedDay, setSelectedDay] = useState('');
 
   // Basic information
   const [startTime, setStartTime] = useState('');
@@ -140,6 +145,13 @@ export default function ClosingPage() {
     setAvailableBusinessDays(pastDays);
     
     setBusinessDay(currentBusinessDay);
+    
+    // 년/월/일 분리 초기화
+    const [year, month, day] = currentBusinessDay.split('-');
+    setSelectedYear(year);
+    setSelectedMonth(month);
+    setSelectedDay(day);
+    
     loadClosingData(currentBusinessDay);
   }, []);
 
@@ -427,17 +439,75 @@ export default function ClosingPage() {
     loadClosingData(businessDay);
   };
 
-  const handleBusinessDayChange = (selectedDay: string) => {
-    if (selectedDay === businessDay) return; // Skip if unchanged
+  const handleBusinessDayChange = (newBusinessDay: string) => {
+    if (newBusinessDay === businessDay) return; // Skip if unchanged
     
-    setBusinessDay(selectedDay);
-    loadClosingData(selectedDay);
+    setBusinessDay(newBusinessDay);
+    
+    // 년/월/일 상태도 업데이트
+    const [year, month, day] = newBusinessDay.split('-');
+    setSelectedYear(year);
+    setSelectedMonth(month);
+    setSelectedDay(day);
+    
+    loadClosingData(newBusinessDay);
     
     toast({
       title: '영업일 변경',
-      description: `${selectedDay} 영업일 데이터를 불러왔습니다.`,
+      description: `${newBusinessDay} 영업일 데이터를 불러왔습니다.`,
     });
   };
+
+  // 년/월/일 분리 선택 관련 함수들
+  const availableYears = Array.from(new Set(availableBusinessDays.map(d => d.split('-')[0]))).sort((a, b) => b.localeCompare(a));
+  
+  const availableMonths = Array.from(new Set(
+    availableBusinessDays
+      .filter(d => d.startsWith(selectedYear))
+      .map(d => d.split('-')[1])
+  )).sort((a, b) => b.localeCompare(a));
+  
+  const availableDays = Array.from(new Set(
+    availableBusinessDays
+      .filter(d => d.startsWith(`${selectedYear}-${selectedMonth}`))
+      .map(d => d.split('-')[2])
+  )).sort((a, b) => b.localeCompare(a));
+
+  const handleYearChange = (year: string) => {
+    setSelectedYear(year);
+    // 해당 년도에서 가장 최근 월/일 자동 선택
+    const daysInYear = availableBusinessDays.filter(d => d.startsWith(year));
+    if (daysInYear.length > 0) {
+      const latestDay = daysInYear[0]; // 가장 최근 날짜
+      const [, month, day] = latestDay.split('-');
+      setSelectedMonth(month);
+      setSelectedDay(day);
+      handleBusinessDayChange(latestDay);
+    }
+  };
+
+  const handleMonthChange = (month: string) => {
+    setSelectedMonth(month);
+    // 해당 월에서 가장 최근 일 자동 선택
+    const daysInMonth = availableBusinessDays.filter(d => d.startsWith(`${selectedYear}-${month}`));
+    if (daysInMonth.length > 0) {
+      const latestDay = daysInMonth[0]; // 가장 최근 날짜
+      const [, , day] = latestDay.split('-');
+      setSelectedDay(day);
+      handleBusinessDayChange(latestDay);
+    }
+  };
+
+  const handleDayChange = (day: string) => {
+    setSelectedDay(day);
+    const newBusinessDay = `${selectedYear}-${selectedMonth}-${day}`;
+    if (availableBusinessDays.includes(newBusinessDay)) {
+      handleBusinessDayChange(newBusinessDay);
+    }
+  };
+
+  // 현재 선택된 영업일의 상태 확인
+  const currentClosing = getClosingDay(businessDay);
 
   const handleRangeQuery = () => {
     if (!rangeStartBusinessDay || !rangeEndBusinessDay) {
@@ -645,37 +715,60 @@ export default function ClosingPage() {
                 </p>
               </div>
               
-              {/* Business Day Selector */}
-              <div className="flex items-center gap-2">
+              {/* Business Day Selector - 년/월/일 분리 선택 */}
+              <div className="flex items-center gap-1.5">
                 <Calendar className="h-5 w-5 text-muted-foreground" />
-                <Select value={businessDay} onValueChange={handleBusinessDayChange}>
-                  <SelectTrigger className="w-[180px]" data-testid="select-business-day">
-                    <SelectValue placeholder="영업일 선택" />
+                
+                {/* 년 선택 */}
+                <Select value={selectedYear} onValueChange={handleYearChange}>
+                  <SelectTrigger className="w-[85px]" data-testid="select-year">
+                    <SelectValue placeholder="년" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableBusinessDays.map((day) => {
-                      const closing = getClosingDay(day);
-                      const isPending = !closing?.isConfirmed;
-                      
-                      return (
-                        <SelectItem key={day} value={day} data-testid={`option-business-day-${day}`}>
-                          <div className="flex items-center gap-2">
-                            <span>{day}</span>
-                            {closing?.isConfirmed && (
-                              <Badge variant="secondary" className="text-xs">확정</Badge>
-                            )}
-                            {isPending && closing && (
-                              <Badge variant="outline" className="text-xs">저장됨</Badge>
-                            )}
-                            {isPending && !closing && (
-                              <Badge variant="destructive" className="text-xs">미정산</Badge>
-                            )}
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
+                    {availableYears.map((year) => (
+                      <SelectItem key={year} value={year}>
+                        {year}년
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                
+                {/* 월 선택 */}
+                <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                  <SelectTrigger className="w-[70px]" data-testid="select-month">
+                    <SelectValue placeholder="월" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMonths.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {parseInt(month)}월
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* 일 선택 */}
+                <Select value={selectedDay} onValueChange={handleDayChange}>
+                  <SelectTrigger className="w-[70px]" data-testid="select-day">
+                    <SelectValue placeholder="일" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDays.map((day) => (
+                      <SelectItem key={day} value={day}>
+                        {parseInt(day)}일
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* 상태 배지 */}
+                {currentClosing?.isConfirmed ? (
+                  <Badge variant="secondary" className="text-xs whitespace-nowrap">확정</Badge>
+                ) : currentClosing ? (
+                  <Badge variant="outline" className="text-xs whitespace-nowrap">저장됨</Badge>
+                ) : (
+                  <Badge variant="destructive" className="text-xs whitespace-nowrap">미정산</Badge>
+                )}
               </div>
             </div>
           </div>
