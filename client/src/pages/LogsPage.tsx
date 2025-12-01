@@ -511,7 +511,9 @@ export default function LogsPage() {
       '기본': log.basePrice,
       '옵션': getOptionText(log),
       '옵션금액': log.optionAmount || '-',
-      '추가요금': log.additionalFees || '-',
+      '추가요금': (log as any).hasAdditionalFeeRecord 
+        ? (log.additionalFees && log.additionalFees > 0 ? `${log.additionalFees}원` : '전액할인')
+        : '-',
       '최종요금': getDisplayPrice(log),
       '지불방식': formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       '취소': log.cancelled ? 'O' : '-',
@@ -556,7 +558,9 @@ export default function LogsPage() {
       log.basePrice.toLocaleString(),
       getOptionText(log),
       log.optionAmount ? log.optionAmount.toLocaleString() : '-',
-      log.additionalFees ? log.additionalFees.toLocaleString() : '-',
+      (log as any).hasAdditionalFeeRecord 
+        ? (log.additionalFees && log.additionalFees > 0 ? log.additionalFees.toLocaleString() + '원' : '전액할인')
+        : '-',
       getDisplayPrice(log).toLocaleString(),
       formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       log.cancelled ? 'O' : '-',
@@ -1012,10 +1016,16 @@ export default function LogsPage() {
                       {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {log.additionalFees && log.additionalFees > 0 ? (
-                        <span className="text-destructive font-medium">
-                          {log.additionalFees.toLocaleString()}원
-                        </span>
+                      {(log as any).hasAdditionalFeeRecord ? (
+                        log.additionalFees && log.additionalFees > 0 ? (
+                          <span className="text-destructive font-medium">
+                            {log.additionalFees.toLocaleString()}원
+                          </span>
+                        ) : (
+                          <span className="text-orange-600 dark:text-orange-400 font-medium whitespace-nowrap">
+                            전액할인
+                          </span>
+                        )
                       ) : (
                         '-'
                       )}
