@@ -1484,51 +1484,59 @@ export default function Home() {
     </div>
   );
 
-  // 오늘현황 + 매출집계 렌더링 함수 (탭 모드용 - 좌우 배치)
+  // 오늘현황 + 매출집계 렌더링 함수 (탭 모드용 - 좌우 배치 with 반응형 분리선)
   const renderTodayStatusWithSales = () => (
-    <div className="flex-1 flex overflow-hidden">
+    <ResizablePanelGroup direction="horizontal" className="flex-1">
       {/* 왼쪽: 오늘입실현황 테이블 */}
-      <div className="flex-[3] border-r overflow-hidden">
-        <TodayStatusTable
-          entries={todayEntries}
-          isExpanded={true}
-          onReverseCheckout={handleReverseCheckout}
-          onRowClick={(entry) => {
-            const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
-            if (existingEntry) {
-              setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
-                lockerNumber: entry.lockerNumber,
-                isMinimized: false,
-                timeType: existingEntry.timeType,
-                basePrice: existingEntry.basePrice
-              }));
-              setPopupsVisible(true);
-            }
-          }}
-          isLockerPanelCollapsed={false}
-          onToggleLockerPanel={() => {}}
-          hideToggleButton={true}
-        />
-      </div>
+      <ResizablePanel defaultSize={60} minSize={30} maxSize={80}>
+        <div className="h-full overflow-hidden">
+          <TodayStatusTable
+            entries={todayEntries}
+            isExpanded={true}
+            onReverseCheckout={handleReverseCheckout}
+            onRowClick={(entry) => {
+              const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+              if (existingEntry) {
+                setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                  lockerNumber: entry.lockerNumber,
+                  isMinimized: false,
+                  timeType: existingEntry.timeType,
+                  basePrice: existingEntry.basePrice
+                }));
+                setPopupsVisible(true);
+              }
+            }}
+            isLockerPanelCollapsed={false}
+            onToggleLockerPanel={() => {}}
+            hideToggleButton={true}
+          />
+        </div>
+      </ResizablePanel>
+      
+      {/* 반응형 분리선 */}
+      <ResizableHandle withHandle />
+      
       {/* 오른쪽: 매출집계 */}
-      <div className="flex-[2] p-6 overflow-auto">
-        <SalesSummary
-          date={getBusinessDay(currentTime, businessDayStartHour)}
-          totalVisitors={summary?.totalVisitors || 0}
-          totalSales={summary?.totalSales || 0}
-          cancellations={summary?.cancellations || 0}
-          foreignerCount={summary?.foreignerCount || 0}
-          dayVisitors={summary?.dayVisitors || 0}
-          nightVisitors={summary?.nightVisitors || 0}
-          additionalFeeSales={additionalFeeSales}
-          rentalRevenue={rentalRevenue}
-          totalExpenses={totalExpenses}
-          onExpenseAdded={loadData}
-          isCollapsed={false}
-          onToggleCollapse={() => {}}
-        />
-      </div>
-    </div>
+      <ResizablePanel defaultSize={40} minSize={20} maxSize={70}>
+        <div className="h-full p-6 overflow-auto">
+          <SalesSummary
+            date={getBusinessDay(currentTime, businessDayStartHour)}
+            totalVisitors={summary?.totalVisitors || 0}
+            totalSales={summary?.totalSales || 0}
+            cancellations={summary?.cancellations || 0}
+            foreignerCount={summary?.foreignerCount || 0}
+            dayVisitors={summary?.dayVisitors || 0}
+            nightVisitors={summary?.nightVisitors || 0}
+            additionalFeeSales={additionalFeeSales}
+            rentalRevenue={rentalRevenue}
+            totalExpenses={totalExpenses}
+            onExpenseAdded={loadData}
+            isCollapsed={false}
+            onToggleCollapse={() => {}}
+          />
+        </div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
 
   return (

@@ -161,6 +161,10 @@ export default function Settings() {
   const [importFileData, setImportFileData] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // RFID/Barcode export/import refs
+  const rfidFileInputRef = useRef<HTMLInputElement>(null);
+  const barcodeFileInputRef = useRef<HTMLInputElement>(null);
+
   // Cash register (시재금) states
   const [cashRegister, setCashRegister] = useState({
     count50000: 0,
@@ -434,6 +438,124 @@ export default function Settings() {
         });
       }
     }
+  };
+
+  // RFID export/import handlers
+  const handleExportRfidMappings = () => {
+    try {
+      const result = localDb.exportRfidMappings();
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'RFID 내보내기 실패');
+      }
+      
+      const blob = new Blob([result.data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      link.href = url;
+      link.download = `rfid-mappings-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "RFID 내보내기 완료",
+        description: `${rfidMappings.length}개의 RFID 매핑이 저장되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "내보내기 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleImportRfidMappings = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      const result = localDb.importRfidMappings(content);
+      
+      if (result.success) {
+        loadRfidMappings();
+        toast({
+          title: "RFID 가져오기 완료",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "가져오기 실패",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
+  // Barcode export/import handlers
+  const handleExportBarcodeMappings = () => {
+    try {
+      const result = localDb.exportBarcodeMappings();
+      if (!result.success || !result.data) {
+        throw new Error(result.error || '바코드 내보내기 실패');
+      }
+      
+      const blob = new Blob([result.data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+      link.href = url;
+      link.download = `barcode-mappings-${timestamp}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast({
+        title: "바코드 내보내기 완료",
+        description: `${barcodeMappings.length}개의 바코드 매핑이 저장되었습니다.`,
+      });
+    } catch (error) {
+      toast({
+        title: "내보내기 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleImportBarcodeMappings = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      const result = localDb.importBarcodeMappings(content);
+      
+      if (result.success) {
+        loadBarcodeMappings();
+        toast({
+          title: "바코드 가져오기 완료",
+          description: result.message,
+        });
+      } else {
+        toast({
+          title: "가져오기 실패",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   // Barcode scan listener
@@ -1290,6 +1412,34 @@ export default function Settings() {
                     락카키 바코드를 스캔하여 락카번호와 매핑할 수 있습니다
                   </CardDescription>
                 </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportBarcodeMappings}
+                    disabled={barcodeMappings.length === 0}
+                    data-testid="button-export-barcode"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    내보내기
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => barcodeFileInputRef.current?.click()}
+                    data-testid="button-import-barcode"
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    가져오기
+                  </Button>
+                  <input
+                    ref={barcodeFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBarcodeMappings}
+                    className="hidden"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -1458,6 +1608,34 @@ export default function Settings() {
                   <CardDescription>
                     락카키 RFID 태그를 등록하여 락카번호와 매핑할 수 있습니다 (13.56MHz NFC)
                   </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportRfidMappings}
+                    disabled={rfidMappings.length === 0}
+                    data-testid="button-export-rfid"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    내보내기
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => rfidFileInputRef.current?.click()}
+                    data-testid="button-import-rfid"
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    가져오기
+                  </Button>
+                  <input
+                    ref={rfidFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportRfidMappings}
+                    className="hidden"
+                  />
                 </div>
               </div>
             </CardHeader>

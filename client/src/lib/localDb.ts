@@ -6077,3 +6077,201 @@ export function importDatabase(jsonString: string): {
     return { success: false, error: `가져오기 실패: ${String(error)}` };
   }
 }
+
+// Export RFID mappings only
+export function exportRfidMappings(): {
+  success: boolean;
+  data?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const exportData = {
+      version: '1.0',
+      type: 'rfid_mappings',
+      exportDate: new Date().toISOString(),
+      appName: 'EQUUS Hotel Management System',
+      mappings: [] as any[]
+    };
+    
+    const result = db.exec(`SELECT * FROM rfid_mappings ORDER BY locker_number`);
+    if (result.length > 0 && result[0].values.length > 0) {
+      const columns = result[0].columns;
+      exportData.mappings = result[0].values.map((row: any) => {
+        const obj: any = {};
+        columns.forEach((col, idx) => {
+          obj[col] = row[idx];
+        });
+        return obj;
+      });
+    }
+    
+    return {
+      success: true,
+      data: JSON.stringify(exportData, null, 2)
+    };
+  } catch (error) {
+    console.error('Error exporting RFID mappings:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// Import RFID mappings only
+export function importRfidMappings(jsonData: string): {
+  success: boolean;
+  message?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const importData = JSON.parse(jsonData);
+    
+    if (importData.type !== 'rfid_mappings') {
+      return { success: false, error: 'RFID 매핑 파일이 아닙니다.' };
+    }
+    
+    if (!Array.isArray(importData.mappings)) {
+      return { success: false, error: 'RFID 매핑 데이터가 없습니다.' };
+    }
+    
+    let importedCount = 0;
+    let skippedCount = 0;
+    
+    for (const mapping of importData.mappings) {
+      if (!mapping.rfid_uid || !mapping.locker_number) continue;
+      
+      // Check if already exists
+      const existing = db.exec(
+        `SELECT id FROM rfid_mappings WHERE rfid_uid = ? OR locker_number = ?`,
+        [mapping.rfid_uid, mapping.locker_number]
+      );
+      
+      if (existing.length > 0 && existing[0].values.length > 0) {
+        skippedCount++;
+        continue;
+      }
+      
+      const id = mapping.id || `rfid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      db.run(
+        `INSERT INTO rfid_mappings (id, rfid_uid, locker_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        [id, mapping.rfid_uid, mapping.locker_number, mapping.created_at || new Date().toISOString(), new Date().toISOString()]
+      );
+      importedCount++;
+    }
+    
+    saveDatabase();
+    
+    return {
+      success: true,
+      message: `RFID 매핑 ${importedCount}개 가져오기 완료${skippedCount > 0 ? ` (중복 ${skippedCount}개 건너뜀)` : ''}`
+    };
+  } catch (error) {
+    console.error('Error importing RFID mappings:', error);
+    return { success: false, error: `가져오기 실패: ${String(error)}` };
+  }
+}
+
+// Export barcode mappings only
+export function exportBarcodeMappings(): {
+  success: boolean;
+  data?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const exportData = {
+      version: '1.0',
+      type: 'barcode_mappings',
+      exportDate: new Date().toISOString(),
+      appName: 'EQUUS Hotel Management System',
+      mappings: [] as any[]
+    };
+    
+    const result = db.exec(`SELECT * FROM barcode_mappings ORDER BY locker_number`);
+    if (result.length > 0 && result[0].values.length > 0) {
+      const columns = result[0].columns;
+      exportData.mappings = result[0].values.map((row: any) => {
+        const obj: any = {};
+        columns.forEach((col, idx) => {
+          obj[col] = row[idx];
+        });
+        return obj;
+      });
+    }
+    
+    return {
+      success: true,
+      data: JSON.stringify(exportData, null, 2)
+    };
+  } catch (error) {
+    console.error('Error exporting barcode mappings:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// Import barcode mappings only
+export function importBarcodeMappings(jsonData: string): {
+  success: boolean;
+  message?: string;
+  error?: string;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+  
+  try {
+    const importData = JSON.parse(jsonData);
+    
+    if (importData.type !== 'barcode_mappings') {
+      return { success: false, error: '바코드 매핑 파일이 아닙니다.' };
+    }
+    
+    if (!Array.isArray(importData.mappings)) {
+      return { success: false, error: '바코드 매핑 데이터가 없습니다.' };
+    }
+    
+    let importedCount = 0;
+    let skippedCount = 0;
+    
+    for (const mapping of importData.mappings) {
+      if (!mapping.barcode || !mapping.locker_number) continue;
+      
+      // Check if already exists
+      const existing = db.exec(
+        `SELECT id FROM barcode_mappings WHERE barcode = ? OR locker_number = ?`,
+        [mapping.barcode, mapping.locker_number]
+      );
+      
+      if (existing.length > 0 && existing[0].values.length > 0) {
+        skippedCount++;
+        continue;
+      }
+      
+      const id = mapping.id || `barcode_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      db.run(
+        `INSERT INTO barcode_mappings (id, barcode, locker_number, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+        [id, mapping.barcode, mapping.locker_number, mapping.created_at || new Date().toISOString(), new Date().toISOString()]
+      );
+      importedCount++;
+    }
+    
+    saveDatabase();
+    
+    return {
+      success: true,
+      message: `바코드 매핑 ${importedCount}개 가져오기 완료${skippedCount > 0 ? ` (중복 ${skippedCount}개 건너뜀)` : ''}`
+    };
+  } catch (error) {
+    console.error('Error importing barcode mappings:', error);
+    return { success: false, error: `가져오기 실패: ${String(error)}` };
+  }
+}
