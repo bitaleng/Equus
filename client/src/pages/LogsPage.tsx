@@ -326,7 +326,8 @@ export default function LogsPage() {
         const totalAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
         return {
           ...log,
-          additionalFees: ((log as any).additionalFees || 0) + totalAdditionalFees
+          additionalFees: ((log as any).additionalFees || 0) + totalAdditionalFees,
+          hasAdditionalFeeRecord: additionalFeeEvents.length > 0 || ((log as any).additionalFees || 0) > 0
         };
       });
       
@@ -993,7 +994,7 @@ export default function LogsPage() {
                         }`}>
                           {log.timeType}
                         </span>
-                        {log.additionalFees && log.additionalFees > 0 && log.timeType !== '추가요금' && (
+                        {(log as any).hasAdditionalFeeRecord && log.timeType !== '추가요금' && (
                           <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-red-500/10 text-red-600 dark:text-red-400">
                             추가
                           </span>
