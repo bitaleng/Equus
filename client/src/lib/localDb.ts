@@ -1262,17 +1262,18 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     // 4-1. 추가요금이 복구되면 자동입력된 추가요금 할인 메모 삭제
     let updatedCustomerMemo = logData.customer_memo || '';
     if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
-      // 정규식으로 추가요금 할인 관련 메모 제거 (더 견고한 방식)
-      // 패턴: "추가요금 총 숫자원 전액할인" 
-      // 패턴: "추가요금 총 숫자원중 숫자원 할인 받음"
-      
+      // 줄 단위로 필터링: "추가요금"과 ("전액할인" 또는 "할인 받음")을 모두 포함하는 줄 제거
       const lines = updatedCustomerMemo.split('\n');
       updatedCustomerMemo = lines
         .filter((line: string) => {
-          const trimmed = line.trim();
-          // "추가요금"으로 시작하고 "전액할인" 또는 "할인 받음"을 포함하면 제외
-          if (trimmed.startsWith('추가요금') && (trimmed.includes('전액할인') || trimmed.includes('할인 받음'))) {
-            return false;
+          // 줄이 "추가요금"을 포함하면서 "전액할인" 또는 "할인 받음"도 포함하면 제외
+          const hasAdditionalFee = line.includes('추가요금');
+          const hasFullDiscount = line.includes('전액할인');
+          const hasPartialDiscount = line.includes('할인 받음');
+          
+          // 추가요금 메모면서 할인 정보가 있으면 제거
+          if (hasAdditionalFee && (hasFullDiscount || hasPartialDiscount)) {
+            return false; // 이 줄 제거
           }
           return true;
         })
