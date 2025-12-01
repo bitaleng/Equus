@@ -515,7 +515,7 @@ export default function LogsPage() {
       '최종요금': getDisplayPrice(log),
       '지불방식': formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       '취소': log.cancelled ? 'O' : '-',
-      '비고': log.notes || '-'
+      '비고': log.customerMemo || '-'
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);
@@ -560,7 +560,7 @@ export default function LogsPage() {
       getDisplayPrice(log).toLocaleString(),
       formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer),
       log.cancelled ? 'O' : '-',
-      log.notes || '-',
+      log.customerMemo || '-',
     ]);
 
     autoTable(doc, {
@@ -1042,7 +1042,7 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       <div className="flex items-center gap-2">
-                        <span>{log.notes || '-'}</span>
+                        <span>{log.customerMemo || '-'}</span>
                         {log.customerMemo && log.customerMemo.trim() && (
                           <Popover>
                             <PopoverTrigger asChild>
