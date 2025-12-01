@@ -1084,6 +1084,10 @@ export default function LockerOptionsDialog({
     if (!swapInfo || !onSwap) return;
 
     playClickSound();
+    // 메모에 자동으로 정보 추가
+    const newMemo = `[락카교체] ${lockerNumber}번 → ${swapInfo.targetLocker}번으로 교체됨`;
+    setCustomerMemo(newMemo);
+    
     onSwap(lockerNumber, swapInfo.targetLocker);
     setShowSwapConfirm(false);
     onClose();
@@ -1122,6 +1126,11 @@ export default function LockerOptionsDialog({
       const result = localDb.setParentChildLinks(lockerNumber, childLockerNumbers);
       
       if (result.success) {
+        // 메모에 자동으로 정보 추가
+        const childList = childLockerNumbers.join(", ");
+        const newMemo = `[락카묶기] ${lockerNumber}번 부모 락카로 ${childList}번과 함께 묶음`;
+        setCustomerMemo(newMemo);
+        
         toast({
           title: "락카묶기 완료",
           description: result.message,
