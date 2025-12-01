@@ -77,7 +77,8 @@ interface LockerOptionsDialogProps {
       card?: number;
       transfer?: number;
       discount?: number;
-    }
+    },
+    customerMemo?: string  // 손님 메모
   ) => void;
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
@@ -937,7 +938,7 @@ export default function LockerOptionsDialog({
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
+      onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment, customerMemo);
     }
   };
 
@@ -1016,7 +1017,7 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
-    onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment);
+    onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment, customerMemo);
   };
 
   const handleWarningResolved = () => {
