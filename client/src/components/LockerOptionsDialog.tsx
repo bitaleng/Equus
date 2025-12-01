@@ -1952,55 +1952,60 @@ export default function LockerOptionsDialog({
                               </div>
                             )}
                             
-                            {/* 보증금 처리 - 대여형(보증금 있음)이고 반납완료되지 않은 경우에만 표시 */}
-                            {!returnCompletedItems.has(itemId) && (item.depositAmount || 0) > 0 && (
+                            {/* 보증금 처리 - 반납완료되지 않은 경우에만 표시 (보증금 유무 상관없음) */}
+                            {!returnCompletedItems.has(itemId) && (
                             <div className="space-y-2">
-                              <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
-                                보증금 처리
-                                {item.depositAmount > 0 && depositStatus === 'received' && (!isInUse || !isAlreadyRented) && (
-                                  <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
-                                    ⚠ 보증금 받음
-                                  </span>
-                                )}
-                              </Label>
-                              <Select 
-                                value={depositStatus} 
-                                onValueChange={(value) => {
-                                  const newStatuses = new Map(depositStatuses);
-                                  newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited' | 'none');
-                                  setDepositStatuses(newStatuses);
-                                }}
-                              >
-                                <SelectTrigger 
-                                  id={`deposit-status-${itemId}`} 
-                                  data-testid={`select-deposit-${itemId}`}
-                                  className={!depositStatus ? 'border-orange-500' : ''}
-                                >
-                                  <SelectValue placeholder="보증금 처리를 선택하세요" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
-                                  {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
-                                    <SelectItem value="received">받음 (입실 시)</SelectItem>
+                              {/* 보증금이 있는 경우에만 보증금 처리 섹션 표시 */}
+                              {(item.depositAmount || 0) > 0 && (
+                                <>
+                                  <Label htmlFor={`deposit-status-${itemId}`} className="text-xs text-muted-foreground">
+                                    보증금 처리
+                                    {item.depositAmount > 0 && depositStatus === 'received' && (!isInUse || !isAlreadyRented) && (
+                                      <span className="ml-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                                        ⚠ 보증금 받음
+                                      </span>
+                                    )}
+                                  </Label>
+                                  <Select 
+                                    value={depositStatus} 
+                                    onValueChange={(value) => {
+                                      const newStatuses = new Map(depositStatuses);
+                                      newStatuses.set(itemId, value as 'received' | 'refunded' | 'forfeited' | 'none');
+                                      setDepositStatuses(newStatuses);
+                                    }}
+                                  >
+                                    <SelectTrigger 
+                                      id={`deposit-status-${itemId}`} 
+                                      data-testid={`select-deposit-${itemId}`}
+                                      className={!depositStatus ? 'border-orange-500' : ''}
+                                    >
+                                      <SelectValue placeholder="보증금 처리를 선택하세요" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {/* 보증금 있음 - '받음' 옵션 (신규 입실 또는 아직 대여하지 않은 항목) */}
+                                      {item.depositAmount > 0 && (!isInUse || !isAlreadyRented) && (
+                                        <SelectItem value="received">받음 (입실 시)</SelectItem>
+                                      )}
+                                      
+                                      {/* 보증금 있음 - '환급'/'몰수' 옵션 (이미 대여 중인 항목만) */}
+                                      {item.depositAmount > 0 && isInUse && isAlreadyRented && (
+                                        <>
+                                          <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
+                                          <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
+                                        </>
+                                      )}
+                                    </SelectContent>
+                                  </Select>
+                                  {!depositStatus && (
+                                    <p className="text-xs text-orange-600 dark:text-orange-400">
+                                      {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
+                                    </p>
                                   )}
-                                  
-                                  {/* 보증금 있음 - '환급'/'몰수' 옵션 (이미 대여 중인 항목만) */}
-                                  {item.depositAmount > 0 && isInUse && isAlreadyRented && (
-                                    <>
-                                      <SelectItem value="refunded">환급 (매출 없음)</SelectItem>
-                                      <SelectItem value="forfeited">몰수 (매출 기록)</SelectItem>
-                                    </>
-                                  )}
-                                </SelectContent>
-                              </Select>
-                              {!depositStatus && (
-                                <p className="text-xs text-orange-600 dark:text-orange-400">
-                                  {isInUse && isAlreadyRented ? '⚠️ 퇴실 전에 보증금 상태(환급/몰수)를 선택해주세요' : '⚠️ 보증금 상태를 선택해주세요'}
-                                </p>
+                                </>
                               )}
                               
-                              {/* 반납완료 버튼 - 이미 대여 중이고 보증금 처리(환급/몰수)가 선택된 경우에만 표시 */}
-                              {isInUse && isAlreadyRented && (depositStatus === 'refunded' || depositStatus === 'forfeited') && (
+                              {/* 반납완료 버튼 - 보증금 없는 경우 또는 보증금 처리(환급/몰수) 선택 시 표시 */}
+                              {((item.depositAmount || 0) === 0 || (isInUse && isAlreadyRented && (depositStatus === 'refunded' || depositStatus === 'forfeited'))) && (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -2112,63 +2117,58 @@ export default function LockerOptionsDialog({
                   className="bg-primary" 
                   data-testid="button-checkout"
                   disabled={(() => {
-                    // Check if any existing rental transaction with deposit needs deposit resolution
-                    // ONLY check items that are still selected AND not yet return-completed
-                    const hasUnresolvedExistingRentals = currentRentalTransactions.some(txn => {
+                    // 후불결제 상태인 경우 퇴실 비활성화 (결제 완료 먼저 필요)
+                    if (isCurrentlyDeferred) {
+                      return true;
+                    }
+                    
+                    // 대여품목 중 '보증금이 있는' 것만 체크
+                    const hasUnresolvedRentalWithDeposit = currentRentalTransactions.some(txn => {
                       // Skip if item is not selected anymore (user unchecked it)
                       if (!selectedRentalItems.has(txn.itemId)) {
                         return false;
                       }
-                      // CRITICAL FIX: Skip items that are already return-completed
+                      // Skip items that are already return-completed
                       if (returnCompletedItems.has(txn.itemId)) {
                         return false;
                       }
-                      // Skip items with zero deposit
+                      // ONLY check items WITH deposit
                       if (txn.depositAmount === 0) {
                         return false;
                       }
                       // If transaction is in 'received' state and has deposit, must be updated to 'refunded' or 'forfeited'
                       if (txn.depositStatus === 'received') {
-                        // Check if this item is selected and has a valid new status
                         const newStatus = depositStatuses.get(txn.itemId);
                         return !newStatus || newStatus === 'received';
                       }
                       return false;
                     });
                     
-                    // Check if any newly selected rental item with deposit has invalid deposit status for checkout
-                    const hasUnresolvedNewRentals = Array.from(selectedRentalItems).some(itemId => {
-                      // CRITICAL FIX: Skip items that are already return-completed
+                    // Check if any newly selected rental item WITH deposit has invalid deposit status for checkout
+                    const hasUnresolvedNewRentalWithDeposit = Array.from(selectedRentalItems).some(itemId => {
+                      // Skip if item is already return-completed
                       if (returnCompletedItems.has(itemId)) {
                         return false;
                       }
-                      // Skip items that are already in currentRentalTransactions
+                      // Skip if item is already in currentRentalTransactions
                       if (currentRentalTransactions.some(txn => txn.itemId === itemId)) {
                         return false;
                       }
                       // Find the item to check if it has deposit
                       const item = availableRentalItems.find((r: any) => r.id === itemId);
+                      // ONLY check items WITH deposit
                       if (!item || item.depositAmount === 0) {
-                        return false; // Skip items with zero deposit
+                        return false;
                       }
                       const status = depositStatuses.get(itemId);
                       // For checkout, require 'refunded' or 'forfeited' (not 'received')
                       return !status || status === 'received';
                     });
                     
-                    // Check if there are additional fees or rental items but not resolved yet
-                    // CRITICAL FIX: Exclude return-completed items from the count
-                    const unresolvedRentalCount = Array.from(selectedRentalItems).filter(
-                      itemId => !returnCompletedItems.has(itemId)
-                    ).length;
-                    const hasIssues = unresolvedRentalCount > 0 || additionalFeeInfo.additionalFee > 0;
+                    // Check if there are additional fees (only additional fees block checkout, not rental items without deposit)
+                    const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0;
                     
-                    // 후불결제 상태인 경우 퇴실 비활성화 (결제 완료 먼저 필요)
-                    if (isCurrentlyDeferred) {
-                      return true;
-                    }
-                    
-                    return (hasIssues && !checkoutResolved) || hasUnresolvedExistingRentals || hasUnresolvedNewRentals;
+                    return hasUnresolvedRentalWithDeposit || hasUnresolvedNewRentalWithDeposit || (hasUnresolvedAdditionalFees && !checkoutResolved);
                   })()}
                   title={isCurrentlyDeferred ? "후불결제 완료 후 퇴실 가능" : undefined}
                 >
