@@ -1263,16 +1263,20 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     let updatedCustomerMemo = logData.customer_memo || '';
     if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
       // 정규식으로 추가요금 할인 관련 메모 제거 (더 견고한 방식)
-      // 패턴: "추가요금 총 숫자원 전액할인" (여러 줄 포함 가능)
-      // 패턴: "추가요금 총 숫자원중 숫자원 할인 받음" (여러 줄 포함 가능)
+      // 패턴: "추가요금 총 숫자원 전액할인" 
+      // 패턴: "추가요금 총 숫자원중 숫자원 할인 받음"
       
-      // 1. 줄바꿈 포함 정규식
-      updatedCustomerMemo = updatedCustomerMemo
-        // 전액할인 패턴 제거
-        .replace(/추가요금\s*총\s*[\d,]+원\s*전액할인\n?/g, '')
-        // 일부할인 패턴 제거
-        .replace(/추가요금\s*총\s*[\d,]+원중\s*[\d,]+원\s*할인\s*받음\n?/g, '')
-        // 여러 줄바꿈 제거
+      const lines = updatedCustomerMemo.split('\n');
+      updatedCustomerMemo = lines
+        .filter((line: string) => {
+          const trimmed = line.trim();
+          // "추가요금"으로 시작하고 "전액할인" 또는 "할인 받음"을 포함하면 제외
+          if (trimmed.startsWith('추가요금') && (trimmed.includes('전액할인') || trimmed.includes('할인 받음'))) {
+            return false;
+          }
+          return true;
+        })
+        .join('\n')
         .replace(/\n\n+/g, '\n')
         .trim();
     }
@@ -5811,6 +5815,18 @@ export function markLatestScanAsProcessedByLocker(lockerNumber: number): boolean
 }
 
 // Export all database tables and localStorage settings to JSON
+export function updateLockerLogMemo(logId: string, memo: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  db.run(
+    `UPDATE locker_logs SET customer_memo = ? WHERE id = ?`,
+    [memo || null, logId]
+  );
+  
+  saveDatabase();
+  return true;
+}
+
 export function exportDatabase(): {
   success: boolean;
   data?: string;

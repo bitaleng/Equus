@@ -821,6 +821,11 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo);
     
+    // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
+    if (isInUse && currentLockerLogId) {
+      localDb.updateLockerLogMemo(currentLockerLogId, customerMemo);
+    }
+    
     // Save return_completed status for rental items
     returnCompletedItems.forEach(itemId => {
       const txn = currentRentalTransactions.find(t => t.itemId === itemId);
