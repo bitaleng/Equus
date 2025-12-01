@@ -1262,21 +1262,18 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
     // 4-1. 추가요금이 복구되면 자동입력된 추가요금 할인 메모 삭제
     let updatedCustomerMemo = logData.customer_memo || '';
     if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
-      // 줄 단위로 필터링하여 추가요금 관련 메모 제거
-      // "추가요금"을 포함하고 "전액할인" 또는 "할인 받음"으로 끝나는 줄만 제외
-      const lines = updatedCustomerMemo.split('\n');
-      updatedCustomerMemo = lines
-        .filter((line: string) => {
-          const trimmedLine = line.trim();
-          if (trimmedLine.includes('추가요금')) {
-            // "추가요금"을 포함하는 줄이면서 "전액할인" 또는 "할인 받음"을 포함하면 제외
-            if (trimmedLine.includes('전액할인') || trimmedLine.includes('할인 받음')) {
-              return false;
-            }
-          }
-          return true;
-        })
-        .join('\n')
+      // 정규식으로 추가요금 할인 관련 메모 제거 (더 견고한 방식)
+      // 패턴: "추가요금 총 숫자원 전액할인" (여러 줄 포함 가능)
+      // 패턴: "추가요금 총 숫자원중 숫자원 할인 받음" (여러 줄 포함 가능)
+      
+      // 1. 줄바꿈 포함 정규식
+      updatedCustomerMemo = updatedCustomerMemo
+        // 전액할인 패턴 제거
+        .replace(/추가요금\s*총\s*[\d,]+원\s*전액할인\n?/g, '')
+        // 일부할인 패턴 제거
+        .replace(/추가요금\s*총\s*[\d,]+원중\s*[\d,]+원\s*할인\s*받음\n?/g, '')
+        // 여러 줄바꿈 제거
+        .replace(/\n\n+/g, '\n')
         .trim();
     }
     
