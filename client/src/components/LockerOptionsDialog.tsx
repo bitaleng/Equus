@@ -407,7 +407,20 @@ export default function LockerOptionsDialog({
     }
   };
 
-  // Initialize state from current option data when dialog opens or closes
+  // Initialize customer memo when dialog opens (separate from other state to avoid conflicts)
+  useEffect(() => {
+    if (open) {
+      if (isInUse) {
+        setCustomerMemo(currentCustomerMemo || "");
+      } else {
+        setCustomerMemo("");
+      }
+    } else {
+      setCustomerMemo(""); // Only reset when dialog closes
+    }
+  }, [open, isInUse, currentCustomerMemo]);
+
+  // Initialize other state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
       // For existing entries (isInUse), use current payment method. For new entries, set to null (must select)
@@ -417,11 +430,9 @@ export default function LockerOptionsDialog({
       if (isInUse) {
         setIsCurrentlyDeferred(currentDeferredPayment || false);
         setIsDeferredPayment(currentDeferredPayment || false);
-        setCustomerMemo(currentCustomerMemo || "");
       } else {
         setIsCurrentlyDeferred(false);
         setIsDeferredPayment(false);
-        setCustomerMemo("");
       }
       
       // Parse rental items from notes (legacy)
@@ -478,10 +489,9 @@ export default function LockerOptionsDialog({
       setPaymentMethod(null);
       setShowCheckoutConfirm(false);
       setIsDeferredPayment(false); // 후불결제 상태도 초기화
-      setCustomerMemo(""); // 손님 메모 초기화
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, currentCustomerMemo, isInUse]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
 
   const calculateFinalPrice = () => {
     // 우선순위 1: 요금직접입력
