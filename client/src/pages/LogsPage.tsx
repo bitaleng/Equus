@@ -1051,12 +1051,12 @@ export default function LogsPage() {
                               side="left" 
                               align="center"
                               sideOffset={8}
-                              className="max-w-[250px] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
+                              className="w-max max-w-[80vw] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
                               data-testid={`popover-memo-log-${log.id}`}
                             >
                               <div className="flex items-start gap-2">
                                 <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
-                                <p className="whitespace-pre-wrap break-words text-gray-900">{log.customerMemo}</p>
+                                <p className="whitespace-pre-wrap text-gray-900">{log.customerMemo}</p>
                               </div>
                             </PopoverContent>
                           </Popover>
