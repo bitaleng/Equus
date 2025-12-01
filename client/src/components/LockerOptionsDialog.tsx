@@ -2122,53 +2122,18 @@ export default function LockerOptionsDialog({
                       return true;
                     }
                     
-                    // 대여품목 중 '보증금이 있는' 것만 체크
-                    const hasUnresolvedRentalWithDeposit = currentRentalTransactions.some(txn => {
-                      // Skip if item is not selected anymore (user unchecked it)
-                      if (!selectedRentalItems.has(txn.itemId)) {
-                        return false;
-                      }
-                      // Skip items that are already return-completed
-                      if (returnCompletedItems.has(txn.itemId)) {
-                        return false;
-                      }
-                      // ONLY check items WITH deposit
-                      if (txn.depositAmount === 0) {
-                        return false;
-                      }
-                      // If transaction is in 'received' state and has deposit, must be updated to 'refunded' or 'forfeited'
-                      if (txn.depositStatus === 'received') {
-                        const newStatus = depositStatuses.get(txn.itemId);
-                        return !newStatus || newStatus === 'received';
-                      }
-                      return false;
+                    // 추가요금 처리 여부 체크 (추가요금만 있으면 요금 결제만 하면 됨)
+                    const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0 && !checkoutResolved;
+                    
+                    // 선택된 대여품목 중 반납완료되지 않은 것이 있는지 체크
+                    // 대여품목이 있으면 '모두' 반납완료되어야 퇴실 가능
+                    const hasUnresolvedRentalItems = Array.from(selectedRentalItems).some(itemId => {
+                      // 반납완료되지 않은 항목이 있으면 true (비활성화 요구)
+                      return !returnCompletedItems.has(itemId);
                     });
                     
-                    // Check if any newly selected rental item WITH deposit has invalid deposit status for checkout
-                    const hasUnresolvedNewRentalWithDeposit = Array.from(selectedRentalItems).some(itemId => {
-                      // Skip if item is already return-completed
-                      if (returnCompletedItems.has(itemId)) {
-                        return false;
-                      }
-                      // Skip if item is already in currentRentalTransactions
-                      if (currentRentalTransactions.some(txn => txn.itemId === itemId)) {
-                        return false;
-                      }
-                      // Find the item to check if it has deposit
-                      const item = availableRentalItems.find((r: any) => r.id === itemId);
-                      // ONLY check items WITH deposit
-                      if (!item || item.depositAmount === 0) {
-                        return false;
-                      }
-                      const status = depositStatuses.get(itemId);
-                      // For checkout, require 'refunded' or 'forfeited' (not 'received')
-                      return !status || status === 'received';
-                    });
-                    
-                    // Check if there are additional fees (only additional fees block checkout, not rental items without deposit)
-                    const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0;
-                    
-                    return hasUnresolvedRentalWithDeposit || hasUnresolvedNewRentalWithDeposit || (hasUnresolvedAdditionalFees && !checkoutResolved);
+                    // 추가요금 있거나 반납완료되지 않은 대여품목 있으면 비활성화
+                    return hasUnresolvedAdditionalFees || hasUnresolvedRentalItems;
                   })()}
                   title={isCurrentlyDeferred ? "후불결제 완료 후 퇴실 가능" : undefined}
                 >
