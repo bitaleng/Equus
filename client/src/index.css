@@ -428,26 +428,56 @@
   animation: pulse-deferred 2s ease-in-out infinite;
 }
 
-/* 메모박스 그라데이션 파도 애니메이션 (블루 → 그린, 좌측에서 우측으로) */
-@keyframes memo-gradient-wave {
+/* 메모박스 그라데이션 파도 애니메이션 (그린 + 오렌지, 출렁이는 물결 효과) */
+@keyframes memo-wave-flow {
   0% {
-    background-position: 0% 50%;
+    background-position: 0% 50%, 0% 50%;
+  }
+  25% {
+    background-position: 50% 100%, 100% 0%;
   }
   50% {
-    background-position: 100% 50%;
+    background-position: 100% 50%, 50% 100%;
+  }
+  75% {
+    background-position: 50% 0%, 0% 50%;
   }
   100% {
-    background-position: 0% 50%;
+    background-position: 0% 50%, 0% 50%;
+  }
+}
+
+@keyframes memo-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.005);
+    filter: brightness(1.05);
   }
 }
 
 .animate-memo-gradient {
-  background: linear-gradient(90deg, 
-    #06b6d4, /* cyan-500 */
-    #10b981, /* emerald-500 */
-    #06b6d4  /* cyan-500 */
-  );
-  background-size: 200% 100%;
-  animation: memo-gradient-wave 3s ease-in-out infinite;
+  background: 
+    linear-gradient(135deg, 
+      #22c55e 0%,      /* green-500 */
+      #f97316 25%,     /* orange-500 */
+      #22c55e 50%,     /* green-500 */
+      #f97316 75%,     /* orange-500 */
+      #22c55e 100%     /* green-500 */
+    ),
+    linear-gradient(45deg,
+      #f97316 0%,      /* orange-500 */
+      #22c55e 25%,     /* green-500 */
+      #f97316 50%,     /* orange-500 */
+      #22c55e 75%,     /* green-500 */
+      #f97316 100%     /* orange-500 */
+    );
+  background-size: 300% 300%, 300% 300%;
+  background-blend-mode: overlay;
+  animation: 
+    memo-wave-flow 4s ease-in-out infinite,
+    memo-pulse 2s ease-in-out infinite;
   border: none !important;
 }
