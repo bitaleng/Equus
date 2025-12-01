@@ -95,7 +95,7 @@ function migrateDatabase() {
       const createSql = result[0].values[0][0] as string;
       
       // Check if 'direct_price' and 'transfer' are already in the CHECK constraints
-      const needsMigration = !createSql.includes('direct_price') || !createSql.includes('transfer');
+      const needsMigration = !createSql.includes('direct_price') || !createSql.includes('transfer') || !createSql.includes('customer_memo');
       
       if (needsMigration) {
         console.log('Migrating locker_logs table to add direct_price option and transfer payment method...');
@@ -124,12 +124,22 @@ function migrateDatabase() {
               cancelled INTEGER NOT NULL DEFAULT 0,
               notes TEXT,
               payment_method TEXT CHECK(payment_method IN ('card', 'cash', 'transfer')),
-              rental_items TEXT
+              payment_cash INTEGER,
+              payment_card INTEGER,
+              payment_transfer INTEGER,
+              rental_items TEXT,
+              additional_fees INTEGER DEFAULT 0,
+              parent_locker INTEGER,
+              deferred_payment INTEGER DEFAULT 0,
+              customer_memo TEXT
             )
           `);
           
-          // Copy data back
-          db.run(`INSERT INTO locker_logs SELECT * FROM locker_logs_backup`);
+          // Copy data back (explicitly map columns to handle schema changes)
+          db.run(`INSERT INTO locker_logs (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items, additional_fees, parent_locker, deferred_payment, customer_memo) 
+            SELECT id, locker_number, entry_time, exit_time, business_day, time_type, base_price, option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+              COALESCE(payment_cash, 0), COALESCE(payment_card, 0), COALESCE(payment_transfer, 0), rental_items, COALESCE(additional_fees, 0), parent_locker, COALESCE(deferred_payment, 0), customer_memo 
+            FROM locker_logs_backup`);
           
           // Drop backup table
           db.run(`DROP TABLE locker_logs_backup`);
