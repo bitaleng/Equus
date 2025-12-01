@@ -1164,7 +1164,8 @@ export default function Home() {
       card?: number;
       transfer?: number;
       discount?: number;
-    }
+    },
+    customerMemo?: string  // 손님 메모
   ) => {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
@@ -1198,6 +1199,7 @@ export default function Home() {
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
+        customerMemo: customerMemo,  // 손님 메모 저장
       });
     } else {
       // Same business day checkout
@@ -1220,6 +1222,7 @@ export default function Home() {
         paymentCard: paymentCard,
         paymentTransfer: paymentTransfer,
         finalPrice: updatedFinalPrice,
+        customerMemo: customerMemo,  // 손님 메모 저장
         // additionalFees: removed to prevent duplication with additional_fee_events
       });
     }
@@ -2009,7 +2012,7 @@ export default function Home() {
                             handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment) => 
-                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment)
+                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, (selectedEntry as any)?.customerMemo)
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}
