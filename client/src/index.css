@@ -427,3 +427,36 @@
 .animate-pulse-deferred {
   animation: pulse-deferred 2s ease-in-out infinite;
 }
+
+/* 메모박스 그라데이션 파도 애니메이션 (블루 → 그린, 좌측에서 우측으로) */
+@keyframes memo-gradient-wave {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-memo-gradient {
+  background: linear-gradient(90deg, 
+    #06b6d4, /* cyan-500 */
+    #10b981, /* emerald-500 */
+    #06b6d4  /* cyan-500 */
+  );
+  background-size: 200% 100%;
+  animation: memo-gradient-wave 3s ease-in-out infinite;
+  border: none !important;
+}
+
+.animate-memo-gradient .memo-content-area {
+  background: white;
+  border-radius: 0.375rem;
+}
+
+.dark .animate-memo-gradient .memo-content-area {
+  background: hsl(var(--background));
+}

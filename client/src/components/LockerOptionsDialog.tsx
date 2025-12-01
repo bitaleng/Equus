@@ -2039,23 +2039,25 @@ export default function LockerOptionsDialog({
             )}
             
             {/* 손님 메모 입력 */}
-            <div className="space-y-2 mt-4 p-4 rounded-lg bg-muted/30 border">
-              <div className="flex items-center gap-2">
-                <Label htmlFor="customer-memo" className="text-sm font-semibold flex items-center gap-2">
-                  📝 손님 메모
-                </Label>
-                {customerMemo && (
-                  <span className="text-xs text-muted-foreground">(저장됨)</span>
-                )}
+            <div className={`space-y-2 mt-4 p-1 rounded-lg ${customerMemo && customerMemo.trim() ? 'animate-memo-gradient' : 'bg-muted/30 border'}`}>
+              <div className={`memo-content-area p-3 rounded-md ${customerMemo && customerMemo.trim() ? '' : ''}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Label htmlFor="customer-memo" className="text-sm font-semibold flex items-center gap-2">
+                    📝 손님 메모
+                  </Label>
+                  {customerMemo && (
+                    <span className="text-xs text-muted-foreground">(저장됨)</span>
+                  )}
+                </div>
+                <Textarea
+                  id="customer-memo"
+                  placeholder="손님에 관한 특별한 인상이나 특이사항을 기록하세요. 예: 야간요금 냈으므로 추가요금발생시 전액할인"
+                  value={customerMemo}
+                  onChange={(e) => setCustomerMemo(e.target.value)}
+                  className="min-h-[60px] resize-none text-sm"
+                  data-testid="input-customer-memo"
+                />
               </div>
-              <Textarea
-                id="customer-memo"
-                placeholder="손님에 관한 특별한 인상이나 특이사항을 기록하세요. 예: 야간요금 냈으므로 추가요금발생시 전액할인"
-                value={customerMemo}
-                onChange={(e) => setCustomerMemo(e.target.value)}
-                className="min-h-[60px] resize-none text-sm"
-                data-testid="input-customer-memo"
-              />
             </div>
           </div>
 
