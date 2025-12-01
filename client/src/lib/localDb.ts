@@ -1259,6 +1259,24 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
       db.run(`DELETE FROM additional_fee_events WHERE locker_log_id = ?`, [logId]);
     }
     
+    // 4-1. 추가요금이 복구되면 자동입력된 추가요금 할인 메모 삭제
+    let updatedCustomerMemo = logData.customer_memo || '';
+    if (deletedAdditionalFee > 0 && updatedCustomerMemo) {
+      // 패턴 1: "추가요금 총 XXX원 전액할인"
+      // 패턴 2: "추가요금 총 XXX원중 XXX원 할인 받음"
+      const additionalFeePatterns = [
+        /추가요금\s*총\s*\d+원\s*전액할인\n?/g,  // 전액할인 패턴
+        /추가요금\s*총\s*\d+원중\s*\d+원\s*할인\s*받음\n?/g  // 부분할인 패턴
+      ];
+      
+      for (const pattern of additionalFeePatterns) {
+        updatedCustomerMemo = updatedCustomerMemo.replace(pattern, '');
+      }
+      
+      // 공백만 남은 경우 빈 문자열로 처리
+      updatedCustomerMemo = updatedCustomerMemo.trim();
+    }
+    
     // 5. 상태를 in_use로 변경하고 exit_time을 null로 설정
     // CRITICAL FIX: 같은 영업일 추가요금의 경우, finalPrice에서 추가요금을 차감해야 함
     // (같은 영업일 퇴실 시 finalPrice에 추가요금이 포함되어 있음)
@@ -1270,17 +1288,17 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
       const revertedFinalPrice = currentFinalPrice - deletedAdditionalFee;
       db.run(
         `UPDATE locker_logs 
-         SET status = 'in_use', exit_time = NULL, final_price = ?
+         SET status = 'in_use', exit_time = NULL, final_price = ?, customer_memo = ?
          WHERE id = ?`,
-        [revertedFinalPrice, logId]
+        [revertedFinalPrice, updatedCustomerMemo || null, logId]
       );
     } else {
       // 다른 영업일 또는 추가요금 없음: finalPrice 유지
       db.run(
         `UPDATE locker_logs 
-         SET status = 'in_use', exit_time = NULL 
+         SET status = 'in_use', exit_time = NULL, customer_memo = ?
          WHERE id = ?`,
-        [logId]
+        [updatedCustomerMemo || null, logId]
       );
     }
     
