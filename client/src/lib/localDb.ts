@@ -615,31 +615,7 @@ function migrateDatabase() {
       `);
     }
     
-    // Step 8: Initialize default rental items if not exist
-    const countResult = db.exec(`SELECT COUNT(*) FROM additional_revenue_items`);
-    const count = countResult.length > 0 && countResult[0].values.length > 0 ? countResult[0].values[0][0] : 0;
-    
-    if (count === 0) {
-      console.log('Initializing default rental items...');
-      const now = new Date().toISOString();
-      const id1 = crypto.randomUUID();
-      const id2 = crypto.randomUUID();
-      
-      // 롱타올
-      db.run(`
-        INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-        VALUES (?, '롱타올', 1000, 5000, 0, 1, ?, ?)
-      `, [id1, now, now]);
-      
-      // 담요
-      db.run(`
-        INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-        VALUES (?, '담요', 1000, 5000, 1, 1, ?, ?)
-      `, [id2, now, now]);
-      
-      console.log('Default rental items created');
-      saveDatabase();
-    }
+    // Step 8: No default rental items - user will add their own items in settings
     
     // Step 9: Create expense_categories table if not exists
     db.run(`
@@ -1018,20 +994,7 @@ export function forceRegenerateDatabase() {
     // Recreate all tables with correct schema
     createTables();
     
-    // Initialize default rental items
-    const now = new Date().toISOString();
-    const id1 = crypto.randomUUID();
-    const id2 = crypto.randomUUID();
-    
-    db.run(`
-      INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-      VALUES (?, '롱타올', 1000, 5000, 0, 1, ?, ?)
-    `, [id1, now, now]);
-    
-    db.run(`
-      INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-      VALUES (?, '담요', 1000, 5000, 1, 1, ?, ?)
-    `, [id2, now, now]);
+    // No default rental items - user will add their own items in settings
     
     console.log('[Force Regenerate] Database regeneration completed successfully');
     saveDatabase();
@@ -2974,32 +2937,7 @@ export function createTestData() {
     }
   }
   
-  // 5. 추가품목 생성 (롱타올, 담요)
-  console.log('\n추가품목 생성 중...');
-  
-  // 롱타올과 담요가 이미 있는지 확인
-  const existingItems = db.exec(`SELECT * FROM additional_revenue_items WHERE name IN ('롱타올', '담요')`);
-  
-  if (existingItems.length === 0 || existingItems[0].values.length < 2) {
-    // 롱타올 추가 (대여금 0원, 보증금 5000원)
-    const longTowelId = generateId();
-    db.run(
-      `INSERT OR REPLACE INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-       VALUES (?, '롱타올', 0, 5000, 3, 0, ?, ?)`,
-      [longTowelId, new Date().toISOString(), new Date().toISOString()]
-    );
-    console.log('  롱타올 추가 (대여금: 0원, 보증금: 5000원)');
-    
-    // 담요 추가 (대여금 1000원, 보증금 0원)
-    const blanketId = generateId();
-    db.run(
-      `INSERT OR REPLACE INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-       VALUES (?, '담요', 1000, 0, 4, 0, ?, ?)`,
-      [blanketId, new Date().toISOString(), new Date().toISOString()]
-    );
-    console.log('  담요 추가 (대여금: 1000원, 보증금: 0원)');
-  }
-  
+  // 5. 렌탈 아이템 추가 (기존 additional_revenue_items 테이블 사용)
   // 6. 랜덤하게 사용중인 락커에 렌탈 아이템 추가 (약 30%)
   console.log('\n렌탈 아이템 추가 중...');
   const inUseLogs = db.exec(`SELECT * FROM locker_logs WHERE status = 'in_use' AND locker_number BETWEEN 1 AND 80`);
