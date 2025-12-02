@@ -337,7 +337,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                 지불
               </TableHead>
               <TableHead 
-                className="font-bold" 
+                className="font-bold text-right" 
                 style={isExpanded ? { 
                   fontSize: 'var(--fluid-header, 1rem)', 
                   minWidth: 'var(--fluid-col-price, 5rem)' 
@@ -467,14 +467,14 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
                     <TableCell 
-                      className={`font-semibold ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}
+                      className={`font-semibold text-right ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}
                       style={isExpanded ? { 
                         fontSize: 'var(--fluid-large, 1.125rem)', 
                         padding: 'var(--fluid-padding, 0.75rem)' 
                       } : undefined}
                     >
-                      {/* 후불결제인 경우 0원으로 표시, 결제완료 후 실제 금액 표시 */}
-                      {entry.deferredPayment ? '0원' : `${entry.finalPrice.toLocaleString()}원`}
+                      {/* 후불결제인 경우 0으로 표시, 결제완료 후 실제 금액 표시 */}
+                      {entry.deferredPayment ? '0' : entry.finalPrice.toLocaleString()}
                     </TableCell>
                     <TableCell 
                       style={isExpanded ? { 

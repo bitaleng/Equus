@@ -932,11 +932,11 @@ export default function LogsPage() {
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">퇴실날짜</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">퇴실시간</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">주야</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">기본</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">기본</TableHead>
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">옵션금액</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">추가요금</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">최종요금</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">옵션금액</TableHead>
+                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">추가요금</TableHead>
+                <TableHead className="w-24 text-sm font-bold whitespace-nowrap text-right">최종요금</TableHead>
                 <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불방식</TableHead>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
                 <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
@@ -1010,16 +1010,16 @@ export default function LogsPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{log.basePrice.toLocaleString()}원</TableCell>
+                    <TableCell className="text-sm text-right">{log.basePrice.toLocaleString()}</TableCell>
                     <TableCell className="text-sm">{getOptionText(log)}</TableCell>
-                    <TableCell className="text-sm">
-                      {log.optionAmount ? `${log.optionAmount.toLocaleString()}원` : '-'}
+                    <TableCell className="text-sm text-right">
+                      {log.optionAmount ? log.optionAmount.toLocaleString() : '-'}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-sm text-right">
                       {(log as any).hasAdditionalFeeRecord ? (
                         log.additionalFees && log.additionalFees > 0 ? (
                           <span className="text-destructive font-medium">
-                            {log.additionalFees.toLocaleString()}원
+                            {log.additionalFees.toLocaleString()}
                           </span>
                         ) : (
                           <span className="text-orange-600 dark:text-orange-400 font-medium whitespace-nowrap">
@@ -1030,9 +1030,9 @@ export default function LogsPage() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className={`font-semibold text-base ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
-                      <div className="flex items-center gap-1.5">
-                        <span>{getDisplayPrice(log).toLocaleString()}원</span>
+                    <TableCell className={`font-semibold text-base text-right ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>{getDisplayPrice(log).toLocaleString()}</span>
                         {log.deferredPayment && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
                             후불
