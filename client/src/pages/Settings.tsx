@@ -720,7 +720,7 @@ export default function Settings() {
   };
 
   const handleChangePassword = () => {
-    const storedPassword = localStorage.getItem("staff_password") || "1234";
+    const storedPassword = localStorage.getItem("staff_password") || "12345678";
 
     if (currentPassword !== storedPassword) {
       toast({
@@ -731,10 +731,10 @@ export default function Settings() {
       return;
     }
 
-    if (newPassword.length < 4) {
+    if (newPassword.length !== 8) {
       toast({
         title: "비밀번호 변경 실패",
-        description: "새 비밀번호는 최소 4자 이상이어야 합니다.",
+        description: "비밀번호는 정확히 8자리여야 합니다.",
         variant: "destructive",
       });
       return;
@@ -2009,7 +2009,8 @@ export default function Settings() {
                             type="password"
                             value={currentPassword}
                             onChange={(e) => setCurrentPassword(e.target.value)}
-                            placeholder="현재 비밀번호"
+                            placeholder="현재 비밀번호 (기본: 12345678)"
+                            maxLength={8}
                             data-testid="input-current-password"
                           />
                         </div>
@@ -2018,7 +2019,8 @@ export default function Settings() {
                             type="password"
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            placeholder="새 비밀번호 (최소 4자)"
+                            placeholder="새 비밀번호 (8자리)"
+                            maxLength={8}
                             data-testid="input-new-password"
                           />
                         </div>
