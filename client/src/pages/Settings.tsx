@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,7 +29,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import PatternLockDialog from "@/components/PatternLockDialog";
+import PatternLockDialog, { checkBiometricSupport, registerBiometricCredential, authenticateWithBiometric } from "@/components/PatternLockDialog";
 import * as localDb from "@/lib/localDb";
 
 interface Settings {
@@ -144,6 +144,11 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  // Biometric authentication states
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [isBiometricTesting, setIsBiometricTesting] = useState(false);
+
   // Data reset confirmation dialog
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   
@@ -196,6 +201,15 @@ export default function Settings() {
     if ('NDEFReader' in window) {
       setNfcSupported(true);
     }
+
+    // Check biometric support
+    const initBiometric = async () => {
+      const available = await checkBiometricSupport();
+      setBiometricAvailable(available);
+      const enabled = localStorage.getItem("webauthn_enabled") === "true";
+      setBiometricEnabled(enabled);
+    };
+    initBiometric();
   }, []);
 
   // Auto-focus RFID input when locker number is selected
@@ -730,6 +744,63 @@ export default function Settings() {
     toast({
       title: "비밀번호 변경 완료",
       description: "비밀번호가 성공적으로 변경되었습니다.",
+    });
+  };
+
+  // Handle biometric authentication test/registration
+  const handleBiometricTest = async () => {
+    setIsBiometricTesting(true);
+    try {
+      if (biometricEnabled) {
+        // Test existing biometric
+        const success = await authenticateWithBiometric();
+        if (success) {
+          toast({
+            title: "생체인증 테스트 성공",
+            description: "생체인증이 정상적으로 작동합니다.",
+          });
+        } else {
+          toast({
+            title: "생체인증 테스트 실패",
+            description: "인증에 실패했습니다. 다시 시도하거나 재등록해 주세요.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        // Register new biometric
+        const success = await registerBiometricCredential();
+        if (success) {
+          setBiometricEnabled(true);
+          toast({
+            title: "생체인증 등록 완료",
+            description: "생체인증이 성공적으로 등록되었습니다. 이제 잠금해제 시 생체인증을 사용할 수 있습니다.",
+          });
+        } else {
+          toast({
+            title: "생체인증 등록 실패",
+            description: "생체인증 등록에 실패했습니다. 기기가 지원하는지 확인해 주세요.",
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "오류 발생",
+        description: "생체인증 처리 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBiometricTesting(false);
+    }
+  };
+
+  const handleBiometricReset = () => {
+    localStorage.removeItem("webauthn_credential_id");
+    localStorage.removeItem("webauthn_enabled");
+    setBiometricEnabled(false);
+    toast({
+      title: "생체인증 초기화",
+      description: "생체인증 등록이 해제되었습니다.",
     });
   };
 
@@ -1739,6 +1810,85 @@ export default function Settings() {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 생체인증 설정 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Fingerprint className="h-5 w-5" />
+                생체인증 설정
+              </CardTitle>
+              <CardDescription>
+                지문/얼굴인식으로 매출 정보 잠금을 해제합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* 기기 지원 상태 */}
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                {biometricAvailable ? (
+                  <>
+                    <CheckCircle className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium text-green-600 dark:text-green-400">생체인증 지원됨</p>
+                      <p className="text-sm text-muted-foreground">이 기기에서 생체인증을 사용할 수 있습니다</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-5 w-5 text-red-500" />
+                    <div>
+                      <p className="font-medium text-red-600 dark:text-red-400">생체인증 미지원</p>
+                      <p className="text-sm text-muted-foreground">이 기기에서는 생체인증을 사용할 수 없습니다. 패턴/비밀번호를 사용하세요.</p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {biometricAvailable && (
+                <>
+                  {/* 등록 상태 */}
+                  <div className="flex items-center justify-between p-3 border rounded-lg">
+                    <div>
+                      <p className="font-medium">생체인증 등록 상태</p>
+                      <p className="text-sm text-muted-foreground">
+                        {biometricEnabled ? "등록됨 - 잠금해제 시 자동으로 생체인증을 시도합니다" : "미등록 - 패턴/비밀번호로만 인증합니다"}
+                      </p>
+                    </div>
+                    <div className={`px-2 py-1 rounded text-xs font-medium ${biometricEnabled ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
+                      {biometricEnabled ? "활성" : "비활성"}
+                    </div>
+                  </div>
+
+                  {/* 테스트/등록 버튼 */}
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleBiometricTest}
+                      disabled={isBiometricTesting}
+                      className="flex-1"
+                      data-testid="button-biometric-test"
+                    >
+                      <Fingerprint className="h-4 w-4 mr-2" />
+                      {isBiometricTesting ? "처리 중..." : biometricEnabled ? "생체인증 테스트" : "생체인증 등록"}
+                    </Button>
+                    {biometricEnabled && (
+                      <Button
+                        variant="outline"
+                        onClick={handleBiometricReset}
+                        data-testid="button-biometric-reset"
+                      >
+                        등록 해제
+                      </Button>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    생체인증을 등록하면 매출 정보 잠금해제 시 자동으로 지문/얼굴인식을 먼저 시도합니다. 
+                    생체인증에 실패해도 기존 패턴/비밀번호로 잠금을 해제할 수 있습니다.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 
