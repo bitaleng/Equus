@@ -19,8 +19,8 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
     setIsLoading(true);
 
     try {
-      // Get stored password from localStorage (default: "12345678")
-      const storedPassword = localStorage.getItem("staff_password") || "12345678";
+      // Get stored password from localStorage (default: "1234")
+      const storedPassword = localStorage.getItem("staff_password") || "1234";
       
       if (password === storedPassword) {
         localStorage.setItem("authenticated", "true");
@@ -61,10 +61,9 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
             <div className="space-y-2">
               <Input
                 type="password"
-                placeholder="비밀번호 (8자리)"
+                placeholder="비밀번호"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                maxLength={8}
                 disabled={isLoading}
                 autoFocus
                 data-testid="input-password"

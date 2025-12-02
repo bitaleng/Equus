@@ -178,7 +178,7 @@ export default function PatternLockDialog({
 
   const handlePasswordSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    const savedPassword = localStorage.getItem("staff_password") || "12345678";
+    const savedPassword = localStorage.getItem("staff_password") || "1234";
     
     if (passwordInput === savedPassword) {
       onPatternCorrect();
