@@ -147,8 +147,15 @@ export default function Home() {
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
     if (isPanelCollapsed) {
-      // Expanding panel - require pattern
-      setShowPatternDialog(true);
+      // Check if security is enabled
+      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
+      if (securityEnabled) {
+        // Expanding panel - require pattern
+        setShowPatternDialog(true);
+      } else {
+        // Security disabled - open panel directly
+        setIsPanelCollapsed(false);
+      }
     } else {
       // Collapsing panel - no pattern required
       setIsPanelCollapsed(true);
@@ -170,11 +177,14 @@ export default function Home() {
   const handleTabChange = (newTab: string) => {
     const targetTab = newTab as 'locker' | 'status';
     
-    // Only require authentication when switching from 'locker' to 'status'
-    if (activeTab === 'locker' && targetTab === 'status') {
+    // Check if security is enabled
+    const securityEnabled = localStorage.getItem("security_enabled") !== "false";
+    
+    // Only require authentication when switching from 'locker' to 'status' AND security is enabled
+    if (activeTab === 'locker' && targetTab === 'status' && securityEnabled) {
       setShowTabAuthDialog(true);
     } else {
-      // No authentication needed for other transitions
+      // No authentication needed - either security is disabled or not switching to status
       setActiveTab(targetTab);
     }
   };

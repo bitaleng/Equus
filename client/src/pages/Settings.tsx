@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -148,6 +149,18 @@ export default function Settings() {
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [isBiometricTesting, setIsBiometricTesting] = useState(false);
+
+  // Security section states
+  const [isSecuritySectionOpen, setIsSecuritySectionOpen] = useState(false);
+  const [securityEnabled, setSecurityEnabled] = useState(() => {
+    return localStorage.getItem("security_enabled") !== "false";
+  });
+  
+  // Pattern change states
+  const [isPatternChangeMode, setIsPatternChangeMode] = useState(false);
+  const [patternChangeStep, setPatternChangeStep] = useState<'verify' | 'new' | 'confirm'>('verify');
+  const [newPattern, setNewPattern] = useState<number[]>([]);
+  const [showPatternChangeDialog, setShowPatternChangeDialog] = useState(false);
 
   // Data reset confirmation dialog
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
@@ -707,7 +720,7 @@ export default function Settings() {
   };
 
   const handleChangePassword = () => {
-    const storedPassword = localStorage.getItem("staff_password") || "1234";
+    const storedPassword = localStorage.getItem("staff_password") || "12345678";
 
     if (currentPassword !== storedPassword) {
       toast({
@@ -718,10 +731,10 @@ export default function Settings() {
       return;
     }
 
-    if (newPassword.length < 4) {
+    if (newPassword.length !== 8) {
       toast({
         title: "비밀번호 변경 실패",
-        description: "새 비밀번호는 최소 4자 이상이어야 합니다.",
+        description: "비밀번호는 정확히 8자리여야 합니다.",
         variant: "destructive",
       });
       return;
@@ -801,6 +814,92 @@ export default function Settings() {
     toast({
       title: "생체인증 초기화",
       description: "생체인증 등록이 해제되었습니다.",
+    });
+  };
+
+  // Toggle security on/off
+  const handleSecurityToggle = (enabled: boolean) => {
+    setSecurityEnabled(enabled);
+    localStorage.setItem("security_enabled", enabled ? "true" : "false");
+    toast({
+      title: enabled ? "보안 기능 활성화" : "보안 기능 비활성화",
+      description: enabled 
+        ? "매출 정보 접근 시 인증이 필요합니다." 
+        : "모든 보안 인증이 해제되었습니다. 누구나 매출 정보에 접근할 수 있습니다.",
+      variant: enabled ? "default" : "destructive",
+    });
+  };
+
+  // Pattern change handlers
+  const handleStartPatternChange = () => {
+    setPatternChangeStep('verify');
+    setNewPattern([]);
+    setShowPatternChangeDialog(true);
+    setIsPatternChangeMode(true);
+  };
+
+  const handlePatternChangeVerify = (success: boolean) => {
+    if (success) {
+      setPatternChangeStep('new');
+      toast({
+        title: "인증 성공",
+        description: "새 패턴을 입력해주세요.",
+      });
+    } else {
+      setShowPatternChangeDialog(false);
+      setIsPatternChangeMode(false);
+      toast({
+        title: "인증 실패",
+        description: "현재 패턴이 일치하지 않습니다.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleNewPatternInput = (pattern: number[]) => {
+    if (pattern.length < 4) {
+      toast({
+        title: "패턴이 너무 짧습니다",
+        description: "최소 4개 이상의 점을 연결해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setNewPattern(pattern);
+    setPatternChangeStep('confirm');
+    toast({
+      title: "패턴 확인",
+      description: "새 패턴을 다시 한번 입력해주세요.",
+    });
+  };
+
+  const handleConfirmPattern = (pattern: number[]) => {
+    if (JSON.stringify(pattern) === JSON.stringify(newPattern)) {
+      // Save new pattern
+      localStorage.setItem("security_pattern", JSON.stringify(newPattern));
+      setShowPatternChangeDialog(false);
+      setIsPatternChangeMode(false);
+      setNewPattern([]);
+      toast({
+        title: "패턴 변경 완료",
+        description: "새 패턴이 성공적으로 저장되었습니다.",
+      });
+    } else {
+      toast({
+        title: "패턴 불일치",
+        description: "패턴이 일치하지 않습니다. 처음부터 다시 시도해주세요.",
+        variant: "destructive",
+      });
+      setPatternChangeStep('new');
+      setNewPattern([]);
+    }
+  };
+
+  const handlePatternReset = () => {
+    localStorage.removeItem("security_pattern");
+    toast({
+      title: "패턴 초기화",
+      description: "패턴이 초기화되었습니다. 기본 패턴(1-2-3-4-5)이 적용됩니다.",
     });
   };
 
@@ -1813,140 +1912,209 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* 생체인증 설정 */}
+          {/* 보안 설정 */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Fingerprint className="h-5 w-5" />
-                생체인증 설정
-              </CardTitle>
-              <CardDescription>
-                지문/얼굴인식으로 매출 정보 잠금을 해제합니다
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* 기기 지원 상태 */}
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                {biometricAvailable ? (
-                  <>
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium text-green-600 dark:text-green-400">생체인증 지원됨</p>
-                      <p className="text-sm text-muted-foreground">이 기기에서 생체인증을 사용할 수 있습니다</p>
+            <Collapsible 
+              open={isSecuritySectionOpen} 
+              onOpenChange={setIsSecuritySectionOpen}
+            >
+              <CardHeader>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between cursor-pointer hover-elevate active-elevate-2 rounded-md p-2 -m-2">
+                    <div className="flex items-center gap-2">
+                      {securityEnabled ? (
+                        <Shield className="h-5 w-5 text-green-500" />
+                      ) : (
+                        <ShieldOff className="h-5 w-5 text-red-500" />
+                      )}
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          보안
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          매출 정보 보호를 위한 인증 설정
+                        </CardDescription>
+                      </div>
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-5 w-5 text-red-500" />
-                    <div>
-                      <p className="font-medium text-red-600 dark:text-red-400">생체인증 미지원</p>
-                      <p className="text-sm text-muted-foreground">이 기기에서는 생체인증을 사용할 수 없습니다. 패턴/비밀번호를 사용하세요.</p>
+                    <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${isSecuritySectionOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </CollapsibleTrigger>
+              </CardHeader>
+              
+              <CollapsibleContent>
+                <CardContent className="space-y-6 pt-0">
+                  {/* 보안 기능 활성화/비활성화 토글 */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      {securityEnabled ? (
+                        <Shield className="h-6 w-6 text-green-500" />
+                      ) : (
+                        <ShieldOff className="h-6 w-6 text-red-500" />
+                      )}
+                      <div>
+                        <p className="font-medium">보안 기능</p>
+                        <p className="text-sm text-muted-foreground">
+                          {securityEnabled 
+                            ? "매출 정보 접근 시 인증이 필요합니다" 
+                            : "보안이 해제되어 누구나 매출 정보에 접근할 수 있습니다"}
+                        </p>
+                      </div>
                     </div>
-                  </>
-                )}
-              </div>
-
-              {biometricAvailable && (
-                <>
-                  {/* 등록 상태 */}
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">생체인증 등록 상태</p>
-                      <p className="text-sm text-muted-foreground">
-                        {biometricEnabled ? "등록됨 - 잠금해제 시 자동으로 생체인증을 시도합니다" : "미등록 - 패턴/비밀번호로만 인증합니다"}
-                      </p>
-                    </div>
-                    <div className={`px-2 py-1 rounded text-xs font-medium ${biometricEnabled ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
-                      {biometricEnabled ? "활성" : "비활성"}
-                    </div>
+                    <Switch
+                      checked={securityEnabled}
+                      onCheckedChange={handleSecurityToggle}
+                      data-testid="switch-security-toggle"
+                    />
                   </div>
 
-                  {/* 테스트/등록 버튼 */}
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleBiometricTest}
-                      disabled={isBiometricTesting}
-                      className="flex-1"
-                      data-testid="button-biometric-test"
-                    >
-                      <Fingerprint className="h-4 w-4 mr-2" />
-                      {isBiometricTesting ? "처리 중..." : biometricEnabled ? "생체인증 테스트" : "생체인증 등록"}
-                    </Button>
-                    {biometricEnabled && (
-                      <Button
-                        variant="outline"
-                        onClick={handleBiometricReset}
-                        data-testid="button-biometric-reset"
-                      >
-                        등록 해제
-                      </Button>
-                    )}
-                  </div>
+                  {securityEnabled && (
+                    <>
+                      {/* 패턴 변경 */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Grid3X3 className="h-4 w-4" />
+                          패턴 잠금
+                        </h4>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={handleStartPatternChange}
+                            className="flex-1"
+                            data-testid="button-change-pattern"
+                          >
+                            <Grid3X3 className="h-4 w-4 mr-2" />
+                            패턴 변경
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={handlePatternReset}
+                            data-testid="button-reset-pattern"
+                          >
+                            초기화
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          패턴 초기화 시 기본 패턴(1-2-3-4-5)이 적용됩니다.
+                        </p>
+                      </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    생체인증을 등록하면 매출 정보 잠금해제 시 자동으로 지문/얼굴인식을 먼저 시도합니다. 
-                    생체인증에 실패해도 기존 패턴/비밀번호로 잠금을 해제할 수 있습니다.
-                  </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                      {/* 비밀번호 변경 */}
+                      <div className="space-y-3 border-t pt-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Lock className="h-4 w-4" />
+                          비밀번호 잠금
+                        </h4>
+                        <div className="space-y-2">
+                          <Input
+                            type="password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            placeholder="현재 비밀번호 (기본: 12345678)"
+                            maxLength={8}
+                            data-testid="input-current-password"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="새 비밀번호 (8자리)"
+                            maxLength={8}
+                            data-testid="input-new-password"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Input
+                            type="password"
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            placeholder="새 비밀번호 확인"
+                            data-testid="input-confirm-password"
+                          />
+                        </div>
+                        <Button 
+                          onClick={handleChangePassword}
+                          disabled={!currentPassword || !newPassword || !confirmPassword}
+                          className="w-full"
+                          data-testid="button-change-password"
+                        >
+                          <Lock className="h-4 w-4 mr-2" />
+                          비밀번호 변경
+                        </Button>
+                      </div>
 
-          {/* 비밀번호 변경 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lock className="h-5 w-5" />
-                비밀번호 변경
-              </CardTitle>
-              <CardDescription>
-                시스템 로그인 비밀번호를 변경합니다
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="currentPassword">현재 비밀번호</Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="현재 비밀번호를 입력하세요"
-                  data-testid="input-current-password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">새 비밀번호</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="새 비밀번호 (최소 4자)"
-                  data-testid="input-new-password"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">새 비밀번호 확인</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="새 비밀번호를 다시 입력하세요"
-                  data-testid="input-confirm-password"
-                />
-              </div>
-              <Button 
-                onClick={handleChangePassword}
-                disabled={!currentPassword || !newPassword || !confirmPassword}
-                className="w-full"
-                data-testid="button-change-password"
-              >
-                <Lock className="h-4 w-4 mr-2" />
-                비밀번호 변경
-              </Button>
-            </CardContent>
+                      {/* 생체인증 설정 */}
+                      <div className="space-y-3 border-t pt-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Fingerprint className="h-4 w-4" />
+                          생체인증
+                        </h4>
+                        
+                        {/* 기기 지원 상태 */}
+                        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                          {biometricAvailable ? (
+                            <>
+                              <CheckCircle className="h-5 w-5 text-green-500" />
+                              <div>
+                                <p className="font-medium text-green-600 dark:text-green-400">생체인증 지원됨</p>
+                                <p className="text-sm text-muted-foreground">이 기기에서 생체인증을 사용할 수 있습니다</p>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-5 w-5 text-red-500" />
+                              <div>
+                                <p className="font-medium text-red-600 dark:text-red-400">생체인증 미지원</p>
+                                <p className="text-sm text-muted-foreground">이 기기에서는 생체인증을 사용할 수 없습니다</p>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {biometricAvailable && (
+                          <>
+                            <div className="flex items-center justify-between p-3 border rounded-lg">
+                              <div>
+                                <p className="font-medium">등록 상태</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {biometricEnabled ? "등록됨" : "미등록"}
+                                </p>
+                              </div>
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${biometricEnabled ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>
+                                {biometricEnabled ? "활성" : "비활성"}
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={handleBiometricTest}
+                                disabled={isBiometricTesting}
+                                variant="outline"
+                                className="flex-1"
+                                data-testid="button-biometric-test"
+                              >
+                                <Fingerprint className="h-4 w-4 mr-2" />
+                                {isBiometricTesting ? "처리 중..." : biometricEnabled ? "테스트" : "등록"}
+                              </Button>
+                              {biometricEnabled && (
+                                <Button
+                                  variant="ghost"
+                                  onClick={handleBiometricReset}
+                                  data-testid="button-biometric-reset"
+                                >
+                                  해제
+                                </Button>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
 
           {/* 데이터 관리 */}
@@ -2457,6 +2625,209 @@ export default function Settings() {
         title="데이터 관리 잠금 해제"
         description="데이터 관리 기능을 사용하려면 인증이 필요합니다."
         testId="dialog-data-management-auth"
+      />
+
+      {/* Pattern Change Dialog */}
+      {showPatternChangeDialog && (
+        <Dialog 
+          open={showPatternChangeDialog} 
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowPatternChangeDialog(false);
+              setIsPatternChangeMode(false);
+              setPatternChangeStep('verify');
+              setNewPattern([]);
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md" data-testid="dialog-pattern-change">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Grid3X3 className="h-5 w-5" />
+                {patternChangeStep === 'verify' && "현재 패턴 확인"}
+                {patternChangeStep === 'new' && "새 패턴 입력"}
+                {patternChangeStep === 'confirm' && "새 패턴 확인"}
+              </DialogTitle>
+              <DialogDescription>
+                {patternChangeStep === 'verify' && "현재 사용 중인 패턴을 입력해주세요."}
+                {patternChangeStep === 'new' && "새로 사용할 패턴을 입력해주세요. (최소 4개 점)"}
+                {patternChangeStep === 'confirm' && "새 패턴을 다시 한번 입력해주세요."}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col items-center py-4">
+              <PatternLockForChange
+                onPatternComplete={(pattern) => {
+                  if (patternChangeStep === 'verify') {
+                    // Verify current pattern
+                    const storedPattern = localStorage.getItem("security_pattern");
+                    const currentPattern = storedPattern ? JSON.parse(storedPattern) : [0, 1, 2, 3, 4];
+                    if (JSON.stringify(pattern) === JSON.stringify(currentPattern)) {
+                      handlePatternChangeVerify(true);
+                    } else {
+                      handlePatternChangeVerify(false);
+                    }
+                  } else if (patternChangeStep === 'new') {
+                    handleNewPatternInput(pattern);
+                  } else if (patternChangeStep === 'confirm') {
+                    handleConfirmPattern(pattern);
+                  }
+                }}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+// Simple Pattern Lock component for pattern change (no verification)
+function PatternLockForChange({ onPatternComplete }: { onPatternComplete: (pattern: number[]) => void }) {
+  const [pattern, setPattern] = useState<number[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [touchPosition, setTouchPosition] = useState<{ x: number; y: number } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  const size = 3;
+  const canvasSize = 200;
+  const dotSize = 24;
+  const padding = 30;
+  
+  const getDotPosition = (index: number) => {
+    const row = Math.floor(index / size);
+    const col = index % size;
+    const spacing = (canvasSize - 2 * padding) / (size - 1);
+    return {
+      x: padding + col * spacing,
+      y: padding + row * spacing,
+    };
+  };
+  
+  const getClosestDot = (clientX: number, clientY: number): number | null => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    
+    for (let i = 0; i < size * size; i++) {
+      const pos = getDotPosition(i);
+      const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+      if (distance < dotSize) {
+        return i;
+      }
+    }
+    return null;
+  };
+  
+  const addDotToPattern = (dotIndex: number) => {
+    if (!pattern.includes(dotIndex)) {
+      const newPattern = [...pattern, dotIndex];
+      setPattern(newPattern);
+    }
+  };
+  
+  const handleStart = (x: number, y: number) => {
+    setIsDrawing(true);
+    const dotIndex = getClosestDot(x, y);
+    if (dotIndex !== null) {
+      setPattern([dotIndex]);
+    }
+  };
+  
+  const handleMove = (x: number, y: number) => {
+    if (!isDrawing) return;
+    setTouchPosition({ x, y });
+    const dotIndex = getClosestDot(x, y);
+    if (dotIndex !== null) {
+      addDotToPattern(dotIndex);
+    }
+  };
+  
+  const handleEnd = () => {
+    if (pattern.length > 0) {
+      onPatternComplete(pattern);
+      setTimeout(() => {
+        setPattern([]);
+      }, 300);
+    }
+    setIsDrawing(false);
+    setTouchPosition(null);
+  };
+  
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw lines
+    if (pattern.length > 1) {
+      ctx.beginPath();
+      const firstPos = getDotPosition(pattern[0]);
+      ctx.moveTo(firstPos.x, firstPos.y);
+      
+      for (let i = 1; i < pattern.length; i++) {
+        const pos = getDotPosition(pattern[i]);
+        ctx.lineTo(pos.x, pos.y);
+      }
+      
+      if (isDrawing && touchPosition) {
+        const rect = canvas.getBoundingClientRect();
+        ctx.lineTo(touchPosition.x - rect.left, touchPosition.y - rect.top);
+      }
+      
+      ctx.strokeStyle = "hsl(var(--primary))";
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke();
+    }
+    
+    // Draw dots
+    for (let i = 0; i < size * size; i++) {
+      const pos = getDotPosition(i);
+      const isSelected = pattern.includes(i);
+      
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, dotSize / 2, 0, Math.PI * 2);
+      
+      if (isSelected) {
+        ctx.fillStyle = "hsl(var(--primary))";
+        ctx.fill();
+      }
+      ctx.strokeStyle = isSelected ? "hsl(var(--primary))" : "hsl(var(--border))";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, dotSize / 4, 0, Math.PI * 2);
+        ctx.fillStyle = "hsl(var(--primary-foreground))";
+        ctx.fill();
+      }
+    }
+  }, [pattern, isDrawing, touchPosition]);
+  
+  return (
+    <div className="relative" style={{ width: canvasSize, height: canvasSize }}>
+      <canvas
+        ref={canvasRef}
+        width={canvasSize}
+        height={canvasSize}
+        className="touch-none"
+        onMouseDown={(e) => { e.preventDefault(); handleStart(e.clientX, e.clientY); }}
+        onMouseMove={(e) => { e.preventDefault(); handleMove(e.clientX, e.clientY); }}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        onTouchStart={(e) => { e.preventDefault(); handleStart(e.touches[0].clientX, e.touches[0].clientY); }}
+        onTouchMove={(e) => { e.preventDefault(); handleMove(e.touches[0].clientX, e.touches[0].clientY); }}
+        onTouchEnd={(e) => { e.preventDefault(); handleEnd(); }}
+        data-testid="pattern-change-canvas"
       />
     </div>
   );

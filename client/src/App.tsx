@@ -42,10 +42,19 @@ function MainLayout() {
     console.log('handleSidebarOpenChange called - requested open:', open, 'current isSidebarOpen:', isSidebarOpen);
     
     if (open && !isSidebarOpen) {
-      // Trying to open from closed state - show pattern dialog
-      console.log('Requesting to open sidebar - showing pattern dialog');
-      setShowPatternDialog(true);
-      // Don't change sidebar state yet, wait for pattern verification
+      // Check if security is enabled
+      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
+      
+      if (securityEnabled) {
+        // Security enabled - show pattern dialog
+        console.log('Security enabled - showing pattern dialog');
+        setShowPatternDialog(true);
+        // Don't change sidebar state yet, wait for pattern verification
+      } else {
+        // Security disabled - open sidebar directly
+        console.log('Security disabled - opening sidebar directly');
+        setIsSidebarOpen(true);
+      }
     } else if (!open && isSidebarOpen) {
       // Closing from open state - allow without pattern
       console.log('Closing sidebar without pattern');
