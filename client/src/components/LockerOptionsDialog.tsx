@@ -1766,17 +1766,6 @@ export default function LockerOptionsDialog({
                   )}
                 </div>
 
-                {/* 현금영수증 발급 체크박스 */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="additional-fee-receipt" 
-                    data-testid="checkbox-additional-fee-receipt"
-                  />
-                  <Label htmlFor="additional-fee-receipt" className="text-xs cursor-pointer font-normal text-orange-600 dark:text-orange-400">
-                    현금영수증 발급 (+10% 부가세)
-                  </Label>
-                </div>
-
                 {/* 추가요금 할인 섹션 */}
                 <div className="space-y-2 pt-2 border-t border-orange-200 dark:border-orange-800">
                   <Label className="text-sm font-semibold text-orange-700 dark:text-orange-300">추가요금 할인</Label>
