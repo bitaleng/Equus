@@ -130,6 +130,9 @@ export default function Home() {
   });
   const [activeTab, setActiveTab] = useState<'locker' | 'status'>('locker');
   
+  // Tab security: require authentication when switching to 'status' tab
+  const [showTabAuthDialog, setShowTabAuthDialog] = useState(false);
+  
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -161,6 +164,25 @@ export default function Home() {
       setIsPanelCollapsed(false);
       setIsLockerPanelCollapsed(false);
     }
+  };
+
+  // Tab change handler with security check
+  const handleTabChange = (newTab: string) => {
+    const targetTab = newTab as 'locker' | 'status';
+    
+    // Only require authentication when switching from 'locker' to 'status'
+    if (activeTab === 'locker' && targetTab === 'status') {
+      setShowTabAuthDialog(true);
+    } else {
+      // No authentication needed for other transitions
+      setActiveTab(targetTab);
+    }
+  };
+
+  // Handle successful tab authentication
+  const handleTabAuthSuccess = () => {
+    setActiveTab('status');
+    setShowTabAuthDialog(false);
   };
 
   // Toggle barcode test button with 5 consecutive clicks on title
@@ -1543,7 +1565,7 @@ export default function Home() {
     <div className="h-full w-full bg-background">
       {/* 탭 모드 UI */}
       {uiLayoutMode === 'tab' ? (
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'locker' | 'status')} className="h-full flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="h-full flex flex-col overflow-hidden">
           {/* 탭 헤더 */}
           <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
             <div className="flex items-center gap-4">
@@ -2114,6 +2136,16 @@ export default function Home() {
         title="패널 잠금 해제"
         description="패턴을 그려서 오늘현황 및 매출집계 패널을 열어주세요."
         testId="dialog-panel-pattern"
+      />
+
+      {/* Pattern Lock Dialog for Tab Switch Security (locker → status) */}
+      <PatternLockDialog
+        open={showTabAuthDialog}
+        onOpenChange={setShowTabAuthDialog}
+        onPatternCorrect={handleTabAuthSuccess}
+        title="오늘현황 잠금 해제"
+        description="매출 정보를 보려면 패턴을 그리거나 비밀번호를 입력하세요."
+        testId="dialog-tab-auth"
       />
 
       {/* Barcode Test Dialog */}
