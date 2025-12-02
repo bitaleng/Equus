@@ -54,7 +54,7 @@ export default function SalesSummary({
   const grandTotal = entrySales + rentalRevenue;
   const netProfit = grandTotal - totalExpenses;
   
-  const [isSalesOpen, setIsSalesOpen] = useState(true);
+  const [isSalesOpen, setIsSalesOpen] = useState(false);
   const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
   const [expenseItem, setExpenseItem] = useState('');
   const [amount, setAmount] = useState('');
