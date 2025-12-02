@@ -133,6 +133,8 @@ export default function Home() {
   // Tab security: require authentication when switching to 'status' tab
   const [showTabAuthDialog, setShowTabAuthDialog] = useState(false);
   
+  // Layout mode change security: require authentication when switching from tab to toggle mode
+  const [showLayoutModeAuthDialog, setShowLayoutModeAuthDialog] = useState(false);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -164,6 +166,22 @@ export default function Home() {
 
   // UI Layout Mode 변경 핸들러
   const handleLayoutModeChange = (mode: 'toggle' | 'tab') => {
+    // 탭 → 토글 모드 변환 시 보안 체크
+    if (mode === 'toggle' && uiLayoutMode === 'tab') {
+      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
+      if (securityEnabled) {
+        // 보안 활성화 시 인증 필요
+        setShowLayoutModeAuthDialog(true);
+        return;
+      }
+      // 보안 비활성화 시 바로 전환 (입실관리만 보이게)
+      setUiLayoutMode(mode);
+      localStorage.setItem('uiLayoutMode', mode);
+      setIsPanelCollapsed(true); // 좌측 패널 접기 (입실관리만 표시)
+      setIsLockerPanelCollapsed(false);
+      return;
+    }
+    
     setUiLayoutMode(mode);
     localStorage.setItem('uiLayoutMode', mode);
     // 탭 모드로 변경 시 패널 상태 초기화
@@ -171,6 +189,15 @@ export default function Home() {
       setIsPanelCollapsed(false);
       setIsLockerPanelCollapsed(false);
     }
+  };
+  
+  // Layout mode 변경 인증 성공 핸들러
+  const handleLayoutModeAuthSuccess = () => {
+    setShowLayoutModeAuthDialog(false);
+    setUiLayoutMode('toggle');
+    localStorage.setItem('uiLayoutMode', 'toggle');
+    setIsPanelCollapsed(true); // 좌측 패널 접기 (입실관리만 표시)
+    setIsLockerPanelCollapsed(false);
   };
 
   // Tab change handler with security check
@@ -2156,6 +2183,16 @@ export default function Home() {
         title="오늘현황 잠금 해제"
         description="매출 정보를 보려면 패턴을 그리거나 비밀번호를 입력하세요."
         testId="dialog-tab-auth"
+      />
+
+      {/* Pattern Lock Dialog for Layout Mode Change Security (tab → toggle) */}
+      <PatternLockDialog
+        open={showLayoutModeAuthDialog}
+        onOpenChange={setShowLayoutModeAuthDialog}
+        onPatternCorrect={handleLayoutModeAuthSuccess}
+        title="토글모드 전환"
+        description="토글모드로 전환하려면 패턴을 그리거나 비밀번호를 입력하세요."
+        testId="dialog-layout-mode-auth"
       />
 
       {/* Barcode Test Dialog */}
