@@ -133,8 +133,9 @@ export default function Home() {
   // Tab security: require authentication when switching to 'status' tab
   const [showTabAuthDialog, setShowTabAuthDialog] = useState(false);
   
-  // Layout mode change security: require authentication when switching from tab to toggle mode
+  // Layout mode change security: require authentication when switching modes
   const [showLayoutModeAuthDialog, setShowLayoutModeAuthDialog] = useState(false);
+  const [pendingLayoutMode, setPendingLayoutMode] = useState<'toggle' | 'tab' | null>(null);
 
   // Load settings from localStorage
   const settings = localDb.getSettings();
@@ -166,38 +167,47 @@ export default function Home() {
 
   // UI Layout Mode 변경 핸들러
   const handleLayoutModeChange = (mode: 'toggle' | 'tab') => {
-    // 탭 → 토글 모드 변환 시 보안 체크
-    if (mode === 'toggle' && uiLayoutMode === 'tab') {
-      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
-      if (securityEnabled) {
-        // 보안 활성화 시 인증 필요
-        setShowLayoutModeAuthDialog(true);
-        return;
-      }
-      // 보안 비활성화 시 바로 전환 (입실관리만 보이게)
-      setUiLayoutMode(mode);
-      localStorage.setItem('uiLayoutMode', mode);
-      setIsPanelCollapsed(true); // 좌측 패널 접기 (입실관리만 표시)
-      setIsLockerPanelCollapsed(false);
+    // 현재 모드와 동일하면 무시
+    if (mode === uiLayoutMode) return;
+    
+    const securityEnabled = localStorage.getItem("security_enabled") !== "false";
+    
+    // 보안 활성화 시 모드 전환에 인증 필요
+    if (securityEnabled) {
+      setPendingLayoutMode(mode);
+      setShowLayoutModeAuthDialog(true);
       return;
     }
     
+    // 보안 비활성화 시 바로 전환
+    applyLayoutModeChange(mode);
+  };
+  
+  // 실제 레이아웃 모드 변경 적용
+  const applyLayoutModeChange = (mode: 'toggle' | 'tab') => {
     setUiLayoutMode(mode);
     localStorage.setItem('uiLayoutMode', mode);
-    // 탭 모드로 변경 시 패널 상태 초기화
+    
     if (mode === 'tab') {
+      // 탭 모드: 입실관리 탭이 기본
+      setActiveTab('locker');
       setIsPanelCollapsed(false);
       setIsLockerPanelCollapsed(false);
+    } else {
+      // 토글 모드: 좌측 패널 접기 (입실관리만 표시), 매출집계 접힌 상태
+      setIsPanelCollapsed(true);
+      setIsLockerPanelCollapsed(false);
+      setIsSalesSummaryCollapsed(true);
     }
   };
   
   // Layout mode 변경 인증 성공 핸들러
   const handleLayoutModeAuthSuccess = () => {
     setShowLayoutModeAuthDialog(false);
-    setUiLayoutMode('toggle');
-    localStorage.setItem('uiLayoutMode', 'toggle');
-    setIsPanelCollapsed(true); // 좌측 패널 접기 (입실관리만 표시)
-    setIsLockerPanelCollapsed(false);
+    if (pendingLayoutMode) {
+      applyLayoutModeChange(pendingLayoutMode);
+      setPendingLayoutMode(null);
+    }
   };
 
   // Tab change handler with security check
