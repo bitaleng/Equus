@@ -19,6 +19,7 @@ import { getBusinessDay } from "@shared/businessDay";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PatternLockDialog from "@/components/PatternLockDialog";
+import { useWakeLock } from "@/hooks/useWakeLock";
 
 function Router() {
   return (
@@ -106,6 +107,10 @@ function MainLayout() {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [dbReady, setDbReady] = useState(false);
+  const [wakeLockEnabled, setWakeLockEnabled] = useState(true);
+  
+  // Screen Wake Lock - prevents screen from turning off while app is running
+  useWakeLock(wakeLockEnabled && isAuthenticated && dbReady);
 
   useEffect(() => {
     const authenticated = localStorage.getItem("authenticated");
@@ -115,29 +120,36 @@ function App() {
 
     // Initialize database
     initDatabase().then(() => {
-      // Temporarily disabled: Auto-delete data older than 1 year
-      // (Will be re-enabled after business_day format normalization)
-      /*
+      // Load wake lock setting
       const settings = getSettings();
-      const today = new Date();
-      const oneYearAgo = new Date(today);
-      oneYearAgo.setFullYear(today.getFullYear() - 1);
-      
-      const cutoffDate = getBusinessDay(oneYearAgo, settings.businessDayStartHour);
-      
-      try {
-        deleteOldData(cutoffDate);
-        console.log(`Deleted data older than ${cutoffDate} (business day start hour: ${settings.businessDayStartHour})`);
-      } catch (error) {
-        console.error('Failed to delete old data:', error);
-      }
-      */
+      setWakeLockEnabled(settings.screenWakeLock !== false);
       
       setDbReady(true);
     }).catch((error) => {
       console.error('Failed to initialize database:', error);
     });
   }, []);
+
+  // Listen for settings changes (when user toggles wake lock in settings)
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const settings = getSettings();
+      setWakeLockEnabled(settings.screenWakeLock !== false);
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check periodically for local changes (same tab)
+    const interval = setInterval(() => {
+      const settings = getSettings();
+      setWakeLockEnabled(settings.screenWakeLock !== false);
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [dbReady]);
 
   if (!dbReady) {
     return (

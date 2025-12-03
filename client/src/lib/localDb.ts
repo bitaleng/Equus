@@ -2448,7 +2448,8 @@ export function getSettings() {
     discountAmount: 2000,
     foreignerPrice: 25000,
     domesticCheckpointHour: 1,
-    foreignerAdditionalFeePeriod: 24
+    foreignerAdditionalFeePeriod: 24,
+    screenWakeLock: true
   };
 
   const saved = localStorage.getItem('settings');

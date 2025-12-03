@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3 } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
@@ -154,6 +154,13 @@ export default function Settings() {
   const [isSecuritySectionOpen, setIsSecuritySectionOpen] = useState(false);
   const [securityEnabled, setSecurityEnabled] = useState(() => {
     return localStorage.getItem("security_enabled") !== "false";
+  });
+  
+  // Screen wake lock states
+  const [isScreenSectionOpen, setIsScreenSectionOpen] = useState(false);
+  const [screenWakeLock, setScreenWakeLock] = useState(() => {
+    const settings = localDb.getSettings();
+    return settings.screenWakeLock !== false;
   });
   
   // Pattern change states
@@ -814,6 +821,18 @@ export default function Settings() {
     toast({
       title: "생체인증 초기화",
       description: "생체인증 등록이 해제되었습니다.",
+    });
+  };
+
+  // Toggle screen wake lock
+  const handleScreenWakeLockToggle = (enabled: boolean) => {
+    setScreenWakeLock(enabled);
+    localDb.updateSettings({ screenWakeLock: enabled });
+    toast({
+      title: enabled ? "화면 잠금 방지 활성화" : "화면 잠금 방지 비활성화",
+      description: enabled 
+        ? "앱 사용 중 화면이 자동으로 꺼지지 않습니다." 
+        : "기기의 기본 화면 잠금 설정이 적용됩니다.",
     });
   };
 
@@ -1910,6 +1929,60 @@ export default function Settings() {
                 )}
               </div>
             </CardContent>
+          </Card>
+
+          {/* 화면 설정 */}
+          <Card>
+            <Collapsible 
+              open={isScreenSectionOpen} 
+              onOpenChange={setIsScreenSectionOpen}
+            >
+              <CardHeader>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between cursor-pointer hover-elevate active-elevate-2 rounded-md p-2 -m-2">
+                    <div className="flex items-center gap-2">
+                      <Smartphone className={`h-5 w-5 ${screenWakeLock ? 'text-green-500' : 'text-muted-foreground'}`} />
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          화면 설정
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          화면 잠금 방지 설정
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${isScreenSectionOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </CollapsibleTrigger>
+              </CardHeader>
+              
+              <CollapsibleContent>
+                <CardContent className="space-y-4 pt-0">
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <Smartphone className={`h-6 w-6 ${screenWakeLock ? 'text-green-500' : 'text-muted-foreground'}`} />
+                      <div>
+                        <p className="font-medium">화면 잠금 방지</p>
+                        <p className="text-sm text-muted-foreground">
+                          {screenWakeLock 
+                            ? "활성화됨 (화면 켜짐 유지)" 
+                            : "비활성화됨"}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={screenWakeLock}
+                      onCheckedChange={handleScreenWakeLockToggle}
+                      data-testid="switch-screen-wakelock"
+                    />
+                  </div>
+                  <p className="text-sm text-muted-foreground px-1">
+                    앱 사용 중 화면이 자동으로 꺼지지 않도록 합니다.
+                    배터리 소모가 증가할 수 있습니다.
+                  </p>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
           </Card>
 
           {/* 보안 설정 */}
