@@ -2008,52 +2008,8 @@ export default function Home() {
                       </Button>
                     </div>
                   ) : (
-                    // Full view
+                    // Full view - 헤더는 LockerOptionsDialog 내부에서 표시
                     <div className="flex flex-col h-full">
-                      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
-                            {lockerNumber}
-                          </div>
-                          <span className="font-semibold">{lockerNumber}번</span>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => {
-                              setOpenDialogs(prev => {
-                                const next = new Map(prev);
-                                const info = next.get(lockerNumber);
-                                if (info) {
-                                  next.set(lockerNumber, { ...info, isMinimized: true });
-                                }
-                                return next;
-                              });
-                            }}
-                            className="h-7 w-7"
-                            title="최소화"
-                          >
-                            _
-                          </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={() => {
-                              setOpenDialogs(prev => {
-                                const next = new Map(prev);
-                                next.delete(lockerNumber);
-                                return next;
-                              });
-                            }}
-                            className="h-7 w-7"
-                            title="닫기"
-                          >
-                            ✕
-                          </Button>
-                        </div>
-                      </div>
-                      
                       <div className="flex-1 overflow-hidden">
                         <LockerOptionsDialog
                           open={true}
@@ -2093,7 +2049,17 @@ export default function Home() {
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}
-                          onPaymentComplete={() => loadData()} // 후불결제 완료 시 데이터 새로고침
+                          onPaymentComplete={() => loadData()}
+                          onMinimize={() => {
+                            setOpenDialogs(prev => {
+                              const next = new Map(prev);
+                              const info = next.get(lockerNumber);
+                              if (info) {
+                                next.set(lockerNumber, { ...info, isMinimized: true });
+                              }
+                              return next;
+                            });
+                          }}
                         />
                       </div>
                     </div>

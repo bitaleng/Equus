@@ -83,6 +83,7 @@ interface LockerOptionsDialogProps {
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
   onPaymentComplete?: () => void; // 후불결제 완료 시 데이터 새로고침용 콜백
+  onMinimize?: () => void; // 최소화 버튼 콜백 (팝업 워크스페이스용)
 }
 
 export default function LockerOptionsDialog({
@@ -113,6 +114,7 @@ export default function LockerOptionsDialog({
   onCancel,
   onSwap,
   onPaymentComplete,
+  onMinimize,
 }: LockerOptionsDialogProps) {
   // Load settings
   const settings = localDb.getSettings();
@@ -1315,17 +1317,37 @@ export default function LockerOptionsDialog({
         <div className="flex flex-col h-full bg-background rounded-lg overflow-hidden" data-testid="dialog-locker-options">
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-            <h2 className="text-xl font-semibold">
-              락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
-            </h2>
-            <Button 
-              variant="ghost" 
-              size="icon"
-              onClick={handleCloseClick}
-              className="h-8 w-8"
-            >
-              ✕
-            </Button>
+            <div className="flex items-center gap-4">
+              {/* 큰 원형 락카번호 배지 */}
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-500 text-white text-3xl font-bold shadow-md">
+                {lockerNumber}
+              </div>
+              <h2 className="text-xl font-semibold">
+                락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
+              </h2>
+            </div>
+            <div className="flex gap-1">
+              {onMinimize && (
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={onMinimize}
+                  className="h-8 w-8"
+                  title="최소화"
+                >
+                  _
+                </Button>
+              )}
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleCloseClick}
+                className="h-8 w-8"
+                title="닫기"
+              >
+                ✕
+              </Button>
+            </div>
           </div>
           
           {/* Content - scrollable */}
