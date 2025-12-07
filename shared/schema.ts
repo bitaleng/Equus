@@ -10,6 +10,41 @@ export const statusEnum = pgEnum('status', ['in_use', 'checked_out', 'cancelled'
 export const paymentMethodEnum = pgEnum('payment_method', ['card', 'cash', 'transfer']);
 export const depositStatusEnum = pgEnum('deposit_status', ['received', 'refunded', 'forfeited']);
 
+// Smart Locker System Enums
+export const lockerTypeEnum = pgEnum('locker_type', ['shoe', 'wardrobe']); // 신발장/옷장
+export const lockerHardwareStateEnum = pgEnum('locker_hardware_state', [
+  'idle',           // 대기 (사용 가능)
+  'reserved',       // 예약됨 (입실처리 완료, 신발장 잠금해제 대기)
+  'shoe_unlocked',  // 신발장 잠금해제 (키 뽑기 가능)
+  'key_removed',    // 키 뽑힘 (옷장 사용 가능)
+  'wardrobe_in_use', // 옷장 사용 중
+  'checkout_pending', // 퇴실 처리 중
+  'locked'          // 잠금 상태 (퇴실 완료, 키 뽑기 불가)
+]);
+export const deviceStatusEnum = pgEnum('device_status', ['online', 'offline', 'error']);
+export const commandTypeEnum = pgEnum('command_type', [
+  'unlock_shoe',    // 신발장 잠금 해제
+  'lock_shoe',      // 신발장 잠금
+  'unlock_wardrobe', // 옷장 잠금 해제
+  'lock_wardrobe',  // 옷장 잠금
+  'lock_all',       // 전체 잠금
+  'sync_state',     // 상태 동기화
+  'heartbeat'       // 연결 확인
+]);
+export const commandStatusEnum = pgEnum('command_status', ['pending', 'sent', 'acknowledged', 'completed', 'failed', 'timeout']);
+export const eventTypeEnum = pgEnum('event_type', [
+  'door_opened',    // 문 열림
+  'door_closed',    // 문 닫힘
+  'key_inserted',   // 키 삽입
+  'key_removed',    // 키 뽑힘
+  'lock_engaged',   // 잠금 활성화
+  'lock_released',  // 잠금 해제
+  'device_online',  // 디바이스 온라인
+  'device_offline', // 디바이스 오프라인
+  'error'           // 오류
+]);
+export const eventSourceEnum = pgEnum('event_source', ['app', 'device', 'system']);
+
 // Locker Logs Table - 입출 기록
 export const lockerLogs = pgTable("locker_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -154,6 +189,72 @@ export const rfidMappings = pgTable("rfid_mappings", {
   lockerNumber: integer("locker_number").notNull(), // 락카 번호
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ==================== Smart Locker System Tables ====================
+
+// Hardware Devices Table - 하드웨어 컨트롤러 (ESP32 등)
+export const hardwareDevices = pgTable("hardware_devices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deviceId: varchar("device_id").notNull().unique(), // 디바이스 고유 ID (MAC 주소 등)
+  name: varchar("name").notNull(), // 디바이스 이름 (예: "1층 컨트롤러")
+  controllerType: varchar("controller_type").notNull().default('esp32'), // 컨트롤러 종류
+  firmwareVersion: varchar("firmware_version"), // 펌웨어 버전
+  sharedSecret: varchar("shared_secret"), // HMAC 인증용 공유 비밀키
+  ipAddress: varchar("ip_address"), // IP 주소
+  status: deviceStatusEnum("status").notNull().default('offline'),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  lockerRangeStart: integer("locker_range_start"), // 관리하는 락커 시작 번호
+  lockerRangeEnd: integer("locker_range_end"), // 관리하는 락커 종료 번호
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Locker Hardware Table - 락커별 하드웨어 상태
+export const lockerHardware = pgTable("locker_hardware", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lockerNumber: integer("locker_number").notNull().unique(), // 락커 번호
+  lockerType: lockerTypeEnum("locker_type").notNull().default('wardrobe'), // shoe/wardrobe
+  pairNumber: integer("pair_number"), // 페어 번호 (신발장+옷장 = 같은 번호)
+  hardwareState: lockerHardwareStateEnum("hardware_state").notNull().default('idle'),
+  deviceId: varchar("device_id"), // 연결된 디바이스 ID
+  lastCommandId: varchar("last_command_id"), // 마지막 명령 ID
+  currentLockerLogId: varchar("current_locker_log_id"), // 현재 연결된 locker_log ID
+  doorOpen: boolean("door_open").notNull().default(false), // 문 열림 상태
+  keyInserted: boolean("key_inserted").notNull().default(true), // 키 삽입 상태
+  lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Locker Commands Table - 락커 명령 기록 (앱 → 하드웨어)
+export const lockerCommands = pgTable("locker_commands", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lockerNumber: integer("locker_number").notNull(),
+  commandType: commandTypeEnum("command_type").notNull(),
+  payload: text("payload"), // JSON 추가 데이터
+  status: commandStatusEnum("status").notNull().default('pending'),
+  deviceId: varchar("device_id"), // 대상 디바이스 ID
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }), // 만료 시간
+  errorCode: varchar("error_code"),
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").notNull().default(0),
+});
+
+// Locker Events Table - 락커 이벤트 기록 (하드웨어 → 앱)
+export const lockerEvents = pgTable("locker_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  lockerNumber: integer("locker_number").notNull(),
+  eventType: eventTypeEnum("event_type").notNull(),
+  source: eventSourceEnum("source").notNull().default('device'),
+  deviceId: varchar("device_id"), // 발생한 디바이스 ID
+  commandId: varchar("command_id"), // 관련 명령 ID
+  payload: text("payload"), // JSON 추가 데이터
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Insert Schemas
@@ -360,3 +461,84 @@ export type UpdateBarcodeMapping = z.infer<typeof updateBarcodeMappingSchema>;
 export type RfidMapping = typeof rfidMappings.$inferSelect;
 export type InsertRfidMapping = z.infer<typeof insertRfidMappingSchema>;
 export type UpdateRfidMapping = z.infer<typeof updateRfidMappingSchema>;
+
+// ==================== Smart Locker System Schemas & Types ====================
+
+// Hardware Device Schemas
+export const insertHardwareDeviceSchema = createInsertSchema(hardwareDevices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateHardwareDeviceSchema = z.object({
+  name: z.string().optional(),
+  controllerType: z.string().optional(),
+  firmwareVersion: z.string().optional(),
+  sharedSecret: z.string().optional(),
+  ipAddress: z.string().optional(),
+  status: z.enum(['online', 'offline', 'error']).optional(),
+  lastSeenAt: z.union([z.string(), z.date()]).optional(),
+  lockerRangeStart: z.number().optional(),
+  lockerRangeEnd: z.number().optional(),
+});
+
+// Locker Hardware Schemas
+export const insertLockerHardwareSchema = createInsertSchema(lockerHardware).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLockerHardwareSchema = z.object({
+  lockerType: z.enum(['shoe', 'wardrobe']).optional(),
+  pairNumber: z.number().optional(),
+  hardwareState: z.enum(['idle', 'reserved', 'shoe_unlocked', 'key_removed', 'wardrobe_in_use', 'checkout_pending', 'locked']).optional(),
+  deviceId: z.string().optional(),
+  lastCommandId: z.string().optional(),
+  currentLockerLogId: z.string().optional(),
+  doorOpen: z.boolean().optional(),
+  keyInserted: z.boolean().optional(),
+  lastEventAt: z.union([z.string(), z.date()]).optional(),
+});
+
+// Locker Command Schemas
+export const insertLockerCommandSchema = createInsertSchema(lockerCommands).omit({
+  id: true,
+});
+
+export const updateLockerCommandSchema = z.object({
+  status: z.enum(['pending', 'sent', 'acknowledged', 'completed', 'failed', 'timeout']).optional(),
+  sentAt: z.union([z.string(), z.date()]).optional(),
+  acknowledgedAt: z.union([z.string(), z.date()]).optional(),
+  completedAt: z.union([z.string(), z.date()]).optional(),
+  errorCode: z.string().optional(),
+  errorMessage: z.string().optional(),
+  retryCount: z.number().optional(),
+});
+
+// Locker Event Schemas
+export const insertLockerEventSchema = createInsertSchema(lockerEvents).omit({
+  id: true,
+});
+
+// Smart Locker Types
+export type HardwareDevice = typeof hardwareDevices.$inferSelect;
+export type InsertHardwareDevice = z.infer<typeof insertHardwareDeviceSchema>;
+export type UpdateHardwareDevice = z.infer<typeof updateHardwareDeviceSchema>;
+
+export type LockerHardware = typeof lockerHardware.$inferSelect;
+export type InsertLockerHardware = z.infer<typeof insertLockerHardwareSchema>;
+export type UpdateLockerHardware = z.infer<typeof updateLockerHardwareSchema>;
+
+export type LockerCommand = typeof lockerCommands.$inferSelect;
+export type InsertLockerCommand = z.infer<typeof insertLockerCommandSchema>;
+export type UpdateLockerCommand = z.infer<typeof updateLockerCommandSchema>;
+
+export type LockerEvent = typeof lockerEvents.$inferSelect;
+export type InsertLockerEvent = z.infer<typeof insertLockerEventSchema>;
+
+// Locker Hardware State Type (for convenience)
+export type LockerHardwareState = 'idle' | 'reserved' | 'shoe_unlocked' | 'key_removed' | 'wardrobe_in_use' | 'checkout_pending' | 'locked';
+export type CommandType = 'unlock_shoe' | 'lock_shoe' | 'unlock_wardrobe' | 'lock_wardrobe' | 'lock_all' | 'sync_state' | 'heartbeat';
+export type EventType = 'door_opened' | 'door_closed' | 'key_inserted' | 'key_removed' | 'lock_engaged' | 'lock_released' | 'device_online' | 'device_offline' | 'error';
