@@ -31,6 +31,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import PatternLockDialog, { checkBiometricSupport, registerBiometricCredential, authenticateWithBiometric } from "@/components/PatternLockDialog";
+import DeviceManagement from "@/components/DeviceManagement";
 import * as localDb from "@/lib/localDb";
 
 interface Settings {
@@ -2380,6 +2381,9 @@ export default function Settings() {
               </CollapsibleContent>
             </Collapsible>
           </Card>
+
+          {/* Smart Locker Hardware Management */}
+          <DeviceManagement />
 
           {/* Save Button */}
           <div className="flex justify-end">

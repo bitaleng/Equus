@@ -41,10 +41,10 @@ export function registerRoutes(app: Express) {
   app.get("/api/devices", async (req, res) => {
     try {
       const devices = await storage.getAllDevices();
-      res.json(devices);
+      res.json({ success: true, devices });
     } catch (error) {
       console.error("Error getting devices:", error);
-      res.status(500).json({ error: "Failed to get devices" });
+      res.status(500).json({ success: false, error: "Failed to get devices", devices: [] });
     }
   });
 
