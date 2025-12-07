@@ -478,7 +478,11 @@ export const updateHardwareDeviceSchema = z.object({
   sharedSecret: z.string().optional(),
   ipAddress: z.string().optional(),
   status: z.enum(['online', 'offline', 'error']).optional(),
-  lastSeenAt: z.union([z.string(), z.date()]).optional(),
+  lastSeenAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
   lockerRangeStart: z.number().optional(),
   lockerRangeEnd: z.number().optional(),
 });
@@ -494,12 +498,16 @@ export const updateLockerHardwareSchema = z.object({
   lockerType: z.enum(['shoe', 'wardrobe']).optional(),
   pairNumber: z.number().optional(),
   hardwareState: z.enum(['idle', 'reserved', 'shoe_unlocked', 'key_removed', 'wardrobe_in_use', 'checkout_pending', 'locked']).optional(),
-  deviceId: z.string().optional(),
-  lastCommandId: z.string().optional(),
-  currentLockerLogId: z.string().optional(),
+  deviceId: z.string().nullish(),
+  lastCommandId: z.string().nullish(),
+  currentLockerLogId: z.string().nullish(),
   doorOpen: z.boolean().optional(),
   keyInserted: z.boolean().optional(),
-  lastEventAt: z.union([z.string(), z.date()]).optional(),
+  lastEventAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
 });
 
 // Locker Command Schemas
@@ -509,11 +517,23 @@ export const insertLockerCommandSchema = createInsertSchema(lockerCommands).omit
 
 export const updateLockerCommandSchema = z.object({
   status: z.enum(['pending', 'sent', 'acknowledged', 'completed', 'failed', 'timeout']).optional(),
-  sentAt: z.union([z.string(), z.date()]).optional(),
-  acknowledgedAt: z.union([z.string(), z.date()]).optional(),
-  completedAt: z.union([z.string(), z.date()]).optional(),
-  errorCode: z.string().optional(),
-  errorMessage: z.string().optional(),
+  sentAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
+  acknowledgedAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
+  completedAt: z.union([z.string(), z.date()]).optional().transform((val) => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return new Date(val);
+    return val;
+  }),
+  errorCode: z.string().nullish(),
+  errorMessage: z.string().nullish(),
   retryCount: z.number().optional(),
 });
 
