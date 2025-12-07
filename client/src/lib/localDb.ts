@@ -2451,9 +2451,13 @@ export function getDailySummariesByMonth(yearMonth: string) {
     [yearMonth + '%']
   );
 
+  console.log(`[getDailySummariesByMonth] 쿼리: ${yearMonth}%, 결과 rows:`, result.length > 0 ? result[0].values?.length : 0);
+
   if (result.length === 0) return [];
 
-  return rowsToObjects(result[0]);
+  const data = rowsToObjects(result[0]);
+  console.log(`[getDailySummariesByMonth] 변환 후 데이터:`, data.length, '건', data.slice(0, 3));
+  return data;
 }
 
 // Get locker logs by business day for hourly analysis
