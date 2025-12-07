@@ -3048,19 +3048,39 @@ export function createTestData() {
   }
   
   // 4. 과거 데이터는 퇴실 완료된 데이터로만 생성 (추가요금 방지)
+  // 영업일 기준(10:00~익일10:00)으로 24시간 전체에 데이터 생성
   for (let pastDays = 1; pastDays <= 7; pastDays++) {
-    const pastDate = new Date();
-    pastDate.setDate(pastDate.getDate() - pastDays);
+    // 영업일 기준 날짜 계산
+    const businessDayDate = new Date();
+    businessDayDate.setDate(businessDayDate.getDate() - pastDays);
+    const businessDayStr = getBusinessDay(new Date(businessDayDate.setHours(12, 0, 0, 0))); // 정오 기준으로 영업일 계산
     
     const pastEntries = randomInt(10, 30);
     
     for (let i = 0; i < pastEntries; i++) {
       const lockerNumber = randomInt(1, 80);
-      const hour = randomInt(0, 23);
-      const minute = randomInt(0, 59);
       
-      const entryDate = new Date(pastDate);
-      entryDate.setHours(hour, minute, 0, 0);
+      // 영업일 기준 24시간 범위에서 랜덤 시간 생성
+      // 당일 10:00~23:59 (14시간) 또는 익일 00:00~09:59 (10시간)
+      const isNextDayHour = randomBoolean(0.4); // 40% 확률로 익일 새벽 시간
+      
+      let entryDate: Date;
+      if (isNextDayHour) {
+        // 익일 00:00~09:59
+        const nextDay = new Date(businessDayDate);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const hour = randomInt(0, 9);
+        const minute = randomInt(0, 59);
+        nextDay.setHours(hour, minute, 0, 0);
+        entryDate = nextDay;
+      } else {
+        // 당일 10:00~23:59
+        const sameDay = new Date(businessDayDate);
+        const hour = randomInt(10, 23);
+        const minute = randomInt(0, 59);
+        sameDay.setHours(hour, minute, 0, 0);
+        entryDate = sameDay;
+      }
       
       const timeType = getTimeType(entryDate);
       const basePrice = timeType === '주간' ? dayPrice : nightPrice;
@@ -3085,7 +3105,7 @@ export function createTestData() {
       
       const id = generateId();
       const entryTime = entryDate.toISOString();
-      const businessDay = getBusinessDay(entryDate);
+      const businessDay = getBusinessDay(entryDate); // 영업일 기준으로 자동 계산
       
       database.run(
         `INSERT INTO locker_logs 
