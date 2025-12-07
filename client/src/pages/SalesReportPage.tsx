@@ -350,10 +350,10 @@ function DailyGraph() {
       }
 
       (logs as any[]).forEach((log) => {
-        if (log.entry_time && log.final_price) {
-          const entryTime = toZonedTime(new Date(log.entry_time), TIMEZONE);
+        if (log.entryTime && log.finalPrice) {
+          const entryTime = toZonedTime(new Date(log.entryTime), TIMEZONE);
           const hour = getHours(entryTime);
-          hourlyMap.set(hour, (hourlyMap.get(hour) || 0) + (log.final_price || 0));
+          hourlyMap.set(hour, (hourlyMap.get(hour) || 0) + (log.finalPrice || 0));
         }
       });
 
@@ -429,6 +429,23 @@ function DailyGraph() {
           </TabsContent>
 
           <TabsContent value="hourly" className="mt-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">날짜선택</span>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => subDays(d, 1))} data-testid="button-hourly-prev-day">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="font-medium" data-testid="text-hourly-selected-date">
+                  {format(selectedDate, "yyyy. M. d(E)", { locale: ko })}
+                </span>
+                <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => addDays(d, 1))} data-testid="button-hourly-next-day">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                정산기준: {format(selectedDate, "M/d")} {businessDayStartHour}:00 ~ {format(addDays(selectedDate, 1), "M/d")} {businessDayStartHour}:00
+              </div>
+            </div>
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
             <div className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
