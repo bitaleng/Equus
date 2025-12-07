@@ -319,9 +319,15 @@ function DailyGraph() {
       dates.push(format(d, "yyyy-MM-dd"));
     }
 
+    console.log('[DailyGraph] 조회할 날짜 범위:', dates);
+    
     const data = dates.map((dateStr) => {
       const summaries = getDailySummariesByMonth(dateStr.substring(0, 7));
+      console.log(`[DailyGraph] ${dateStr.substring(0, 7)} 월 데이터:`, summaries.length, '건');
       const daySummary = (summaries as DailySummary[]).find((s) => s.business_day === dateStr);
+      if (daySummary) {
+        console.log(`[DailyGraph] ${dateStr} 매출:`, daySummary.total_sales);
+      }
       const d = parseISO(dateStr + "T12:00:00");
       return {
         date: dateStr,
@@ -329,6 +335,7 @@ function DailyGraph() {
         sales: daySummary?.total_sales || 0,
       };
     });
+    console.log('[DailyGraph] 최종 그래프 데이터:', data);
     setDailyData(data);
   }, [selectedDate]);
 

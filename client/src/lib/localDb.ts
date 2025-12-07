@@ -2361,6 +2361,85 @@ export function getAllDailySummaries() {
   return rowsToObjects(result[0]);
 }
 
+// 진단 함수: 데이터베이스 상태 확인
+export function debugDatabaseStatus() {
+  if (!db) {
+    console.error('[DEBUG] Database not initialized!');
+    return { error: 'Database not initialized' };
+  }
+  
+  // locker_logs 테이블 상태
+  const logsResult = db.exec(`
+    SELECT 
+      COUNT(*) as total,
+      COUNT(CASE WHEN status = 'in_use' THEN 1 END) as in_use,
+      COUNT(CASE WHEN status = 'checked_out' THEN 1 END) as checked_out,
+      COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled
+    FROM locker_logs
+  `);
+  
+  // locker_daily_summaries 테이블 상태
+  const summariesResult = db.exec(`
+    SELECT COUNT(*) as total, 
+           COALESCE(SUM(total_sales), 0) as total_sales,
+           MIN(business_day) as oldest_day,
+           MAX(business_day) as newest_day
+    FROM locker_daily_summaries
+  `);
+  
+  // 최근 7일 요약 데이터
+  const recentSummaries = db.exec(`
+    SELECT business_day, total_visitors, total_sales 
+    FROM locker_daily_summaries 
+    ORDER BY business_day DESC 
+    LIMIT 10
+  `);
+  
+  const logs = logsResult.length > 0 ? logsResult[0].values[0] : [];
+  const summaries = summariesResult.length > 0 ? summariesResult[0].values[0] : [];
+  
+  console.log('='.repeat(60));
+  console.log('[DEBUG] 데이터베이스 상태 확인');
+  console.log('='.repeat(60));
+  console.log('\n📋 locker_logs 테이블:');
+  console.log(`  - 전체 레코드: ${logs[0]}건`);
+  console.log(`  - 사용중(in_use): ${logs[1]}건`);
+  console.log(`  - 퇴실완료(checked_out): ${logs[2]}건`);
+  console.log(`  - 취소(cancelled): ${logs[3]}건`);
+  
+  console.log('\n📊 locker_daily_summaries 테이블:');
+  console.log(`  - 전체 레코드: ${summaries[0]}건`);
+  console.log(`  - 총 매출: ${summaries[1]}원`);
+  console.log(`  - 가장 오래된 날: ${summaries[2]}`);
+  console.log(`  - 가장 최근 날: ${summaries[3]}`);
+  
+  console.log('\n📅 최근 10일 요약:');
+  if (recentSummaries.length > 0 && recentSummaries[0].values.length > 0) {
+    recentSummaries[0].values.forEach((row: any) => {
+      console.log(`  - ${row[0]}: 방문 ${row[1]}명, 매출 ${row[2]}원`);
+    });
+  } else {
+    console.log('  (데이터 없음)');
+  }
+  console.log('='.repeat(60));
+  
+  return {
+    locker_logs: {
+      total: logs[0],
+      in_use: logs[1],
+      checked_out: logs[2],
+      cancelled: logs[3]
+    },
+    daily_summaries: {
+      total: summaries[0],
+      total_sales: summaries[1],
+      oldest_day: summaries[2],
+      newest_day: summaries[3]
+    },
+    recent_summaries: recentSummaries.length > 0 ? rowsToObjects(recentSummaries[0]) : []
+  };
+}
+
 // Get daily summaries for a specific year-month (YYYY-MM)
 export function getDailySummariesByMonth(yearMonth: string) {
   if (!db) throw new Error('Database not initialized');

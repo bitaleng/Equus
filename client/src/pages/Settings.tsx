@@ -927,9 +927,13 @@ export default function Settings() {
       // Wait for test data to be created and saved
       await localDb.createAdditionalFeeTestData();
       
+      // 진단: 데이터베이스 상태 확인
+      const dbStatus = localDb.debugDatabaseStatus();
+      console.log('[Settings] 샘플 데이터 생성 후 DB 상태:', dbStatus);
+      
       toast({
         title: "테스트 데이터 생성 완료",
-        description: "다양한 상태의 락커 데이터가 생성되었습니다. 홈 페이지로 이동합니다.",
+        description: `락커 ${dbStatus.locker_logs?.total || 0}건, 요약 ${dbStatus.daily_summaries?.total || 0}건 생성됨. 콘솔에서 상세 확인 가능.`,
       });
       
       // Navigate to home instead of reloading (preserves business day context)
