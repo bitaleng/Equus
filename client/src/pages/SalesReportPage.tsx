@@ -9,8 +9,9 @@ import {
   getLockerLogsByDateRange,
   getAllDailySummaries,
   getSettings,
+  getCancelledSalesByMonth,
 } from "@/lib/localDb";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
@@ -37,6 +38,23 @@ interface DailySummary {
   night_visitors: number;
   cancellations: number;
   total_discount: number;
+}
+
+interface CancelledSales {
+  business_day: string;
+  cancelled_amount: number;
+  cancelled_count: number;
+}
+
+// Helper to get current date in Korea timezone
+function getKoreaDate(): Date {
+  return toZonedTime(new Date(), TIMEZONE);
+}
+
+// Helper to format date to YYYY-MM-DD in Korea timezone
+function formatKoreaDate(date: Date): string {
+  const koreaDate = toZonedTime(date, TIMEZONE);
+  return format(koreaDate, "yyyy-MM-dd");
 }
 
 function formatCurrency(amount: number): string {
@@ -75,14 +93,18 @@ export default function SalesReportPage() {
 }
 
 function SalesCalendar() {
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentMonth, setCurrentMonth] = useState(getKoreaDate());
   const [summaries, setSummaries] = useState<DailySummary[]>([]);
+  const [cancelledSales, setCancelledSales] = useState<CancelledSales[]>([]);
   const [viewType, setViewType] = useState<"sales" | "refund">("sales");
 
   useEffect(() => {
     const yearMonth = format(currentMonth, "yyyy-MM");
     const data = getDailySummariesByMonth(yearMonth);
     setSummaries(data as DailySummary[]);
+    
+    const cancelled = getCancelledSalesByMonth(yearMonth);
+    setCancelledSales(cancelled as CancelledSales[]);
   }, [currentMonth]);
 
   const summaryMap = useMemo(() => {
@@ -90,6 +112,12 @@ function SalesCalendar() {
     summaries.forEach((s) => map.set(s.business_day, s));
     return map;
   }, [summaries]);
+
+  const cancelledMap = useMemo(() => {
+    const map = new Map<string, CancelledSales>();
+    cancelledSales.forEach((c) => map.set(c.business_day, c));
+    return map;
+  }, [cancelledSales]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -103,7 +131,7 @@ function SalesCalendar() {
   }
 
   const totalSales = summaries.reduce((sum, s) => sum + (s.total_sales || 0), 0);
-  const totalCancellations = summaries.reduce((sum, s) => sum + (s.cancellations || 0), 0);
+  const totalCancelledAmount = cancelledSales.reduce((sum, c) => sum + (c.cancelled_amount || 0), 0);
 
   const salesValues = summaries.filter(s => s.total_sales > 0).map(s => s.total_sales);
   const maxSales = salesValues.length > 0 ? Math.max(...salesValues) : 0;
@@ -136,7 +164,7 @@ function SalesCalendar() {
           </div>
           <div className="flex items-center gap-4">
             <span className="text-lg font-bold" data-testid="text-total-sales">
-              총 {viewType === "sales" ? "실매출금액" : "반품금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancellations)}원
+              총 {viewType === "sales" ? "실매출금액" : "취소금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancelledAmount)}원
             </span>
             <div className="flex gap-2">
               <Button
@@ -153,7 +181,7 @@ function SalesCalendar() {
                 onClick={() => setViewType("refund")}
                 data-testid="button-view-refund"
               >
-                반품금액
+                취소금액
               </Button>
             </div>
           </div>
@@ -185,7 +213,7 @@ function SalesCalendar() {
                 const isMax = dateStr === maxDay && sales > 0;
                 const isMin = dateStr === minDay && sales > 0 && salesValues.length > 1;
                 const dayOfWeek = getDay(day);
-                const isToday = format(new Date(), "yyyy-MM-dd") === dateStr;
+                const isToday = formatKoreaDate(new Date()) === dateStr;
 
                 return (
                   <div
@@ -207,11 +235,17 @@ function SalesCalendar() {
                         {formatCurrency(sales)}
                       </div>
                     )}
-                    {data && viewType === "refund" && data.cancellations > 0 && (
-                      <div className="text-sm mt-1 text-red-500">
-                        -{data.cancellations}건
-                      </div>
-                    )}
+                    {viewType === "refund" && (() => {
+                      const cancelled = cancelledMap.get(dateStr);
+                      if (cancelled && cancelled.cancelled_amount > 0) {
+                        return (
+                          <div className="text-sm mt-1 text-red-500">
+                            -{formatCurrency(cancelled.cancelled_amount)}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 );
               })}
@@ -261,25 +295,23 @@ function SalesGraph() {
 
 function DailyGraph() {
   const [subTab, setSubTab] = useState<"daily" | "hourly">("daily");
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(getKoreaDate());
   const [dailyData, setDailyData] = useState<any[]>([]);
   const [hourlyData, setHourlyData] = useState<any[]>([]);
   const settings = getSettings();
   const businessDayStartHour = settings.businessDayStartHour || 10;
 
   useEffect(() => {
-    const today = selectedDate;
     const dates: string[] = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
+      const d = subDays(selectedDate, i);
       dates.push(format(d, "yyyy-MM-dd"));
     }
 
     const data = dates.map((dateStr) => {
       const summaries = getDailySummariesByMonth(dateStr.substring(0, 7));
       const daySummary = (summaries as DailySummary[]).find((s) => s.business_day === dateStr);
-      const d = parseISO(dateStr);
+      const d = parseISO(dateStr + "T12:00:00");
       return {
         date: dateStr,
         label: format(d, "dd일(E)", { locale: ko }),
@@ -329,13 +361,13 @@ function DailyGraph() {
           <CardTitle className="text-lg">일별/시간별 매출</CardTitle>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">기간선택</span>
-            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; })}>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => subDays(d, 1))}>
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="font-medium" data-testid="text-selected-date">
               {format(selectedDate, "yyyy. M. d(E)", { locale: ko })}
             </span>
-            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; })}>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => addDays(d, 1))}>
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -402,7 +434,7 @@ function WeeklyGraph() {
   const [subTab, setSubTab] = useState<"weekly" | "dayOfWeek">("weekly");
   const [weeklyData, setWeeklyData] = useState<any[]>([]);
   const [dayOfWeekData, setDayOfWeekData] = useState<any[]>([]);
-  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(getKoreaDate(), { weekStartsOn: 1 }));
 
   useEffect(() => {
     const weeks: any[] = [];
@@ -464,7 +496,7 @@ function WeeklyGraph() {
             <span className="font-medium">
               {format(selectedWeekStart, "yyyy.M.d(E)", { locale: ko })}~{format(endOfWeek(selectedWeekStart, { weekStartsOn: 1 }), "M.d(E)", { locale: ko })}
             </span>
-            <Button variant="ghost" size="icon" onClick={() => setSelectedWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; })}>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedWeekStart(d => addDays(d, 7))}>
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -520,7 +552,7 @@ function WeeklyGraph() {
 }
 
 function MonthlyGraph() {
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(getKoreaDate().getFullYear());
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
 
   useEffect(() => {
@@ -606,7 +638,7 @@ function YearlyGraph() {
     }));
 
     if (data.length === 0) {
-      const currentYear = new Date().getFullYear();
+      const currentYear = getKoreaDate().getFullYear();
       for (let y = currentYear - 2; y <= currentYear; y++) {
         data.push({ year: `${y}년`, sales: 0 });
       }

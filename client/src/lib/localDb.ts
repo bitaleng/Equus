@@ -2381,6 +2381,27 @@ export function getLockerLogsByBusinessDay(businessDay: string) {
   return rowsToObjects(result[0]);
 }
 
+// Get cancelled sales amount for a specific month (YYYY-MM)
+export function getCancelledSalesByMonth(yearMonth: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT 
+      business_day,
+      COALESCE(SUM(final_price), 0) as cancelled_amount,
+      COUNT(*) as cancelled_count
+     FROM locker_logs 
+     WHERE business_day LIKE ? AND (status = 'cancelled' OR cancelled = 1)
+     GROUP BY business_day
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 // Get locker logs for a date range (for reports)
 export function getLockerLogsByDateRange(startDate: string, endDate: string) {
   if (!db) throw new Error('Database not initialized');
