@@ -3549,6 +3549,71 @@ export async function createAdditionalFeeTestData() {
         updateDailySummary(businessDay);
       }
       
+      // ===== GENERATE PAST COMPLETED DATA (checked_out) for sales reports =====
+      console.log('\n과거 퇴실 완료 데이터 생성 (매출 리포트용)');
+      
+      for (let pastDays = 0; pastDays <= 7; pastDays++) {
+        const pastDate = new Date();
+        pastDate.setDate(pastDate.getDate() - pastDays);
+        
+        // 과거 날짜의 데이터 개수 (오늘은 적게, 과거로 갈수록 많게)
+        const pastEntries = pastDays === 0 ? randomInt(5, 15) : randomInt(20, 40);
+        
+        for (let i = 0; i < pastEntries; i++) {
+          let lockerNumber: number;
+          do {
+            lockerNumber = randomInt(1, 80);
+          } while (currentUsedLockers.has(lockerNumber));
+          
+          const hour = randomInt(10, 23);
+          const minute = randomInt(0, 59);
+          
+          const entryDate = new Date(pastDate);
+          entryDate.setHours(hour, minute, 0, 0);
+          
+          const timeType = getTimeType(entryDate);
+          const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+          
+          const optionType = randomElement(optionTypes);
+          let optionAmount = 0;
+          let finalPrice = basePrice;
+          
+          if (optionType === 'discount') {
+            optionAmount = -discountAmount;
+            finalPrice = basePrice - discountAmount;
+          } else if (optionType === 'foreigner') {
+            optionAmount = foreignerPrice - basePrice;
+            finalPrice = foreignerPrice;
+          }
+          
+          const paymentMethod = randomElement(paymentMethods);
+          const paymentCash = paymentMethod === 'cash' ? finalPrice : 0;
+          const paymentCard = paymentMethod === 'card' ? finalPrice : 0;
+          const paymentTransfer = paymentMethod === 'transfer' ? finalPrice : 0;
+          
+          const exitDate = new Date(entryDate.getTime() + randomInt(30, 180) * 60000);
+          
+          const id = generateId();
+          const businessDay = getBusinessDay(entryDate, businessDayStartHour);
+          
+          db!.run(
+            `INSERT INTO locker_logs 
+            (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, 
+             option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
+             payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'checked_out', 0, ?, ?, ?, ?, ?, ?, 0)`,
+            [id, lockerNumber, entryDate.toISOString(), exitDate.toISOString(), businessDay, 
+             timeType, basePrice, optionType, optionAmount, finalPrice, '테스트 데이터 (퇴실완료)', 
+             paymentMethod, paymentCash, paymentCard, paymentTransfer, null]
+          );
+          
+          totalGenerated++;
+          updateDailySummary(businessDay);
+        }
+        
+        console.log(`  ${pastDays === 0 ? '오늘' : pastDays + '일 전'}: ${pastEntries}건 생성`);
+      }
+      
       saveDatabase();
       
       // Verify additional fee pending lockers (in_use with expected fees)
