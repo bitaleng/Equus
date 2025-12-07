@@ -359,13 +359,13 @@ function DailyGraph() {
         }
       });
 
-      // 영업일 기준 순서대로 표시 (10시~23시, 0시~9시)
+      // 영업일 기준 순서대로 표시 (10시~23시, 익일0시~익일9시)
       const data: any[] = [];
       for (let h = businessDayStartHour; h < 24; h++) {
-        data.push({ hour: `${h}시`, sales: hourlyMap.get(h) || 0 });
+        data.push({ hour: `${h}시`, sales: hourlyMap.get(h) || 0, isNextDay: false });
       }
       for (let h = 0; h < businessDayStartHour; h++) {
-        data.push({ hour: `${h}시`, sales: hourlyMap.get(h) || 0 });
+        data.push({ hour: `익일${h}시`, sales: hourlyMap.get(h) || 0, isNextDay: true });
       }
 
       console.log(`[HourlyGraph] 시간대별 데이터:`, data.filter(d => d.sales > 0));
@@ -435,7 +435,7 @@ function DailyGraph() {
           <TabsContent value="hourly" className="mt-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">날짜선택</span>
+                <span className="text-sm text-muted-foreground">영업일선택</span>
                 <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => subDays(d, 1))} data-testid="button-hourly-prev-day">
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
@@ -447,7 +447,7 @@ function DailyGraph() {
                 </Button>
               </div>
               <div className="text-xs text-muted-foreground">
-                정산기준: {format(selectedDate, "M/d")} {businessDayStartHour}:00 ~ {format(addDays(selectedDate, 1), "M/d")} {businessDayStartHour}:00
+                정산기준: {format(selectedDate, "M/d")} {businessDayStartHour}:00 ~ 익일 {businessDayStartHour}:00
               </div>
             </div>
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
