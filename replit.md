@@ -14,10 +14,38 @@ Preferred communication style: Simple, everyday language.
 The application uses React with TypeScript, Wouter for routing, and Vite for building. UI components are styled with shadcn/ui and Tailwind CSS, prioritizing accessibility and customizability. The layout is optimized for desktop/tablet with a touch-first design, featuring high-contrast visuals and tactile feedback.
 
 ### Technical Implementations
-The system operates as a PWA with offline capabilities, utilizing a Service Worker for caching. All operations are client-side, with no backend API calls. Business logic includes custom business day calculations (e.g., 10:00 AM boundary) and time-based pricing, with all datetime operations using Korea Standard Time (KST) via `date-fns-tz`. Data is stored locally using SQLite WASM (`sql.js`) persisted in `localStorage`, across tables like `locker_logs`, `locker_daily_summaries`, `system_metadata`, `expenses`, `closing_days`, and `scan_logs`.
+The system now operates as a full-stack application with both offline (PWA) and online (smart locker) capabilities:
+
+**Offline Mode (PWA):**
+- Service Worker for caching and offline operation
+- Local SQLite WASM (`sql.js`) persisted in `localStorage` for customer entries, sales, expenses
+- Business day calculations (10:00 AM boundary) and time-based pricing
+- All datetime operations using Korea Standard Time (KST) via `date-fns-tz`
+
+**Online Mode (Smart Locker System):**
+- Express.js backend server on port 5000
+- PostgreSQL database via Drizzle ORM for hardware device management
+- REST API endpoints for locker control and device management
+- WebSocket server for real-time communication:
+  - `/ws/lockers` - Client real-time updates for locker status changes
+  - Hardware controller WebSocket with HMAC authentication
+- Smart locker state machine: idle → reserved → shoe_unlocked → key_removed → wardrobe_in_use → checkout_pending → locked
+
+**Database Schema (PostgreSQL):**
+- `hardware_devices` - Hardware controller registration and status
+- `locker_hardware` - Physical locker hardware state (lock state, door state, key presence)
+- `locker_commands` - Command queue for hardware operations
+- `locker_events` - Event log for hardware state changes
 
 ### Feature Specifications
 Key features include:
+- **Smart Locker Hardware Integration:**
+  - Hardware device registration and management via Settings page
+  - Real-time WebSocket communication with locker controllers
+  - HMAC-authenticated API for hardware devices
+  - State machine for locker occupancy tracking (shoe locker → wardrobe flow)
+  - Command queue for hardware operations (unlock_shoe, lock_shoe, unlock_wardrobe, lock_wardrobe)
+  - Event logging for hardware state changes
 - Real-time locker status display with a color-coded system for various states (in-use, vacant, overdue, previous day entry).
 - Detailed daily sales aggregation, differentiating between entry fees, additional charges, and rental revenues.
 - Comprehensive expense tracking and categorization.

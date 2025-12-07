@@ -13,7 +13,7 @@ import { z } from "zod";
 import CryptoJS from "crypto-js";
 
 // HMAC Authentication Middleware for Device API
-function deviceAuth(req: Request, res: Response, next: NextFunction) {
+async function deviceAuth(req: Request, res: Response, next: NextFunction) {
   const deviceId = req.headers["x-device-id"] as string;
   const timestamp = req.headers["x-timestamp"] as string;
   const signature = req.headers["x-signature"] as string;
@@ -29,9 +29,29 @@ function deviceAuth(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: "Request timestamp expired" });
   }
 
-  // Verify signature (in production, fetch shared secret from device record)
-  // For now, use a simple validation
-  next();
+  try {
+    // Fetch device and verify shared secret
+    const device = await storage.getDevice(deviceId);
+    if (!device) {
+      return res.status(401).json({ error: "Unknown device" });
+    }
+
+    // Verify HMAC signature: HMAC-SHA256(deviceId + timestamp + body, sharedSecret)
+    const body = JSON.stringify(req.body || {});
+    const message = `${deviceId}${timestamp}${body}`;
+    const expectedSignature = CryptoJS.HmacSHA256(message, device.sharedSecret).toString(CryptoJS.enc.Hex);
+
+    if (signature !== expectedSignature) {
+      return res.status(401).json({ error: "Invalid signature" });
+    }
+
+    // Attach device info to request for downstream handlers
+    (req as any).device = device;
+    next();
+  } catch (error) {
+    console.error("Device auth error:", error);
+    return res.status(500).json({ error: "Authentication failed" });
+  }
 }
 
 export function registerRoutes(app: Express) {

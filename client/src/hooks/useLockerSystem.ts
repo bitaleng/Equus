@@ -87,11 +87,11 @@ export function useLockerSystem() {
         console.log("[WS] Server confirmed connection");
         break;
       case "locker_update":
-        queryClient.invalidateQueries({ queryKey: ["/api/lockers/status"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/lockers/hardware"] });
         break;
       case "command_result":
         console.log("[WS] Command result:", message);
-        queryClient.invalidateQueries({ queryKey: ["/api/lockers/commands"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/lockers/hardware"] });
         break;
       case "error":
         console.error("[WS] Server error:", message.error);
