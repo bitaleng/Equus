@@ -31,19 +31,19 @@ const TIMEZONE = "Asia/Seoul";
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 
 interface DailySummary {
-  business_day: string;
-  total_sales: number;
-  total_visitors: number;
-  day_visitors: number;
-  night_visitors: number;
+  businessDay: string;
+  totalSales: number;
+  totalVisitors: number;
+  dayVisitors: number;
+  nightVisitors: number;
   cancellations: number;
-  total_discount: number;
+  totalDiscount: number;
 }
 
 interface CancelledSales {
-  business_day: string;
-  cancelled_amount: number;
-  cancelled_count: number;
+  businessDay: string;
+  cancelledAmount: number;
+  cancelledCount: number;
 }
 
 // Helper to get current date in Korea timezone
@@ -109,13 +109,13 @@ function SalesCalendar() {
 
   const summaryMap = useMemo(() => {
     const map = new Map<string, DailySummary>();
-    summaries.forEach((s) => map.set(s.business_day, s));
+    summaries.forEach((s) => map.set(s.businessDay, s));
     return map;
   }, [summaries]);
 
   const cancelledMap = useMemo(() => {
     const map = new Map<string, CancelledSales>();
-    cancelledSales.forEach((c) => map.set(c.business_day, c));
+    cancelledSales.forEach((c) => map.set(c.businessDay, c));
     return map;
   }, [cancelledSales]);
 
@@ -130,20 +130,20 @@ function SalesCalendar() {
     weeks.push(calendarDays.slice(i, i + 7));
   }
 
-  const totalSales = summaries.reduce((sum, s) => sum + (s.total_sales || 0), 0);
-  const totalCancelledAmount = cancelledSales.reduce((sum, c) => sum + (c.cancelled_amount || 0), 0);
+  const totalSales = summaries.reduce((sum, s) => sum + (s.totalSales || 0), 0);
+  const totalCancelledAmount = cancelledSales.reduce((sum, c) => sum + (c.cancelledAmount || 0), 0);
 
-  const salesValues = summaries.filter(s => s.total_sales > 0).map(s => s.total_sales);
+  const salesValues = summaries.filter(s => s.totalSales > 0).map(s => s.totalSales);
   const maxSales = salesValues.length > 0 ? Math.max(...salesValues) : 0;
   const minSales = salesValues.length > 0 ? Math.min(...salesValues) : 0;
-  const maxDay = summaries.find(s => s.total_sales === maxSales)?.business_day;
-  const minDay = summaries.find(s => s.total_sales === minSales && s.total_sales > 0)?.business_day;
+  const maxDay = summaries.find(s => s.totalSales === maxSales)?.businessDay;
+  const minDay = summaries.find(s => s.totalSales === minSales && s.totalSales > 0)?.businessDay;
 
   const weeklyTotals: number[] = weeks.map(week => {
     return week.reduce((sum, day) => {
       const dateStr = format(day, "yyyy-MM-dd");
       const data = summaryMap.get(dateStr);
-      return sum + (data?.total_sales || 0);
+      return sum + (data?.totalSales || 0);
     }, 0);
   });
 
@@ -209,7 +209,7 @@ function SalesCalendar() {
                 const dateStr = format(day, "yyyy-MM-dd");
                 const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
                 const data = summaryMap.get(dateStr);
-                const sales = data?.total_sales || 0;
+                const sales = data?.totalSales || 0;
                 const isMax = dateStr === maxDay && sales > 0;
                 const isMin = dateStr === minDay && sales > 0 && salesValues.length > 1;
                 const dayOfWeek = getDay(day);
@@ -237,10 +237,10 @@ function SalesCalendar() {
                     )}
                     {viewType === "refund" && (() => {
                       const cancelled = cancelledMap.get(dateStr);
-                      if (cancelled && cancelled.cancelled_amount > 0) {
+                      if (cancelled && cancelled.cancelledAmount > 0) {
                         return (
                           <div className="text-sm mt-1 text-red-500">
-                            -{formatCurrency(cancelled.cancelled_amount)}
+                            -{formatCurrency(cancelled.cancelledAmount)}
                           </div>
                         );
                       }
@@ -324,15 +324,15 @@ function DailyGraph() {
     const data = dates.map((dateStr) => {
       const summaries = getDailySummariesByMonth(dateStr.substring(0, 7));
       console.log(`[DailyGraph] ${dateStr.substring(0, 7)} 월 데이터:`, summaries.length, '건');
-      const daySummary = (summaries as DailySummary[]).find((s) => s.business_day === dateStr);
+      const daySummary = (summaries as DailySummary[]).find((s) => s.businessDay === dateStr);
       if (daySummary) {
-        console.log(`[DailyGraph] ${dateStr} 매출:`, daySummary.total_sales);
+        console.log(`[DailyGraph] ${dateStr} 매출:`, daySummary.totalSales);
       }
       const d = parseISO(dateStr + "T12:00:00");
       return {
         date: dateStr,
         label: format(d, "dd일(E)", { locale: ko }),
-        sales: daySummary?.total_sales || 0,
+        sales: daySummary?.totalSales || 0,
       };
     });
     console.log('[DailyGraph] 최종 그래프 데이터:', data);
@@ -464,8 +464,8 @@ function WeeklyGraph() {
       
       const summaries = getAllDailySummaries() as DailySummary[];
       const weekSales = summaries
-        .filter(s => s.business_day >= startStr && s.business_day <= endStr)
-        .reduce((sum, s) => sum + (s.total_sales || 0), 0);
+        .filter(s => s.businessDay >= startStr && s.businessDay <= endStr)
+        .reduce((sum, s) => sum + (s.totalSales || 0), 0);
 
       weeks.push({
         week: format(weekStart, "M/d") + "~" + format(weekEnd, "M/d"),
@@ -482,17 +482,17 @@ function WeeklyGraph() {
       const endStr = format(weekEnd, "yyyy-MM-dd");
 
       const summaries = getAllDailySummaries() as DailySummary[];
-      const weekData = summaries.filter(s => s.business_day >= startStr && s.business_day <= endStr);
+      const weekData = summaries.filter(s => s.businessDay >= startStr && s.businessDay <= endStr);
 
       const dayData = DAY_NAMES.slice(1).concat(DAY_NAMES[0]).map((dayName, idx) => {
         const targetDay = idx === 6 ? 0 : idx + 1;
         const daySummary = weekData.find(s => {
-          const d = parseISO(s.business_day);
+          const d = parseISO(s.businessDay);
           return getDay(d) === targetDay;
         });
         return {
           day: dayName + "요일",
-          sales: daySummary?.total_sales || 0,
+          sales: daySummary?.totalSales || 0,
         };
       });
 
@@ -578,10 +578,10 @@ function MonthlyGraph() {
     const monthlyMap = new Map<string, number>();
 
     summaries.forEach((s) => {
-      if (!s.business_day) return;
-      const month = s.business_day.substring(0, 7);
+      if (!s.businessDay) return;
+      const month = s.businessDay.substring(0, 7);
       if (month.startsWith(selectedYear.toString())) {
-        monthlyMap.set(month, (monthlyMap.get(month) || 0) + (s.total_sales || 0));
+        monthlyMap.set(month, (monthlyMap.get(month) || 0) + (s.totalSales || 0));
       }
     });
 
@@ -646,9 +646,9 @@ function YearlyGraph() {
     const yearlyMap = new Map<number, number>();
 
     summaries.forEach((s) => {
-      if (!s.business_day) return;
-      const year = parseInt(s.business_day.substring(0, 4));
-      yearlyMap.set(year, (yearlyMap.get(year) || 0) + (s.total_sales || 0));
+      if (!s.businessDay) return;
+      const year = parseInt(s.businessDay.substring(0, 4));
+      yearlyMap.set(year, (yearlyMap.get(year) || 0) + (s.totalSales || 0));
     });
 
     const years = Array.from(yearlyMap.keys()).sort();
