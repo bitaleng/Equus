@@ -344,6 +344,8 @@ function DailyGraph() {
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       const logs = getLockerLogsByBusinessDay(dateStr);
       
+      console.log(`[HourlyGraph] ${dateStr} 영업일 로그:`, logs.length, '건');
+      
       const hourlyMap = new Map<number, number>();
       for (let h = 0; h < 24; h++) {
         hourlyMap.set(h, 0);
@@ -357,6 +359,7 @@ function DailyGraph() {
         }
       });
 
+      // 영업일 기준 순서대로 표시 (10시~23시, 0시~9시)
       const data: any[] = [];
       for (let h = businessDayStartHour; h < 24; h++) {
         data.push({ hour: `${h}시`, sales: hourlyMap.get(h) || 0 });
@@ -365,6 +368,7 @@ function DailyGraph() {
         data.push({ hour: `${h}시`, sales: hourlyMap.get(h) || 0 });
       }
 
+      console.log(`[HourlyGraph] 시간대별 데이터:`, data.filter(d => d.sales > 0));
       setHourlyData(data);
     }
   }, [subTab, selectedDate, businessDayStartHour]);
