@@ -3050,10 +3050,10 @@ export function createTestData() {
   // 4. 과거 데이터는 퇴실 완료된 데이터로만 생성 (추가요금 방지)
   // 영업일 기준(10:00~익일10:00)으로 24시간 전체에 데이터 생성
   for (let pastDays = 1; pastDays <= 7; pastDays++) {
-    // 영업일 기준 날짜 계산
-    const businessDayDate = new Date();
-    businessDayDate.setDate(businessDayDate.getDate() - pastDays);
-    const businessDayStr = getBusinessDay(new Date(businessDayDate.setHours(12, 0, 0, 0))); // 정오 기준으로 영업일 계산
+    // 영업일 기준 날짜 계산 (정오 기준)
+    const baseDate = new Date();
+    baseDate.setDate(baseDate.getDate() - pastDays);
+    baseDate.setHours(12, 0, 0, 0); // 정오로 설정하여 영업일 확정
     
     const pastEntries = randomInt(10, 30);
     
@@ -3067,19 +3067,17 @@ export function createTestData() {
       let entryDate: Date;
       if (isNextDayHour) {
         // 익일 00:00~09:59
-        const nextDay = new Date(businessDayDate);
-        nextDay.setDate(nextDay.getDate() + 1);
+        entryDate = new Date(baseDate);
+        entryDate.setDate(entryDate.getDate() + 1);
         const hour = randomInt(0, 9);
         const minute = randomInt(0, 59);
-        nextDay.setHours(hour, minute, 0, 0);
-        entryDate = nextDay;
+        entryDate.setHours(hour, minute, 0, 0);
       } else {
         // 당일 10:00~23:59
-        const sameDay = new Date(businessDayDate);
+        entryDate = new Date(baseDate);
         const hour = randomInt(10, 23);
         const minute = randomInt(0, 59);
-        sameDay.setHours(hour, minute, 0, 0);
-        entryDate = sameDay;
+        entryDate.setHours(hour, minute, 0, 0);
       }
       
       const timeType = getTimeType(entryDate);
