@@ -13,6 +13,7 @@ import ScanLogsPage from "@/pages/ScanLogsPage";
 import Settings from "@/pages/Settings";
 import ExpensesPage from "@/pages/ExpensesPage";
 import ClosingPage from "@/pages/ClosingPage";
+import SalesReportPage from "@/pages/SalesReportPage";
 import NotFound from "@/pages/not-found";
 import { initDatabase, deleteOldData, getSettings } from "@/lib/localDb";
 import { getBusinessDay } from "@shared/businessDay";
@@ -30,6 +31,7 @@ function Router() {
       <Route path="/settings" component={Settings} />
       <Route path="/expenses" component={ExpensesPage} />
       <Route path="/closing" component={ClosingPage} />
+      <Route path="/sales-report" component={SalesReportPage} />
       <Route component={NotFound} />
     </Switch>
   );

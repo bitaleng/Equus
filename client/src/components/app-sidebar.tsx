@@ -1,4 +1,4 @@
-import { Home, FileText, Settings, Receipt, Calculator, ScanBarcode } from "lucide-react";
+import { Home, FileText, Settings, Receipt, Calculator, ScanBarcode, BarChart3 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -40,6 +40,11 @@ const items = [
     title: "지출관리",
     url: "/expenses",
     icon: Receipt,
+  },
+  {
+    title: "매출리포트",
+    url: "/sales-report",
+    icon: BarChart3,
   },
 ];
 

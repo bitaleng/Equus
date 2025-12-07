@@ -2336,6 +2336,67 @@ export function updateDailySummary(businessDay: string) {
   );
 }
 
+// Get all daily summaries for sales reports
+export function getAllDailySummaries() {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    'SELECT * FROM locker_daily_summaries ORDER BY business_day DESC'
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
+// Get daily summaries for a specific year-month (YYYY-MM)
+export function getDailySummariesByMonth(yearMonth: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT * FROM locker_daily_summaries 
+     WHERE business_day LIKE ?
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
+// Get locker logs by business day for hourly analysis
+export function getLockerLogsByBusinessDay(businessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT * FROM locker_logs 
+     WHERE business_day = ? AND status != 'cancelled'
+     ORDER BY entry_time ASC`,
+    [businessDay]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
+// Get locker logs for a date range (for reports)
+export function getLockerLogsByDateRange(startDate: string, endDate: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT * FROM locker_logs 
+     WHERE business_day >= ? AND business_day <= ? AND status != 'cancelled'
+     ORDER BY entry_time ASC`,
+    [startDate, endDate]
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 // Locker Groups operations
 export function getLockerGroups() {
   if (!db) throw new Error('Database not initialized');
