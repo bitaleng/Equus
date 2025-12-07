@@ -760,6 +760,18 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 18: Clean up invalid daily summaries with NULL or empty business_day
+    try {
+      const invalidResult = db.exec(`SELECT COUNT(*) FROM locker_daily_summaries WHERE business_day IS NULL OR business_day = ''`);
+      const invalidCount = invalidResult.length > 0 ? invalidResult[0].values[0][0] : 0;
+      if (invalidCount && Number(invalidCount) > 0) {
+        db.run(`DELETE FROM locker_daily_summaries WHERE business_day IS NULL OR business_day = ''`);
+        console.log(`Cleaned up ${invalidCount} invalid daily summary records with NULL business_day`);
+      }
+    } catch (e) {
+      console.error('Failed to cleanup invalid daily summaries:', e);
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;

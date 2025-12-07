@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
 import {
   getDailySummariesByMonth,
   getLockerLogsByBusinessDay,
@@ -265,9 +265,20 @@ function SalesCalendar() {
 
 function SalesGraph() {
   const [graphType, setGraphType] = useState<"daily" | "weekly" | "monthly" | "yearly">("daily");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = () => {
+    setRefreshKey(k => k + 1);
+  };
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={handleRefresh} data-testid="button-refresh-graph">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          새로고침
+        </Button>
+      </div>
       <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)}>
         <TabsList>
           <TabsTrigger value="daily" data-testid="tab-graph-daily">일간</TabsTrigger>
@@ -277,16 +288,16 @@ function SalesGraph() {
         </TabsList>
 
         <TabsContent value="daily">
-          <DailyGraph />
+          <DailyGraph key={`daily-${refreshKey}`} />
         </TabsContent>
         <TabsContent value="weekly">
-          <WeeklyGraph />
+          <WeeklyGraph key={`weekly-${refreshKey}`} />
         </TabsContent>
         <TabsContent value="monthly">
-          <MonthlyGraph />
+          <MonthlyGraph key={`monthly-${refreshKey}`} />
         </TabsContent>
         <TabsContent value="yearly">
-          <YearlyGraph />
+          <YearlyGraph key={`yearly-${refreshKey}`} />
         </TabsContent>
       </Tabs>
     </div>
@@ -560,6 +571,7 @@ function MonthlyGraph() {
     const monthlyMap = new Map<string, number>();
 
     summaries.forEach((s) => {
+      if (!s.business_day) return;
       const month = s.business_day.substring(0, 7);
       if (month.startsWith(selectedYear.toString())) {
         monthlyMap.set(month, (monthlyMap.get(month) || 0) + (s.total_sales || 0));
@@ -627,6 +639,7 @@ function YearlyGraph() {
     const yearlyMap = new Map<number, number>();
 
     summaries.forEach((s) => {
+      if (!s.business_day) return;
       const year = parseInt(s.business_day.substring(0, 4));
       yearlyMap.set(year, (yearlyMap.get(year) || 0) + (s.total_sales || 0));
     });
