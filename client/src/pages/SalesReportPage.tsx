@@ -157,12 +157,18 @@ function SalesCalendar() {
   const maxDay = summaries.find(s => s.totalSales === maxSales)?.businessDay;
   const minDay = summaries.find(s => s.totalSales === minSales && s.totalSales > 0)?.businessDay;
 
-  const weeklyTotals: number[] = weeks.map(week => {
-    return week.reduce((sum, day) => {
+  const weeklyTotals = weeks.map(week => {
+    return week.reduce((acc, day) => {
       const dateStr = format(day, "yyyy-MM-dd");
       const data = summaryMap.get(dateStr);
-      return sum + (data?.totalSales || 0);
-    }, 0);
+      const payment = paymentMap.get(dateStr);
+      return {
+        total: acc.total + (data?.totalSales || 0),
+        cash: acc.cash + (payment?.cash || 0),
+        card: acc.card + (payment?.card || 0),
+        transfer: acc.transfer + (payment?.transfer || 0),
+      };
+    }, { total: 0, cash: 0, card: 0, transfer: 0 });
   });
 
   return (
@@ -281,8 +287,15 @@ function SalesCalendar() {
               <div className="min-h-[100px] p-2 bg-muted/30 flex flex-col justify-center items-center">
                 <div className="text-xs text-muted-foreground">{weekIdx + 1}주</div>
                 <div className="font-semibold text-sm">
-                  {weeklyTotals[weekIdx] > 0 ? formatCurrency(weeklyTotals[weekIdx]) : 0}
+                  {weeklyTotals[weekIdx].total > 0 ? formatCurrency(weeklyTotals[weekIdx].total) : 0}
                 </div>
+                {weeklyTotals[weekIdx].total > 0 && viewType === "sales" && (
+                  <div className="mt-1 text-[10px] text-muted-foreground leading-tight space-y-0.5 text-center">
+                    {weeklyTotals[weekIdx].cash > 0 && <div>현금 {formatCurrency(weeklyTotals[weekIdx].cash)}</div>}
+                    {weeklyTotals[weekIdx].card > 0 && <div>카드 {formatCurrency(weeklyTotals[weekIdx].card)}</div>}
+                    {weeklyTotals[weekIdx].transfer > 0 && <div>이체 {formatCurrency(weeklyTotals[weekIdx].transfer)}</div>}
+                  </div>
+                )}
               </div>
             </div>
           ))}
