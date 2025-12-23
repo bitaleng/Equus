@@ -193,16 +193,24 @@ export default function LockerOptionsDialog({
   }, [customerMemo]);
 
   // Reset checkoutResolved and additional fee discount when dialog opens
+  // Load saved additional_fee_paid status from DB
   useEffect(() => {
     if (open) {
-      setCheckoutResolved(false);
-      setAdditionalFeeResolved(false);
+      // 기존 입실 상태인 경우 DB에서 추가요금 완납 상태 로드
+      if (isInUse && currentLockerLogId) {
+        const isPaid = localDb.getLockerLogAdditionalFeePaid(currentLockerLogId);
+        setCheckoutResolved(isPaid);
+        setAdditionalFeeResolved(isPaid);
+      } else {
+        setCheckoutResolved(false);
+        setAdditionalFeeResolved(false);
+      }
       setAdditionalFeeFullDiscount(false);
       setAdditionalFeePartialDiscount(false);
       setAdditionalFeeDiscount("");
       initialOpenRef.current = true;
     }
-  }, [open]);
+  }, [open, isInUse, currentLockerLogId]);
   
   // Initialize payment fields when dialog opens
   useEffect(() => {
@@ -831,6 +839,12 @@ export default function LockerOptionsDialog({
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
       localDb.updateLockerLogMemo(currentLockerLogId, customerMemo);
+      
+      // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
+      // 이렇게 하면 "수정저장"을 눌러도 추가요금 완납 상태가 유지됨
+      if (checkoutResolved || additionalFeeResolved) {
+        localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true);
+      }
     }
     
     // Save return_completed status for rental items

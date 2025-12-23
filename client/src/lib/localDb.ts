@@ -129,6 +129,7 @@ function migrateDatabase() {
               payment_transfer INTEGER,
               rental_items TEXT,
               additional_fees INTEGER DEFAULT 0,
+              additional_fee_paid INTEGER DEFAULT 0,
               parent_locker INTEGER,
               deferred_payment INTEGER DEFAULT 0,
               customer_memo TEXT
@@ -136,9 +137,9 @@ function migrateDatabase() {
           `);
           
           // Copy data back (explicitly map columns to handle schema changes)
-          db.run(`INSERT INTO locker_logs (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items, additional_fees, parent_locker, deferred_payment, customer_memo) 
+          db.run(`INSERT INTO locker_logs (id, locker_number, entry_time, exit_time, business_day, time_type, base_price, option_type, option_amount, final_price, status, cancelled, notes, payment_method, payment_cash, payment_card, payment_transfer, rental_items, additional_fees, additional_fee_paid, parent_locker, deferred_payment, customer_memo) 
             SELECT id, locker_number, entry_time, exit_time, business_day, time_type, base_price, option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-              COALESCE(payment_cash, 0), COALESCE(payment_card, 0), COALESCE(payment_transfer, 0), rental_items, COALESCE(additional_fees, 0), parent_locker, COALESCE(deferred_payment, 0), customer_memo 
+              COALESCE(payment_cash, 0), COALESCE(payment_card, 0), COALESCE(payment_transfer, 0), rental_items, COALESCE(additional_fees, 0), 0, parent_locker, COALESCE(deferred_payment, 0), customer_memo 
             FROM locker_logs_backup`);
           
           // Drop backup table
@@ -206,6 +207,14 @@ function migrateDatabase() {
     try {
       db.run(`ALTER TABLE locker_logs ADD COLUMN additional_fees INTEGER DEFAULT 0`);
       console.log('Added additional_fees column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
+    // Step 4.6.1: Add additional_fee_paid column to locker_logs (for tracking if additional fee was paid before checkout)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN additional_fee_paid INTEGER DEFAULT 0`);
+      console.log('Added additional_fee_paid column to locker_logs');
     } catch (e) {
       // Column already exists, ignore
     }
@@ -813,6 +822,7 @@ function createTables() {
       payment_transfer INTEGER,
       rental_items TEXT,
       additional_fees INTEGER DEFAULT 0,
+      additional_fee_paid INTEGER DEFAULT 0,
       parent_locker INTEGER,
       deferred_payment INTEGER DEFAULT 0,
       customer_memo TEXT
@@ -6063,6 +6073,35 @@ export function updateLockerLogMemo(logId: string, memo: string): boolean {
   
   saveDatabase();
   return true;
+}
+
+// Update additional_fee_paid status for a locker log
+export function updateLockerLogAdditionalFeePaid(logId: string, paid: boolean): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  db.run(
+    `UPDATE locker_logs SET additional_fee_paid = ? WHERE id = ?`,
+    [paid ? 1 : 0, logId]
+  );
+  
+  saveDatabase();
+  return true;
+}
+
+// Get additional_fee_paid status for a locker log
+export function getLockerLogAdditionalFeePaid(logId: string): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT additional_fee_paid FROM locker_logs WHERE id = ?`,
+    [logId]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return false;
+  }
+  
+  return result[0].values[0][0] === 1;
 }
 
 export function exportDatabase(): {
