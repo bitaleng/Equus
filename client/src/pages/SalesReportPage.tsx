@@ -10,6 +10,7 @@ import {
   getAllDailySummaries,
   getSettings,
   getCancelledSalesByMonth,
+  getDailyPaymentBreakdownByMonth,
 } from "@/lib/localDb";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -44,6 +45,13 @@ interface CancelledSales {
   businessDay: string;
   cancelledAmount: number;
   cancelledCount: number;
+}
+
+interface PaymentBreakdown {
+  businessDay: string;
+  cash: number;
+  card: number;
+  transfer: number;
 }
 
 // Helper to get current date in Korea timezone
@@ -96,6 +104,7 @@ function SalesCalendar() {
   const [currentMonth, setCurrentMonth] = useState(getKoreaDate());
   const [summaries, setSummaries] = useState<DailySummary[]>([]);
   const [cancelledSales, setCancelledSales] = useState<CancelledSales[]>([]);
+  const [paymentBreakdowns, setPaymentBreakdowns] = useState<PaymentBreakdown[]>([]);
   const [viewType, setViewType] = useState<"sales" | "refund">("sales");
 
   useEffect(() => {
@@ -105,6 +114,9 @@ function SalesCalendar() {
     
     const cancelled = getCancelledSalesByMonth(yearMonth);
     setCancelledSales(cancelled as CancelledSales[]);
+    
+    const breakdowns = getDailyPaymentBreakdownByMonth(yearMonth);
+    setPaymentBreakdowns(breakdowns as PaymentBreakdown[]);
   }, [currentMonth]);
 
   const summaryMap = useMemo(() => {
@@ -118,6 +130,12 @@ function SalesCalendar() {
     cancelledSales.forEach((c) => map.set(c.businessDay, c));
     return map;
   }, [cancelledSales]);
+
+  const paymentMap = useMemo(() => {
+    const map = new Map<string, PaymentBreakdown>();
+    paymentBreakdowns.forEach((p) => map.set(p.businessDay, p));
+    return map;
+  }, [paymentBreakdowns]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -215,10 +233,12 @@ function SalesCalendar() {
                 const dayOfWeek = getDay(day);
                 const isToday = formatKoreaDate(new Date()) === dateStr;
 
+                const payment = paymentMap.get(dateStr);
+
                 return (
                   <div
                     key={dateStr}
-                    className={`min-h-[80px] p-2 border-r last:border-r-0 ${
+                    className={`min-h-[100px] p-2 border-r last:border-r-0 ${
                       !isCurrentMonth ? "bg-muted/30 text-muted-foreground" : ""
                     } ${isToday ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
                     data-testid={`calendar-day-${dateStr}`}
@@ -231,9 +251,18 @@ function SalesCalendar() {
                       {isMin && <span className="ml-1 text-blue-500 text-xs">최저</span>}
                     </div>
                     {sales > 0 && viewType === "sales" && (
-                      <div className={`text-sm mt-1 font-semibold ${isMax ? "text-red-600" : isMin ? "text-blue-600" : ""}`}>
-                        {formatCurrency(sales)}
-                      </div>
+                      <>
+                        <div className={`text-sm mt-1 font-semibold ${isMax ? "text-red-600" : isMin ? "text-blue-600" : ""}`}>
+                          {formatCurrency(sales)}
+                        </div>
+                        {payment && (
+                          <div className="mt-1 text-[10px] text-muted-foreground leading-tight space-y-0.5">
+                            {payment.cash > 0 && <div>현금 {formatCurrency(payment.cash)}</div>}
+                            {payment.card > 0 && <div>카드 {formatCurrency(payment.card)}</div>}
+                            {payment.transfer > 0 && <div>이체 {formatCurrency(payment.transfer)}</div>}
+                          </div>
+                        )}
+                      </>
                     )}
                     {viewType === "refund" && (() => {
                       const cancelled = cancelledMap.get(dateStr);
@@ -249,7 +278,7 @@ function SalesCalendar() {
                   </div>
                 );
               })}
-              <div className="min-h-[80px] p-2 bg-muted/30 flex flex-col justify-center items-center">
+              <div className="min-h-[100px] p-2 bg-muted/30 flex flex-col justify-center items-center">
                 <div className="text-xs text-muted-foreground">{weekIdx + 1}주</div>
                 <div className="font-semibold text-sm">
                   {weeklyTotals[weekIdx] > 0 ? formatCurrency(weeklyTotals[weekIdx]) : 0}
