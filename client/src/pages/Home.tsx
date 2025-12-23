@@ -903,8 +903,12 @@ export default function Home() {
       foreignerAdditionalFeePeriod
     );
     
-    // 추가요금 횟수를 그대로 저장 (0이면 추가요금 없음)
-    additionalFeeCounts[log.lockerNumber] = additionalFeeCount;
+    // 추가요금 완납 여부 확인: 현재 추가요금이 지불된 금액 이하면 완납
+    const paidAmount = (log as any).additionalFeePaidAmount || 0;
+    const hasUnpaidAdditionalFee = additionalFee > paidAmount;
+    
+    // 미지불 추가요금이 있을 때만 횟수 표시
+    additionalFeeCounts[log.lockerNumber] = hasUnpaidAdditionalFee ? additionalFeeCount : 0;
     
     // Store time type (convert Korean to English)
     const convertedTimeType = log.timeType === '주간' ? 'day' : 'night';
