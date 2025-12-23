@@ -2476,6 +2476,28 @@ export function getLockerLogsByBusinessDay(businessDay: string) {
   return rowsToObjects(result[0]);
 }
 
+// Get daily payment breakdown by month (cash, card, transfer)
+export function getDailyPaymentBreakdownByMonth(yearMonth: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT 
+      business_day,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card,
+      COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer
+     FROM locker_logs 
+     WHERE business_day LIKE ?
+     GROUP BY business_day
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 // Get cancelled sales amount for a specific month (YYYY-MM)
 export function getCancelledSalesByMonth(yearMonth: string) {
   if (!db) throw new Error('Database not initialized');
