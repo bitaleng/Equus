@@ -11,6 +11,7 @@ import {
   getSettings,
   getCancelledSalesByMonth,
   getDailyPaymentBreakdownByMonth,
+  getClosingDays,
 } from "@/lib/localDb";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -54,6 +55,12 @@ interface PaymentBreakdown {
   transfer: number;
 }
 
+interface ClosingDay {
+  businessDay: string;
+  bankDeposit: number | null;
+  isConfirmed: boolean;
+}
+
 // Helper to get current date in Korea timezone
 function getKoreaDate(): Date {
   return toZonedTime(new Date(), TIMEZONE);
@@ -67,6 +74,16 @@ function formatKoreaDate(date: Date): string {
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("ko-KR").format(amount);
+}
+
+function calculateCurrentBusinessDay(): string {
+  const now = toZonedTime(new Date(), TIMEZONE);
+  const hour = now.getHours();
+  if (hour < 10) {
+    const yesterday = subDays(now, 1);
+    return format(yesterday, "yyyy-MM-dd");
+  }
+  return format(now, "yyyy-MM-dd");
 }
 
 export default function SalesReportPage() {
@@ -105,6 +122,8 @@ function SalesCalendar() {
   const [summaries, setSummaries] = useState<DailySummary[]>([]);
   const [cancelledSales, setCancelledSales] = useState<CancelledSales[]>([]);
   const [paymentBreakdowns, setPaymentBreakdowns] = useState<PaymentBreakdown[]>([]);
+  const [closingDays, setClosingDays] = useState<ClosingDay[]>([]);
+  const [currentBusinessDay, setCurrentBusinessDay] = useState<string>("");
   const [viewType, setViewType] = useState<"sales" | "refund">("sales");
 
   useEffect(() => {
@@ -117,6 +136,11 @@ function SalesCalendar() {
     
     const breakdowns = getDailyPaymentBreakdownByMonth(yearMonth);
     setPaymentBreakdowns(breakdowns as PaymentBreakdown[]);
+    
+    const closings = getClosingDays();
+    setClosingDays(closings as ClosingDay[]);
+    
+    setCurrentBusinessDay(calculateCurrentBusinessDay());
   }, [currentMonth]);
 
   const summaryMap = useMemo(() => {
@@ -136,6 +160,12 @@ function SalesCalendar() {
     paymentBreakdowns.forEach((p) => map.set(p.businessDay, p));
     return map;
   }, [paymentBreakdowns]);
+
+  const closingMap = useMemo(() => {
+    const map = new Map<string, ClosingDay>();
+    closingDays.forEach((c) => map.set(c.businessDay, c));
+    return map;
+  }, [closingDays]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -268,6 +298,21 @@ function SalesCalendar() {
                             {payment.transfer > 0 && <div>이체 {formatCurrency(payment.transfer)}</div>}
                           </div>
                         )}
+                        {(() => {
+                          const closing = closingMap.get(dateStr);
+                          const isCurrentDay = dateStr === currentBusinessDay;
+                          if (isCurrentDay && (!closing || !closing.isConfirmed)) {
+                            return <div className="mt-1 text-[10px] text-orange-500">은행입금: 정산전</div>;
+                          }
+                          if (closing && closing.isConfirmed) {
+                            return (
+                              <div className="mt-1 text-[10px] text-green-600">
+                                은행입금: {closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </>
                     )}
                     {viewType === "refund" && (() => {
