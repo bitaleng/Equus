@@ -97,6 +97,11 @@ export default function ClosingPage() {
     breakdown: any;
     totals: any;
   } | null>(null);
+  
+  // 항목별 추가매출 상세
+  const [rentalItemBreakdown, setRentalItemBreakdown] = useState<{
+    [itemName: string]: { cash: number; card: number; transfer: number; total: number };
+  }>({});
 
   // Sales summary (for backward compatibility)
   const [salesSummary, setSalesSummary] = useState({
@@ -297,11 +302,39 @@ export default function ClosingPage() {
     
     // 4) 렌탈 매출 집계 (revenue 기준으로 환급 제외)
     let rentalCash = 0, rentalCard = 0, rentalTransfer = 0;
+    
+    // 항목별 매출 집계
+    const itemBreakdown: { [itemName: string]: { cash: number; card: number; transfer: number; total: number } } = {};
+    
     rentalTransactions.forEach(r => {
-      rentalCash += r.paymentCash || 0;
-      rentalCard += r.paymentCard || 0;
-      rentalTransfer += r.paymentTransfer || 0;
+      const cash = r.paymentCash || 0;
+      const card = r.paymentCard || 0;
+      const transfer = r.paymentTransfer || 0;
+      
+      rentalCash += cash;
+      rentalCard += card;
+      rentalTransfer += transfer;
+      
+      // 항목별 집계
+      const itemName = r.itemName || '기타';
+      if (!itemBreakdown[itemName]) {
+        itemBreakdown[itemName] = { cash: 0, card: 0, transfer: 0, total: 0 };
+      }
+      itemBreakdown[itemName].cash += cash;
+      itemBreakdown[itemName].card += card;
+      itemBreakdown[itemName].transfer += transfer;
+      itemBreakdown[itemName].total += cash + card + transfer;
     });
+    
+    // 반올림 처리
+    Object.keys(itemBreakdown).forEach(key => {
+      itemBreakdown[key].cash = Math.round(itemBreakdown[key].cash);
+      itemBreakdown[key].card = Math.round(itemBreakdown[key].card);
+      itemBreakdown[key].transfer = Math.round(itemBreakdown[key].transfer);
+      itemBreakdown[key].total = Math.round(itemBreakdown[key].total);
+    });
+    
+    setRentalItemBreakdown(itemBreakdown);
     
     setRentalSales({
       cash: Math.round(rentalCash),
@@ -1134,6 +1167,39 @@ export default function ClosingPage() {
             {/* 추가매출 (대여품목) */}
             <div className="space-y-3">
               <h3 className="font-semibold text-lg border-b pb-2">추가매출</h3>
+              
+              {/* 항목별 매출 */}
+              {Object.keys(rentalItemBreakdown).length > 0 ? (
+                <>
+                  {Object.entries(rentalItemBreakdown).map(([itemName, sales], index) => (
+                    <div key={itemName} className="pl-4 space-y-1 bg-green-50/50 dark:bg-green-950/50 p-2 rounded border-l-2 border-green-500">
+                      <p className="text-sm font-medium text-green-700 dark:text-green-300">• {itemName}</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                        <div>
+                          <span className="text-muted-foreground">현금:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.cash)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">카드:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.card)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">이체:</span>
+                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.transfer)}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">합계:</span>
+                          <span className="ml-1 font-semibold">{formatKoreanCurrency(sales.total)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="pl-4 text-sm text-muted-foreground italic">
+                  해당 영업일에 추가매출 항목이 없습니다.
+                </div>
+              )}
               
               {/* ④ 대여품목 총합 (대여비 + 보증금) */}
               <div className="pl-4 space-y-1 bg-green-50 dark:bg-green-950 p-3 rounded">
