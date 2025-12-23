@@ -204,10 +204,35 @@ export default function LockerOptionsDialog({
         const paidAmount = localDb.getLockerLogAdditionalFeePaidAmount(currentLockerLogId);
         setPaidAdditionalFeeAmount(paidAmount);
         
-        // 추가요금 완납 여부는 additionalFeeInfo가 계산된 후 별도 useEffect에서 판단
-        // 여기서는 초기값만 설정
-        setCheckoutResolved(false);
-        setAdditionalFeeResolved(false);
+        // 현재 추가요금 직접 계산
+        const isForeigner = currentOptionType === 'foreigner';
+        const currentFeeInfo = calculateAdditionalFee(
+          entryTime || '',
+          timeType,
+          dayPrice,
+          nightPrice,
+          new Date(),
+          isForeigner,
+          foreignerPrice,
+          domesticCheckpointHour,
+          foreignerAdditionalFeePeriod
+        );
+        const currentFee = currentFeeInfo.additionalFee;
+        
+        // 현재 추가요금과 정산된 금액 비교
+        if (currentFee > paidAmount) {
+          // 미지불 추가요금 있음
+          setCheckoutResolved(false);
+          setAdditionalFeeResolved(false);
+        } else if (paidAmount > 0 && currentFee <= paidAmount) {
+          // 이미 완납된 상태
+          setCheckoutResolved(true);
+          setAdditionalFeeResolved(true);
+        } else {
+          // 추가요금 없음
+          setCheckoutResolved(false);
+          setAdditionalFeeResolved(false);
+        }
       } else {
         setPaidAdditionalFeeAmount(0);
         setCheckoutResolved(false);
@@ -218,7 +243,7 @@ export default function LockerOptionsDialog({
       setAdditionalFeeDiscount("");
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType]);
   
     
   // Initialize payment fields when dialog opens
@@ -1328,24 +1353,8 @@ export default function LockerOptionsDialog({
     ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod)
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
   
-  // Compare current additional fee with paid amount to detect new accruals
-  useEffect(() => {
-    if (open && isInUse && currentLockerLogId) {
-      const currentFee = additionalFeeInfo.additionalFee;
-      
-      // 현재 추가요금이 정산된 금액보다 크면 새로운 추가요금 발생
-      // 현재 추가요금이 정산된 금액과 같거나 작으면 추가요금 완납 상태
-      if (currentFee > paidAdditionalFeeAmount) {
-        // 새로운 추가요금 발생 - 미결제 상태
-        setCheckoutResolved(false);
-        setAdditionalFeeResolved(false);
-      } else if (paidAdditionalFeeAmount > 0 && currentFee <= paidAdditionalFeeAmount) {
-        // 이미 정산된 금액이 현재 추가요금 이상 - 완납 상태
-        setCheckoutResolved(true);
-        setAdditionalFeeResolved(true);
-      }
-    }
-  }, [open, isInUse, currentLockerLogId, additionalFeeInfo.additionalFee, paidAdditionalFeeAmount]);
+  // Note: Additional fee comparison is now done in the dialog open useEffect above
+  // This separate useEffect is no longer needed as we calculate fees directly when dialog opens
 
   // Format entry date and time
   const formatEntryDateTime = (entryTime?: string) => {
