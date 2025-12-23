@@ -192,16 +192,24 @@ export default function LockerOptionsDialog({
     }
   }, [customerMemo]);
 
+  // Track paid amount for new accrual detection
+  const [paidAdditionalFeeAmount, setPaidAdditionalFeeAmount] = useState(0);
+  
   // Reset checkoutResolved and additional fee discount when dialog opens
-  // Load saved additional_fee_paid status from DB
+  // Load saved additional_fee_paid status from DB and compare with current additional fee
   useEffect(() => {
     if (open) {
-      // 기존 입실 상태인 경우 DB에서 추가요금 완납 상태 로드
+      // 기존 입실 상태인 경우 DB에서 추가요금 정산 금액 로드
       if (isInUse && currentLockerLogId) {
-        const isPaid = localDb.getLockerLogAdditionalFeePaid(currentLockerLogId);
-        setCheckoutResolved(isPaid);
-        setAdditionalFeeResolved(isPaid);
+        const paidAmount = localDb.getLockerLogAdditionalFeePaidAmount(currentLockerLogId);
+        setPaidAdditionalFeeAmount(paidAmount);
+        
+        // 추가요금 완납 여부는 additionalFeeInfo가 계산된 후 별도 useEffect에서 판단
+        // 여기서는 초기값만 설정
+        setCheckoutResolved(false);
+        setAdditionalFeeResolved(false);
       } else {
+        setPaidAdditionalFeeAmount(0);
         setCheckoutResolved(false);
         setAdditionalFeeResolved(false);
       }
@@ -212,6 +220,7 @@ export default function LockerOptionsDialog({
     }
   }, [open, isInUse, currentLockerLogId]);
   
+    
   // Initialize payment fields when dialog opens
   useEffect(() => {
     if (open) {
@@ -841,9 +850,10 @@ export default function LockerOptionsDialog({
       localDb.updateLockerLogMemo(currentLockerLogId, customerMemo);
       
       // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
-      // 이렇게 하면 "수정저장"을 눌러도 추가요금 완납 상태가 유지됨
+      // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
       if (checkoutResolved || additionalFeeResolved) {
-        localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true);
+        const currentFee = additionalFeeInfo.additionalFee;
+        localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
       }
     }
     
@@ -1317,6 +1327,25 @@ export default function LockerOptionsDialog({
   const additionalFeeInfo = entryTime && isInUse
     ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod)
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
+  
+  // Compare current additional fee with paid amount to detect new accruals
+  useEffect(() => {
+    if (open && isInUse && currentLockerLogId) {
+      const currentFee = additionalFeeInfo.additionalFee;
+      
+      // 현재 추가요금이 정산된 금액보다 크면 새로운 추가요금 발생
+      // 현재 추가요금이 정산된 금액과 같거나 작으면 추가요금 완납 상태
+      if (currentFee > paidAdditionalFeeAmount) {
+        // 새로운 추가요금 발생 - 미결제 상태
+        setCheckoutResolved(false);
+        setAdditionalFeeResolved(false);
+      } else if (paidAdditionalFeeAmount > 0 && currentFee <= paidAdditionalFeeAmount) {
+        // 이미 정산된 금액이 현재 추가요금 이상 - 완납 상태
+        setCheckoutResolved(true);
+        setAdditionalFeeResolved(true);
+      }
+    }
+  }, [open, isInUse, currentLockerLogId, additionalFeeInfo.additionalFee, paidAdditionalFeeAmount]);
 
   // Format entry date and time
   const formatEntryDateTime = (entryTime?: string) => {
