@@ -219,17 +219,22 @@ export default function LockerOptionsDialog({
         );
         const currentFee = currentFeeInfo.additionalFee;
         
+        console.log('[DEBUG] 다이얼로그 열림:', { logId: currentLockerLogId, currentFee, paidAmount });
+        
         // 현재 추가요금과 정산된 금액 비교
         if (currentFee > paidAmount) {
           // 미지불 추가요금 있음
+          console.log('[DEBUG] 미지불 추가요금 있음 - checkoutResolved: false');
           setCheckoutResolved(false);
           setAdditionalFeeResolved(false);
         } else if (paidAmount > 0 && currentFee <= paidAmount) {
           // 이미 완납된 상태
+          console.log('[DEBUG] 추가요금 완납 상태 - checkoutResolved: true');
           setCheckoutResolved(true);
           setAdditionalFeeResolved(true);
         } else {
           // 추가요금 없음
+          console.log('[DEBUG] 추가요금 없음');
           setCheckoutResolved(false);
           setAdditionalFeeResolved(false);
         }
@@ -877,7 +882,21 @@ export default function LockerOptionsDialog({
       // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
       // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
       if (checkoutResolved || additionalFeeResolved) {
-        const currentFee = additionalFeeInfo.additionalFee;
+        // 추가요금 직접 계산 (additionalFeeInfo가 아직 정의되지 않았을 수 있음)
+        const isForeigner = currentOptionType === 'foreigner';
+        const feeInfo = calculateAdditionalFee(
+          entryTime || '',
+          timeType,
+          dayPrice,
+          nightPrice,
+          new Date(),
+          isForeigner,
+          foreignerPrice,
+          domesticCheckpointHour,
+          foreignerAdditionalFeePeriod
+        );
+        const currentFee = feeInfo.additionalFee;
+        console.log('[DEBUG] 수정저장: 추가요금 완납 저장', { logId: currentLockerLogId, currentFee, checkoutResolved, additionalFeeResolved });
         localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
       }
     }
