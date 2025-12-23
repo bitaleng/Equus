@@ -1886,13 +1886,6 @@ export default function Home() {
                 <LayoutGrid className="h-4 w-4 mr-1" />
                 탭모드
               </Button>
-              <h1 
-                className="text-xl font-semibold cursor-pointer select-none" 
-                onClick={handleTitleClick}
-                data-testid="title-entry-management"
-              >
-                입실 관리
-              </h1>
               <Button
                 variant="outline"
                 size="sm"
@@ -1902,6 +1895,13 @@ export default function Home() {
                 <Receipt className="h-4 w-4 mr-2" />
                 지출입력
               </Button>
+              <h1 
+                className="text-xl font-semibold cursor-pointer select-none" 
+                onClick={handleTitleClick}
+                data-testid="title-entry-management"
+              >
+                입실 관리
+              </h1>
             </div>
           </div>
           
