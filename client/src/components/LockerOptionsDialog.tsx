@@ -320,7 +320,7 @@ export default function LockerOptionsDialog({
         
         // Auto-show warning alert if there are rental items or additional fees
         // Only show once when dialog first opens
-        if (initialOpenRef.current && !checkoutResolved && entryTime) {
+        if (initialOpenRef.current && entryTime) {
           // 반납완료되지 않은 대여형(rental) 품목만 체크 (일반판매형 제외)
           const unresolvedRentals = rentals.filter(txn => {
             const item = items.find(i => i.id === txn.itemId);
@@ -345,9 +345,19 @@ export default function LockerOptionsDialog({
             domesticCheckpointHour,
             foreignerAdditionalFeePeriod
           );
-          const hasAdditionalFee = additionalFeeCalc.additionalFee > 0;
           
-          if (hasRentalItems || hasAdditionalFee) {
+          // DB에서 직접 paid amount 가져와서 미지불 추가요금 확인
+          const savedPaidAmount = currentLockerLogId ? localDb.getLockerLogAdditionalFeePaidAmount(currentLockerLogId) : 0;
+          const hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > savedPaidAmount;
+          
+          console.log('[DEBUG] 알림창 표시 체크:', { 
+            currentFee: additionalFeeCalc.additionalFee, 
+            savedPaidAmount, 
+            hasUnpaidAdditionalFee,
+            hasRentalItems 
+          });
+          
+          if (hasRentalItems || hasUnpaidAdditionalFee) {
             // Play emergency alert sound
             playEmergencySound();
             
@@ -367,7 +377,7 @@ export default function LockerOptionsDialog({
         setRentalPaymentMethods(new Map());
       }
     }
-  }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, checkoutResolved]);
+  }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, domesticCheckpointHour, foreignerAdditionalFeePeriod]);
 
   // Load parent locker info and deferred payment status when dialog opens
   useEffect(() => {
