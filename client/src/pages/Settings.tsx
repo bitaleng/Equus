@@ -1176,6 +1176,7 @@ export default function Settings() {
         name: revenueItemFormData.name,
         rentalFee: parseInt(revenueItemFormData.rentalFee) || 0,
         depositAmount: revenueItemFormData.billingType === 'simple' ? 0 : (parseInt(revenueItemFormData.depositAmount) || 0),
+        billingType: revenueItemFormData.billingType,
       };
       
       if (editingRevenueItem) {

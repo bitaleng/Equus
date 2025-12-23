@@ -475,12 +475,21 @@ function migrateDatabase() {
         name TEXT NOT NULL,
         rental_fee INTEGER NOT NULL DEFAULT 0,
         deposit_amount INTEGER NOT NULL DEFAULT 0,
+        billing_type TEXT NOT NULL DEFAULT 'rental' CHECK(billing_type IN ('rental', 'simple')),
         sort_order INTEGER NOT NULL DEFAULT 0,
         is_default INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
     `);
+    
+    // Add billing_type column if it doesn't exist (migration for existing tables)
+    try {
+      db.run(`ALTER TABLE additional_revenue_items ADD COLUMN billing_type TEXT NOT NULL DEFAULT 'rental' CHECK(billing_type IN ('rental', 'simple'))`);
+      console.log('Added billing_type column to additional_revenue_items');
+    } catch (e) {
+      // Column already exists, ignore
+    }
     
     // Step 7: Migrate rental_transactions table (one-time migration)
     // Check if migration has already been done
@@ -870,6 +879,7 @@ function createTables() {
       name TEXT NOT NULL,
       rental_fee INTEGER NOT NULL DEFAULT 0,
       deposit_amount INTEGER NOT NULL DEFAULT 0,
+      billing_type TEXT NOT NULL DEFAULT 'rental' CHECK(billing_type IN ('rental', 'simple')),
       sort_order INTEGER NOT NULL DEFAULT 0,
       is_default INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -4076,6 +4086,7 @@ export function createAdditionalRevenueItem(item: {
   name: string;
   rentalFee: number;
   depositAmount: number;
+  billingType?: 'rental' | 'simple';
   sortOrder?: number;
 }): string {
   if (!db) throw new Error('Database not initialized');
@@ -4083,11 +4094,12 @@ export function createAdditionalRevenueItem(item: {
   const id = generateId();
   const now = new Date().toISOString();
   const sortOrder = item.sortOrder ?? 999;
+  const billingType = item.billingType ?? 'rental';
   
   db.run(
-    `INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, sort_order, is_default, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-    [id, item.name, item.rentalFee, item.depositAmount, sortOrder, now, now]
+    `INSERT INTO additional_revenue_items (id, name, rental_fee, deposit_amount, billing_type, sort_order, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+    [id, item.name, item.rentalFee, item.depositAmount, billingType, sortOrder, now, now]
   );
   
   saveDatabase();
@@ -4098,6 +4110,7 @@ export function updateAdditionalRevenueItem(id: string, updates: {
   name?: string;
   rentalFee?: number;
   depositAmount?: number;
+  billingType?: 'rental' | 'simple';
   sortOrder?: number;
 }) {
   if (!db) throw new Error('Database not initialized');
@@ -4116,6 +4129,10 @@ export function updateAdditionalRevenueItem(id: string, updates: {
   if (updates.depositAmount !== undefined) {
     sets.push('deposit_amount = ?');
     values.push(updates.depositAmount);
+  }
+  if (updates.billingType !== undefined) {
+    sets.push('billing_type = ?');
+    values.push(updates.billingType);
   }
   if (updates.sortOrder !== undefined) {
     sets.push('sort_order = ?');

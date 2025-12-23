@@ -274,10 +274,15 @@ export default function LockerOptionsDialog({
         // Auto-show warning alert if there are rental items or additional fees
         // Only show once when dialog first opens
         if (initialOpenRef.current && !checkoutResolved && entryTime) {
-          // 반납완료되지 않은 대여품목만 체크
-          const unresolvedRentals = rentals.filter(txn => 
-            txn.return_completed !== 1 && txn.returnCompleted !== 1
-          );
+          // 반납완료되지 않은 대여형(rental) 품목만 체크 (일반판매형 제외)
+          const unresolvedRentals = rentals.filter(txn => {
+            const item = items.find(i => i.id === txn.itemId);
+            // 일반판매형(simple)은 반납 불필요하므로 제외
+            if (item?.billingType === 'simple') {
+              return false;
+            }
+            return txn.return_completed !== 1 && txn.returnCompleted !== 1;
+          });
           const hasRentalItems = unresolvedRentals.length > 0;
           
           // Calculate additional fee to check if there are additional charges
@@ -2053,8 +2058,9 @@ export default function LockerOptionsDialog({
                                 </>
                               )}
                               
-                              {/* 반납완료 버튼 - 보증금 없는 경우 또는 보증금 처리(환급/몰수) 선택 시 표시 */}
-                              {((item.depositAmount || 0) === 0 || (isInUse && isAlreadyRented && (depositStatus === 'refunded' || depositStatus === 'forfeited'))) && (
+                              {/* 반납완료 버튼 - 대여형(rental)만 표시, 일반판매형(simple)은 제외 */}
+                              {/* 대여형: 보증금 없는 경우 또는 보증금 처리(환급/몰수) 선택 시 표시 */}
+                              {item.billingType !== 'simple' && ((item.depositAmount || 0) === 0 || (isInUse && isAlreadyRented && (depositStatus === 'refunded' || depositStatus === 'forfeited'))) && (
                                 <Button
                                   type="button"
                                   size="sm"
@@ -2175,9 +2181,14 @@ export default function LockerOptionsDialog({
                     const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0 && !checkoutResolved;
                     
                     // 선택된 대여품목 중 반납완료되지 않은 것이 있는지 체크
-                    // 대여품목이 있으면 '모두' 반납완료되어야 퇴실 가능
+                    // 대여형(rental)만 반납완료가 필요, 일반판매형(simple)은 반납 불필요
                     const hasUnresolvedRentalItems = Array.from(selectedRentalItems).some(itemId => {
-                      // 반납완료되지 않은 항목이 있으면 true (비활성화 요구)
+                      const item = availableRentalItems.find(i => i.id === itemId);
+                      // 일반판매형(simple)은 반납완료 불필요 - 항상 false 반환
+                      if (item?.billingType === 'simple') {
+                        return false;
+                      }
+                      // 대여형(rental)만 반납완료 체크
                       return !returnCompletedItems.has(itemId);
                     });
                     
@@ -2210,12 +2221,18 @@ export default function LockerOptionsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-orange-600">확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              {/* 반납완료되지 않은 대여품목만 표시 */}
-              {currentRentalTransactions.filter(txn => !returnCompletedItems.has(txn.itemId)).length > 0 && (
+              {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (일반판매형 제외) */}
+              {currentRentalTransactions.filter(txn => {
+                const item = availableRentalItems.find(i => i.id === txn.itemId);
+                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId);
+              }).length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
                   <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
                   {currentRentalTransactions
-                    .filter(txn => !returnCompletedItems.has(txn.itemId))
+                    .filter(txn => {
+                      const item = availableRentalItems.find(i => i.id === txn.itemId);
+                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId);
+                    })
                     .map((txn) => {
                       const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
                       return (
