@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
@@ -101,6 +102,12 @@ export default function Home() {
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
   const [barcodeTestDialogOpen, setBarcodeTestDialogOpen] = useState(false);
   const [testBarcodeInput, setTestBarcodeInput] = useState("");
+
+  // Quick expense input state
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false);
+  const [expenseItem, setExpenseItem] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expensePaymentMethod, setExpensePaymentMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
 
   // Barcode test button visibility (hidden by default, toggle with 5 clicks on title)
   const [showBarcodeTest, setShowBarcodeTest] = useState(false);
@@ -255,6 +262,59 @@ export default function Home() {
         description: showBarcodeTest ? "바코드 테스트 버튼이 숨겨졌습니다." : "바코드 테스트 버튼이 표시되었습니다.",
       });
     }
+  };
+
+  // Quick expense add handler
+  const handleAddQuickExpense = () => {
+    if (!expenseItem.trim()) {
+      toast({
+        variant: "destructive",
+        title: "입력 오류",
+        description: "지출항목을 입력해주세요.",
+      });
+      return;
+    }
+
+    if (!expenseAmount || Number(expenseAmount) <= 0) {
+      toast({
+        variant: "destructive",
+        title: "입력 오류",
+        description: "올바른 금액을 입력해주세요.",
+      });
+      return;
+    }
+
+    const settings = localDb.getSettings();
+    const now = new Date();
+    const businessDay = getBusinessDay(now, settings.businessDayStartHour);
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().slice(0, 5);
+    const amount = Number(expenseAmount);
+    
+    localDb.createExpense({
+      date: dateStr,
+      time: timeStr,
+      category: expenseItem.trim(),
+      amount: amount,
+      quantity: 1,
+      paymentMethod: expensePaymentMethod,
+      paymentCash: expensePaymentMethod === 'cash' ? amount : undefined,
+      paymentCard: expensePaymentMethod === 'card' ? amount : undefined,
+      paymentTransfer: expensePaymentMethod === 'transfer' ? amount : undefined,
+      businessDay,
+    });
+
+    toast({
+      title: "지출 등록 완료",
+      description: `${expenseItem} ${amount.toLocaleString()}원이 등록되었습니다.`,
+    });
+
+    setExpenseDialogOpen(false);
+    setExpenseItem('');
+    setExpenseAmount('');
+    setExpensePaymentMethod('cash');
+    
+    loadData();
   };
   
   // Toggle right panel (Locker Management) visibility
@@ -1626,6 +1686,17 @@ export default function Home() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {activeTab === 'locker' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExpenseDialogOpen(true)}
+                  data-testid="button-quick-expense-tab"
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  지출입력
+                </Button>
+              )}
               {nfcSupported && activeTab === 'locker' && (
                 <Button
                   variant={isNfcScanning ? "default" : "outline"}
@@ -1835,6 +1906,15 @@ export default function Home() {
               >
                 입실 관리
               </h1>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpenseDialogOpen(true)}
+                data-testid="button-quick-expense-header"
+              >
+                <Receipt className="h-4 w-4 mr-2" />
+                지출입력
+              </Button>
             </div>
           </div>
           
@@ -2254,6 +2334,71 @@ export default function Home() {
               data-testid="button-test-barcode"
             >
               테스트
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Expense Input Dialog */}
+      <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              빠른 지출 입력
+            </DialogTitle>
+            <DialogDescription>
+              현재 영업일의 지출을 빠르게 등록합니다.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="expense-item">지출항목</Label>
+              <Input
+                id="expense-item"
+                type="text"
+                value={expenseItem}
+                onChange={(e) => setExpenseItem(e.target.value)}
+                placeholder="지출항목 입력 (예: 음료수, 세제 등)"
+                data-testid="input-expense-item"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expense-amount">금액 (원)</Label>
+              <Input
+                id="expense-amount"
+                type="number"
+                value={expenseAmount}
+                onChange={(e) => setExpenseAmount(e.target.value)}
+                placeholder="금액 입력"
+                data-testid="input-expense-amount"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expense-payment">결제방법</Label>
+              <Select value={expensePaymentMethod} onValueChange={(v) => setExpensePaymentMethod(v as 'card' | 'cash' | 'transfer')}>
+                <SelectTrigger id="expense-payment" data-testid="select-expense-payment">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">현금</SelectItem>
+                  <SelectItem value="card">카드</SelectItem>
+                  <SelectItem value="transfer">계좌이체</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExpenseDialogOpen(false)} data-testid="button-cancel-expense">
+              취소
+            </Button>
+            <Button onClick={handleAddQuickExpense} data-testid="button-submit-expense">
+              <Plus className="h-4 w-4 mr-2" />
+              등록
             </Button>
           </DialogFooter>
         </DialogContent>
