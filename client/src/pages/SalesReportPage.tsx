@@ -192,13 +192,16 @@ function SalesCalendar() {
       const dateStr = format(day, "yyyy-MM-dd");
       const data = summaryMap.get(dateStr);
       const payment = paymentMap.get(dateStr);
+      const closing = closingMap.get(dateStr);
       return {
         total: acc.total + (data?.totalSales || 0),
         cash: acc.cash + (payment?.cash || 0),
         card: acc.card + (payment?.card || 0),
         transfer: acc.transfer + (payment?.transfer || 0),
+        bankDeposit: acc.bankDeposit + (closing?.bankDeposit || 0),
+        hasClosing: acc.hasClosing || !!closing,
       };
-    }, { total: 0, cash: 0, card: 0, transfer: 0 });
+    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false });
   });
 
   return (
@@ -339,6 +342,11 @@ function SalesCalendar() {
                     {weeklyTotals[weekIdx].cash > 0 && <div>현금 {formatCurrency(weeklyTotals[weekIdx].cash)}</div>}
                     {weeklyTotals[weekIdx].card > 0 && <div>카드 {formatCurrency(weeklyTotals[weekIdx].card)}</div>}
                     {weeklyTotals[weekIdx].transfer > 0 && <div>이체 {formatCurrency(weeklyTotals[weekIdx].transfer)}</div>}
+                    {weeklyTotals[weekIdx].hasClosing && (
+                      <div className="text-green-600 dark:text-green-400 font-medium pt-0.5 border-t border-muted mt-0.5">
+                        은행입금 {formatCurrency(weeklyTotals[weekIdx].bankDeposit)}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
