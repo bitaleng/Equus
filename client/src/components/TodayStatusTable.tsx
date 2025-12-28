@@ -41,6 +41,7 @@ import {
 interface LockerEntry {
   lockerNumber: number;
   entryTime: string | null;
+  exitTime?: string | null; // 퇴실시간 (정렬용)
   timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
   option: string;
@@ -78,6 +79,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("exitTime");
   
   // Memo state
   const [memoDialogOpen, setMemoDialogOpen] = useState(false);
@@ -133,6 +135,21 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   } else if (paymentMethodFilter === "transfer") {
     displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'transfer');
   }
+
+  // Sort entries based on sortBy option
+  displayedEntries = [...displayedEntries].sort((a, b) => {
+    if (sortBy === 'entryTime') {
+      // 입실시간 기준 정렬
+      const timeA = a.entryTime || '';
+      const timeB = b.entryTime || '';
+      return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+    } else {
+      // 퇴실시간 기준: 퇴실시간 우선, 없으면 입실시간
+      const timeA = a.exitTime || a.entryTime || '';
+      const timeB = b.exitTime || b.entryTime || '';
+      return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+    }
+  });
 
   // Count usage for filtered locker (exclude additional fee only entries and child lockers)
   const usageCount = filteredLockerNumber !== null
@@ -259,6 +276,16 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                   <SelectItem value="card">카드</SelectItem>
                   <SelectItem value="cash">현금</SelectItem>
                   <SelectItem value="transfer">이체</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'exitTime' | 'entryTime')}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-sort-by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exitTime">퇴실시간순</SelectItem>
+                  <SelectItem value="entryTime">입실시간순</SelectItem>
                 </SelectContent>
               </Select>
             </div>

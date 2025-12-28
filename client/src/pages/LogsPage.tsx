@@ -164,6 +164,7 @@ export default function LogsPage() {
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
   const [additionalFeeFilter, setAdditionalFeeFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("exitTime");
   
   // 영업일 자동 조회
   const [showBusinessDayFilter, setShowBusinessDayFilter] = useState(false);
@@ -433,6 +434,21 @@ export default function LogsPage() {
       (log as any).additionalFeeOnly !== true && (!log.additionalFees || log.additionalFees === 0)
     );
   }
+
+  // Sort entries based on sortBy option
+  displayedLogs = [...displayedLogs].sort((a, b) => {
+    if (sortBy === 'entryTime') {
+      // 입실시간 기준 정렬
+      const timeA = a.entryTime || '';
+      const timeB = b.entryTime || '';
+      return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+    } else {
+      // 퇴실시간 기준: 퇴실시간 우선, 없으면 입실시간
+      const timeA = a.exitTime || a.entryTime || '';
+      const timeB = b.exitTime || b.entryTime || '';
+      return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
+    }
+  });
 
   // Helper functions for display and export
   const getOptionText = (log: LogEntry) => {
@@ -856,6 +872,16 @@ export default function LogsPage() {
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="with_fee">추가요금 있음</SelectItem>
                   <SelectItem value="without_fee">추가요금 없음</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'exitTime' | 'entryTime')}>
+                <SelectTrigger className="w-32 h-9" data-testid="select-sort-by">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="exitTime">퇴실시간순</SelectItem>
+                  <SelectItem value="entryTime">입실시간순</SelectItem>
                 </SelectContent>
               </Select>
               
