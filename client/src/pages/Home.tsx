@@ -1505,6 +1505,7 @@ export default function Home() {
     id: log.id,
     lockerNumber: log.lockerNumber,
     entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
+    entryTimeRaw: log.entryTime || null, // 입실시간 원본 ISO 문자열 (정렬용)
     exitTime: log.exitTime || null, // 퇴실시간 (ISO 문자열 그대로 전달 - 정렬용)
     timeType: log.timeType,
     basePrice: log.basePrice,

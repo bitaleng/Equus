@@ -41,6 +41,7 @@ import {
 interface LockerEntry {
   lockerNumber: number;
   entryTime: string | null;
+  entryTimeRaw?: string | null; // 입실시간 원본 ISO 문자열 (정렬용)
   exitTime?: string | null; // 퇴실시간 (정렬용)
   timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
@@ -139,14 +140,14 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   // Sort entries based on sortBy option
   displayedEntries = [...displayedEntries].sort((a, b) => {
     if (sortBy === 'entryTime') {
-      // 입실시간 기준 정렬
-      const timeA = a.entryTime || '';
-      const timeB = b.entryTime || '';
+      // 입실시간 기준 정렬 (원본 ISO 문자열 사용)
+      const timeA = a.entryTimeRaw || a.exitTime || '';
+      const timeB = b.entryTimeRaw || b.exitTime || '';
       return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
     } else {
       // 퇴실시간 기준: 퇴실시간 우선, 없으면 입실시간
-      const timeA = a.exitTime || a.entryTime || '';
-      const timeB = b.exitTime || b.entryTime || '';
+      const timeA = a.exitTime || a.entryTimeRaw || '';
+      const timeB = b.exitTime || b.entryTimeRaw || '';
       return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
     }
   });
