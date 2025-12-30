@@ -2680,7 +2680,7 @@ export function getSettings() {
     foreignerAdditionalFeePeriod: 24,
     screenWakeLock: true,
     cardPaymentAppEnabled: false,
-    cardPaymentAppPackage: 'com.tossplace.tosspos'
+    cardPaymentAppPackage: 'com.tossplace.app.release'
   };
 
   const saved = localStorage.getItem('settings');

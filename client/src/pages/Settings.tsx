@@ -172,7 +172,7 @@ export default function Settings() {
   });
   const [cardPaymentAppPackage, setCardPaymentAppPackage] = useState(() => {
     const settings = localDb.getSettings();
-    return settings.cardPaymentAppPackage || 'com.tossplace.tosspos';
+    return settings.cardPaymentAppPackage || 'com.tossplace.app.release';
   });
   
   // Pattern change states
@@ -2067,7 +2067,7 @@ export default function Settings() {
                           id="card-payment-package"
                           value={cardPaymentAppPackage}
                           onChange={(e) => setCardPaymentAppPackage(e.target.value)}
-                          placeholder="com.tossplace.tosspos"
+                          placeholder="com.tossplace.app.release"
                           className="flex-1"
                           data-testid="input-card-payment-package"
                         />
@@ -2086,7 +2086,7 @@ export default function Settings() {
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        TossPOS 앱: com.tossplace.tosspos (기본값)
+                        TossPOS 앱: com.tossplace.app.release (기본값)
                       </p>
                       <Button
                         variant="outline"
