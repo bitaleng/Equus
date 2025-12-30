@@ -1868,7 +1868,16 @@ export default function LockerOptionsDialog({
                       })()}
                     </>
                   ) : (
-                    <Select value={additionalFeePaymentMethod} onValueChange={(value) => setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer')}>
+                    <Select value={additionalFeePaymentMethod} onValueChange={(value) => {
+                      setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer');
+                      if (value === 'card') {
+                        const cardSettings = localDb.getSettings();
+                        if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
+                          const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                          window.location.href = intentUrl;
+                        }
+                      }
+                    }}>
                       <SelectTrigger data-testid="select-additional-fee-payment-method">
                         <SelectValue />
                       </SelectTrigger>
@@ -2179,6 +2188,13 @@ export default function LockerOptionsDialog({
                                   const newMethods = new Map(rentalPaymentMethods);
                                   newMethods.set(itemId, value as 'cash' | 'card' | 'transfer');
                                   setRentalPaymentMethods(newMethods);
+                                  if (value === 'card') {
+                                    const cardSettings = localDb.getSettings();
+                                    if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
+                                      const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                                      window.location.href = intentUrl;
+                                    }
+                                  }
                                 }}
                               >
                                 <SelectTrigger 
