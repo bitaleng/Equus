@@ -1729,7 +1729,14 @@ export default function LockerOptionsDialog({
                     type="button"
                     variant={paymentMethod === 'card' ? 'default' : 'outline'}
                     className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
-                    onClick={() => setPaymentMethod('card')}
+                    onClick={() => {
+                      setPaymentMethod('card');
+                      const cardSettings = localDb.getSettings();
+                      if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
+                        const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                        window.location.href = intentUrl;
+                      }
+                    }}
                     data-testid="button-payment-card"
                   >
                     카드
