@@ -2678,7 +2678,9 @@ export function getSettings() {
     foreignerPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
-    screenWakeLock: true
+    screenWakeLock: true,
+    cardPaymentAppEnabled: false,
+    cardPaymentAppPackage: 'com.tossplace.tosspos'
   };
 
   const saved = localStorage.getItem('settings');

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertDialog,
@@ -162,6 +162,17 @@ export default function Settings() {
   const [screenWakeLock, setScreenWakeLock] = useState(() => {
     const settings = localDb.getSettings();
     return settings.screenWakeLock !== false;
+  });
+
+  // Card payment app states
+  const [isCardPaymentSectionOpen, setIsCardPaymentSectionOpen] = useState(false);
+  const [cardPaymentAppEnabled, setCardPaymentAppEnabled] = useState(() => {
+    const settings = localDb.getSettings();
+    return settings.cardPaymentAppEnabled === true;
+  });
+  const [cardPaymentAppPackage, setCardPaymentAppPackage] = useState(() => {
+    const settings = localDb.getSettings();
+    return settings.cardPaymentAppPackage || 'com.tossplace.tosspos';
   });
   
   // Pattern change states
@@ -1985,6 +1996,116 @@ export default function Settings() {
                   <p className="text-sm text-muted-foreground px-1">
                     앱 사용 중 화면이 자동으로 꺼지지 않도록 합니다.
                     배터리 소모가 증가할 수 있습니다.
+                  </p>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
+
+          {/* 카드결제 앱 설정 */}
+          <Card>
+            <Collapsible 
+              open={isCardPaymentSectionOpen} 
+              onOpenChange={setIsCardPaymentSectionOpen}
+            >
+              <CardHeader>
+                <CollapsibleTrigger asChild>
+                  <div className="flex items-center justify-between cursor-pointer hover-elevate active-elevate-2 rounded-md p-2 -m-2">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className={`h-5 w-5 ${cardPaymentAppEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+                      <div>
+                        <CardTitle className="flex items-center gap-2">
+                          카드결제 앱 연동
+                        </CardTitle>
+                        <CardDescription className="mt-1">
+                          카드 버튼 클릭 시 결제 앱 자동 실행
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${isCardPaymentSectionOpen ? 'rotate-180' : ''}`} />
+                  </div>
+                </CollapsibleTrigger>
+              </CardHeader>
+              
+              <CollapsibleContent>
+                <CardContent className="space-y-4 pt-0">
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <CreditCard className={`h-6 w-6 ${cardPaymentAppEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+                      <div>
+                        <p className="font-medium">카드결제 앱 연동</p>
+                        <p className="text-sm text-muted-foreground">
+                          {cardPaymentAppEnabled 
+                            ? "활성화됨 (카드 버튼 클릭 시 앱 실행)" 
+                            : "비활성화됨"}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={cardPaymentAppEnabled}
+                      onCheckedChange={(checked) => {
+                        setCardPaymentAppEnabled(checked);
+                        localDb.updateSettings({ cardPaymentAppEnabled: checked });
+                        toast({
+                          title: checked ? "카드결제 앱 연동 활성화" : "카드결제 앱 연동 비활성화",
+                          description: checked 
+                            ? "카드 버튼 클릭 시 결제 앱이 자동 실행됩니다." 
+                            : "카드 버튼 클릭 시 결제 앱이 실행되지 않습니다.",
+                        });
+                      }}
+                      data-testid="switch-card-payment-app"
+                    />
+                  </div>
+                  
+                  {cardPaymentAppEnabled && (
+                    <div className="space-y-3 p-4 border rounded-lg">
+                      <Label htmlFor="card-payment-package" className="text-sm font-medium">
+                        앱 패키지명
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="card-payment-package"
+                          value={cardPaymentAppPackage}
+                          onChange={(e) => setCardPaymentAppPackage(e.target.value)}
+                          placeholder="com.tossplace.tosspos"
+                          className="flex-1"
+                          data-testid="input-card-payment-package"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            localDb.updateSettings({ cardPaymentAppPackage });
+                            toast({
+                              title: "저장 완료",
+                              description: "카드결제 앱 패키지명이 저장되었습니다.",
+                            });
+                          }}
+                          data-testid="button-save-card-payment-package"
+                        >
+                          저장
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        TossPOS 앱: com.tossplace.tosspos (기본값)
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          const intentUrl = `intent://#Intent;package=${cardPaymentAppPackage};end`;
+                          window.location.href = intentUrl;
+                        }}
+                        data-testid="button-test-card-payment-app"
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        앱 실행 테스트
+                      </Button>
+                    </div>
+                  )}
+                  
+                  <p className="text-sm text-muted-foreground px-1">
+                    활성화하면 락커 옵션에서 카드 결제 선택 시 TossPOS 등의 결제 앱이 자동으로 실행됩니다.
+                    Android 태블릿에서만 동작합니다.
                   </p>
                 </CardContent>
               </CollapsibleContent>
