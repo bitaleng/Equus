@@ -1733,7 +1733,7 @@ export default function LockerOptionsDialog({
                       setPaymentMethod('card');
                       const cardSettings = localDb.getSettings();
                       if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
-                        const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                        const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardSettings.cardPaymentAppPackage};end`;
                         window.location.href = intentUrl;
                       }
                     }}
@@ -1873,7 +1873,7 @@ export default function LockerOptionsDialog({
                       if (value === 'card') {
                         const cardSettings = localDb.getSettings();
                         if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
-                          const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                          const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardSettings.cardPaymentAppPackage};end`;
                           window.location.href = intentUrl;
                         }
                       }
@@ -2191,7 +2191,7 @@ export default function LockerOptionsDialog({
                                   if (value === 'card') {
                                     const cardSettings = localDb.getSettings();
                                     if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
-                                      const intentUrl = `intent://#Intent;package=${cardSettings.cardPaymentAppPackage};end`;
+                                      const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardSettings.cardPaymentAppPackage};end`;
                                       window.location.href = intentUrl;
                                     }
                                   }

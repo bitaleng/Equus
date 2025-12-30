@@ -2092,7 +2092,7 @@ export default function Settings() {
                         variant="outline"
                         className="w-full"
                         onClick={() => {
-                          const intentUrl = `intent://#Intent;package=${cardPaymentAppPackage};end`;
+                          const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardPaymentAppPackage};end`;
                           window.location.href = intentUrl;
                         }}
                         data-testid="button-test-card-payment-app"
