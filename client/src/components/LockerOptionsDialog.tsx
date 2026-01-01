@@ -123,6 +123,7 @@ export default function LockerOptionsDialog({
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
+  const [isFreeEntry, setIsFreeEntry] = useState(false);
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(isInUse ? currentPaymentMethod : null);
@@ -559,6 +560,11 @@ export default function LockerOptionsDialog({
   }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
 
   const calculateFinalPrice = () => {
+    // 우선순위 0: 무료입장
+    if (isFreeEntry) {
+      return 0;
+    }
+    
     // 우선순위 1: 요금직접입력
     if (isDirectPrice && directPrice) {
       return parseInt(directPrice);
@@ -751,8 +757,8 @@ export default function LockerOptionsDialog({
   const handleProcessEntry = () => {
     playClickSound();
     
-    // 후불결제가 아닌 경우에만 지불방식 검증
-    if (!isDeferredPayment && !useSplitPayment && !paymentMethod) {
+    // 후불결제가 아닌 경우에만 지불방식 검증 (무료입장은 검증 스킵)
+    if (!isDeferredPayment && !isFreeEntry && !useSplitPayment && !paymentMethod) {
       toast({
         title: "지불방식 미선택",
         description: "현금, 카드, 이체 중 하나를 선택해주세요.",
@@ -761,10 +767,13 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let optionAmount: number | undefined;
 
-    if (isDirectPrice && directPrice) {
+    if (isFreeEntry) {
+      optionType = 'free';
+      optionAmount = 0;
+    } else if (isDirectPrice && directPrice) {
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
@@ -778,6 +787,15 @@ export default function LockerOptionsDialog({
     }
     
     const computedFinalPrice = calculateFinalPrice();
+    
+    // 무료입장일 경우 결제방식 없이 바로 처리
+    if (isFreeEntry) {
+      const generatedNotes = generateNotes();
+      const rentalItemInfo = generateRentalItemInfo();
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo);
+      setDialogOpen(false);
+      return;
+    }
     
     // Get payment breakdown
     let cashVal: number | undefined;
@@ -829,10 +847,13 @@ export default function LockerOptionsDialog({
   const handleSaveChanges = () => {
     playClickSound();
     
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let optionAmount: number | undefined;
 
-    if (isDirectPrice && directPrice) {
+    if (isFreeEntry) {
+      optionType = 'free';
+      optionAmount = 0;
+    } else if (isDirectPrice && directPrice) {
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
@@ -1509,7 +1530,7 @@ export default function LockerOptionsDialog({
             </div>
 
             {/* 외국인 체크박스 */}
-            {!isDirectPrice && (
+            {!isDirectPrice && !isFreeEntry && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="foreigner" 
@@ -1523,8 +1544,29 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 할인 옵션 Select */}
+            {/* 무료입장 체크박스 */}
             {!isDirectPrice && !isForeigner && (
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="free-entry" 
+                  checked={isFreeEntry}
+                  onCheckedChange={(checked) => {
+                    setIsFreeEntry(checked as boolean);
+                    if (checked) {
+                      setDiscountOption("none");
+                      setDiscountInputAmount("");
+                    }
+                  }}
+                  data-testid="checkbox-free-entry"
+                />
+                <Label htmlFor="free-entry" className="text-sm font-semibold cursor-pointer text-green-600 dark:text-green-400">
+                  무료입장 (0원)
+                </Label>
+              </div>
+            )}
+
+            {/* 할인 옵션 Select */}
+            {!isDirectPrice && !isForeigner && !isFreeEntry && (
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">할인 옵션</Label>
                 <Select value={discountOption} onValueChange={setDiscountOption}>
@@ -1565,7 +1607,8 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 지불방식 */}
+            {/* 지불방식 - 무료입장일 때는 숨김 */}
+            {!isFreeEntry && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">지불방식</Label>
@@ -1753,6 +1796,7 @@ export default function LockerOptionsDialog({
                 </div>
               ) : null}
             </div>
+            )}
 
             {/* 추가요금 섹션 - 추가요금이 있을 때만 표시 */}
             {isInUse && additionalFeeInfo.additionalFee > 0 && (
