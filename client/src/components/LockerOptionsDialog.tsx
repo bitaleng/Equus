@@ -803,9 +803,11 @@ export default function LockerOptionsDialog({
     
     // 무료입장일 경우 결제방식 없이 바로 처리
     if (isFreeEntry) {
+      console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo);
+      console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
     }
@@ -1557,8 +1559,8 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 무료입장 체크박스 */}
-            {!isDirectPrice && !isForeigner && (
+            {/* 무료입장 체크박스 - 신규 입실에서만 표시 */}
+            {!isInUse && !isDirectPrice && !isForeigner && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="free-entry" 

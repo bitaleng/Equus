@@ -127,6 +127,9 @@ export default function Home() {
   // Ref to track dialog state for NFC scanning
   const dialogOpenRef = useRef(false);
   
+  // Ref to track openDialogs state for stale closure prevention
+  const openDialogsRef = useRef<Map<number, OpenDialog>>(new Map());
+  
   // Popup workspace visibility toggle
   const [popupsVisible, setPopupsVisible] = useState(true);
   
@@ -715,6 +718,11 @@ export default function Home() {
     }
   }, [currentTime, businessDayStartHour]);
 
+  // Sync openDialogsRef with openDialogs state
+  useEffect(() => {
+    openDialogsRef.current = openDialogs;
+  }, [openDialogs]);
+
   // Load data on mount and set up refresh interval
   useEffect(() => {
     loadData();
@@ -988,9 +996,15 @@ export default function Home() {
     deferredPayment?: boolean, // 후불결제 여부
     customerMemo?: string // 손님 메모
   ) => {
+    // Use ref to get the latest openDialogs state (prevents stale closure issue)
+    const currentOpenDialogs = openDialogsRef.current;
+    
     // Get dialog info for this locker
-    const dialogInfo = openDialogs.get(lockerNumber);
-    if (!dialogInfo) return;
+    const dialogInfo = currentOpenDialogs.get(lockerNumber);
+    if (!dialogInfo) {
+      console.error('[handleApplyOption] No dialogInfo found for locker', lockerNumber);
+      return;
+    }
     
     const newLockerInfo = dialogInfo.newLockerInfo;
     
@@ -1032,7 +1046,7 @@ export default function Home() {
       const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
       const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
 
-      const lockerLogId = await localDb.createEntry({
+      const lockerLogId = localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
         timeType: newLockerInfo.timeType,
         basePrice: newLockerInfo.basePrice,

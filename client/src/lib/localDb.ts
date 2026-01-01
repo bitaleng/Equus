@@ -94,8 +94,8 @@ function migrateDatabase() {
     if (result.length > 0 && result[0].values.length > 0) {
       const createSql = result[0].values[0][0] as string;
       
-      // Check if 'direct_price' and 'transfer' are already in the CHECK constraints
-      const needsMigration = !createSql.includes('direct_price') || !createSql.includes('transfer') || !createSql.includes('customer_memo');
+      // Check if 'direct_price', 'transfer', 'customer_memo', and 'free' are already in the CHECK constraints
+      const needsMigration = !createSql.includes('direct_price') || !createSql.includes('transfer') || !createSql.includes('customer_memo') || !createSql.includes("'free'");
       
       if (needsMigration) {
         console.log('Migrating locker_logs table to add direct_price option and transfer payment method...');
@@ -117,7 +117,7 @@ function migrateDatabase() {
               business_day TEXT NOT NULL,
               time_type TEXT NOT NULL CHECK(time_type IN ('주간', '야간')),
               base_price INTEGER NOT NULL,
-              option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price')),
+              option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price', 'free')),
               option_amount INTEGER,
               final_price INTEGER NOT NULL,
               status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
@@ -819,7 +819,7 @@ function createTables() {
       business_day TEXT NOT NULL,
       time_type TEXT NOT NULL CHECK(time_type IN ('주간', '야간')),
       base_price INTEGER NOT NULL,
-      option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price')),
+      option_type TEXT NOT NULL CHECK(option_type IN ('none', 'discount', 'custom', 'foreigner', 'direct_price', 'free')),
       option_amount INTEGER,
       final_price INTEGER NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('in_use', 'checked_out', 'cancelled')),
