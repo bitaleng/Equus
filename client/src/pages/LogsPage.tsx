@@ -97,7 +97,7 @@ interface LogEntry {
   exitTime?: string | null;
   timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
-  optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
+  optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free';
   optionAmount?: number;
   finalPrice: number;
   paymentMethod?: 'card' | 'cash' | 'transfer';
@@ -409,6 +409,8 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => log.cancelled);
   } else if (cancelledFilter === "active") {
     displayedLogs = displayedLogs.filter(log => !log.cancelled);
+  } else if (cancelledFilter === "free") {
+    displayedLogs = displayedLogs.filter(log => log.optionType === 'free');
   }
 
   if (timeTypeFilter === "day") {
@@ -839,6 +841,7 @@ export default function LogsPage() {
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="active">정상건</SelectItem>
                   <SelectItem value="cancelled">취소건</SelectItem>
+                  <SelectItem value="free">무료입장</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -904,7 +907,7 @@ export default function LogsPage() {
                 {cancelledFilter !== "all" && (
                   <div className="flex items-center gap-2" data-testid="text-cancelled-filter-count">
                     <span className="text-muted-foreground">
-                      {cancelledFilter === "cancelled" ? "취소건" : "정상건"}:
+                      {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : "정상건"}:
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
