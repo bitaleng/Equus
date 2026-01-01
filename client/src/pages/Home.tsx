@@ -1537,6 +1537,7 @@ export default function Home() {
             log.optionType === 'direct_price' ? '요금직접' :
             (log.optionType as string) === 'free' ? '무료입장' :
             '외국인',
+    optionType: log.optionType as 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free', // 필터용
     finalPrice: log.finalPrice,
     status: log.status,
     cancelled: log.cancelled,

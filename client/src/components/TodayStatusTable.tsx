@@ -46,6 +46,7 @@ interface LockerEntry {
   timeType: '주간' | '야간' | '추가요금';
   basePrice: number;
   option: string;
+  optionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free'; // 옵션 타입 (필터용)
   finalPrice: number;
   status: 'in_use' | 'checked_out' | 'cancelled';
   cancelled: boolean;
@@ -121,6 +122,8 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
     displayedEntries = displayedEntries.filter(e => e.cancelled);
   } else if (cancelledFilter === "active") {
     displayedEntries = displayedEntries.filter(e => !e.cancelled);
+  } else if (cancelledFilter === "free") {
+    displayedEntries = displayedEntries.filter(e => e.optionType === 'free');
   }
 
   if (timeTypeFilter === "day") {
@@ -254,6 +257,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="active">정상건</SelectItem>
                   <SelectItem value="cancelled">취소건</SelectItem>
+                  <SelectItem value="free">무료입장</SelectItem>
                 </SelectContent>
               </Select>
               
@@ -296,7 +300,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
               <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 {cancelledFilter !== "all" && (
                   <span data-testid="text-cancelled-filter-count">
-                    {cancelledFilter === "cancelled" ? "취소건" : "정상건"}: 총 {displayedEntries.length}건
+                    {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : "정상건"}: 총 {displayedEntries.length}건
                   </span>
                 )}
                 {timeTypeFilter !== "all" && (
