@@ -1000,11 +1000,15 @@ export default function Home() {
       // 스캔 로그가 없는 경우(예외 상황) 현재 시간 사용
       const dialogOpenedTime = localDb.getLatestUnprocessedScanTime(lockerNumber) || new Date();
       const businessDay = getBusinessDay(dialogOpenedTime, businessDayStartHour);
-      let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+      let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
       let finalPrice = newLockerInfo.basePrice;
       let optionAmount: number | undefined;
 
-      if (option === 'direct_price' && customAmount) {
+      if (option === 'free') {
+        optionType = 'free';
+        finalPrice = 0;
+        optionAmount = 0;
+      } else if (option === 'direct_price' && customAmount) {
         optionType = 'direct_price';
         finalPrice = customAmount;
         optionAmount = customAmount;
@@ -1118,11 +1122,15 @@ export default function Home() {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let finalPrice = selectedEntry.basePrice;
     let optionAmount: number | undefined;
 
-    if (option === 'direct_price' && customAmount) {
+    if (option === 'free') {
+      optionType = 'free';
+      finalPrice = 0;
+      optionAmount = 0;
+    } else if (option === 'direct_price' && customAmount) {
       optionType = 'direct_price';
       finalPrice = customAmount;
       optionAmount = customAmount;
@@ -1513,6 +1521,7 @@ export default function Home() {
             log.optionType === 'discount' ? '할인' :
             log.optionType === 'custom' ? `할인직접` :
             log.optionType === 'direct_price' ? '요금직접' :
+            (log.optionType as string) === 'free' ? '무료입장' :
             '외국인',
     finalPrice: log.finalPrice,
     status: log.status,

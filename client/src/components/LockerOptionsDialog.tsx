@@ -53,7 +53,7 @@ interface LockerOptionsDialogProps {
   currentPaymentCash?: number;
   currentPaymentCard?: number;
   currentPaymentTransfer?: number;
-  currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price';
+  currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free';
   currentOptionAmount?: number;
   currentFinalPrice?: number;
   discountAmount?: number;
@@ -508,25 +508,36 @@ export default function LockerOptionsDialog({
       setHasLongTowel(towelPresent);
       
       // Initialize option states based on current optionType
-      if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
+      if (currentOptionType === 'free') {
+        setIsFreeEntry(true);
+        setIsDirectPrice(false);
+        setIsForeigner(false);
+        setDiscountOption("none");
+        setDirectPrice("");
+        setDiscountInputAmount("");
+      } else if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
+        setIsFreeEntry(false);
         setIsDirectPrice(true);
         setDirectPrice(currentFinalPrice.toString());
         setIsForeigner(false);
         setDiscountOption("none");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'foreigner') {
+        setIsFreeEntry(false);
         setIsForeigner(true);
         setIsDirectPrice(false);
         setDiscountOption("none");
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'discount') {
+        setIsFreeEntry(false);
         setDiscountOption("discount");
         setIsForeigner(false);
         setIsDirectPrice(false);
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'custom' && currentOptionAmount !== undefined) {
+        setIsFreeEntry(false);
         setDiscountOption("custom");
         setDiscountInputAmount(currentOptionAmount.toString());
         setIsForeigner(false);
@@ -534,6 +545,7 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
       } else {
         // none or default
+        setIsFreeEntry(false);
         setDiscountOption("none");
         setIsForeigner(false);
         setIsDirectPrice(false);
@@ -550,6 +562,7 @@ export default function LockerOptionsDialog({
       setDiscountOption("none");
       setDiscountInputAmount("");
       setIsForeigner(false);
+      setIsFreeEntry(false);
       setIsDirectPrice(false);
       setDirectPrice("");
       setPaymentMethod(null);

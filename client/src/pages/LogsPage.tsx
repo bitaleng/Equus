@@ -457,6 +457,7 @@ export default function LogsPage() {
     if (log.optionType === 'discount') return '할인';
     if (log.optionType === 'custom') return '할인직접입력';
     if (log.optionType === 'direct_price') return '요금직접입력';
+    if (log.optionType === 'free') return '무료입장';
     return '-';
   };
   
