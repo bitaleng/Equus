@@ -2506,6 +2506,29 @@ export function getLockerLogsByBusinessDay(businessDay: string) {
   return rowsToObjects(result[0]);
 }
 
+// Get visitor statistics by month (총방문수, 실제방문수, 취소, 무료입장)
+export function getVisitorStatsByMonth(yearMonth: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT 
+      business_day,
+      COUNT(*) as total_visitors,
+      COUNT(CASE WHEN cancelled = 0 AND (option_type IS NULL OR option_type != 'free') AND parent_locker IS NULL THEN 1 END) as actual_visitors,
+      COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancelled_visitors,
+      COUNT(CASE WHEN cancelled = 0 AND option_type = 'free' THEN 1 END) as free_visitors
+     FROM locker_logs 
+     WHERE business_day LIKE ? AND parent_locker IS NULL
+     GROUP BY business_day
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+
+  if (result.length === 0) return [];
+
+  return rowsToObjects(result[0]);
+}
+
 // Get daily payment breakdown by month (cash, card, transfer)
 export function getDailyPaymentBreakdownByMonth(yearMonth: string) {
   if (!db) throw new Error('Database not initialized');

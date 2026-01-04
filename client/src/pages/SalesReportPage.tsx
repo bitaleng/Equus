@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw, Users } from "lucide-react";
 import {
   getDailySummariesByMonth,
   getLockerLogsByBusinessDay,
@@ -12,6 +12,7 @@ import {
   getCancelledSalesByMonth,
   getDailyPaymentBreakdownByMonth,
   getClosingDays,
+  getVisitorStatsByMonth,
 } from "@/lib/localDb";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -61,6 +62,14 @@ interface ClosingDay {
   isConfirmed: boolean;
 }
 
+interface VisitorStats {
+  businessDay: string;
+  totalVisitors: number;
+  actualVisitors: number;
+  cancelledVisitors: number;
+  freeVisitors: number;
+}
+
 // Helper to get current date in Korea timezone
 function getKoreaDate(): Date {
   return toZonedTime(new Date(), TIMEZONE);
@@ -87,13 +96,13 @@ function calculateCurrentBusinessDay(): string {
 }
 
 export default function SalesReportPage() {
-  const [mainTab, setMainTab] = useState<"calendar" | "graph">("calendar");
+  const [mainTab, setMainTab] = useState<"calendar" | "graph" | "visitors">("calendar");
 
   return (
     <div className="p-4 max-w-7xl mx-auto" data-testid="page-sales-report">
       <h1 className="text-2xl font-bold mb-4">매출리포트</h1>
 
-      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "calendar" | "graph")}>
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "calendar" | "graph" | "visitors")}>
         <TabsList className="mb-4">
           <TabsTrigger value="calendar" data-testid="tab-calendar">
             <Calendar className="w-4 h-4 mr-2" />
@@ -103,6 +112,10 @@ export default function SalesReportPage() {
             <BarChart3 className="w-4 h-4 mr-2" />
             매출그래프
           </TabsTrigger>
+          <TabsTrigger value="visitors" data-testid="tab-visitors">
+            <Users className="w-4 h-4 mr-2" />
+            방문인원
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="calendar">
@@ -111,6 +124,10 @@ export default function SalesReportPage() {
 
         <TabsContent value="graph">
           <SalesGraph />
+        </TabsContent>
+
+        <TabsContent value="visitors">
+          <VisitorGraph />
         </TabsContent>
       </Tabs>
     </div>
@@ -123,6 +140,7 @@ function SalesCalendar() {
   const [cancelledSales, setCancelledSales] = useState<CancelledSales[]>([]);
   const [paymentBreakdowns, setPaymentBreakdowns] = useState<PaymentBreakdown[]>([]);
   const [closingDays, setClosingDays] = useState<ClosingDay[]>([]);
+  const [visitorStats, setVisitorStats] = useState<VisitorStats[]>([]);
   const [currentBusinessDay, setCurrentBusinessDay] = useState<string>("");
   const [viewType, setViewType] = useState<"sales" | "refund">("sales");
 
@@ -139,6 +157,9 @@ function SalesCalendar() {
     
     const closings = getClosingDays();
     setClosingDays(closings as ClosingDay[]);
+    
+    const visitors = getVisitorStatsByMonth(yearMonth);
+    setVisitorStats(visitors as VisitorStats[]);
     
     setCurrentBusinessDay(calculateCurrentBusinessDay());
   }, [currentMonth]);
@@ -166,6 +187,12 @@ function SalesCalendar() {
     closingDays.forEach((c) => map.set(c.businessDay, c));
     return map;
   }, [closingDays]);
+
+  const visitorMap = useMemo(() => {
+    const map = new Map<string, VisitorStats>();
+    visitorStats.forEach((v) => map.set(v.businessDay, v));
+    return map;
+  }, [visitorStats]);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -318,6 +345,17 @@ function SalesCalendar() {
                         })()}
                       </>
                     )}
+                    {viewType === "sales" && (() => {
+                      const visitor = visitorMap.get(dateStr);
+                      if (visitor && visitor.totalVisitors > 0) {
+                        return (
+                          <div className={`mt-1 text-[10px] text-purple-600 dark:text-purple-400 ${sales > 0 ? 'border-t border-muted pt-0.5' : ''}`}>
+                            방문:{visitor.totalVisitors}명(실:{visitor.actualVisitors}, 취:{visitor.cancelledVisitors}, 무:{visitor.freeVisitors})
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                     {viewType === "refund" && (() => {
                       const cancelled = cancelledMap.get(dateStr);
                       if (cancelled && cancelled.cancelledAmount > 0) {
@@ -807,6 +845,485 @@ function YearlyGraph() {
               <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
               <Line type="monotone" dataKey="sales" stroke="#10b981" strokeWidth={2} dot={{ r: 6 }} />
             </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// 방문인원수 그래프 컴포넌트
+function VisitorGraph() {
+  const [graphType, setGraphType] = useState<"daily" | "weekly" | "monthly" | "yearly" | "hourly">("daily");
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = () => {
+    setRefreshKey(k => k + 1);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={handleRefresh} data-testid="button-refresh-visitor-graph">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          새로고침
+        </Button>
+      </div>
+      <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)}>
+        <TabsList>
+          <TabsTrigger value="daily" data-testid="tab-visitor-daily">일간</TabsTrigger>
+          <TabsTrigger value="weekly" data-testid="tab-visitor-weekly">주간</TabsTrigger>
+          <TabsTrigger value="monthly" data-testid="tab-visitor-monthly">월간</TabsTrigger>
+          <TabsTrigger value="yearly" data-testid="tab-visitor-yearly">연간</TabsTrigger>
+          <TabsTrigger value="hourly" data-testid="tab-visitor-hourly">시간대별</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="daily">
+          <DailyVisitorGraph key={`daily-visitor-${refreshKey}`} />
+        </TabsContent>
+        <TabsContent value="weekly">
+          <WeeklyVisitorGraph key={`weekly-visitor-${refreshKey}`} />
+        </TabsContent>
+        <TabsContent value="monthly">
+          <MonthlyVisitorGraph key={`monthly-visitor-${refreshKey}`} />
+        </TabsContent>
+        <TabsContent value="yearly">
+          <YearlyVisitorGraph key={`yearly-visitor-${refreshKey}`} />
+        </TabsContent>
+        <TabsContent value="hourly">
+          <HourlyVisitorGraph key={`hourly-visitor-${refreshKey}`} />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function DailyVisitorGraph() {
+  const [selectedDate, setSelectedDate] = useState(getKoreaDate());
+  const [dailyData, setDailyData] = useState<any[]>([]);
+
+  useEffect(() => {
+    const dates: string[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = subDays(selectedDate, i);
+      dates.push(format(d, "yyyy-MM-dd"));
+    }
+
+    const data = dates.map((dateStr) => {
+      const visitors = getVisitorStatsByMonth(dateStr.substring(0, 7)) as VisitorStats[];
+      const dayData = visitors.find((v) => v.businessDay === dateStr);
+      const d = parseISO(dateStr + "T12:00:00");
+      return {
+        date: dateStr,
+        label: format(d, "dd일(E)", { locale: ko }),
+        total: dayData?.totalVisitors || 0,
+        actual: dayData?.actualVisitors || 0,
+        cancelled: dayData?.cancelledVisitors || 0,
+        free: dayData?.freeVisitors || 0,
+      };
+    });
+    setDailyData(data);
+  }, [selectedDate]);
+
+  const totalVisitors = dailyData.reduce((sum, d) => sum + d.total, 0);
+  const actualVisitors = dailyData.reduce((sum, d) => sum + d.actual, 0);
+  const currentDayData = dailyData.find(d => d.date === format(selectedDate, "yyyy-MM-dd"));
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">일별 방문인원</CardTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">기간선택</span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => subDays(d, 1))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="font-medium">
+              {format(selectedDate, "yyyy. M. d(E)", { locale: ko })}
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => addDays(d, 1))}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-4 gap-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">당일 총방문</div>
+              <div className="text-2xl font-bold">{currentDayData?.total || 0}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">당일 실제방문</div>
+              <div className="text-2xl font-bold text-green-600">{currentDayData?.actual || 0}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">7일 총합</div>
+              <div className="text-2xl font-bold">{totalVisitors}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">7일 실제방문</div>
+              <div className="text-2xl font-bold text-green-600">{actualVisitors}명</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dailyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <Tooltip 
+                formatter={(value: number, name: string) => {
+                  const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                  return [`${value}명`, labels[name] || name];
+                }} 
+              />
+              <Legend formatter={(value) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return labels[value] || value;
+              }} />
+              <Bar dataKey="actual" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WeeklyVisitorGraph() {
+  const [weeklyData, setWeeklyData] = useState<any[]>([]);
+  const [selectedWeekStart, setSelectedWeekStart] = useState(() => startOfWeek(getKoreaDate(), { weekStartsOn: 1 }));
+
+  useEffect(() => {
+    const weeks: any[] = [];
+    for (let i = 3; i >= 0; i--) {
+      const weekStart = subWeeks(selectedWeekStart, i);
+      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+      const startStr = format(weekStart, "yyyy-MM-dd");
+      const endStr = format(weekEnd, "yyyy-MM-dd");
+      
+      const startMonth = format(weekStart, "yyyy-MM");
+      const endMonth = format(weekEnd, "yyyy-MM");
+      
+      let allVisitors = getVisitorStatsByMonth(startMonth) as VisitorStats[];
+      if (startMonth !== endMonth) {
+        const endMonthVisitors = getVisitorStatsByMonth(endMonth) as VisitorStats[];
+        allVisitors = [...allVisitors, ...endMonthVisitors];
+      }
+      
+      const weekData = allVisitors.filter(v => v.businessDay >= startStr && v.businessDay <= endStr);
+      
+      const total = weekData.reduce((sum, v) => sum + v.totalVisitors, 0);
+      const actual = weekData.reduce((sum, v) => sum + v.actualVisitors, 0);
+      const cancelled = weekData.reduce((sum, v) => sum + v.cancelledVisitors, 0);
+      const free = weekData.reduce((sum, v) => sum + v.freeVisitors, 0);
+
+      weeks.push({
+        label: `${format(weekStart, "M/d")}~${format(weekEnd, "M/d")}`,
+        total, actual, cancelled, free
+      });
+    }
+    setWeeklyData(weeks);
+  }, [selectedWeekStart]);
+
+  const totalVisitors = weeklyData.reduce((sum, w) => sum + w.total, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">주간 방문인원</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => setSelectedWeekStart(d => subWeeks(d, 1))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="font-medium">
+              {format(selectedWeekStart, "yyyy. M. d", { locale: ko })} 주
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedWeekStart(d => addDays(d, 7))}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Card className="bg-muted/30">
+          <CardContent className="pt-4">
+            <div className="text-sm text-muted-foreground">4주간 총 방문</div>
+            <div className="text-2xl font-bold">{totalVisitors}명</div>
+          </CardContent>
+        </Card>
+
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={weeklyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <Tooltip formatter={(value: number, name: string) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return [`${value}명`, labels[name] || name];
+              }} />
+              <Legend formatter={(value) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return labels[value] || value;
+              }} />
+              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
+              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
+              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MonthlyVisitorGraph() {
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [selectedYear, setSelectedYear] = useState(getKoreaDate().getFullYear());
+
+  useEffect(() => {
+    const months: any[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const yearMonth = `${selectedYear}-${String(m).padStart(2, '0')}`;
+      const visitors = getVisitorStatsByMonth(yearMonth) as VisitorStats[];
+      
+      const total = visitors.reduce((sum, v) => sum + v.totalVisitors, 0);
+      const actual = visitors.reduce((sum, v) => sum + v.actualVisitors, 0);
+      const cancelled = visitors.reduce((sum, v) => sum + v.cancelledVisitors, 0);
+      const free = visitors.reduce((sum, v) => sum + v.freeVisitors, 0);
+
+      months.push({ label: `${m}월`, total, actual, cancelled, free });
+    }
+    setMonthlyData(months);
+  }, [selectedYear]);
+
+  const totalVisitors = monthlyData.reduce((sum, m) => sum + m.total, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">월별 방문인원</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={() => setSelectedYear(y => y - 1)}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="font-medium">{selectedYear}년</span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedYear(y => y + 1)}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Card className="bg-muted/30">
+          <CardContent className="pt-4">
+            <div className="text-sm text-muted-foreground">{selectedYear}년 총 방문</div>
+            <div className="text-2xl font-bold">{totalVisitors}명</div>
+          </CardContent>
+        </Card>
+
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={monthlyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <Tooltip formatter={(value: number, name: string) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return [`${value}명`, labels[name] || name];
+              }} />
+              <Legend formatter={(value) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return labels[value] || value;
+              }} />
+              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
+              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
+              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function YearlyVisitorGraph() {
+  const [yearlyData, setYearlyData] = useState<any[]>([]);
+
+  useEffect(() => {
+    const currentYear = getKoreaDate().getFullYear();
+    const years: any[] = [];
+    
+    for (let y = currentYear - 2; y <= currentYear; y++) {
+      let total = 0, actual = 0, cancelled = 0, free = 0;
+      
+      for (let m = 1; m <= 12; m++) {
+        const yearMonth = `${y}-${String(m).padStart(2, '0')}`;
+        const visitors = getVisitorStatsByMonth(yearMonth) as VisitorStats[];
+        total += visitors.reduce((sum, v) => sum + v.totalVisitors, 0);
+        actual += visitors.reduce((sum, v) => sum + v.actualVisitors, 0);
+        cancelled += visitors.reduce((sum, v) => sum + v.cancelledVisitors, 0);
+        free += visitors.reduce((sum, v) => sum + v.freeVisitors, 0);
+      }
+      
+      years.push({ label: `${y}년`, total, actual, cancelled, free });
+    }
+    
+    setYearlyData(years);
+  }, []);
+
+  const totalVisitors = yearlyData.reduce((sum, y) => sum + y.total, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">연도별 방문인원</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Card className="bg-muted/30">
+          <CardContent className="pt-4">
+            <div className="text-sm text-muted-foreground">전체 기간 총 방문</div>
+            <div className="text-2xl font-bold">{totalVisitors}명</div>
+          </CardContent>
+        </Card>
+
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={yearlyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="label" />
+              <YAxis />
+              <Tooltip formatter={(value: number, name: string) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료", total: "총방문" };
+                return [`${value}명`, labels[name] || name];
+              }} />
+              <Legend formatter={(value) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료", total: "총방문" };
+                return labels[value] || value;
+              }} />
+              <Line type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="cancelled" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+              <Line type="monotone" dataKey="free" stroke="#a855f7" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function HourlyVisitorGraph() {
+  const [selectedDate, setSelectedDate] = useState(getKoreaDate());
+  const [hourlyData, setHourlyData] = useState<any[]>([]);
+  const settings = getSettings();
+  const businessDayStartHour = settings.businessDayStartHour || 10;
+
+  useEffect(() => {
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const logs = getLockerLogsByBusinessDay(dateStr) as any[];
+    
+    const hourlyMap = new Map<number, { actual: number; cancelled: number; free: number }>();
+    for (let h = 0; h < 24; h++) {
+      hourlyMap.set(h, { actual: 0, cancelled: 0, free: 0 });
+    }
+
+    logs.forEach((log) => {
+      if (log.entryTime) {
+        const entryTime = toZonedTime(new Date(log.entryTime), TIMEZONE);
+        const hour = getHours(entryTime);
+        const entry = hourlyMap.get(hour)!;
+        
+        if (log.cancelled) {
+          entry.cancelled++;
+        } else if (log.optionType === 'free') {
+          entry.free++;
+        } else {
+          entry.actual++;
+        }
+      }
+    });
+
+    const data: any[] = [];
+    for (let h = businessDayStartHour; h < 24; h++) {
+      const entry = hourlyMap.get(h)!;
+      data.push({ hour: `${h}시`, ...entry, isNextDay: false });
+    }
+    for (let h = 0; h < businessDayStartHour; h++) {
+      const entry = hourlyMap.get(h)!;
+      data.push({ hour: `익일${h}시`, ...entry, isNextDay: true });
+    }
+
+    setHourlyData(data);
+  }, [selectedDate, businessDayStartHour]);
+
+  const totalVisitors = hourlyData.reduce((sum, h) => sum + h.actual + h.cancelled + h.free, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">시간대별 방문인원</CardTitle>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">영업일선택</span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => subDays(d, 1))}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="font-medium">
+              {format(selectedDate, "yyyy. M. d(E)", { locale: ko })}
+            </span>
+            <Button variant="ghost" size="icon" onClick={() => setSelectedDate(d => addDays(d, 1))}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Card className="bg-muted/30 flex-1">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">당일 총 방문</div>
+              <div className="text-2xl font-bold">{totalVisitors}명</div>
+            </CardContent>
+          </Card>
+          <div className="text-xs text-muted-foreground ml-4">
+            정산기준: {format(selectedDate, "M/d")} {businessDayStartHour}:00 ~ 익일 {businessDayStartHour}:00
+          </div>
+        </div>
+
+        <div className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={hourlyData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="hour" />
+              <YAxis />
+              <Tooltip formatter={(value: number, name: string) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return [`${value}명`, labels[name] || name];
+              }} />
+              <Legend formatter={(value) => {
+                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
+                return labels[value] || value;
+              }} />
+              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
+              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
+              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </CardContent>
