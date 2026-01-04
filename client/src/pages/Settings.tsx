@@ -42,6 +42,8 @@ interface Settings {
   foreignerPrice: number;
   domesticCheckpointHour: number;
   foreignerAdditionalFeePeriod: number;
+  dayStartTime: string;     // 주간 시작 시간 (HH:mm)
+  nightStartTime: string;   // 야간 시작 시간 (HH:mm)
 }
 
 interface LockerGroup {
@@ -86,6 +88,8 @@ export default function Settings() {
     foreignerPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
+    dayStartTime: '07:00',
+    nightStartTime: '19:00',
   });
 
   // Locker group dialog states
@@ -1254,6 +1258,49 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* 주간/야간 시간대 설정 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>주간/야간 시간대</CardTitle>
+              <CardDescription>
+                주간 요금과 야간 요금이 적용되는 시간대를 설정합니다 (분 단위 조정 가능)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="dayStartTime">주간 시작 시간</Label>
+                  <Input
+                    id="dayStartTime"
+                    type="time"
+                    value={formData.dayStartTime}
+                    onChange={(e) => setFormData({ ...formData, dayStartTime: e.target.value })}
+                    data-testid="input-day-start-time"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    이 시간부터 주간 요금 적용
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nightStartTime">야간 시작 시간</Label>
+                  <Input
+                    id="nightStartTime"
+                    type="time"
+                    value={formData.nightStartTime}
+                    onChange={(e) => setFormData({ ...formData, nightStartTime: e.target.value })}
+                    data-testid="input-night-start-time"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    이 시간부터 야간 요금 적용
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground border-t pt-3">
+                현재 설정: 주간 {formData.dayStartTime} ~ {formData.nightStartTime} / 야간 {formData.nightStartTime} ~ 다음날 {formData.dayStartTime}
+              </p>
+            </CardContent>
+          </Card>
+
           {/* 기본 요금 설정 */}
           <Card>
             <CardHeader>
@@ -1264,7 +1311,7 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="dayPrice">주간 요금 (7:00 - 19:00)</Label>
+                <Label htmlFor="dayPrice">주간 요금 ({formData.dayStartTime} - {formData.nightStartTime})</Label>
                 <Input
                   id="dayPrice"
                   type="number"
@@ -1274,7 +1321,7 @@ export default function Settings() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nightPrice">야간 요금 (19:00 - 7:00)</Label>
+                <Label htmlFor="nightPrice">야간 요금 ({formData.nightStartTime} - {formData.dayStartTime})</Label>
                 <Input
                   id="nightPrice"
                   type="number"

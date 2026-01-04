@@ -146,11 +146,35 @@ export function getBusinessDayRange(
 
 /**
  * 현재 시간대가 주간인지 야간인지 판단 (KST 기준)
+ * @param date 기준 시각 (기본값: 현재)
+ * @param dayStartTime 주간 시작 시간 "HH:mm" 형식 (기본값: "07:00")
+ * @param nightStartTime 야간 시작 시간 "HH:mm" 형식 (기본값: "19:00")
  */
-export function getTimeType(date: Date = new Date()): '주간' | '야간' {
+export function getTimeType(
+  date: Date = new Date(),
+  dayStartTime: string = "07:00",
+  nightStartTime: string = "19:00"
+): '주간' | '야간' {
   const seoulDate = toZonedTime(date, SEOUL_TIMEZONE);
-  const hour = seoulDate.getHours();
-  return (hour >= 7 && hour < 19) ? '주간' : '야간';
+  const currentHour = seoulDate.getHours();
+  const currentMinute = seoulDate.getMinutes();
+  const currentTotalMinutes = currentHour * 60 + currentMinute;
+  
+  // 주간/야간 시작 시간 파싱
+  const [dayH, dayM] = dayStartTime.split(':').map(Number);
+  const [nightH, nightM] = nightStartTime.split(':').map(Number);
+  const dayStartMinutes = dayH * 60 + dayM;
+  const nightStartMinutes = nightH * 60 + nightM;
+  
+  // 주간: dayStartMinutes <= current < nightStartMinutes
+  if (dayStartMinutes < nightStartMinutes) {
+    // 일반 케이스: 주간시작 < 야간시작 (예: 07:00 ~ 19:00)
+    return (currentTotalMinutes >= dayStartMinutes && currentTotalMinutes < nightStartMinutes) ? '주간' : '야간';
+  } else {
+    // 역전 케이스: 야간시작 < 주간시작 (예: 야간 22:00 ~ 주간 06:00)
+    // 야간: nightStartMinutes <= current < dayStartMinutes
+    return (currentTotalMinutes >= nightStartMinutes && currentTotalMinutes < dayStartMinutes) ? '야간' : '주간';
+  }
 }
 
 export function getBasePrice(timeType: '주간' | '야간', dayPrice: number = 10000, nightPrice: number = 15000): number {

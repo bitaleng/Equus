@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PatternLockDialog from "@/components/PatternLockDialog";
-import { getBusinessDay, getBusinessDayRange, getTimeType, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
+import { getBusinessDay, getBusinessDayRange, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
 import type { LockerLog as SharedLockerLog } from "@shared/schema";
@@ -375,7 +375,7 @@ export default function Home() {
     
     if (!isInUse) {
       // Empty locker: add to openDialogs for multi-popup display
-      const timeType = getTimeType(currentTime);
+      const timeType = localDb.getTimeTypeWithSettings(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
       setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
@@ -507,7 +507,7 @@ export default function Home() {
           // Empty locker: add to openDialogs for multi-popup display
           // Use current time at the moment of scan, not the time when scanning started
           const scanTime = new Date();
-          const timeType = getTimeType(scanTime);
+          const timeType = localDb.getTimeTypeWithSettings(scanTime);
           const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
           
           setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
@@ -930,7 +930,7 @@ export default function Home() {
     const state = lockerStates[lockerNumber];
     
     if (state === 'empty') {
-      const timeType = getTimeType(currentTime);
+      const timeType = localDb.getTimeTypeWithSettings(currentTime);
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
       // Log the locker click (for scan tracking)

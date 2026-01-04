@@ -2680,7 +2680,9 @@ export function getSettings() {
     foreignerAdditionalFeePeriod: 24,
     screenWakeLock: true,
     cardPaymentAppEnabled: false,
-    cardPaymentAppPackage: 'com.tossplace.app.release'
+    cardPaymentAppPackage: 'com.tossplace.app.release',
+    dayStartTime: '07:00',      // 주간 시작 시간 (HH:mm)
+    nightStartTime: '19:00'     // 야간 시작 시간 (HH:mm)
   };
 
   const saved = localStorage.getItem('settings');
@@ -2697,6 +2699,13 @@ export function updateSettings(settings: any) {
   const current = getSettings();
   const updated = { ...current, ...settings };
   localStorage.setItem('settings', JSON.stringify(updated));
+}
+
+// Helper: getTimeType with settings (주간/야간 시작 시간 설정 적용)
+export function getTimeTypeWithSettings(date: Date = new Date()): '주간' | '야간' {
+  const settings = getSettings();
+  const { dayStartTime = '07:00', nightStartTime = '19:00' } = settings;
+  return getTimeType(date, dayStartTime, nightStartTime);
 }
 
 // Data management operations
@@ -2764,11 +2773,11 @@ export function createTestData() {
   
   const now = new Date();
   const currentHour = now.getHours();
-  const isCurrentlyDaytime = getTimeType(now) === '주간';
+  const isCurrentlyDaytime = getTimeTypeWithSettings(now) === '주간';
   
   console.log('=== 테스트 데이터 생성 시작 ===');
   console.log('현재 시각:', now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
-  console.log('현재 시간대:', getTimeType(now));
+  console.log('현재 시간대:', getTimeTypeWithSettings(now));
   
   // 중복 방지: 각 락커당 하나의 entry만 생성
   const usedLockers = new Set<number>();
@@ -2809,7 +2818,7 @@ export function createTestData() {
     const entryDate = new Date(targetDate);
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(entryDate);
+    const timeType = getTimeTypeWithSettings(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} (1일 전) → timeType: ${timeType}, basePrice: ${basePrice}`);
@@ -2865,7 +2874,7 @@ export function createTestData() {
     const entryDate = new Date(targetDate);
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(entryDate);
+    const timeType = getTimeTypeWithSettings(entryDate);
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     console.log(`  락커${lockerNumber}: ${entryDate.toLocaleString('ko-KR')} (${daysAgo}일 전) → timeType: ${timeType}, basePrice: ${basePrice}`);
@@ -2933,7 +2942,7 @@ export function createTestData() {
     const entryDate = new Date();
     entryDate.setHours(hour, minute, 0, 0);
     
-    const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
+    const timeType = getTimeTypeWithSettings(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     if (i < 3) { // 처음 3개만 로그 출력
@@ -3033,7 +3042,7 @@ export function createTestData() {
       entryDate.setHours(hour, minute, 0, 0);
     }
     
-    const timeType = getTimeType(entryDate); // 실제 입실 시각으로 판단
+    const timeType = getTimeTypeWithSettings(entryDate); // 실제 입실 시각으로 판단
     const basePrice = timeType === '주간' ? dayPrice : nightPrice;
     
     if (i < 3) { // 처음 3개만 로그 출력
@@ -3134,7 +3143,7 @@ export function createTestData() {
         entryDate.setHours(hour, minute, 0, 0);
       }
       
-      const timeType = getTimeType(entryDate);
+      const timeType = getTimeTypeWithSettings(entryDate);
       const basePrice = timeType === '주간' ? dayPrice : nightPrice;
       
       const optionType = randomElement(optionTypes);
@@ -3386,7 +3395,7 @@ export async function createAdditionalFeeTestData() {
             
             // 검증: 추가요금이 없는지 확인
             const businessDay = getBusinessDay(entryTime, businessDayStartHour);
-            const timeType = getTimeType(entryTime);
+            const timeType = getTimeTypeWithSettings(entryTime);
             
             const { additionalFeeCount, additionalFee } = calculateAdditionalFee(
               entryTime.toISOString(),
@@ -3487,7 +3496,7 @@ export async function createAdditionalFeeTestData() {
             }
             
             businessDay = getBusinessDay(entryTime, businessDayStartHour);
-            timeType = getTimeType(entryTime);
+            timeType = getTimeTypeWithSettings(entryTime);
             basePrice = timeType === '주간' ? dayPrice : nightPrice;
             
             // Validate: Must have additional fee
@@ -3552,7 +3561,7 @@ export async function createAdditionalFeeTestData() {
           const entryTime = new Date(currentBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
-          const timeType = getTimeType(entryTime);
+          const timeType = getTimeTypeWithSettings(entryTime);
           const basePrice = dayPrice;
           const paymentMethod = randomElement(paymentMethods);
           
@@ -3591,7 +3600,7 @@ export async function createAdditionalFeeTestData() {
           const entryTime = new Date(currentBusinessDayStart.getTime() + hoursAfterStart * 60 * 60 * 1000);
           
           const businessDay = getBusinessDay(entryTime, businessDayStartHour);
-          const timeType = getTimeType(entryTime);
+          const timeType = getTimeTypeWithSettings(entryTime);
           const basePrice = nightPrice;
           const paymentMethod = randomElement(paymentMethods);
           
@@ -3666,7 +3675,7 @@ export async function createAdditionalFeeTestData() {
         const randomOffset = Math.floor(Math.random() * timeRange);
         const entryDate = new Date(entryRangeStart.getTime() + randomOffset);
         
-        const timeType = getTimeType(entryDate);
+        const timeType = getTimeTypeWithSettings(entryDate);
         const basePrice = timeType === '주간' ? dayPrice : nightPrice;
         
         const optionType = randomElement(optionTypes);
@@ -3726,7 +3735,7 @@ export async function createAdditionalFeeTestData() {
           const entryDate = new Date(pastDate);
           entryDate.setHours(hour, minute, 0, 0);
           
-          const timeType = getTimeType(entryDate);
+          const timeType = getTimeTypeWithSettings(entryDate);
           const basePrice = timeType === '주간' ? dayPrice : nightPrice;
           
           const optionType = randomElement(optionTypes);
