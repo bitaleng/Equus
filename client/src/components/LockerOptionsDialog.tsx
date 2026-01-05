@@ -174,6 +174,9 @@ export default function LockerOptionsDialog({
   // Dynamic rental items from database
   const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
   const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
+  
+  // User-defined pricing options from database
+  const [pricingOptions, setPricingOptions] = useState<any[]>([]);
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
   const [rentalPaymentMethods, setRentalPaymentMethods] = useState<Map<string, 'cash' | 'card' | 'transfer'>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
@@ -286,12 +289,16 @@ export default function LockerOptionsDialog({
     }
   }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice]);
 
-  // Load rental items from database on mount
+  // Load rental items and pricing options from database on mount
   useEffect(() => {
-    // Reload rental items whenever dialog opens
+    // Reload rental items and pricing options whenever dialog opens
     if (open) {
       const items = localDb.getAdditionalRevenueItems();
       setAvailableRentalItems(items);
+      
+      // Load user-defined pricing options
+      const options = localDb.getPricingOptions();
+      setPricingOptions(options);
       
       // Load current rental transactions if locker is in use
       if (isInUse && currentLockerLogId) {
@@ -588,12 +595,30 @@ export default function LockerOptionsDialog({
       return foreignerPrice;
     }
     
-    // 우선순위 3: 할인 옵션
+    // 우선순위 3: 기본 할인 옵션
     if (discountOption === "discount") {
       return basePrice - discountAmount;
     }
+    
+    // 우선순위 4: 사용자 정의 요금옵션 (pricing_xxx)
+    if (discountOption.startsWith("pricing_")) {
+      const optionId = discountOption.replace("pricing_", "");
+      const option = pricingOptions.find(o => o.id === optionId);
+      if (option) {
+        if (option.optionType === 'discount') {
+          return basePrice - option.amount;
+        } else if (option.optionType === 'surcharge') {
+          return basePrice + option.amount;
+        } else if (option.optionType === 'fixed') {
+          return option.amount;
+        }
+      }
+    }
+    
+    // 우선순위 5: 직접입력 (음수면 할인, 양수면 할증)
     if (discountOption === "custom" && discountInputAmount) {
-      return basePrice - parseInt(discountInputAmount);
+      const inputAmount = parseInt(discountInputAmount);
+      return basePrice - inputAmount; // 음수 입력 시 할증됨
     }
     
     return basePrice;
@@ -1580,24 +1605,30 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 할인 옵션 Select */}
+            {/* 요금 옵션 Select */}
             {!isDirectPrice && !isForeigner && !isFreeEntry && (
               <div className="space-y-3">
-                <Label className="text-sm font-semibold">할인 옵션</Label>
+                <Label className="text-sm font-semibold">요금 옵션</Label>
                 <Select value={discountOption} onValueChange={setDiscountOption}>
                   <SelectTrigger data-testid="select-discount-option">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">없음</SelectItem>
-                    <SelectItem value="discount">할인 ({discountAmount.toLocaleString()}원)</SelectItem>
-                    <SelectItem value="custom">할인 직접입력</SelectItem>
+                    <SelectItem value="none">없음 (정가)</SelectItem>
+                    <SelectItem value="discount">기본할인 (-{discountAmount.toLocaleString()}원)</SelectItem>
+                    {/* 사용자 정의 요금옵션 */}
+                    {pricingOptions.map((opt) => (
+                      <SelectItem key={opt.id} value={`pricing_${opt.id}`}>
+                        {opt.name} ({opt.optionType === 'discount' ? '-' : opt.optionType === 'surcharge' ? '+' : ''}{opt.amount.toLocaleString()}원{opt.optionType === 'fixed' ? ' 고정' : ''})
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="custom">직접입력</SelectItem>
                   </SelectContent>
                 </Select>
                 {discountOption === "custom" && (
                   <Input
                     type="number"
-                    placeholder="할인 금액 입력"
+                    placeholder="할인/할증 금액 입력 (음수=할인)"
                     value={discountInputAmount}
                     onChange={(e) => setDiscountInputAmount(e.target.value)}
                     data-testid="input-custom-discount"
