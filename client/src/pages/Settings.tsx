@@ -8,6 +8,13 @@ import { useToast } from "@/hooks/use-toast";
 import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -77,6 +84,12 @@ interface RevenueItemFormData {
   depositAmount: string;
 }
 
+interface PricingOptionFormData {
+  name: string;
+  optionType: 'discount' | 'surcharge' | 'fixed';
+  amount: string;
+}
+
 export default function Settings() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -115,6 +128,16 @@ export default function Settings() {
   });
   
   const [revenueItems, setRevenueItems] = useState<AdditionalRevenueItem[]>([]);
+
+  // Pricing options states
+  const [pricingOptions, setPricingOptions] = useState<localDb.PricingOption[]>([]);
+  const [isPricingOptionDialogOpen, setIsPricingOptionDialogOpen] = useState(false);
+  const [editingPricingOption, setEditingPricingOption] = useState<localDb.PricingOption | null>(null);
+  const [pricingOptionFormData, setPricingOptionFormData] = useState<PricingOptionFormData>({
+    name: "",
+    optionType: "discount",
+    amount: "",
+  });
 
   // Barcode mappings states
   const [barcodeMappings, setBarcodeMappings] = useState<Array<{
@@ -220,6 +243,7 @@ export default function Settings() {
     setFormData(settings);
     loadLockerGroups();
     loadRevenueItems();
+    loadPricingOptions();
     loadBarcodeMappings();
     loadRfidMappings();
     
@@ -262,6 +286,10 @@ export default function Settings() {
 
   const loadRevenueItems = () => {
     setRevenueItems(localDb.getAdditionalRevenueItems());
+  };
+
+  const loadPricingOptions = () => {
+    setPricingOptions(localDb.getPricingOptions());
   };
 
   const loadBarcodeMappings = () => {
@@ -1220,6 +1248,86 @@ export default function Settings() {
     }
   };
 
+  // Pricing Options Handlers
+  const handleOpenPricingOptionDialog = (option?: localDb.PricingOption) => {
+    if (option) {
+      setEditingPricingOption(option);
+      setPricingOptionFormData({
+        name: option.name,
+        optionType: option.optionType,
+        amount: option.amount.toString(),
+      });
+    } else {
+      setEditingPricingOption(null);
+      setPricingOptionFormData({ name: "", optionType: "discount", amount: "" });
+    }
+    setIsPricingOptionDialogOpen(true);
+  };
+
+  const handleSavePricingOption = () => {
+    try {
+      const amount = parseInt(pricingOptionFormData.amount) || 0;
+      if (!pricingOptionFormData.name.trim()) {
+        toast({ title: "오류", description: "옵션명을 입력해주세요.", variant: "destructive" });
+        return;
+      }
+      if (amount <= 0) {
+        toast({ title: "오류", description: "금액을 입력해주세요.", variant: "destructive" });
+        return;
+      }
+
+      if (editingPricingOption) {
+        localDb.updatePricingOption(editingPricingOption.id, {
+          name: pricingOptionFormData.name,
+          optionType: pricingOptionFormData.optionType,
+          amount,
+        });
+        toast({ title: "수정 완료", description: "요금옵션이 수정되었습니다." });
+      } else {
+        localDb.createPricingOption({
+          name: pricingOptionFormData.name,
+          optionType: pricingOptionFormData.optionType,
+          amount,
+        });
+        toast({ title: "추가 완료", description: "새 요금옵션이 추가되었습니다." });
+      }
+      loadPricingOptions();
+      setIsPricingOptionDialogOpen(false);
+      setEditingPricingOption(null);
+      setPricingOptionFormData({ name: "", optionType: "discount", amount: "" });
+    } catch (error) {
+      toast({ title: "저장 실패", description: "저장 중 오류가 발생했습니다.", variant: "destructive" });
+    }
+  };
+
+  const handleDeletePricingOption = (id: string) => {
+    try {
+      localDb.deletePricingOption(id);
+      loadPricingOptions();
+      toast({ title: "삭제 완료", description: "요금옵션이 삭제되었습니다." });
+    } catch (error) {
+      toast({ title: "삭제 실패", description: "삭제 중 오류가 발생했습니다.", variant: "destructive" });
+    }
+  };
+
+  const getOptionTypeLabel = (type: 'discount' | 'surcharge' | 'fixed') => {
+    switch (type) {
+      case 'discount': return '할인';
+      case 'surcharge': return '할증';
+      case 'fixed': return '지정';
+      default: return type;
+    }
+  };
+
+  const getOptionTypeDescription = (type: 'discount' | 'surcharge' | 'fixed', amount: number) => {
+    switch (type) {
+      case 'discount': return `기본요금 - ${amount.toLocaleString()}원`;
+      case 'surcharge': return `기본요금 + ${amount.toLocaleString()}원`;
+      case 'fixed': return `${amount.toLocaleString()}원 (고정)`;
+      default: return '';
+    }
+  };
+
   return (
     <div className="h-full flex flex-col">
       <div className="border-b p-6">
@@ -1333,12 +1441,12 @@ export default function Settings() {
             </CardContent>
           </Card>
 
-          {/* 할인 및 외국인 요금 */}
+          {/* 기본 옵션 요금 (레거시 호환) */}
           <Card>
             <CardHeader>
-              <CardTitle>옵션 요금</CardTitle>
+              <CardTitle>기본 옵션</CardTitle>
               <CardDescription>
-                할인 금액 및 외국인 요금을 설정합니다
+                기본 할인 및 외국인 요금을 설정합니다
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1351,6 +1459,7 @@ export default function Settings() {
                   onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
                   data-testid="input-discount"
                 />
+                <p className="text-xs text-muted-foreground">기본요금에서 차감되는 할인 금액</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="foreignerPrice">외국인 요금</Label>
@@ -1361,7 +1470,82 @@ export default function Settings() {
                   onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-foreigner-price"
                 />
+                <p className="text-xs text-muted-foreground">외국인 손님에게 적용되는 고정 요금</p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 추가 요금옵션 관리 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>추가 요금옵션</span>
+                <Button
+                  size="sm"
+                  onClick={() => handleOpenPricingOptionDialog()}
+                  data-testid="button-add-pricing-option"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  옵션 추가
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                사용자 정의 할인/할증/지정 요금옵션을 추가합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {pricingOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  등록된 요금옵션이 없습니다. 옵션 추가 버튼을 클릭하여 추가하세요.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {pricingOptions.map((option) => (
+                    <div
+                      key={option.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                      data-testid={`pricing-option-${option.id}`}
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{option.name}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded ${
+                            option.optionType === 'discount' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                            option.optionType === 'surcharge' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+                            'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          }`}>
+                            {getOptionTypeLabel(option.optionType)}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {getOptionTypeDescription(option.optionType, option.amount)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleOpenPricingOptionDialog(option)}
+                          data-testid={`button-edit-pricing-option-${option.id}`}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeletePricingOption(option.id)}
+                          data-testid={`button-delete-pricing-option-${option.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-4 pt-3 border-t">
+                <strong>할인:</strong> 기본요금에서 금액 차감 | <strong>할증:</strong> 기본요금에 금액 추가 | <strong>지정:</strong> 입력된 금액으로 고정
+              </p>
             </CardContent>
           </Card>
 
@@ -2750,6 +2934,72 @@ export default function Settings() {
             </Button>
             <Button onClick={handleSaveRevenueItem} data-testid="button-save-revenue-item">
               {editingRevenueItem ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pricing Option Dialog */}
+      <Dialog open={isPricingOptionDialogOpen} onOpenChange={setIsPricingOptionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingPricingOption ? "요금옵션 수정" : "새 요금옵션 추가"}
+            </DialogTitle>
+            <DialogDescription>
+              할인, 할증, 지정 요금옵션을 설정합니다
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="pricingOptionName">옵션명</Label>
+              <Input
+                id="pricingOptionName"
+                placeholder="예: 할인, 외국인, 심야할증"
+                value={pricingOptionFormData.name}
+                onChange={(e) => setPricingOptionFormData({ ...pricingOptionFormData, name: e.target.value })}
+                data-testid="input-pricing-option-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pricingOptionType">옵션 유형</Label>
+              <Select
+                value={pricingOptionFormData.optionType}
+                onValueChange={(v) => setPricingOptionFormData({ ...pricingOptionFormData, optionType: v as 'discount' | 'surcharge' | 'fixed' })}
+              >
+                <SelectTrigger data-testid="select-pricing-option-type">
+                  <SelectValue placeholder="유형 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="discount">할인 (기본요금 - 금액)</SelectItem>
+                  <SelectItem value="surcharge">할증 (기본요금 + 금액)</SelectItem>
+                  <SelectItem value="fixed">지정 (입력 금액 고정)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="pricingOptionAmount">금액 (원)</Label>
+              <Input
+                id="pricingOptionAmount"
+                type="number"
+                placeholder="예: 2000"
+                value={pricingOptionFormData.amount}
+                onChange={(e) => setPricingOptionFormData({ ...pricingOptionFormData, amount: e.target.value })}
+                data-testid="input-pricing-option-amount"
+              />
+              <p className="text-xs text-muted-foreground">
+                {pricingOptionFormData.optionType === 'discount' && '기본요금에서 이 금액을 차감합니다'}
+                {pricingOptionFormData.optionType === 'surcharge' && '기본요금에 이 금액을 추가합니다'}
+                {pricingOptionFormData.optionType === 'fixed' && '기본요금과 상관없이 이 금액으로 고정됩니다'}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsPricingOptionDialogOpen(false)}>
+              취소
+            </Button>
+            <Button onClick={handleSavePricingOption} data-testid="button-save-pricing-option">
+              {editingPricingOption ? "수정" : "추가"}
             </Button>
           </DialogFooter>
         </DialogContent>

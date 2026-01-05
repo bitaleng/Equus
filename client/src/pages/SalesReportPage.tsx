@@ -220,6 +220,7 @@ function SalesCalendar() {
       const data = summaryMap.get(dateStr);
       const payment = paymentMap.get(dateStr);
       const closing = closingMap.get(dateStr);
+      const visitor = visitorMap.get(dateStr);
       return {
         total: acc.total + (data?.totalSales || 0),
         cash: acc.cash + (payment?.cash || 0),
@@ -227,8 +228,12 @@ function SalesCalendar() {
         transfer: acc.transfer + (payment?.transfer || 0),
         bankDeposit: acc.bankDeposit + (closing?.bankDeposit || 0),
         hasClosing: acc.hasClosing || !!closing,
+        totalVisitors: acc.totalVisitors + (visitor?.totalVisitors || 0),
+        actualVisitors: acc.actualVisitors + (visitor?.actualVisitors || 0),
+        cancelledVisitors: acc.cancelledVisitors + (visitor?.cancelledVisitors || 0),
+        freeVisitors: acc.freeVisitors + (visitor?.freeVisitors || 0),
       };
-    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false });
+    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0 });
   });
 
   return (
@@ -385,6 +390,12 @@ function SalesCalendar() {
                         은행입금 {formatCurrency(weeklyTotals[weekIdx].bankDeposit)}
                       </div>
                     )}
+                  </div>
+                )}
+                {viewType === "sales" && weeklyTotals[weekIdx].totalVisitors > 0 && (
+                  <div className={`text-[10px] text-purple-600 dark:text-purple-400 text-center ${weeklyTotals[weekIdx].total > 0 ? 'mt-1 pt-0.5 border-t border-muted' : 'mt-1'}`}>
+                    방문:{weeklyTotals[weekIdx].totalVisitors}명
+                    <div>(실:{weeklyTotals[weekIdx].actualVisitors}, 취:{weeklyTotals[weekIdx].cancelledVisitors}, 무:{weeklyTotals[weekIdx].freeVisitors})</div>
                   </div>
                 )}
               </div>
