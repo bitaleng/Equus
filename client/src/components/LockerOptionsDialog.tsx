@@ -819,6 +819,10 @@ export default function LockerOptionsDialog({
     } else if (discountOption === 'discount') {
       optionType = 'discount';
       optionAmount = discountAmount;
+    } else if (discountOption.startsWith('pricing_')) {
+      // 사용자 정의 요금옵션 - direct_price로 저장 (최종 계산된 금액)
+      optionType = 'direct_price';
+      optionAmount = calculateFinalPrice();
     } else if (discountOption === 'custom' && discountInputAmount) {
       optionType = 'custom';
       optionAmount = parseInt(discountInputAmount);
@@ -901,6 +905,10 @@ export default function LockerOptionsDialog({
     } else if (discountOption === 'discount') {
       optionType = 'discount';
       optionAmount = discountAmount;
+    } else if (discountOption.startsWith('pricing_')) {
+      // 사용자 정의 요금옵션 - direct_price로 저장 (최종 계산된 금액)
+      optionType = 'direct_price';
+      optionAmount = calculateFinalPrice();
     } else if (discountOption === 'custom' && discountInputAmount) {
       optionType = 'custom';
       optionAmount = parseInt(discountInputAmount);
