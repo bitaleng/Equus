@@ -120,6 +120,8 @@ export default function LockerOptionsDialog({
   const settings = localDb.getSettings();
   const domesticCheckpointHour = settings.domesticCheckpointHour;
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
+  const enableDiscountOption = settings.enableDiscountOption !== false; // 기본값 true
+  const enableForeignerOption = settings.enableForeignerOption !== false; // 기본값 true
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
@@ -1577,8 +1579,8 @@ export default function LockerOptionsDialog({
               )}
             </div>
 
-            {/* 외국인 체크박스 */}
-            {!isDirectPrice && !isFreeEntry && (
+            {/* 외국인 체크박스 - 설정에서 활성화된 경우에만 표시 */}
+            {enableForeignerOption && !isDirectPrice && !isFreeEntry && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="foreigner" 
@@ -1623,7 +1625,10 @@ export default function LockerOptionsDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">없음 (정가)</SelectItem>
-                    <SelectItem value="discount">기본할인 (-{discountAmount.toLocaleString()}원)</SelectItem>
+                    {/* 기본할인 - 설정에서 활성화된 경우에만 표시 */}
+                    {enableDiscountOption && (
+                      <SelectItem value="discount">기본할인 (-{discountAmount.toLocaleString()}원)</SelectItem>
+                    )}
                     {/* 사용자 정의 요금옵션 */}
                     {pricingOptions.map((opt) => (
                       <SelectItem key={opt.id} value={`pricing_${opt.id}`}>

@@ -2733,7 +2733,9 @@ export function getSettings() {
     cardPaymentAppEnabled: false,
     cardPaymentAppPackage: 'com.tossplace.app.release',
     dayStartTime: '07:00',      // 주간 시작 시간 (HH:mm)
-    nightStartTime: '19:00'     // 야간 시작 시간 (HH:mm)
+    nightStartTime: '19:00',    // 야간 시작 시간 (HH:mm)
+    enableDiscountOption: true,   // 기본할인 옵션 활성화
+    enableForeignerOption: true   // 외국인요금 옵션 활성화
   };
 
   const saved = localStorage.getItem('settings');

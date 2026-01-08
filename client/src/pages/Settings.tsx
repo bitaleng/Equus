@@ -51,6 +51,8 @@ interface Settings {
   foreignerAdditionalFeePeriod: number;
   dayStartTime: string;     // 주간 시작 시간 (HH:mm)
   nightStartTime: string;   // 야간 시작 시간 (HH:mm)
+  enableDiscountOption: boolean;   // 기본할인 옵션 활성화
+  enableForeignerOption: boolean;  // 외국인요금 옵션 활성화
 }
 
 interface LockerGroup {
@@ -103,6 +105,8 @@ export default function Settings() {
     foreignerAdditionalFeePeriod: 24,
     dayStartTime: '07:00',
     nightStartTime: '19:00',
+    enableDiscountOption: true,
+    enableForeignerOption: true,
   });
 
   // Locker group dialog states
@@ -1446,31 +1450,66 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>기본 옵션</CardTitle>
               <CardDescription>
-                기본 할인 및 외국인 요금을 설정합니다
+                기본 할인 및 외국인 요금을 설정합니다. 필요에 따라 각 옵션을 켜거나 끌 수 있습니다.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="discountAmount">할인 금액</Label>
-                <Input
-                  id="discountAmount"
-                  type="number"
-                  value={formData.discountAmount}
-                  onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
-                  data-testid="input-discount"
-                />
-                <p className="text-xs text-muted-foreground">기본요금에서 차감되는 할인 금액</p>
+              {/* 기본 할인 옵션 */}
+              <div className="space-y-3 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="enableDiscountOption" className="text-sm font-medium">기본 할인 옵션</Label>
+                    <p className="text-xs text-muted-foreground">입실 시 기본 할인 옵션을 표시합니다</p>
+                  </div>
+                  <Switch
+                    id="enableDiscountOption"
+                    checked={formData.enableDiscountOption}
+                    onCheckedChange={(checked) => setFormData({ ...formData, enableDiscountOption: checked })}
+                    data-testid="switch-enable-discount"
+                  />
+                </div>
+                {formData.enableDiscountOption && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label htmlFor="discountAmount">할인 금액</Label>
+                    <Input
+                      id="discountAmount"
+                      type="number"
+                      value={formData.discountAmount}
+                      onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
+                      data-testid="input-discount"
+                    />
+                    <p className="text-xs text-muted-foreground">기본요금에서 차감되는 할인 금액</p>
+                  </div>
+                )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="foreignerPrice">외국인 요금</Label>
-                <Input
-                  id="foreignerPrice"
-                  type="number"
-                  value={formData.foreignerPrice}
-                  onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
-                  data-testid="input-foreigner-price"
-                />
-                <p className="text-xs text-muted-foreground">외국인 손님에게 적용되는 고정 요금</p>
+
+              {/* 외국인 요금 옵션 */}
+              <div className="space-y-3 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="enableForeignerOption" className="text-sm font-medium">외국인 요금 옵션</Label>
+                    <p className="text-xs text-muted-foreground">입실 시 외국인 요금 체크박스를 표시합니다</p>
+                  </div>
+                  <Switch
+                    id="enableForeignerOption"
+                    checked={formData.enableForeignerOption}
+                    onCheckedChange={(checked) => setFormData({ ...formData, enableForeignerOption: checked })}
+                    data-testid="switch-enable-foreigner"
+                  />
+                </div>
+                {formData.enableForeignerOption && (
+                  <div className="space-y-2 pt-2 border-t">
+                    <Label htmlFor="foreignerPrice">외국인 요금</Label>
+                    <Input
+                      id="foreignerPrice"
+                      type="number"
+                      value={formData.foreignerPrice}
+                      onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
+                      data-testid="input-foreigner-price"
+                    />
+                    <p className="text-xs text-muted-foreground">외국인 손님에게 적용되는 고정 요금</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
