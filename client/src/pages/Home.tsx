@@ -989,6 +989,9 @@ export default function Home() {
       depositAmount: number;
       depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
       paymentMethod: 'cash' | 'card' | 'transfer';
+      isCashReceipt?: boolean;
+      vatAppliedRentalFee?: number;
+      vatAppliedDepositAmount?: number;
     }>,
     paymentCash?: number,
     paymentCard?: number,
@@ -1082,11 +1085,15 @@ export default function Home() {
       // Each rental item has its own payment method, independent of locker entry payment
       if (rentalItems && rentalItems.length > 0 && lockerLogId) {
         rentalItems.forEach(item => {
-          // Calculate total revenue for this item
+          // Calculate total revenue for this item (부가세 포함 금액 사용)
+          // vatAppliedRentalFee, vatAppliedDepositAmount가 있으면 사용, 없으면 기본값
+          const actualRentalFee = item.vatAppliedRentalFee ?? item.rentalFee;
+          const actualDepositAmount = item.vatAppliedDepositAmount ?? item.depositAmount;
+          
           // 입실 시에는 항상 'received' 상태로 시작하므로 렌탈비 + 보증금
-          let revenue = item.rentalFee;
+          let revenue = actualRentalFee;
           if (item.depositStatus === 'received') {
-            revenue += item.depositAmount;
+            revenue += actualDepositAmount;
           }
           // 'forfeited'는 반납 시에만 발생하므로 여기서는 처리 불필요
           
@@ -1110,8 +1117,8 @@ export default function Home() {
             lockerNumber: newLockerInfo.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: item.rentalFee,
-            depositAmount: item.depositAmount,
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: dialogOpenedTime,  // 옵션창 열린 시간 사용
             returnTime: null,
@@ -1195,23 +1202,28 @@ export default function Home() {
         // Check if rental transaction already exists for this item
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        // Revenue calculation:
+        // 부가세 포함 금액 사용 (기존 트랜잭션이 있으면 DB의 값 유지, 없으면 새 값 사용)
+        // 기존 트랜잭션이 있으면 이미 DB에 VAT 적용된 금액이 저장되어 있음
+        const actualRentalFee = existingItem ? existingItem.rentalFee : (item.vatAppliedRentalFee ?? item.rentalFee);
+        const actualDepositAmount = existingItem ? existingItem.depositAmount : (item.vatAppliedDepositAmount ?? item.depositAmount);
+        
+        // Revenue calculation (부가세 포함 금액 기준):
         // - received: rental fee + deposit (대여 시)
         // - forfeited (same-day): rental fee + deposit (같은 영업일 반납)
         // - forfeited (cross-day): rental fee only (다른 영업일 반납, 보증금은 이미 대여일 매출)
         // - refunded (cross-day): rental fee only (보증금 환급, 지출 생성)
         // - refunded (same-day): rental fee only (보증금 환급)
-        let revenue = item.rentalFee;
+        let revenue = actualRentalFee;
         let isCrossDayRefund = false;
         
         if (item.depositStatus === 'received') {
-          revenue += item.depositAmount;
+          revenue += actualDepositAmount;
         } else if (item.depositStatus === 'forfeited' && existingItem) {
           // 영업일 비교: 대여일과 현재가 같으면 보증금 포함, 다르면 제외
           const rentalBusinessDay = existingItem.businessDay;
           const currentBusinessDay = businessDay;
           if (rentalBusinessDay === currentBusinessDay) {
-            revenue += item.depositAmount;
+            revenue += actualDepositAmount;
           }
           // 다른 영업일이면 보증금 제외 (이미 대여일 매출)
         } else if (item.depositStatus === 'refunded' && existingItem) {
@@ -1225,7 +1237,7 @@ export default function Home() {
           
           if (isCrossDayRefund) {
             // Cross-day refund: include deposit in rental day revenue
-            revenue += item.depositAmount;
+            revenue += actualDepositAmount;
           }
           // Same-day refund: don't include deposit (revenue = rental fee only)
         }
@@ -1235,17 +1247,28 @@ export default function Home() {
           // rentalTime = 대여품목 체크박스 선택 시점 (현재 시간)
           // Each rental item's revenue is allocated 100% to its own payment method
           const itemPaymentMethod = item.paymentMethod || 'cash';
+          
+          // 부가세 포함 금액 사용
+          const actualRentalFee = item.vatAppliedRentalFee ?? item.rentalFee;
+          const actualDepositAmount = item.vatAppliedDepositAmount ?? item.depositAmount;
+          
+          // Revenue 재계산 (부가세 포함)
+          let actualRevenue = actualRentalFee;
+          if (item.depositStatus === 'received') {
+            actualRevenue += actualDepositAmount;
+          }
+          
           let itemPaymentCash = 0;
           let itemPaymentCard = 0;
           let itemPaymentTransfer = 0;
           
           // Allocate 100% of revenue to the selected payment method
           if (itemPaymentMethod === 'cash') {
-            itemPaymentCash = revenue;
+            itemPaymentCash = actualRevenue;
           } else if (itemPaymentMethod === 'card') {
-            itemPaymentCard = revenue;
+            itemPaymentCard = actualRevenue;
           } else if (itemPaymentMethod === 'transfer') {
-            itemPaymentTransfer = revenue;
+            itemPaymentTransfer = actualRevenue;
           }
           
           localDb.createRentalTransaction({
@@ -1253,8 +1276,8 @@ export default function Home() {
             lockerNumber: selectedEntry.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: item.rentalFee,
-            depositAmount: item.depositAmount,
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: new Date(),
             returnTime: null,
@@ -1263,7 +1286,7 @@ export default function Home() {
             paymentCash: itemPaymentCash > 0 ? itemPaymentCash : undefined,
             paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
             paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
-            revenue: revenue,
+            revenue: actualRevenue,
           });
         } else {
           // Update existing rental transaction
@@ -1298,6 +1321,9 @@ export default function Home() {
       rentalFee: number;
       depositAmount: number;
       depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
+      isCashReceipt?: boolean;
+      vatAppliedRentalFee?: number;
+      vatAppliedDepositAmount?: number;
     }>,
     paymentCash?: number,
     paymentCard?: number,
@@ -1413,8 +1439,12 @@ export default function Home() {
         const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
         
-        // Calculate this item's revenue
-        let itemRevenue = item.rentalFee;
+        // 부가세 포함 금액 사용 (기존 트랜잭션이 있으면 DB의 값 유지, 없으면 새 값 사용)
+        const actualRentalFee = existingItem ? existingItem.rentalFee : (item.vatAppliedRentalFee ?? item.rentalFee);
+        const actualDepositAmount = existingItem ? existingItem.depositAmount : (item.vatAppliedDepositAmount ?? item.depositAmount);
+        
+        // Calculate this item's revenue (부가세 포함 금액 기준)
+        let itemRevenue = actualRentalFee;
         
         // 보증금 매출 처리:
         // - 'received': 렌탈비 + 보증금
@@ -1422,16 +1452,15 @@ export default function Home() {
         // - 'forfeited' (다른 영업일): 렌탈비만 (보증금은 이미 대여일 매출로 계산됨)
         // - 'refunded': 렌탈비만
         if (item.depositStatus === 'received') {
-          itemRevenue += item.depositAmount;
+          itemRevenue += actualDepositAmount;
         } else if (item.depositStatus === 'forfeited') {
           // 영업일 비교: 대여일과 반납일이 같으면 보증금 포함, 다르면 제외
-          const existingItem = localDb.getRentalTransactionsByLockerLog(selectedEntry.id).find(t => t.itemId === item.itemId);
           if (existingItem) {
             const rentalBusinessDay = existingItem.businessDay;
             const returnBusinessDay = checkoutBusinessDay;
             if (rentalBusinessDay === returnBusinessDay) {
               // 같은 영업일: 보증금 포함
-              itemRevenue += item.depositAmount;
+              itemRevenue += actualDepositAmount;
             }
             // 다른 영업일: 보증금 제외 (이미 대여일 매출로 계산됨)
           }
@@ -1455,8 +1484,8 @@ export default function Home() {
             lockerNumber: selectedEntry.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: item.rentalFee,
-            depositAmount: item.depositAmount,
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: selectedEntry.entryTime,
             returnTime: now,
