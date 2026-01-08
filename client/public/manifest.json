@@ -1,6 +1,6 @@
 {
-  "name": "EQUUS MANAGEMENTS",
-  "short_name": "EQUUS",
+  "name": "LOCKER MANAGER",
+  "short_name": "LOCKER",
   "description": "태블릿 최적화 휴게텔 입실 관리 시스템",
   "start_url": "/",
   "display": "standalone",
