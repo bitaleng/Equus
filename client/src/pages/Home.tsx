@@ -1046,11 +1046,17 @@ export default function Home() {
       const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
       const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
 
+      // 결제 금액 합계로 finalPrice 계산 (부가세 포함)
+      // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
+      const actualFinalPrice = deferredPayment || optionType === 'free' 
+        ? finalPrice 
+        : (actualPaymentCash + actualPaymentCard + actualPaymentTransfer) || finalPrice;
+
       const lockerLogId = localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
         timeType: newLockerInfo.timeType,
         basePrice: newLockerInfo.basePrice,
-        finalPrice,  // 원래 가격 유지 (할인 등 적용된 최종가격)
+        finalPrice: actualFinalPrice,  // 부가세 포함된 실제 결제 금액
         businessDay,
         optionType,
         optionAmount,
@@ -1345,9 +1351,9 @@ export default function Home() {
       // Base price payment stays in locker_logs
       // Additional fee payment goes to additional_fee_events table for independent tracking
       // 추가요금 할인 반영: 할인이 있으면 할인된 금액으로 finalPrice 업데이트
-      const additionalFeeDiscountAmount = additionalFeePayment?.discount || 0;
-      const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - additionalFeeDiscountAmount);
-      const updatedFinalPrice = selectedEntry.finalPrice + discountedAdditionalFee;
+      // 부가세가 적용된 추가요금을 additionalFeePayment에서 계산
+      const actualAdditionalFee = (additionalFeePayment?.cash || 0) + (additionalFeePayment?.card || 0) + (additionalFeePayment?.transfer || 0);
+      const updatedFinalPrice = selectedEntry.finalPrice + actualAdditionalFee;
       
       // DO NOT store additionalFees in locker_logs.additional_fees column for same-day checkouts
       // It's already tracked in additional_fee_events table below
@@ -1370,7 +1376,9 @@ export default function Home() {
     if (additionalFeeInfo.additionalFee > 0) {
       // 할인 계산: 원래 추가요금에서 할인금액 차감
       const discountAmount = additionalFeePayment?.discount || 0;
-      const discountedFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+      // 부가세가 적용된 실제 결제 금액을 additionalFeePayment에서 계산
+      const actualFeeAmount = (additionalFeePayment?.cash || 0) + (additionalFeePayment?.card || 0) + (additionalFeePayment?.transfer || 0);
+      const discountedFee = actualFeeAmount > 0 ? actualFeeAmount : Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
       
       const addFeePayment = additionalFeePayment || {
         method: paymentMethod,
@@ -1383,7 +1391,7 @@ export default function Home() {
         lockerLogId: selectedEntry.id,
         lockerNumber: selectedEntry.lockerNumber,
         checkoutTime: now,
-        feeAmount: discountedFee,  // 할인 적용된 금액 기록
+        feeAmount: discountedFee,  // 부가세 포함된 실제 결제 금액 기록
         originalFeeAmount: discountAmount > 0 ? additionalFeeInfo.additionalFee : undefined,  // 할인 전 원래 금액
         discountAmount: discountAmount,
         businessDay: checkoutBusinessDay,

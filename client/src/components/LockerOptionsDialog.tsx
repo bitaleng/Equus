@@ -667,7 +667,7 @@ export default function LockerOptionsDialog({
   };
 
   /**
-   * 최종 요금 계산 (기본요금 + 추가요금)
+   * 최종 요금 계산 (기본요금 + 추가요금) - 부가세 미포함 원래 금액
    * 규칙: 기본요금과 추가요금의 영업일이 다르면 기본요금을 0으로 처리
    */
   const calculateTotalPriceWithAdditionalFee = () => {
@@ -691,6 +691,58 @@ export default function LockerOptionsDialog({
     
     // 영업일이 같으면 기본요금 + 추가요금
     return baseFinalPrice + additionalFeeInfo.additionalFee;
+  };
+
+  /**
+   * 화면에 표시할 최종 요금 계산 (부가세 포함)
+   * - 분리결제: 부가세 미포함
+   * - 단일결제: 현금영수증 체크 또는 카드결제 시 부가세 포함
+   * - 추가요금도 별도 결제방식에 따라 부가세 적용
+   */
+  const calculateDisplayTotal = () => {
+    // 분리결제 시에는 부가세 미포함 금액 표시
+    if (useSplitPayment) {
+      return calculateTotalPriceWithAdditionalFee();
+    }
+    
+    // 기본요금 (부가세 적용 여부 확인)
+    let baseFinalPrice = calculateFinalPrice();
+    const baseVatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+    if (baseVatApplied) {
+      baseFinalPrice = Math.round(baseFinalPrice * 1.1);
+    }
+    
+    // 추가요금이 없으면 기본요금만 반환
+    if (!isInUse || additionalFeeInfo.additionalFee === 0) {
+      return baseFinalPrice;
+    }
+    
+    // 입실시간과 현재시간의 영업일 비교
+    let includeBasePrice = true;
+    if (entryTime) {
+      const entryBusinessDay = getBusinessDay(new Date(entryTime));
+      const currentBusinessDay = getBusinessDay(new Date());
+      
+      // 영업일이 다르면 기본요금을 0으로 처리 (추가요금만 청구)
+      if (entryBusinessDay !== currentBusinessDay) {
+        includeBasePrice = false;
+      }
+    }
+    
+    // 추가요금 할인 적용
+    const discountAmount = parseInt(additionalFeeDiscount) || 0;
+    let additionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+    
+    // 추가요금 분리결제가 아닌 경우에만 부가세 적용
+    if (!useAdditionalFeeSplitPayment) {
+      const additionalFeeVatApplied = shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
+      if (additionalFeeVatApplied) {
+        additionalFee = Math.round(additionalFee * 1.1);
+      }
+    }
+    
+    // 영업일이 같으면 기본요금 + 추가요금, 다르면 추가요금만
+    return includeBasePrice ? baseFinalPrice + additionalFee : additionalFee;
   };
 
   // Generate notes from rental items
@@ -2261,10 +2313,10 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 최종 요금 - 구분선 아래 */}
+            {/* 최종 요금 - 구분선 아래 (부가세 포함) */}
             <div className="flex justify-between text-base pt-4 border-t-2">
               <span className="font-semibold">최종 요금</span>
-              <span className="font-bold text-xl text-primary">{calculateTotalPriceWithAdditionalFee().toLocaleString()}원</span>
+              <span className="font-bold text-xl text-primary">{calculateDisplayTotal().toLocaleString()}원</span>
             </div>
 
             {/* 비고 - 대여 물품 체크박스 */}
