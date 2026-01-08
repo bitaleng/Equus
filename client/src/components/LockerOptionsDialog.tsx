@@ -1276,9 +1276,9 @@ export default function LockerOptionsDialog({
       
       if (useAdditionalFeeSplitPayment) {
         // 추가요금 분리결제 검증 (할인 적용된 금액 기준)
-        const addCashVal = parseInt(additionalFeePaymentCash) || 0;
-        const addCardVal = parseInt(additionalFeePaymentCard) || 0;
-        const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
+        let addCashVal = parseInt(additionalFeePaymentCash) || 0;
+        let addCardVal = parseInt(additionalFeePaymentCard) || 0;
+        let addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
         const addTotal = addCashVal + addCardVal + addTransferVal;
         
         if (addTotal !== discountedAdditionalFee) {
@@ -1288,6 +1288,24 @@ export default function LockerOptionsDialog({
             variant: "destructive",
           });
           return;
+        }
+        
+        // 분리결제 시 부가세 적용
+        const settings = localDb.getSettings();
+        
+        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+        if (settings.enableCashReceiptVat && isAdditionalFeeCashReceipt) {
+          if (addCashVal > 0) {
+            addCashVal = Math.round(addCashVal * 1.1);
+          }
+          if (addTransferVal > 0) {
+            addTransferVal = Math.round(addTransferVal * 1.1);
+          }
+        }
+        
+        // 카드: 카드 부가세 설정이 ON이면 자동 적용
+        if (settings.enableCardVat && addCardVal > 0) {
+          addCardVal = Math.round(addCardVal * 1.1);
         }
         
         additionalFeePayment = {
@@ -1377,9 +1395,27 @@ export default function LockerOptionsDialog({
       
       if (useAdditionalFeeSplitPayment) {
         // 추가요금 분리결제 (할인 적용된 금액 기준)
-        const addCashVal = parseInt(additionalFeePaymentCash) || 0;
-        const addCardVal = parseInt(additionalFeePaymentCard) || 0;
-        const addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
+        let addCashVal = parseInt(additionalFeePaymentCash) || 0;
+        let addCardVal = parseInt(additionalFeePaymentCard) || 0;
+        let addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
+        
+        // 분리결제 시 부가세 적용
+        const settings = localDb.getSettings();
+        
+        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+        if (settings.enableCashReceiptVat && isAdditionalFeeCashReceipt) {
+          if (addCashVal > 0) {
+            addCashVal = Math.round(addCashVal * 1.1);
+          }
+          if (addTransferVal > 0) {
+            addTransferVal = Math.round(addTransferVal * 1.1);
+          }
+        }
+        
+        // 카드: 카드 부가세 설정이 ON이면 자동 적용
+        if (settings.enableCardVat && addCardVal > 0) {
+          addCardVal = Math.round(addCardVal * 1.1);
+        }
         
         additionalFeePayment = {
           method: additionalFeePaymentMethod,
@@ -2260,13 +2296,52 @@ export default function LockerOptionsDialog({
                         const transferVal = parseInt(additionalFeePaymentTransfer) || 0;
                         const total = cashVal + cardVal + transferVal;
                         
+                        // 추가요금 분리결제 부가세 계산
+                        const cashTransferVal = cashVal + transferVal;
+                        const cashTransferVat = (enableCashReceiptVat && isAdditionalFeeCashReceipt && cashTransferVal > 0) 
+                          ? Math.round(cashTransferVal * 0.1) : 0;
+                        const cardVat = (enableCardVat && cardVal > 0) 
+                          ? Math.round(cardVal * 0.1) : 0;
+                        const totalWithVat = total + cashTransferVat + cardVat;
+                        
                         return (
                           <div className="flex items-center justify-between pt-2 border-t border-orange-200 dark:border-orange-800">
                             <span className="text-sm font-semibold text-orange-700 dark:text-orange-300">합계</span>
-                            <span className="text-lg font-bold text-orange-700 dark:text-orange-300">{total.toLocaleString()}원</span>
+                            <div className="text-right">
+                              <span className="text-lg font-bold text-orange-700 dark:text-orange-300">{total.toLocaleString()}원</span>
+                              {(cashTransferVat > 0 || cardVat > 0) && (
+                                <span className="text-sm text-blue-600 dark:text-blue-400 ml-2">
+                                  (+부가세 {(cashTransferVat + cardVat).toLocaleString()}원 = {totalWithVat.toLocaleString()}원)
+                                </span>
+                              )}
+                            </div>
                           </div>
                         );
                       })()}
+                      
+                      {/* 추가요금 분리결제 현금영수증 체크박스 */}
+                      {enableCashReceiptVat && ((parseInt(additionalFeePaymentCash) || 0) > 0 || (parseInt(additionalFeePaymentTransfer) || 0) > 0) && (
+                        <div className="flex items-center space-x-2 pt-2">
+                          <Checkbox 
+                            id="additional-fee-split-cash-receipt" 
+                            checked={isAdditionalFeeCashReceipt}
+                            onCheckedChange={(checked) => setIsAdditionalFeeCashReceipt(checked as boolean)}
+                            data-testid="checkbox-additional-fee-split-cash-receipt"
+                          />
+                          <Label htmlFor="additional-fee-split-cash-receipt" className="text-sm cursor-pointer font-normal text-blue-600 dark:text-blue-400">
+                            현금/이체 현금영수증 발행 (+10% 부가세)
+                          </Label>
+                        </div>
+                      )}
+
+                      {/* 추가요금 분리결제 카드 부가세 안내 */}
+                      {enableCardVat && (parseInt(additionalFeePaymentCard) || 0) > 0 && (
+                        <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            카드결제 금액에 부가세 10%가 자동으로 추가됩니다
+                          </p>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <>
