@@ -122,6 +122,8 @@ export default function LockerOptionsDialog({
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
   const enableDiscountOption = settings.enableDiscountOption !== false; // 기본값 true
   const enableForeignerOption = settings.enableForeignerOption !== false; // 기본값 true
+  const enableCashReceiptVat = settings.enableCashReceiptVat === true; // 기본값 false
+  const enableCardVat = settings.enableCardVat === true; // 기본값 false
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
@@ -136,6 +138,8 @@ export default function LockerOptionsDialog({
   const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부 (신규 입실용)
   const [isCurrentlyDeferred, setIsCurrentlyDeferred] = useState(false); // 현재 락카의 후불결제 상태 (기존 입실용)
   const [customerMemo, setCustomerMemo] = useState(""); // 손님 메모
+  const [isCashReceipt, setIsCashReceipt] = useState(false); // 현금영수증 발행 여부 (부가세 10% 추가)
+  const [isAdditionalFeeCashReceipt, setIsAdditionalFeeCashReceipt] = useState(false); // 추가요금 현금영수증
   
   // Additional fee payment states
   const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
@@ -627,6 +631,42 @@ export default function LockerOptionsDialog({
   };
 
   /**
+   * 부가세(10%)가 적용되는지 확인
+   * - 카드결제: enableCardVat가 true면 자동 적용
+   * - 현금/계좌이체: enableCashReceiptVat가 true이고 isCashReceipt가 체크되면 적용
+   */
+  const shouldApplyVat = (method: 'card' | 'cash' | 'transfer' | null, cashReceiptChecked: boolean) => {
+    if (method === 'card' && enableCardVat) {
+      return true;
+    }
+    if ((method === 'cash' || method === 'transfer') && enableCashReceiptVat && cashReceiptChecked) {
+      return true;
+    }
+    return false;
+  };
+
+  /**
+   * 부가세(10%) 포함 최종 요금 계산
+   */
+  const calculateFinalPriceWithVat = () => {
+    const price = calculateFinalPrice();
+    if (shouldApplyVat(paymentMethod, isCashReceipt)) {
+      return Math.round(price * 1.1);
+    }
+    return price;
+  };
+
+  /**
+   * 부가세 금액 계산 (표시용)
+   */
+  const calculateVatAmount = () => {
+    if (shouldApplyVat(paymentMethod, isCashReceipt)) {
+      return Math.round(calculateFinalPrice() * 0.1);
+    }
+    return 0;
+  };
+
+  /**
    * 최종 요금 계산 (기본요금 + 추가요금)
    * 규칙: 기본요금과 추가요금의 영업일이 다르면 기본요금을 0으로 처리
    */
@@ -884,6 +924,25 @@ export default function LockerOptionsDialog({
       return;
     }
     
+    // 부가세 적용 (분리결제가 아닌 경우에만)
+    if (!useSplitPayment) {
+      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+      if (vatApplied) {
+        const priceWithVat = Math.round(computedFinalPrice * 1.1);
+        if (paymentMethod === 'cash') {
+          cashVal = priceWithVat;
+        } else if (paymentMethod === 'card') {
+          cardVal = priceWithVat;
+        } else if (paymentMethod === 'transfer') {
+          transferVal = priceWithVat;
+        }
+        // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+        if (optionType === 'direct_price') {
+          optionAmount = priceWithVat;
+        }
+      }
+    }
+    
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo);
@@ -950,6 +1009,25 @@ export default function LockerOptionsDialog({
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
+    
+    // 부가세 적용 (분리결제가 아닌 경우에만)
+    if (!useSplitPayment) {
+      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+      if (vatApplied) {
+        const priceWithVat = Math.round(computedFinalPrice * 1.1);
+        if (paymentMethod === 'cash') {
+          cashVal = priceWithVat;
+        } else if (paymentMethod === 'card') {
+          cardVal = priceWithVat;
+        } else if (paymentMethod === 'transfer') {
+          transferVal = priceWithVat;
+        }
+        // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+        if (optionType === 'direct_price') {
+          optionAmount = priceWithVat;
+        }
+      }
+    }
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
@@ -1854,6 +1932,30 @@ export default function LockerOptionsDialog({
                   </Button>
                 </div>
               ) : null}
+              
+              {/* 현금영수증 체크박스 - 현금/계좌이체 선택 시에만 표시 (분리결제 아닐 때) */}
+              {enableCashReceiptVat && !useSplitPayment && (paymentMethod === 'cash' || paymentMethod === 'transfer') && (
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox 
+                    id="cash-receipt" 
+                    checked={isCashReceipt}
+                    onCheckedChange={(checked) => setIsCashReceipt(checked as boolean)}
+                    data-testid="checkbox-cash-receipt"
+                  />
+                  <Label htmlFor="cash-receipt" className="text-sm cursor-pointer font-normal text-blue-600 dark:text-blue-400">
+                    현금영수증 발행 (+10% 부가세)
+                  </Label>
+                </div>
+              )}
+
+              {/* 카드결제 부가세 안내 */}
+              {enableCardVat && paymentMethod === 'card' && !useSplitPayment && (
+                <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    카드결제 시 부가세 10%가 자동으로 추가됩니다
+                  </p>
+                </div>
+              )}
             </div>
             )}
 
