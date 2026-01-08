@@ -1295,6 +1295,9 @@ export default function LockerOptionsDialog({
 
   const setDialogOpen = (open: boolean) => {
     if (!open) {
+      // 다이얼로그 닫힐 때 현금영수증 상태 리셋
+      setIsCashReceipt(false);
+      setIsAdditionalFeeCashReceipt(false);
       playCloseSound();
       onClose();
     }
@@ -1989,6 +1992,8 @@ export default function LockerOptionsDialog({
                         checked={useAdditionalFeeSplitPayment}
                         onCheckedChange={(checked) => {
                           setUseAdditionalFeeSplitPayment(checked as boolean);
+                          // 분리결제 토글 시 현금영수증 상태 리셋
+                          setIsAdditionalFeeCashReceipt(false);
                           if (checked) {
                             setAdditionalFeePaymentCash("");
                             setAdditionalFeePaymentCard("");
