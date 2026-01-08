@@ -1103,71 +1103,96 @@ export default function LockerOptionsDialog({
     let cardVal: number | undefined;
     let transferVal: number | undefined;
     
+    // 기존 분리결제 데이터가 있는지 확인 (isInUse이고 여러 결제 수단에 값이 있음)
+    const hasExistingSplitPayment = isInUse && [
+      currentPaymentCash && currentPaymentCash > 0,
+      currentPaymentCard && currentPaymentCard > 0,
+      currentPaymentTransfer && currentPaymentTransfer > 0,
+    ].filter(Boolean).length > 1;
+    
+    // 기존 단일결제 데이터가 있는지 확인
+    const hasExistingSinglePayment = isInUse && (
+      (currentPaymentCash && currentPaymentCash > 0) ||
+      (currentPaymentCard && currentPaymentCard > 0) ||
+      (currentPaymentTransfer && currentPaymentTransfer > 0)
+    ) && !hasExistingSplitPayment;
+    
     if (useSplitPayment) {
-      // Validate mixed payment amounts for split payment
-      if (!validateMixedPayment(computedFinalPrice)) {
-        return;
+      if (hasExistingSplitPayment) {
+        // 기존 분리결제가 있으면 VAT 재적용 없이 기존 값 사용
+        cashVal = currentPaymentCash;
+        cardVal = currentPaymentCard;
+        transferVal = currentPaymentTransfer;
+      } else {
+        // 신규 분리결제: 검증 수행
+        if (!validateMixedPayment(computedFinalPrice)) {
+          return;
+        }
+        cashVal = parseInt(paymentCash) || undefined;
+        cardVal = parseInt(paymentCard) || undefined;
+        transferVal = parseInt(paymentTransfer) || undefined;
+        
+        // 분리결제 시 부가세 적용
+        const settings = localDb.getSettings();
+        
+        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+        if (settings.enableCashReceiptVat && isCashReceipt) {
+          if (cashVal) {
+            cashVal = Math.round(cashVal * 1.1);
+          }
+          if (transferVal) {
+            transferVal = Math.round(transferVal * 1.1);
+          }
+        }
+        
+        // 카드: 카드 부가세 설정이 ON이면 자동 적용
+        if (settings.enableCardVat && cardVal) {
+          cardVal = Math.round(cardVal * 1.1);
+        }
       }
-      cashVal = parseInt(paymentCash) || undefined;
-      cardVal = parseInt(paymentCard) || undefined;
-      transferVal = parseInt(paymentTransfer) || undefined;
     } else {
-      // Single payment method - automatically assign full amount
-      if (paymentMethod === 'cash') {
-        cashVal = computedFinalPrice;
-        cardVal = undefined;
-        transferVal = undefined;
-      } else if (paymentMethod === 'card') {
-        cashVal = undefined;
-        cardVal = computedFinalPrice;
-        transferVal = undefined;
-      } else if (paymentMethod === 'transfer') {
-        cashVal = undefined;
-        cardVal = undefined;
-        transferVal = computedFinalPrice;
+      if (hasExistingSinglePayment) {
+        // 기존 단일결제가 있으면 VAT 재적용 없이 기존 값 사용
+        cashVal = currentPaymentCash;
+        cardVal = currentPaymentCard;
+        transferVal = currentPaymentTransfer;
+      } else {
+        // 신규 단일결제: 금액 할당 및 부가세 적용
+        if (paymentMethod === 'cash') {
+          cashVal = computedFinalPrice;
+          cardVal = undefined;
+          transferVal = undefined;
+        } else if (paymentMethod === 'card') {
+          cashVal = undefined;
+          cardVal = computedFinalPrice;
+          transferVal = undefined;
+        } else if (paymentMethod === 'transfer') {
+          cashVal = undefined;
+          cardVal = undefined;
+          transferVal = computedFinalPrice;
+        }
+        
+        // 단일 결제 시 부가세 적용
+        const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+        if (vatApplied) {
+          const priceWithVat = Math.round(computedFinalPrice * 1.1);
+          if (paymentMethod === 'cash') {
+            cashVal = priceWithVat;
+          } else if (paymentMethod === 'card') {
+            cardVal = priceWithVat;
+          } else if (paymentMethod === 'transfer') {
+            transferVal = priceWithVat;
+          }
+          // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+          if (optionType === 'direct_price') {
+            optionAmount = priceWithVat;
+          }
+        }
       }
     }
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    
-    // 부가세 적용
-    if (useSplitPayment) {
-      // 분리결제 시 각 결제 수단별로 부가세 적용
-      const settings = localDb.getSettings();
-      
-      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-      if (settings.enableCashReceiptVat && isCashReceipt) {
-        if (cashVal) {
-          cashVal = Math.round(cashVal * 1.1);
-        }
-        if (transferVal) {
-          transferVal = Math.round(transferVal * 1.1);
-        }
-      }
-      
-      // 카드: 카드 부가세 설정이 ON이면 자동 적용
-      if (settings.enableCardVat && cardVal) {
-        cardVal = Math.round(cardVal * 1.1);
-      }
-    } else {
-      // 단일 결제 시 부가세 적용
-      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-      if (vatApplied) {
-        const priceWithVat = Math.round(computedFinalPrice * 1.1);
-        if (paymentMethod === 'cash') {
-          cashVal = priceWithVat;
-        } else if (paymentMethod === 'card') {
-          cardVal = priceWithVat;
-        } else if (paymentMethod === 'transfer') {
-          transferVal = priceWithVat;
-        }
-        // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
-        if (optionType === 'direct_price') {
-          optionAmount = priceWithVat;
-        }
-      }
-    }
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
@@ -1243,20 +1268,44 @@ export default function LockerOptionsDialog({
       cashVal = parseInt(paymentCash) || undefined;
       cardVal = parseInt(paymentCard) || undefined;
       transferVal = parseInt(paymentTransfer) || undefined;
+      
+      // 분리결제 시 부가세 적용
+      const settings = localDb.getSettings();
+      
+      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+      if (settings.enableCashReceiptVat && isCashReceipt) {
+        if (cashVal) {
+          cashVal = Math.round(cashVal * 1.1);
+        }
+        if (transferVal) {
+          transferVal = Math.round(transferVal * 1.1);
+        }
+      }
+      
+      // 카드: 카드 부가세 설정이 ON이면 자동 적용
+      if (settings.enableCardVat && cardVal) {
+        cardVal = Math.round(cardVal * 1.1);
+      }
     } else {
       // Single payment method - automatically assign full amount (기본요금만)
+      // 부가세 적용
+      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+      const priceToAssign = vatApplied 
+        ? Math.round(computedFinalPrice * 1.1) 
+        : computedFinalPrice;
+      
       if (paymentMethod === 'cash') {
-        cashVal = computedFinalPrice;
+        cashVal = priceToAssign;
         cardVal = undefined;
         transferVal = undefined;
       } else if (paymentMethod === 'card') {
         cashVal = undefined;
-        cardVal = computedFinalPrice;
+        cardVal = priceToAssign;
         transferVal = undefined;
       } else if (paymentMethod === 'transfer') {
         cashVal = undefined;
         cardVal = undefined;
-        transferVal = computedFinalPrice;
+        transferVal = priceToAssign;
       }
     }
     
@@ -1362,20 +1411,44 @@ export default function LockerOptionsDialog({
       cashVal = parseInt(paymentCash) || undefined;
       cardVal = parseInt(paymentCard) || undefined;
       transferVal = parseInt(paymentTransfer) || undefined;
+      
+      // 분리결제 시 부가세 적용
+      const settings = localDb.getSettings();
+      
+      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+      if (settings.enableCashReceiptVat && isCashReceipt) {
+        if (cashVal) {
+          cashVal = Math.round(cashVal * 1.1);
+        }
+        if (transferVal) {
+          transferVal = Math.round(transferVal * 1.1);
+        }
+      }
+      
+      // 카드: 카드 부가세 설정이 ON이면 자동 적용
+      if (settings.enableCardVat && cardVal) {
+        cardVal = Math.round(cardVal * 1.1);
+      }
     } else {
       // Single payment method - automatically assign full amount (기본요금만)
+      // 부가세 적용
+      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+      const priceToAssign = vatApplied 
+        ? Math.round(computedFinalPrice * 1.1) 
+        : computedFinalPrice;
+      
       if (paymentMethod === 'cash') {
-        cashVal = computedFinalPrice;
+        cashVal = priceToAssign;
         cardVal = undefined;
         transferVal = undefined;
       } else if (paymentMethod === 'card') {
         cashVal = undefined;
-        cardVal = computedFinalPrice;
+        cardVal = priceToAssign;
         transferVal = undefined;
       } else if (paymentMethod === 'transfer') {
         cashVal = undefined;
         cardVal = undefined;
-        transferVal = computedFinalPrice;
+        transferVal = priceToAssign;
       }
     }
     
