@@ -39,6 +39,9 @@ interface RentalItemInfo {
   depositAmount: number;
   depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   paymentMethod: 'cash' | 'card' | 'transfer';
+  isCashReceipt?: boolean;
+  vatAppliedRentalFee?: number;
+  vatAppliedDepositAmount?: number;
 }
 
 interface LockerOptionsDialogProps {
@@ -185,6 +188,7 @@ export default function LockerOptionsDialog({
   const [pricingOptions, setPricingOptions] = useState<any[]>([]);
   const [depositStatuses, setDepositStatuses] = useState<Map<string, 'received' | 'refunded' | 'forfeited' | 'none'>>(new Map());
   const [rentalPaymentMethods, setRentalPaymentMethods] = useState<Map<string, 'cash' | 'card' | 'transfer'>>(new Map());
+  const [rentalCashReceiptStatuses, setRentalCashReceiptStatuses] = useState<Map<string, boolean>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
   
@@ -760,20 +764,35 @@ export default function LockerOptionsDialog({
   // Generate rental item info for checkout
   const generateRentalItemInfo = (): RentalItemInfo[] => {
     const rentalItems: RentalItemInfo[] = [];
+    const settings = localDb.getSettings();
     
     selectedRentalItems.forEach(itemId => {
       const item = availableRentalItems.find(i => i.id === itemId);
       const depositStatus = depositStatuses.get(itemId);
-      const rentalPaymentMethod = rentalPaymentMethods.get(itemId) || 'cash'; // Default to cash if not set
+      const rentalPaymentMethod = rentalPaymentMethods.get(itemId) || 'cash';
+      const isCashReceipt = rentalCashReceiptStatuses.get(itemId) || false;
       
       if (item && depositStatus) {
+        const baseRentalFee = item.rentalFee || 0;
+        const baseDepositAmount = item.depositAmount || 0;
+        
+        // 부가세 적용 여부 확인
+        const vatApplied = shouldApplyVat(rentalPaymentMethod, isCashReceipt);
+        
+        // 부가세가 적용되면 대여비와 보증금 모두에 적용
+        const vatAppliedRentalFee = vatApplied ? Math.round(baseRentalFee * 1.1) : baseRentalFee;
+        const vatAppliedDepositAmount = vatApplied ? Math.round(baseDepositAmount * 1.1) : baseDepositAmount;
+        
         rentalItems.push({
           itemId: item.id,
           itemName: item.name,
-          rentalFee: item.rentalFee || 0,
-          depositAmount: item.depositAmount || 0,
+          rentalFee: baseRentalFee,
+          depositAmount: baseDepositAmount,
           depositStatus: depositStatus,
           paymentMethod: rentalPaymentMethod,
+          isCashReceipt: isCashReceipt,
+          vatAppliedRentalFee: vatAppliedRentalFee,
+          vatAppliedDepositAmount: vatAppliedDepositAmount,
         });
       }
     });
@@ -2490,6 +2509,10 @@ export default function LockerOptionsDialog({
                                   const newMethods = new Map(rentalPaymentMethods);
                                   newMethods.set(itemId, value as 'cash' | 'card' | 'transfer');
                                   setRentalPaymentMethods(newMethods);
+                                  // 결제방식 변경 시 현금영수증 체크 해제
+                                  const newCashReceiptStatuses = new Map(rentalCashReceiptStatuses);
+                                  newCashReceiptStatuses.set(itemId, false);
+                                  setRentalCashReceiptStatuses(newCashReceiptStatuses);
                                   if (value === 'card') {
                                     const cardSettings = localDb.getSettings();
                                     if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
@@ -2511,6 +2534,35 @@ export default function LockerOptionsDialog({
                                   <SelectItem value="transfer">계좌이체</SelectItem>
                                 </SelectContent>
                               </Select>
+                              
+                              {/* 현금영수증 체크박스 - 현금 또는 계좌이체 선택 시 표시 */}
+                              {(rentalPaymentMethods.get(itemId) === 'cash' || rentalPaymentMethods.get(itemId) === 'transfer' || (!rentalPaymentMethods.get(itemId) && 'cash' === 'cash')) && settings.enableCashReceiptVat && (
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Checkbox
+                                    id={`rental-cash-receipt-${itemId}`}
+                                    checked={rentalCashReceiptStatuses.get(itemId) || false}
+                                    onCheckedChange={(checked) => {
+                                      const newStatuses = new Map(rentalCashReceiptStatuses);
+                                      newStatuses.set(itemId, checked === true);
+                                      setRentalCashReceiptStatuses(newStatuses);
+                                    }}
+                                    data-testid={`checkbox-rental-cash-receipt-${itemId}`}
+                                  />
+                                  <Label 
+                                    htmlFor={`rental-cash-receipt-${itemId}`}
+                                    className="text-xs text-muted-foreground cursor-pointer"
+                                  >
+                                    현금영수증 발행 (+10% 부가세)
+                                  </Label>
+                                </div>
+                              )}
+                              
+                              {/* 카드 결제 부가세 안내 */}
+                              {rentalPaymentMethods.get(itemId) === 'card' && settings.enableCardVat && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                  (+10% 부가세 포함)
+                                </p>
+                              )}
                             </div>
                             )}
                           </div>
