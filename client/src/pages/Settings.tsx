@@ -53,6 +53,8 @@ interface Settings {
   nightStartTime: string;   // 야간 시작 시간 (HH:mm)
   enableDiscountOption: boolean;   // 기본할인 옵션 활성화
   enableForeignerOption: boolean;  // 외국인요금 옵션 활성화
+  enableCashReceiptVat: boolean;   // 현금영수증 부가세 옵션
+  enableCardVat: boolean;          // 카드결제 부가세 자동추가
 }
 
 interface LockerGroup {
@@ -107,6 +109,8 @@ export default function Settings() {
     nightStartTime: '19:00',
     enableDiscountOption: true,
     enableForeignerOption: true,
+    enableCashReceiptVat: false,
+    enableCardVat: false,
   });
 
   // Locker group dialog states
@@ -1510,6 +1514,49 @@ export default function Settings() {
                     <p className="text-xs text-muted-foreground">외국인 손님에게 적용되는 고정 요금</p>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 부가세 설정 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>부가세 설정</CardTitle>
+              <CardDescription>
+                결제 시 부가세(10%) 자동 가산 옵션을 설정합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* 현금영수증 부가세 옵션 */}
+              <div className="space-y-3 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="enableCashReceiptVat" className="text-sm font-medium">현금영수증 부가세</Label>
+                    <p className="text-xs text-muted-foreground">현금/계좌이체 결제 시 현금영수증 체크박스를 표시하고, 체크하면 10% 부가세가 추가됩니다</p>
+                  </div>
+                  <Switch
+                    id="enableCashReceiptVat"
+                    checked={formData.enableCashReceiptVat}
+                    onCheckedChange={(checked) => setFormData({ ...formData, enableCashReceiptVat: checked })}
+                    data-testid="switch-enable-cash-receipt-vat"
+                  />
+                </div>
+              </div>
+
+              {/* 카드결제 부가세 자동추가 옵션 */}
+              <div className="space-y-3 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label htmlFor="enableCardVat" className="text-sm font-medium">카드결제 부가세 자동추가</Label>
+                    <p className="text-xs text-muted-foreground">카드결제 버튼 클릭 시 자동으로 10% 부가세가 추가됩니다</p>
+                  </div>
+                  <Switch
+                    id="enableCardVat"
+                    checked={formData.enableCardVat}
+                    onCheckedChange={(checked) => setFormData({ ...formData, enableCardVat: checked })}
+                    data-testid="switch-enable-card-vat"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

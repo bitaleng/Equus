@@ -2735,7 +2735,9 @@ export function getSettings() {
     dayStartTime: '07:00',      // 주간 시작 시간 (HH:mm)
     nightStartTime: '19:00',    // 야간 시작 시간 (HH:mm)
     enableDiscountOption: true,   // 기본할인 옵션 활성화
-    enableForeignerOption: true   // 외국인요금 옵션 활성화
+    enableForeignerOption: true,  // 외국인요금 옵션 활성화
+    enableCashReceiptVat: false,  // 현금영수증 부가세 옵션 (체크시 +10%)
+    enableCardVat: false          // 카드결제 부가세 자동추가 (+10%)
   };
 
   const saved = localStorage.getItem('settings');
