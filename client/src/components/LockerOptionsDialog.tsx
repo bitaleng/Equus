@@ -1159,11 +1159,17 @@ export default function LockerOptionsDialog({
         };
       } else {
         // 추가요금 단일결제 (할인 적용된 금액 사용)
+        // 부가세 적용
+        const additionalFeeVatApplied = shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
+        const finalAdditionalFee = additionalFeeVatApplied 
+          ? Math.round(discountedAdditionalFee * 1.1) 
+          : discountedAdditionalFee;
+        
         additionalFeePayment = {
           method: additionalFeePaymentMethod,
-          cash: additionalFeePaymentMethod === 'cash' ? discountedAdditionalFee : undefined,
-          card: additionalFeePaymentMethod === 'card' ? discountedAdditionalFee : undefined,
-          transfer: additionalFeePaymentMethod === 'transfer' ? discountedAdditionalFee : undefined,
+          cash: additionalFeePaymentMethod === 'cash' ? finalAdditionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? finalAdditionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? finalAdditionalFee : undefined,
           discount: discountAmount > 0 ? discountAmount : undefined,
         };
       }
@@ -1244,11 +1250,17 @@ export default function LockerOptionsDialog({
         };
       } else {
         // 추가요금 단일결제 (할인 적용된 금액 사용)
+        // 부가세 적용
+        const additionalFeeVatApplied = shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
+        const finalAdditionalFee = additionalFeeVatApplied 
+          ? Math.round(discountedAdditionalFee * 1.1) 
+          : discountedAdditionalFee;
+        
         additionalFeePayment = {
           method: additionalFeePaymentMethod,
-          cash: additionalFeePaymentMethod === 'cash' ? discountedAdditionalFee : undefined,
-          card: additionalFeePaymentMethod === 'card' ? discountedAdditionalFee : undefined,
-          transfer: additionalFeePaymentMethod === 'transfer' ? discountedAdditionalFee : undefined,
+          cash: additionalFeePaymentMethod === 'cash' ? finalAdditionalFee : undefined,
+          card: additionalFeePaymentMethod === 'card' ? finalAdditionalFee : undefined,
+          transfer: additionalFeePaymentMethod === 'transfer' ? finalAdditionalFee : undefined,
           discount: discountAmount > 0 ? discountAmount : undefined,
         };
       }
@@ -2073,25 +2085,53 @@ export default function LockerOptionsDialog({
                       })()}
                     </>
                   ) : (
-                    <Select value={additionalFeePaymentMethod} onValueChange={(value) => {
-                      setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer');
-                      if (value === 'card') {
-                        const cardSettings = localDb.getSettings();
-                        if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
-                          const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardSettings.cardPaymentAppPackage};end`;
-                          window.location.href = intentUrl;
+                    <>
+                      <Select value={additionalFeePaymentMethod} onValueChange={(value) => {
+                        setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer');
+                        // 결제 방식 변경 시 현금영수증 체크 해제
+                        setIsAdditionalFeeCashReceipt(false);
+                        if (value === 'card') {
+                          const cardSettings = localDb.getSettings();
+                          if (cardSettings.cardPaymentAppEnabled && cardSettings.cardPaymentAppPackage) {
+                            const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardSettings.cardPaymentAppPackage};end`;
+                            window.location.href = intentUrl;
+                          }
                         }
-                      }
-                    }}>
-                      <SelectTrigger data-testid="select-additional-fee-payment-method">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">현금</SelectItem>
-                        <SelectItem value="card">카드</SelectItem>
-                        <SelectItem value="transfer">계좌이체</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      }}>
+                        <SelectTrigger data-testid="select-additional-fee-payment-method">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">현금</SelectItem>
+                          <SelectItem value="card">카드</SelectItem>
+                          <SelectItem value="transfer">계좌이체</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      
+                      {/* 추가요금 현금영수증 체크박스 */}
+                      {enableCashReceiptVat && (additionalFeePaymentMethod === 'cash' || additionalFeePaymentMethod === 'transfer') && (
+                        <div className="flex items-center space-x-2 pt-2">
+                          <Checkbox 
+                            id="additional-fee-cash-receipt" 
+                            checked={isAdditionalFeeCashReceipt}
+                            onCheckedChange={(checked) => setIsAdditionalFeeCashReceipt(checked as boolean)}
+                            data-testid="checkbox-additional-fee-cash-receipt"
+                          />
+                          <Label htmlFor="additional-fee-cash-receipt" className="text-sm cursor-pointer font-normal text-blue-600 dark:text-blue-400">
+                            현금영수증 발행 (+10% 부가세)
+                          </Label>
+                        </div>
+                      )}
+
+                      {/* 추가요금 카드결제 부가세 안내 */}
+                      {enableCardVat && additionalFeePaymentMethod === 'card' && (
+                        <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            카드결제 시 부가세 10%가 자동으로 추가됩니다
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
