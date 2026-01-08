@@ -861,13 +861,44 @@ export default function LockerOptionsDialog({
       cashVal = parseInt(paymentCash) || undefined;
       cardVal = parseInt(paymentCard) || undefined;
       transferVal = parseInt(paymentTransfer) || undefined;
+      
+      // 분리결제 시 부가세 적용
+      const settings = localDb.getSettings();
+      
+      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+      if (settings.enableCashReceiptVat && isCashReceipt) {
+        if (cashVal) {
+          cashVal = Math.round(cashVal * 1.1);
+        }
+        if (transferVal) {
+          transferVal = Math.round(transferVal * 1.1);
+        }
+      }
+      
+      // 카드: 카드 부가세 설정이 ON이면 자동 적용
+      if (settings.enableCardVat && cardVal) {
+        cardVal = Math.round(cardVal * 1.1);
+      }
     } else {
-      if (paymentMethod === 'cash') {
-        cashVal = computedFinalPrice;
-      } else if (paymentMethod === 'card') {
-        cardVal = computedFinalPrice;
-      } else if (paymentMethod === 'transfer') {
-        transferVal = computedFinalPrice;
+      // 단일 결제 시 부가세 적용
+      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+      if (vatApplied) {
+        const priceWithVat = Math.round(computedFinalPrice * 1.1);
+        if (paymentMethod === 'cash') {
+          cashVal = priceWithVat;
+        } else if (paymentMethod === 'card') {
+          cardVal = priceWithVat;
+        } else if (paymentMethod === 'transfer') {
+          transferVal = priceWithVat;
+        }
+      } else {
+        if (paymentMethod === 'cash') {
+          cashVal = computedFinalPrice;
+        } else if (paymentMethod === 'card') {
+          cardVal = computedFinalPrice;
+        } else if (paymentMethod === 'transfer') {
+          transferVal = computedFinalPrice;
+        }
       }
     }
     
@@ -995,8 +1026,27 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    // 부가세 적용 (분리결제가 아닌 경우에만)
-    if (!useSplitPayment) {
+    // 부가세 적용
+    if (useSplitPayment) {
+      // 분리결제 시 각 결제 수단별로 부가세 적용
+      const settings = localDb.getSettings();
+      
+      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+      if (settings.enableCashReceiptVat && isCashReceipt) {
+        if (cashVal) {
+          cashVal = Math.round(cashVal * 1.1);
+        }
+        if (transferVal) {
+          transferVal = Math.round(transferVal * 1.1);
+        }
+      }
+      
+      // 카드: 카드 부가세 설정이 ON이면 자동 적용
+      if (settings.enableCardVat && cardVal) {
+        cardVal = Math.round(cardVal * 1.1);
+      }
+    } else {
+      // 단일 결제 시 부가세 적용
       const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
       if (vatApplied) {
         const priceWithVat = Math.round(computedFinalPrice * 1.1);
@@ -1081,8 +1131,27 @@ export default function LockerOptionsDialog({
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
     
-    // 부가세 적용 (분리결제가 아닌 경우에만)
-    if (!useSplitPayment) {
+    // 부가세 적용
+    if (useSplitPayment) {
+      // 분리결제 시 각 결제 수단별로 부가세 적용
+      const settings = localDb.getSettings();
+      
+      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+      if (settings.enableCashReceiptVat && isCashReceipt) {
+        if (cashVal) {
+          cashVal = Math.round(cashVal * 1.1);
+        }
+        if (transferVal) {
+          transferVal = Math.round(transferVal * 1.1);
+        }
+      }
+      
+      // 카드: 카드 부가세 설정이 ON이면 자동 적용
+      if (settings.enableCardVat && cardVal) {
+        cardVal = Math.round(cardVal * 1.1);
+      }
+    } else {
+      // 단일 결제 시 부가세 적용
       const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
       if (vatApplied) {
         const priceWithVat = Math.round(computedFinalPrice * 1.1);
@@ -1972,13 +2041,52 @@ export default function LockerOptionsDialog({
                     const transferVal = parseInt(paymentTransfer) || 0;
                     const total = cashVal + cardVal + transferVal;
                     
+                    // 분리결제 부가세 계산
+                    const cashTransferVal = cashVal + transferVal;
+                    const cashTransferVat = (enableCashReceiptVat && isCashReceipt && cashTransferVal > 0) 
+                      ? Math.round(cashTransferVal * 0.1) : 0;
+                    const cardVat = (enableCardVat && cardVal > 0) 
+                      ? Math.round(cardVal * 0.1) : 0;
+                    const totalWithVat = total + cashTransferVat + cardVat;
+                    
                     return (
                       <div className="flex items-center justify-between pt-2 border-t">
                         <span className="text-sm font-semibold">합계</span>
-                        <span className="text-lg font-bold">{total.toLocaleString()}원</span>
+                        <div className="text-right">
+                          <span className="text-lg font-bold">{total.toLocaleString()}원</span>
+                          {(cashTransferVat > 0 || cardVat > 0) && (
+                            <span className="text-sm text-blue-600 dark:text-blue-400 ml-2">
+                              (+부가세 {(cashTransferVat + cardVat).toLocaleString()}원 = {totalWithVat.toLocaleString()}원)
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
+                  
+                  {/* 분리결제 현금영수증 체크박스 - 현금/이체 금액이 있을 때 표시 */}
+                  {enableCashReceiptVat && ((parseInt(paymentCash) || 0) > 0 || (parseInt(paymentTransfer) || 0) > 0) && (
+                    <div className="flex items-center space-x-2 pt-2">
+                      <Checkbox 
+                        id="split-cash-receipt" 
+                        checked={isCashReceipt}
+                        onCheckedChange={(checked) => setIsCashReceipt(checked as boolean)}
+                        data-testid="checkbox-split-cash-receipt"
+                      />
+                      <Label htmlFor="split-cash-receipt" className="text-sm cursor-pointer font-normal text-blue-600 dark:text-blue-400">
+                        현금/이체 현금영수증 발행 (+10% 부가세)
+                      </Label>
+                    </div>
+                  )}
+
+                  {/* 분리결제 카드 부가세 안내 */}
+                  {enableCardVat && (parseInt(paymentCard) || 0) > 0 && (
+                    <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        카드결제 금액에 부가세 10%가 자동으로 추가됩니다
+                      </p>
+                    </div>
+                  )}
                 </>
               ) : (!isDeferredPayment || isCurrentlyDeferred) ? (
                 <div className="flex gap-9">
