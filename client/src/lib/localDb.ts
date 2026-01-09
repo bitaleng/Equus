@@ -813,6 +813,14 @@ function migrateDatabase() {
       )
     `);
     
+    // Step 20: Add no_additional_fee column to locker_logs (무료입장 손님 추가요금 면제)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN no_additional_fee INTEGER DEFAULT 0`);
+      console.log('Added no_additional_fee column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -849,7 +857,8 @@ function createTables() {
       additional_fee_paid_amount INTEGER DEFAULT 0,
       parent_locker INTEGER,
       deferred_payment INTEGER DEFAULT 0,
-      customer_memo TEXT
+      customer_memo TEXT,
+      no_additional_fee INTEGER DEFAULT 0
     )
   `);
 
