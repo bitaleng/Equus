@@ -11,6 +11,17 @@
   to = "/index.html"
   status = 200
 
+# HTML files - no cache to always get latest version
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 # Service Worker - prevent caching to ensure updates work properly
 [[headers]]
   for = "/sw.js"
