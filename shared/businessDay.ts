@@ -210,6 +210,10 @@ export function calculateFinalPrice(
  * 규칙 (외국인):
  * - 입실 시각 기준 설정된 주기마다 외국인요금(foreignerPrice) 추가
  * 
+ * 규칙 (무료입장 - 주간 07:00~16:59:59):
+ * - 입실 후 24시간 내에는 추가요금 없음 (첫 체크포인트 면제)
+ * - 24시간 경과 후부터는 유료입장과 동일하게 체크포인트마다 야간요금 추가
+ * 
  * @param entryTime 입실 시간
  * @param entryTimeType 입실 시간대 (주간/야간)
  * @param dayPrice 주간 요금
@@ -219,6 +223,7 @@ export function calculateFinalPrice(
  * @param foreignerPrice 외국인 요금 (기본값: 25000)
  * @param domesticCheckpointHour 내국인 추가요금 체크포인트 시간 (기본값: 1)
  * @param foreignerAdditionalFeePeriod 외국인 추가요금 주기(시간) (기본값: 24)
+ * @param isFreeEntry 무료입장 여부 (기본값: false)
  * @returns { additionalFee: 추가요금, midnightsPassed: 넘긴 체크포인트 횟수, additionalFeeCount: 추가요금 횟수 }
  */
 export function calculateAdditionalFee(
@@ -230,7 +235,8 @@ export function calculateAdditionalFee(
   isForeigner: boolean = false,
   foreignerPrice: number = 25000,
   domesticCheckpointHour: number = 1,
-  foreignerAdditionalFeePeriod: number = 24
+  foreignerAdditionalFeePeriod: number = 24,
+  isFreeEntry: boolean = false
 ): { additionalFee: number; midnightsPassed: number; additionalFeeCount: number } {
   const entry = typeof entryTime === 'string' ? new Date(entryTime) : entryTime;
   const entrySeoul = toZonedTime(entry, SEOUL_TIMEZONE);
@@ -308,13 +314,29 @@ export function calculateAdditionalFee(
   let additionalFeeCount = 0;
   
   if (entryTimeType === '주간') {
-    // 주간 입실: 첫 체크포인트에 차액(야간-주간), 이후 체크포인트마다 야간요금
-    additionalFee = (nightPrice - dayPrice); // 첫 01:00: 5,000원
-    additionalFeeCount = midnightsPassed;
-    
-    // 두 번째 체크포인트부터 야간요금 추가
-    if (midnightsPassed > 1) {
-      additionalFee += (midnightsPassed - 1) * nightPrice;
+    // 무료입장 주간(07:00~16:59:59) 손님: 첫 체크포인트(익일 1시) 면제
+    // - 24시간 내에는 추가요금 없음
+    // - 24시간 경과 후(두 번째 체크포인트부터)는 야간요금 추가
+    if (isFreeEntry) {
+      // 무료입장: 첫 체크포인트 면제, 두 번째부터 야간요금
+      if (midnightsPassed <= 1) {
+        // 첫 체크포인트만 넘긴 경우 → 추가요금 없음
+        additionalFee = 0;
+        additionalFeeCount = 0;
+      } else {
+        // 두 번째 체크포인트부터 야간요금 추가
+        additionalFee = (midnightsPassed - 1) * nightPrice;
+        additionalFeeCount = midnightsPassed - 1;
+      }
+    } else {
+      // 유료입장: 첫 체크포인트에 차액(야간-주간), 이후 체크포인트마다 야간요금
+      additionalFee = (nightPrice - dayPrice); // 첫 01:00: 5,000원
+      additionalFeeCount = midnightsPassed;
+      
+      // 두 번째 체크포인트부터 야간요금 추가
+      if (midnightsPassed > 1) {
+        additionalFee += (midnightsPassed - 1) * nightPrice;
+      }
     }
   } else {
     // 야간 입실: 모든 체크포인트에 야간요금
