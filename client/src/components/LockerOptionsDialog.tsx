@@ -131,6 +131,7 @@ export default function LockerOptionsDialog({
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
   const [isFreeEntry, setIsFreeEntry] = useState(false);
+  const [noAdditionalFee, setNoAdditionalFee] = useState(false); // 추가요금없음 (VIP 등)
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(isInUse ? currentPaymentMethod : null);
@@ -580,6 +581,7 @@ export default function LockerOptionsDialog({
       setDiscountInputAmount("");
       setIsForeigner(false);
       setIsFreeEntry(false);
+      setNoAdditionalFee(false); // 추가요금없음 상태도 초기화
       setIsDirectPrice(false);
       setDirectPrice("");
       setPaymentMethod(null);
@@ -1947,12 +1949,30 @@ export default function LockerOptionsDialog({
                     if (checked) {
                       setDiscountOption("none");
                       setDiscountInputAmount("");
+                    } else {
+                      // 무료입장 해제 시 추가요금없음도 해제
+                      setNoAdditionalFee(false);
                     }
                   }}
                   data-testid="checkbox-free-entry"
                 />
                 <Label htmlFor="free-entry" className="text-sm font-semibold cursor-pointer text-green-600 dark:text-green-400">
                   무료입장 (0원)
+                </Label>
+              </div>
+            )}
+            
+            {/* 추가요금없음 체크박스 - 무료입장 선택 시에만 표시 (VIP, 지인 등) */}
+            {!isInUse && isFreeEntry && (
+              <div className="flex items-center space-x-2 ml-6">
+                <Checkbox 
+                  id="no-additional-fee" 
+                  checked={noAdditionalFee}
+                  onCheckedChange={(checked) => setNoAdditionalFee(checked as boolean)}
+                  data-testid="checkbox-no-additional-fee"
+                />
+                <Label htmlFor="no-additional-fee" className="text-sm font-semibold cursor-pointer text-purple-600 dark:text-purple-400">
+                  추가요금없음 (VIP/지인)
                 </Label>
               </div>
             )}
