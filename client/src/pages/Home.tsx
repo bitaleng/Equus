@@ -273,11 +273,12 @@ export default function Home() {
   const handleFloatingDragMove = useCallback((e: MouseEvent) => {
     if (!isDraggingRef.current) return;
     
+    // 패널이 화면 밖으로 나가지 않도록 클램핑 (패널 높이 고려)
     const newX = Math.max(0, Math.min(window.innerWidth - floatingSize.width, e.clientX - dragOffsetRef.current.x));
-    const newY = Math.max(0, Math.min(window.innerHeight - 100, e.clientY - dragOffsetRef.current.y));
+    const newY = Math.max(0, Math.min(window.innerHeight - floatingSize.height, e.clientY - dragOffsetRef.current.y));
     
     setFloatingPosition({ x: newX, y: newY });
-  }, [floatingSize.width]);
+  }, [floatingSize.width, floatingSize.height]);
 
   // 플로팅 창 드래그 종료
   const handleFloatingDragEnd = useCallback(() => {
