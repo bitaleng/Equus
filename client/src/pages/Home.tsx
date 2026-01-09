@@ -259,7 +259,7 @@ export default function Home() {
     });
   }, []);
 
-  // 플로팅 창 드래그 시작
+  // 플로팅 창 드래그 시작 (마우스)
   const handleFloatingDragStart = useCallback((e: React.MouseEvent) => {
     isDraggingRef.current = true;
     dragOffsetRef.current = {
@@ -269,7 +269,19 @@ export default function Home() {
     e.preventDefault();
   }, [floatingPosition]);
 
-  // 플로팅 창 드래그 중
+  // 플로팅 창 드래그 시작 (터치)
+  const handleFloatingTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      isDraggingRef.current = true;
+      const touch = e.touches[0];
+      dragOffsetRef.current = {
+        x: touch.clientX - floatingPosition.x,
+        y: touch.clientY - floatingPosition.y
+      };
+    }
+  }, [floatingPosition]);
+
+  // 플로팅 창 드래그 중 (마우스)
   const handleFloatingDragMove = useCallback((e: MouseEvent) => {
     if (!isDraggingRef.current) return;
     
@@ -278,6 +290,18 @@ export default function Home() {
     const newY = Math.max(0, Math.min(window.innerHeight - floatingSize.height, e.clientY - dragOffsetRef.current.y));
     
     setFloatingPosition({ x: newX, y: newY });
+  }, [floatingSize.width, floatingSize.height]);
+
+  // 플로팅 창 드래그 중 (터치)
+  const handleFloatingTouchMove = useCallback((e: TouchEvent) => {
+    if (!isDraggingRef.current || e.touches.length !== 1) return;
+    
+    const touch = e.touches[0];
+    const newX = Math.max(0, Math.min(window.innerWidth - floatingSize.width, touch.clientX - dragOffsetRef.current.x));
+    const newY = Math.max(0, Math.min(window.innerHeight - floatingSize.height, touch.clientY - dragOffsetRef.current.y));
+    
+    setFloatingPosition({ x: newX, y: newY });
+    e.preventDefault(); // 스크롤 방지
   }, [floatingSize.width, floatingSize.height]);
 
   // 플로팅 창 드래그 종료
@@ -289,17 +313,25 @@ export default function Home() {
     }
   }, [floatingPosition]);
 
-  // 플로팅 창 드래그 이벤트 리스너
+  // 플로팅 창 드래그 이벤트 리스너 (마우스 + 터치)
   useEffect(() => {
     if (isFloatingMode) {
+      // 마우스 이벤트
       window.addEventListener('mousemove', handleFloatingDragMove);
       window.addEventListener('mouseup', handleFloatingDragEnd);
+      // 터치 이벤트
+      window.addEventListener('touchmove', handleFloatingTouchMove, { passive: false });
+      window.addEventListener('touchend', handleFloatingDragEnd);
+      window.addEventListener('touchcancel', handleFloatingDragEnd);
       return () => {
         window.removeEventListener('mousemove', handleFloatingDragMove);
         window.removeEventListener('mouseup', handleFloatingDragEnd);
+        window.removeEventListener('touchmove', handleFloatingTouchMove);
+        window.removeEventListener('touchend', handleFloatingDragEnd);
+        window.removeEventListener('touchcancel', handleFloatingDragEnd);
       };
     }
-  }, [isFloatingMode, handleFloatingDragMove, handleFloatingDragEnd]);
+  }, [isFloatingMode, handleFloatingDragMove, handleFloatingTouchMove, handleFloatingDragEnd]);
 
   // Tab change handler with security check
   const handleTabChange = (newTab: string) => {
@@ -2167,6 +2199,7 @@ export default function Home() {
               isFloatingMode ? "cursor-move rounded-t-lg" : ""
             }`}
             onMouseDown={isFloatingMode ? handleFloatingDragStart : undefined}
+            onTouchStart={isFloatingMode ? handleFloatingTouchStart : undefined}
           >
             <div className="flex items-center gap-3">
               {isFloatingMode && <Move className="w-4 h-4 opacity-60" />}
