@@ -1112,6 +1112,7 @@ export function createEntry(entry: {
   entryTime?: Date;  // 입실시간 (옵션창 열린 시간으로 기록, 미지정 시 현재시간)
   deferredPayment?: boolean;  // 후불결제 여부
   customerMemo?: string;  // 손님 메모
+  noAdditionalFee?: boolean;  // 추가요금없음 (VIP 등)
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1126,8 +1127,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1145,7 +1146,8 @@ export function createEntry(entry: {
       entry.paymentTransfer || null,
       rentalItemsJson,
       entry.deferredPayment ? 1 : 0,
-      entry.customerMemo || null
+      entry.customerMemo || null,
+      entry.noAdditionalFee ? 1 : 0
     ]
   );
 
@@ -1224,6 +1226,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.customerMemo !== undefined) {
     sets.push('customer_memo = ?');
     values.push(updates.customerMemo || null);
+  }
+  if (updates.noAdditionalFee !== undefined) {
+    sets.push('no_additional_fee = ?');
+    values.push(updates.noAdditionalFee ? 1 : 0);
   }
 
   if (sets.length > 0) {
@@ -2718,7 +2724,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       }
       
       // Convert boolean fields
-      if (col === 'cancelled' || col === 'deferred_payment') {
+      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee') {
         value = value === 1;
       }
       

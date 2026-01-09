@@ -997,7 +997,8 @@ export default function Home() {
     paymentCard?: number,
     paymentTransfer?: number,
     deferredPayment?: boolean, // 후불결제 여부
-    customerMemo?: string // 손님 메모
+    customerMemo?: string, // 손님 메모
+    noAdditionalFee?: boolean // 추가요금없음 (VIP 등)
   ) => {
     // Use ref to get the latest openDialogs state (prevents stale closure issue)
     const currentOpenDialogs = openDialogsRef.current;
@@ -1071,6 +1072,7 @@ export default function Home() {
         entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
         deferredPayment: deferredPayment || false,  // 후불결제 여부
         customerMemo: customerMemo || undefined,  // 손님 메모
+        noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 (VIP 등)
       });
 
       // Mark the scan log as processed (if there was a scan)
@@ -1191,6 +1193,7 @@ export default function Home() {
       paymentTransfer: actualPaymentTransfer,
       deferredPayment: deferredPayment || false,
       customerMemo: customerMemo || undefined,  // 손님 메모
+      noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 상태 유지
     });
     
     // Handle rental items for existing entry (if saving changes)
@@ -2171,8 +2174,9 @@ export default function Home() {
                           currentLockerLogId={selectedEntry?.id}
                           currentDeferredPayment={(selectedEntry as any)?.deferredPayment || false}
                           currentCustomerMemo={(selectedEntry as any)?.customerMemo || ""}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo)
+                          currentNoAdditionalFee={(selectedEntry as any)?.noAdditionalFee || false}
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee) => 
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo) => 
                             handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo)

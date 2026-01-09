@@ -67,7 +67,8 @@ interface LockerOptionsDialogProps {
   currentLockerLogId?: string;
   currentDeferredPayment?: boolean; // 현재 후불결제 상태
   currentCustomerMemo?: string; // 현재 손님 메모
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string) => void;
+  currentNoAdditionalFee?: boolean; // 현재 추가요금없음 상태
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -112,6 +113,7 @@ export default function LockerOptionsDialog({
   currentLockerLogId,
   currentDeferredPayment = false, // 현재 후불결제 상태
   currentCustomerMemo = "", // 현재 손님 메모
+  currentNoAdditionalFee = false, // 현재 추가요금없음 상태
   onApply,
   onCheckout,
   onCancel,
@@ -220,19 +222,25 @@ export default function LockerOptionsDialog({
         setPaidAdditionalFeeAmount(paidAmount);
         
         // 현재 추가요금 직접 계산
+        // noAdditionalFee가 true이면 추가요금 완전 면제
         const isForeigner = currentOptionType === 'foreigner';
-        const currentFeeInfo = calculateAdditionalFee(
-          entryTime || '',
-          timeType,
-          dayPrice,
-          nightPrice,
-          new Date(),
-          isForeigner,
-          foreignerPrice,
-          domesticCheckpointHour,
-          foreignerAdditionalFeePeriod
-        );
-        const currentFee = currentFeeInfo.additionalFee;
+        const isFreeEntry = currentOptionType === 'free';
+        let currentFee = 0;
+        if (!currentNoAdditionalFee) {
+          const currentFeeInfo = calculateAdditionalFee(
+            entryTime || '',
+            timeType,
+            dayPrice,
+            nightPrice,
+            new Date(),
+            isForeigner,
+            foreignerPrice,
+            domesticCheckpointHour,
+            foreignerAdditionalFeePeriod,
+            isFreeEntry
+          );
+          currentFee = currentFeeInfo.additionalFee;
+        }
         
         console.log('[DEBUG] 다이얼로그 열림:', { logId: currentLockerLogId, currentFee, paidAmount });
         
@@ -261,9 +269,11 @@ export default function LockerOptionsDialog({
       setAdditionalFeeFullDiscount(false);
       setAdditionalFeePartialDiscount(false);
       setAdditionalFeeDiscount("");
+      // 추가요금없음 상태를 현재 값으로 초기화
+      setNoAdditionalFee(currentNoAdditionalFee || false);
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee]);
   
     
   // Initialize payment fields when dialog opens
@@ -352,25 +362,30 @@ export default function LockerOptionsDialog({
           const hasRentalItems = unresolvedRentals.length > 0;
           
           // Calculate additional fee to check if there are additional charges
+          // noAdditionalFee가 true이면 추가요금 완전 면제
           const isCurrentlyForeigner = currentOptionType === 'foreigner';
-          const additionalFeeCalc = calculateAdditionalFee(
-            entryTime, 
-            timeType, 
-            dayPrice, 
-            nightPrice, 
-            new Date(), 
-            isCurrentlyForeigner, 
-            foreignerPrice,
-            domesticCheckpointHour,
-            foreignerAdditionalFeePeriod
-          );
-          
-          // DB에서 직접 paid amount 가져와서 미지불 추가요금 확인
+          const isFreeEntry = currentOptionType === 'free';
+          let hasUnpaidAdditionalFee = false;
           const savedPaidAmount = currentLockerLogId ? localDb.getLockerLogAdditionalFeePaidAmount(currentLockerLogId) : 0;
-          const hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > savedPaidAmount;
+          
+          if (!currentNoAdditionalFee) {
+            const additionalFeeCalc = calculateAdditionalFee(
+              entryTime, 
+              timeType, 
+              dayPrice, 
+              nightPrice, 
+              new Date(), 
+              isCurrentlyForeigner, 
+              foreignerPrice,
+              domesticCheckpointHour,
+              foreignerAdditionalFeePeriod,
+              isFreeEntry
+            );
+            hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > savedPaidAmount;
+          }
           
           console.log('[DEBUG] 알림창 표시 체크:', { 
-            currentFee: additionalFeeCalc.additionalFee, 
+            noAdditionalFee: currentNoAdditionalFee,
             savedPaidAmount, 
             hasUnpaidAdditionalFee,
             hasRentalItems 
@@ -396,7 +411,7 @@ export default function LockerOptionsDialog({
         setRentalPaymentMethods(new Map());
       }
     }
-  }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, domesticCheckpointHour, foreignerAdditionalFeePeriod]);
+  }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentNoAdditionalFee]);
 
   // Load parent locker info and deferred payment status when dialog opens
   useEffect(() => {
@@ -978,10 +993,10 @@ export default function LockerOptionsDialog({
     
     // 무료입장일 경우 결제방식 없이 바로 처리
     if (isFreeEntry) {
-      console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber });
+      console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo, noAdditionalFee);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1023,7 +1038,7 @@ export default function LockerOptionsDialog({
     // 후불결제 시 결제 금액을 0원으로 처리
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo, noAdditionalFee);
       setDialogOpen(false);
       return;
     }
@@ -1068,7 +1083,7 @@ export default function LockerOptionsDialog({
     
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo, noAdditionalFee);
     setDialogOpen(false);
   };
 
@@ -1199,7 +1214,8 @@ export default function LockerOptionsDialog({
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo);
+    // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo, noAdditionalFee);
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
@@ -1209,19 +1225,25 @@ export default function LockerOptionsDialog({
       // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
       if (checkoutResolved || additionalFeeResolved) {
         // 추가요금 직접 계산 (additionalFeeInfo가 아직 정의되지 않았을 수 있음)
-        const isForeigner = currentOptionType === 'foreigner';
-        const feeInfo = calculateAdditionalFee(
-          entryTime || '',
-          timeType,
-          dayPrice,
-          nightPrice,
-          new Date(),
-          isForeigner,
-          foreignerPrice,
-          domesticCheckpointHour,
-          foreignerAdditionalFeePeriod
-        );
-        const currentFee = feeInfo.additionalFee;
+        // noAdditionalFee가 true이면 추가요금 0
+        let currentFee = 0;
+        if (!currentNoAdditionalFee) {
+          const isForeigner = currentOptionType === 'foreigner';
+          const isFreeEntry = currentOptionType === 'free';
+          const feeInfo = calculateAdditionalFee(
+            entryTime || '',
+            timeType,
+            dayPrice,
+            nightPrice,
+            new Date(),
+            isForeigner,
+            foreignerPrice,
+            domesticCheckpointHour,
+            foreignerAdditionalFeePeriod,
+            isFreeEntry
+          );
+          currentFee = feeInfo.additionalFee;
+        }
         console.log('[DEBUG] 수정저장: 추가요금 완납 저장', { logId: currentLockerLogId, currentFee, checkoutResolved, additionalFeeResolved });
         localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
       }
@@ -1792,9 +1814,13 @@ export default function LockerOptionsDialog({
   };
 
   // Calculate additional fee if entry time exists
+  // noAdditionalFee가 true이면 추가요금 완전 면제
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
+  const isCurrentlyFreeEntry = currentOptionType === 'free';
   const additionalFeeInfo = entryTime && isInUse
-    ? calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod)
+    ? (currentNoAdditionalFee 
+        ? { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 }
+        : calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry))
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
   
   // Note: Additional fee comparison is now done in the dialog open useEffect above
