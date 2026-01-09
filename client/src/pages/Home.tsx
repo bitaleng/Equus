@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -133,6 +133,36 @@ export default function Home() {
   // Popup workspace visibility toggle
   const [popupsVisible, setPopupsVisible] = useState(true);
   
+  // Floating mode for workspace panel
+  const [isFloatingMode, setIsFloatingMode] = useState(() => {
+    const saved = localStorage.getItem('workspaceFloatingMode');
+    return saved === 'true';
+  });
+  const [floatingPosition, setFloatingPosition] = useState(() => {
+    const saved = localStorage.getItem('workspaceFloatingPosition');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { x: 100, y: 100 };
+      }
+    }
+    return { x: 100, y: 100 };
+  });
+  const [floatingSize, setFloatingSize] = useState(() => {
+    const saved = localStorage.getItem('workspaceFloatingSize');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { width: 450, height: 600 };
+      }
+    }
+    return { width: 450, height: 600 };
+  });
+  const isDraggingRef = useRef(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
+  
   // UI Layout Mode: 'toggle' (기존 토글 방식) or 'tab' (탭 전환 방식)
   const [uiLayoutMode, setUiLayoutMode] = useState<'toggle' | 'tab'>(() => {
     const saved = localStorage.getItem('uiLayoutMode');
@@ -219,6 +249,56 @@ export default function Home() {
       setPendingLayoutMode(null);
     }
   };
+
+  // 플로팅 모드 토글
+  const toggleFloatingMode = useCallback(() => {
+    setIsFloatingMode(prev => {
+      const newValue = !prev;
+      localStorage.setItem('workspaceFloatingMode', String(newValue));
+      return newValue;
+    });
+  }, []);
+
+  // 플로팅 창 드래그 시작
+  const handleFloatingDragStart = useCallback((e: React.MouseEvent) => {
+    isDraggingRef.current = true;
+    dragOffsetRef.current = {
+      x: e.clientX - floatingPosition.x,
+      y: e.clientY - floatingPosition.y
+    };
+    e.preventDefault();
+  }, [floatingPosition]);
+
+  // 플로팅 창 드래그 중
+  const handleFloatingDragMove = useCallback((e: MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    
+    const newX = Math.max(0, Math.min(window.innerWidth - floatingSize.width, e.clientX - dragOffsetRef.current.x));
+    const newY = Math.max(0, Math.min(window.innerHeight - 100, e.clientY - dragOffsetRef.current.y));
+    
+    setFloatingPosition({ x: newX, y: newY });
+  }, [floatingSize.width]);
+
+  // 플로팅 창 드래그 종료
+  const handleFloatingDragEnd = useCallback(() => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      // 위치 저장
+      localStorage.setItem('workspaceFloatingPosition', JSON.stringify(floatingPosition));
+    }
+  }, [floatingPosition]);
+
+  // 플로팅 창 드래그 이벤트 리스너
+  useEffect(() => {
+    if (isFloatingMode) {
+      window.addEventListener('mousemove', handleFloatingDragMove);
+      window.addEventListener('mouseup', handleFloatingDragEnd);
+      return () => {
+        window.removeEventListener('mousemove', handleFloatingDragMove);
+        window.removeEventListener('mouseup', handleFloatingDragEnd);
+      };
+    }
+  }, [isFloatingMode, handleFloatingDragMove, handleFloatingDragEnd]);
 
   // Tab change handler with security check
   const handleTabChange = (newTab: string) => {
@@ -2065,18 +2145,46 @@ export default function Home() {
         />
       )}
 
-      {/* Multi-Popup Workspace - Split Screen Right Panel */}
+      {/* Multi-Popup Workspace - Docked or Floating Mode */}
       {openDialogs.size > 0 && popupsVisible && (
-        <div className="fixed right-0 top-0 bottom-0 w-[45%] bg-muted/95 backdrop-blur-sm border-l-4 border-primary shadow-2xl z-50 flex flex-col">
+        <div 
+          className={`bg-muted/95 backdrop-blur-sm shadow-2xl z-50 flex flex-col ${
+            isFloatingMode 
+              ? "fixed rounded-lg border-2 border-primary" 
+              : "fixed right-0 top-0 bottom-0 w-[45%] border-l-4 border-primary"
+          }`}
+          style={isFloatingMode ? {
+            left: floatingPosition.x,
+            top: floatingPosition.y,
+            width: floatingSize.width,
+            height: floatingSize.height,
+          } : undefined}
+        >
           {/* Workspace Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground">
+          <div 
+            className={`flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground ${
+              isFloatingMode ? "cursor-move rounded-t-lg" : ""
+            }`}
+            onMouseDown={isFloatingMode ? handleFloatingDragStart : undefined}
+          >
             <div className="flex items-center gap-3">
+              {isFloatingMode && <Move className="w-4 h-4 opacity-60" />}
               <h3 className="font-semibold text-lg">처리중인 고객</h3>
               <span className="px-2 py-1 rounded-full bg-primary-foreground text-primary text-sm font-bold">
                 {openDialogs.size}명
               </span>
             </div>
             <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={toggleFloatingMode}
+                className="text-primary-foreground hover:bg-primary-foreground/20"
+                title={isFloatingMode ? "우측 도킹" : "플로팅 모드"}
+                data-testid="button-toggle-floating"
+              >
+                {isFloatingMode ? <PanelRight className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+              </Button>
               <Button 
                 variant="ghost" 
                 size="icon"
