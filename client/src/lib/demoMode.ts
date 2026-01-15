@@ -1,5 +1,5 @@
 const DEMO_START_DATE_KEY = 'demo_start_date';
-const DEMO_TRIAL_DAYS = 7;
+const DEMO_TRIAL_MS = 7 * 24 * 60 * 60 * 1000; // 정확히 7일 (168시간)
 const DEMO_EXPIRED_PASSWORD = '70557718';
 
 export function isDemoMode(): boolean {
@@ -23,20 +23,24 @@ export function getDemoStartDate(): Date | null {
   return new Date(dateStr);
 }
 
-export function getDemoRemainingDays(): number {
+export function getDemoRemainingMs(): number {
   const startDate = getDemoStartDate();
-  if (!startDate) return DEMO_TRIAL_DAYS;
+  if (!startDate) return DEMO_TRIAL_MS;
   
   const now = new Date();
-  const diffTime = now.getTime() - startDate.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  return Math.max(0, DEMO_TRIAL_DAYS - diffDays);
+  const elapsed = now.getTime() - startDate.getTime();
+  return Math.max(0, DEMO_TRIAL_MS - elapsed);
+}
+
+export function getDemoRemainingDays(): number {
+  const remainingMs = getDemoRemainingMs();
+  // 남은 시간을 일수로 변환 (올림하여 표시)
+  return Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
 }
 
 export function isDemoExpired(): boolean {
   if (!isDemoMode()) return false;
-  return getDemoRemainingDays() <= 0;
+  return getDemoRemainingMs() <= 0;
 }
 
 export function getDemoPassword(): string {
@@ -49,12 +53,28 @@ export function getDemoPassword(): string {
 export function blockPwaInstall(): void {
   if (!isDemoMode()) return;
   
+  // 1. beforeinstallprompt 이벤트 차단
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     return false;
   });
+  
+  // 2. 서비스 워커 등록 해제
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      registrations.forEach((registration) => {
+        registration.unregister();
+      });
+    });
+  }
+  
+  // 3. 매니페스트 링크 제거
+  const manifestLink = document.querySelector('link[rel="manifest"]');
+  if (manifestLink) {
+    manifestLink.remove();
+  }
 }
 
 export function getDemoTrialDays(): number {
-  return DEMO_TRIAL_DAYS;
+  return 7;
 }
