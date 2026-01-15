@@ -21,6 +21,7 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { useWakeLock } from "@/hooks/useWakeLock";
+import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
 
 function Router() {
   return (
@@ -115,6 +116,11 @@ function App() {
   useWakeLock(wakeLockEnabled && isAuthenticated && dbReady);
 
   useEffect(() => {
+    // Block PWA install in demo mode
+    if (isDemoMode()) {
+      blockPwaInstall();
+    }
+    
     const authenticated = localStorage.getItem("authenticated");
     if (authenticated === "true") {
       setIsAuthenticated(true);
