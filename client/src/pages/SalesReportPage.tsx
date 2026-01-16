@@ -238,28 +238,14 @@ function SalesCalendar() {
   });
 
   const exportToPDF = async () => {
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a3'
-    });
-
     try {
-      const fontResponse = await fetch('/fonts/NotoSansKR-Regular.ttf');
-      if (fontResponse.ok) {
-        const fontArrayBuffer = await fontResponse.arrayBuffer();
-        const fontBase64 = btoa(
-          new Uint8Array(fontArrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-        );
-        doc.addFileToVFS('NotoSansKR-Regular.ttf', fontBase64);
-        doc.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
-        doc.setFont('NotoSansKR', 'normal');
-      }
-    } catch (e) {
-      console.warn('한글 폰트 로드 실패, 기본 폰트 사용:', e);
-    }
+      const doc = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a3'
+      });
 
-    const pageWidth = 420;
+      const pageWidth = 420;
     const pageHeight = 297;
     const margin = 15;
     const contentWidth = pageWidth - margin * 2;
@@ -459,8 +445,12 @@ function SalesCalendar() {
       doc.line(margin, y, margin + contentWidth, y);
     }
 
-    const fileName = `sales_calendar_${format(currentMonth, "yyyy-MM")}_${viewType === "sales" ? "sales" : "cancel"}.pdf`;
-    doc.save(fileName);
+      const fileName = `sales_calendar_${format(currentMonth, "yyyy-MM")}_${viewType === "sales" ? "sales" : "cancel"}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error('PDF 생성 오류:', error);
+      alert('PDF 생성 중 오류가 발생했습니다.');
+    }
   };
 
   return (
