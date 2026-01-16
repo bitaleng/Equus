@@ -245,6 +245,25 @@ function SalesCalendar() {
         format: 'a3'
       });
 
+      // 한글 폰트 로드
+      try {
+        const fontResponse = await fetch('/fonts/NotoSansKR-Regular.ttf');
+        if (fontResponse.ok) {
+          const fontArrayBuffer = await fontResponse.arrayBuffer();
+          const fontBytes = new Uint8Array(fontArrayBuffer);
+          let fontBase64 = '';
+          for (let i = 0; i < fontBytes.length; i++) {
+            fontBase64 += String.fromCharCode(fontBytes[i]);
+          }
+          fontBase64 = btoa(fontBase64);
+          doc.addFileToVFS('NotoSansKR-Regular.ttf', fontBase64);
+          doc.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+          doc.setFont('NotoSansKR', 'normal');
+        }
+      } catch (fontError) {
+        console.warn('폰트 로드 실패:', fontError);
+      }
+
       const pageWidth = 420;
     const pageHeight = 297;
     const margin = 15;
