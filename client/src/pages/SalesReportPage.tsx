@@ -237,12 +237,27 @@ function SalesCalendar() {
     }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0 });
   });
 
-  const exportToPDF = () => {
+  const exportToPDF = async () => {
     const doc = new jsPDF({
       orientation: 'landscape',
       unit: 'mm',
       format: 'a3'
     });
+
+    try {
+      const fontResponse = await fetch('/fonts/NotoSansKR-Regular.ttf');
+      if (fontResponse.ok) {
+        const fontArrayBuffer = await fontResponse.arrayBuffer();
+        const fontBase64 = btoa(
+          new Uint8Array(fontArrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+        );
+        doc.addFileToVFS('NotoSansKR-Regular.ttf', fontBase64);
+        doc.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+        doc.setFont('NotoSansKR', 'normal');
+      }
+    } catch (e) {
+      console.warn('한글 폰트 로드 실패, 기본 폰트 사용:', e);
+    }
 
     const pageWidth = 420;
     const pageHeight = 297;
@@ -256,7 +271,6 @@ function SalesCalendar() {
     const availableHeight = pageHeight - margin * 2 - headerHeight - dayHeaderHeight;
     const rowHeight = Math.min(availableHeight / rowCount, 35);
 
-    doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text(`${format(currentMonth, "yyyy년 M월")} 매출달력`, pageWidth / 2, margin + 8, { align: "center" });
 
@@ -274,7 +288,6 @@ function SalesCalendar() {
     doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, 'S');
 
     doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
     const dayColors: { [key: number]: [number, number, number] } = {
       0: [220, 38, 38],
       6: [59, 130, 246]
@@ -304,7 +317,6 @@ function SalesCalendar() {
 
     weeks.forEach((week, weekIdx) => {
       const rowY = tableStartY + dayHeaderHeight + weekIdx * rowHeight;
-      doc.line(margin, rowY + rowHeight, margin + contentWidth, rowY + rowHeight);
 
       week.forEach((day, dayIdx) => {
         const dateStr = format(day, "yyyy-MM-dd");
@@ -328,7 +340,6 @@ function SalesCalendar() {
         }
 
         doc.setFontSize(9);
-        doc.setFont("helvetica", "bold");
         if (dayOfWeek === 0) {
           doc.setTextColor(220, 38, 38);
         } else if (dayOfWeek === 6) {
@@ -345,7 +356,6 @@ function SalesCalendar() {
 
         if (viewType === "sales" && sales > 0) {
           doc.setFontSize(8);
-          doc.setFont("helvetica", "bold");
           if (isMax) {
             doc.setTextColor(220, 38, 38);
           } else if (isMin) {
@@ -358,7 +368,6 @@ function SalesCalendar() {
 
           if (payment) {
             doc.setFontSize(6);
-            doc.setFont("helvetica", "normal");
             doc.setTextColor(100, 100, 100);
             if (payment.cash > 0) {
               doc.text(`현금 ${formatCurrency(payment.cash)}`, cellX + padding, textY);
@@ -392,7 +401,6 @@ function SalesCalendar() {
           const cancelled = cancelledMap.get(dateStr);
           if (cancelled && cancelled.cancelledAmount > 0) {
             doc.setFontSize(8);
-            doc.setFont("helvetica", "bold");
             doc.setTextColor(220, 38, 38);
             doc.text(`-${formatCurrency(cancelled.cancelledAmount)}`, cellX + padding, textY);
           }
@@ -405,19 +413,16 @@ function SalesCalendar() {
       doc.rect(weeklyColX, rowY, colWidth, rowHeight, 'F');
 
       doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 100, 100);
       doc.text(`${weekIdx + 1}주`, weeklyColX + colWidth / 2, rowY + 5, { align: "center" });
 
       doc.setFontSize(9);
-      doc.setFont("helvetica", "bold");
       doc.setTextColor(0, 0, 0);
       doc.text(weeklyTotal.total > 0 ? formatCurrency(weeklyTotal.total) : "0", weeklyColX + colWidth / 2, rowY + 10, { align: "center" });
 
       if (weeklyTotal.total > 0 && viewType === "sales") {
         let weeklyTextY = rowY + 14;
         doc.setFontSize(6);
-        doc.setFont("helvetica", "normal");
         doc.setTextColor(100, 100, 100);
         if (weeklyTotal.cash > 0) {
           doc.text(`현금 ${formatCurrency(weeklyTotal.cash)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
@@ -443,7 +448,18 @@ function SalesCalendar() {
       }
     });
 
-    const fileName = `매출달력_${format(currentMonth, "yyyy-MM")}_${viewType === "sales" ? "실매출" : "취소"}.pdf`;
+    doc.setDrawColor(100, 100, 100);
+    doc.setLineWidth(0.3);
+    for (let i = 0; i <= colCount; i++) {
+      const x = margin + i * colWidth;
+      doc.line(x, tableStartY + dayHeaderHeight, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
+    }
+    for (let i = 0; i <= rowCount; i++) {
+      const y = tableStartY + dayHeaderHeight + i * rowHeight;
+      doc.line(margin, y, margin + contentWidth, y);
+    }
+
+    const fileName = `sales_calendar_${format(currentMonth, "yyyy-MM")}_${viewType === "sales" ? "sales" : "cancel"}.pdf`;
     doc.save(fileName);
   };
 
