@@ -264,205 +264,221 @@ function SalesCalendar() {
         console.warn('폰트 로드 실패:', fontError);
       }
 
+      // A3 가로: 420 x 297mm
       const pageWidth = 420;
-    const pageHeight = 297;
-    const margin = 15;
-    const contentWidth = pageWidth - margin * 2;
-    const headerHeight = 20;
-    const dayHeaderHeight = 10;
-    const colCount = 8;
-    const colWidth = contentWidth / colCount;
-    const rowCount = weeks.length;
-    const availableHeight = pageHeight - margin * 2 - headerHeight - dayHeaderHeight;
-    const rowHeight = Math.min(availableHeight / rowCount, 35);
+      const pageHeight = 297;
+      const margin = 10;
+      const contentWidth = pageWidth - margin * 2;
+      const headerHeight = 25;
+      const dayHeaderHeight = 16;
+      const colCount = 8;
+      const colWidth = contentWidth / colCount;
+      const rowCount = weeks.length;
+      // 페이지 세로의 90%를 채우도록 셀 높이 계산
+      const availableHeight = (pageHeight * 0.90) - margin - headerHeight - dayHeaderHeight;
+      const rowHeight = availableHeight / rowCount;
 
-    doc.setFontSize(18);
-    doc.text(`${format(currentMonth, "yyyy년 M월")} 매출달력`, pageWidth / 2, margin + 8, { align: "center" });
+      // 제목 (크고 굵게)
+      doc.setFontSize(28);
+      doc.text(`${format(currentMonth, "yyyy년 M월")} 매출달력`, pageWidth / 2, margin + 12, { align: "center" });
 
-    doc.setFontSize(12);
-    const totalLabel = viewType === "sales" ? "실매출금액" : "취소금액";
-    const totalValue = viewType === "sales" ? totalSales : totalCancelledAmount;
-    doc.text(`총 ${totalLabel}: ${formatCurrency(totalValue)}원`, pageWidth - margin, margin + 8, { align: "right" });
+      // 총 매출금액
+      doc.setFontSize(20);
+      const totalLabel = viewType === "sales" ? "실매출금액" : "취소금액";
+      const totalValue = viewType === "sales" ? totalSales : totalCancelledAmount;
+      doc.text(`총 ${totalLabel}: ${formatCurrency(totalValue)}원`, pageWidth - margin, margin + 12, { align: "right" });
 
-    const tableStartY = margin + headerHeight;
-    doc.setLineWidth(0.3);
-    doc.setDrawColor(100, 100, 100);
+      const tableStartY = margin + headerHeight;
+      doc.setLineWidth(0.5);
+      doc.setDrawColor(80, 80, 80);
 
-    doc.setFillColor(240, 240, 240);
-    doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, 'F');
-    doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, 'S');
+      // 요일 헤더 배경
+      doc.setFillColor(230, 230, 230);
+      doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, 'F');
+      doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, 'S');
 
-    doc.setFontSize(10);
-    const dayColors: { [key: number]: [number, number, number] } = {
-      0: [220, 38, 38],
-      6: [59, 130, 246]
-    };
+      // 요일 텍스트 (크게)
+      doc.setFontSize(16);
+      const dayColors: { [key: number]: [number, number, number] } = {
+        0: [220, 38, 38],
+        6: [59, 130, 246]
+      };
 
-    DAY_NAMES.forEach((dayName, idx) => {
-      const x = margin + idx * colWidth + colWidth / 2;
-      const y = tableStartY + dayHeaderHeight / 2 + 3;
-      if (dayColors[idx]) {
-        doc.setTextColor(...dayColors[idx]);
-      } else {
-        doc.setTextColor(0, 0, 0);
-      }
-      doc.text(dayName, x, y, { align: "center" });
-    });
-
-    doc.setTextColor(0, 0, 0);
-    const weeklyX = margin + 7 * colWidth + colWidth / 2;
-    doc.text("주간총계", weeklyX, tableStartY + dayHeaderHeight / 2 + 3, { align: "center" });
-
-    for (let i = 0; i <= colCount; i++) {
-      const x = margin + i * colWidth;
-      doc.line(x, tableStartY, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
-    }
-    doc.line(margin, tableStartY, margin + contentWidth, tableStartY);
-    doc.line(margin, tableStartY + dayHeaderHeight, margin + contentWidth, tableStartY + dayHeaderHeight);
-
-    weeks.forEach((week, weekIdx) => {
-      const rowY = tableStartY + dayHeaderHeight + weekIdx * rowHeight;
-
-      week.forEach((day, dayIdx) => {
-        const dateStr = format(day, "yyyy-MM-dd");
-        const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
-        const data = summaryMap.get(dateStr);
-        const sales = data?.totalSales || 0;
-        const isMax = dateStr === maxDay && sales > 0;
-        const isMin = dateStr === minDay && sales > 0 && salesValues.length > 1;
-        const dayOfWeek = getDay(day);
-        const payment = paymentMap.get(dateStr);
-        const visitor = visitorMap.get(dateStr);
-        const closing = closingMap.get(dateStr);
-
-        const cellX = margin + dayIdx * colWidth;
-        const cellY = rowY;
-        const padding = 2;
-
-        if (!isCurrentMonth) {
-          doc.setFillColor(248, 248, 248);
-          doc.rect(cellX, cellY, colWidth, rowHeight, 'F');
-        }
-
-        doc.setFontSize(9);
-        if (dayOfWeek === 0) {
-          doc.setTextColor(220, 38, 38);
-        } else if (dayOfWeek === 6) {
-          doc.setTextColor(59, 130, 246);
+      DAY_NAMES.forEach((dayName, idx) => {
+        const x = margin + idx * colWidth + colWidth / 2;
+        const y = tableStartY + dayHeaderHeight / 2 + 5;
+        if (dayColors[idx]) {
+          doc.setTextColor(...dayColors[idx]);
         } else {
-          doc.setTextColor(isCurrentMonth ? 0 : 150, isCurrentMonth ? 0 : 150, isCurrentMonth ? 0 : 150);
+          doc.setTextColor(0, 0, 0);
         }
-        let dayText = format(day, "d");
-        if (isMax) dayText += " 최고";
-        if (isMin) dayText += " 최저";
-        doc.text(dayText, cellX + padding, cellY + padding + 4);
+        doc.text(dayName, x, y, { align: "center" });
+      });
 
-        let textY = cellY + padding + 9;
+      doc.setTextColor(0, 0, 0);
+      const weeklyX = margin + 7 * colWidth + colWidth / 2;
+      doc.text("주간총계", weeklyX, tableStartY + dayHeaderHeight / 2 + 5, { align: "center" });
 
-        if (viewType === "sales" && sales > 0) {
-          doc.setFontSize(8);
-          if (isMax) {
+      // 세로 그리드 선
+      for (let i = 0; i <= colCount; i++) {
+        const x = margin + i * colWidth;
+        doc.line(x, tableStartY, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
+      }
+      doc.line(margin, tableStartY, margin + contentWidth, tableStartY);
+      doc.line(margin, tableStartY + dayHeaderHeight, margin + contentWidth, tableStartY + dayHeaderHeight);
+
+      weeks.forEach((week, weekIdx) => {
+        const rowY = tableStartY + dayHeaderHeight + weekIdx * rowHeight;
+
+        week.forEach((day, dayIdx) => {
+          const dateStr = format(day, "yyyy-MM-dd");
+          const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
+          const data = summaryMap.get(dateStr);
+          const sales = data?.totalSales || 0;
+          const isMax = dateStr === maxDay && sales > 0;
+          const isMin = dateStr === minDay && sales > 0 && salesValues.length > 1;
+          const dayOfWeek = getDay(day);
+          const payment = paymentMap.get(dateStr);
+          const visitor = visitorMap.get(dateStr);
+          const closing = closingMap.get(dateStr);
+
+          const cellX = margin + dayIdx * colWidth;
+          const cellY = rowY;
+          const padding = 3;
+
+          if (!isCurrentMonth) {
+            doc.setFillColor(245, 245, 245);
+            doc.rect(cellX, cellY, colWidth, rowHeight, 'F');
+          }
+
+          // 날짜 숫자 (크고 굵게 - 2배)
+          doc.setFontSize(18);
+          if (dayOfWeek === 0) {
             doc.setTextColor(220, 38, 38);
-          } else if (isMin) {
+          } else if (dayOfWeek === 6) {
             doc.setTextColor(59, 130, 246);
           } else {
-            doc.setTextColor(0, 0, 0);
+            doc.setTextColor(isCurrentMonth ? 0 : 150, isCurrentMonth ? 0 : 150, isCurrentMonth ? 0 : 150);
           }
-          doc.text(formatCurrency(sales), cellX + padding, textY);
-          textY += 4;
+          let dayText = format(day, "d");
+          if (isMax) dayText += " 최고";
+          if (isMin) dayText += " 최저";
+          doc.text(dayText, cellX + padding, cellY + padding + 7);
 
-          if (payment) {
-            doc.setFontSize(6);
-            doc.setTextColor(100, 100, 100);
-            if (payment.cash > 0) {
-              doc.text(`현금 ${formatCurrency(payment.cash)}`, cellX + padding, textY);
-              textY += 3;
+          let textY = cellY + padding + 15;
+
+          if (viewType === "sales" && sales > 0) {
+            // 총 매출액 (크게 - 2배)
+            doc.setFontSize(14);
+            if (isMax) {
+              doc.setTextColor(220, 38, 38);
+            } else if (isMin) {
+              doc.setTextColor(59, 130, 246);
+            } else {
+              doc.setTextColor(0, 0, 0);
             }
-            if (payment.card > 0) {
-              doc.text(`카드 ${formatCurrency(payment.card)}`, cellX + padding, textY);
-              textY += 3;
+            doc.text(formatCurrency(sales), cellX + padding, textY);
+            textY += 7;
+
+            // 결제방식별 매출 (2배 크게)
+            if (payment) {
+              doc.setFontSize(11);
+              doc.setTextColor(80, 80, 80);
+              if (payment.cash > 0) {
+                doc.text(`현금 ${formatCurrency(payment.cash)}`, cellX + padding, textY);
+                textY += 5;
+              }
+              if (payment.card > 0) {
+                doc.text(`카드 ${formatCurrency(payment.card)}`, cellX + padding, textY);
+                textY += 5;
+              }
+              if (payment.transfer > 0) {
+                doc.text(`이체 ${formatCurrency(payment.transfer)}`, cellX + padding, textY);
+                textY += 5;
+              }
             }
-            if (payment.transfer > 0) {
-              doc.text(`이체 ${formatCurrency(payment.transfer)}`, cellX + padding, textY);
-              textY += 3;
+
+            // 은행입금 (2배 크게)
+            if (closing && closing.isConfirmed) {
+              doc.setFontSize(11);
+              doc.setTextColor(22, 163, 74);
+              doc.text(`은행입금: ${closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}`, cellX + padding, textY);
+              textY += 5;
             }
           }
 
-          if (closing && closing.isConfirmed) {
-            doc.setFontSize(6);
+          // 방문인원 (2배 크게)
+          if (viewType === "sales" && visitor && visitor.totalVisitors > 0 && textY < cellY + rowHeight - 4) {
+            doc.setFontSize(10);
+            doc.setTextColor(147, 51, 234);
+            doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors})`, cellX + padding, textY);
+          }
+
+          if (viewType === "refund") {
+            const cancelled = cancelledMap.get(dateStr);
+            if (cancelled && cancelled.cancelledAmount > 0) {
+              doc.setFontSize(14);
+              doc.setTextColor(220, 38, 38);
+              doc.text(`-${formatCurrency(cancelled.cancelledAmount)}`, cellX + padding, textY);
+            }
+          }
+        });
+
+        // 주간총계 컬럼
+        const weeklyTotal = weeklyTotals[weekIdx];
+        const weeklyColX = margin + 7 * colWidth;
+        doc.setFillColor(240, 240, 240);
+        doc.rect(weeklyColX, rowY, colWidth, rowHeight, 'F');
+
+        // 주차 표시 (크게)
+        doc.setFontSize(12);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`${weekIdx + 1}주`, weeklyColX + colWidth / 2, rowY + 8, { align: "center" });
+
+        // 주간 총 매출 (크게)
+        doc.setFontSize(16);
+        doc.setTextColor(0, 0, 0);
+        doc.text(weeklyTotal.total > 0 ? formatCurrency(weeklyTotal.total) : "0", weeklyColX + colWidth / 2, rowY + 17, { align: "center" });
+
+        if (weeklyTotal.total > 0 && viewType === "sales") {
+          let weeklyTextY = rowY + 24;
+          doc.setFontSize(11);
+          doc.setTextColor(80, 80, 80);
+          if (weeklyTotal.cash > 0) {
+            doc.text(`현금 ${formatCurrency(weeklyTotal.cash)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+            weeklyTextY += 5;
+          }
+          if (weeklyTotal.card > 0) {
+            doc.text(`카드 ${formatCurrency(weeklyTotal.card)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+            weeklyTextY += 5;
+          }
+          if (weeklyTotal.transfer > 0) {
+            doc.text(`이체 ${formatCurrency(weeklyTotal.transfer)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+            weeklyTextY += 5;
+          }
+          if (weeklyTotal.hasClosing && weeklyTextY < rowY + rowHeight - 4) {
             doc.setTextColor(22, 163, 74);
-            doc.text(`은행입금: ${closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}`, cellX + padding, textY);
-            textY += 3;
+            doc.text(`은행입금 ${formatCurrency(weeklyTotal.bankDeposit)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+            weeklyTextY += 5;
           }
-        }
-
-        if (viewType === "sales" && visitor && visitor.totalVisitors > 0 && textY < cellY + rowHeight - 2) {
-          doc.setFontSize(5);
-          doc.setTextColor(147, 51, 234);
-          doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors})`, cellX + padding, textY);
-        }
-
-        if (viewType === "refund") {
-          const cancelled = cancelledMap.get(dateStr);
-          if (cancelled && cancelled.cancelledAmount > 0) {
-            doc.setFontSize(8);
-            doc.setTextColor(220, 38, 38);
-            doc.text(`-${formatCurrency(cancelled.cancelledAmount)}`, cellX + padding, textY);
+          if (weeklyTotal.totalVisitors > 0 && weeklyTextY < rowY + rowHeight - 4) {
+            doc.setTextColor(147, 51, 234);
+            doc.text(`방문:${weeklyTotal.totalVisitors}명`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
           }
         }
       });
 
-      const weeklyTotal = weeklyTotals[weekIdx];
-      const weeklyColX = margin + 7 * colWidth;
-      doc.setFillColor(245, 245, 245);
-      doc.rect(weeklyColX, rowY, colWidth, rowHeight, 'F');
-
-      doc.setFontSize(7);
-      doc.setTextColor(100, 100, 100);
-      doc.text(`${weekIdx + 1}주`, weeklyColX + colWidth / 2, rowY + 5, { align: "center" });
-
-      doc.setFontSize(9);
-      doc.setTextColor(0, 0, 0);
-      doc.text(weeklyTotal.total > 0 ? formatCurrency(weeklyTotal.total) : "0", weeklyColX + colWidth / 2, rowY + 10, { align: "center" });
-
-      if (weeklyTotal.total > 0 && viewType === "sales") {
-        let weeklyTextY = rowY + 14;
-        doc.setFontSize(6);
-        doc.setTextColor(100, 100, 100);
-        if (weeklyTotal.cash > 0) {
-          doc.text(`현금 ${formatCurrency(weeklyTotal.cash)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-          weeklyTextY += 3;
-        }
-        if (weeklyTotal.card > 0) {
-          doc.text(`카드 ${formatCurrency(weeklyTotal.card)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-          weeklyTextY += 3;
-        }
-        if (weeklyTotal.transfer > 0) {
-          doc.text(`이체 ${formatCurrency(weeklyTotal.transfer)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-          weeklyTextY += 3;
-        }
-        if (weeklyTotal.hasClosing && weeklyTextY < rowY + rowHeight - 2) {
-          doc.setTextColor(22, 163, 74);
-          doc.text(`은행입금 ${formatCurrency(weeklyTotal.bankDeposit)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-          weeklyTextY += 3;
-        }
-        if (weeklyTotal.totalVisitors > 0 && weeklyTextY < rowY + rowHeight - 2) {
-          doc.setTextColor(147, 51, 234);
-          doc.text(`방문:${weeklyTotal.totalVisitors}명`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-        }
+      // 테이블 그리드 선 그리기
+      doc.setDrawColor(80, 80, 80);
+      doc.setLineWidth(0.5);
+      for (let i = 0; i <= colCount; i++) {
+        const x = margin + i * colWidth;
+        doc.line(x, tableStartY + dayHeaderHeight, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
       }
-    });
-
-    doc.setDrawColor(100, 100, 100);
-    doc.setLineWidth(0.3);
-    for (let i = 0; i <= colCount; i++) {
-      const x = margin + i * colWidth;
-      doc.line(x, tableStartY + dayHeaderHeight, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
-    }
-    for (let i = 0; i <= rowCount; i++) {
-      const y = tableStartY + dayHeaderHeight + i * rowHeight;
-      doc.line(margin, y, margin + contentWidth, y);
-    }
+      for (let i = 0; i <= rowCount; i++) {
+        const y = tableStartY + dayHeaderHeight + i * rowHeight;
+        doc.line(margin, y, margin + contentWidth, y);
+      }
 
       const fileName = `sales_calendar_${format(currentMonth, "yyyy-MM")}_${viewType === "sales" ? "sales" : "cancel"}.pdf`;
       doc.save(fileName);
