@@ -368,7 +368,7 @@ function SalesCalendar() {
           let textY = cellY + padding + 15;
 
           if (viewType === "sales" && sales > 0) {
-            // 총 매출액 (크게 - 2배)
+            // 총 매출액
             doc.setFontSize(14);
             if (isMax) {
               doc.setTextColor(220, 38, 38);
@@ -378,40 +378,40 @@ function SalesCalendar() {
               doc.setTextColor(0, 0, 0);
             }
             doc.text(formatCurrency(sales), cellX + padding, textY);
-            textY += 7;
+            textY += 6;
 
-            // 결제방식별 매출 (2배 크게)
+            // 결제방식별 매출
             if (payment) {
-              doc.setFontSize(11);
+              doc.setFontSize(10);
               doc.setTextColor(80, 80, 80);
               if (payment.cash > 0) {
                 doc.text(`현금 ${formatCurrency(payment.cash)}`, cellX + padding, textY);
-                textY += 5;
+                textY += 4;
               }
               if (payment.card > 0) {
                 doc.text(`카드 ${formatCurrency(payment.card)}`, cellX + padding, textY);
-                textY += 5;
+                textY += 4;
               }
               if (payment.transfer > 0) {
                 doc.text(`이체 ${formatCurrency(payment.transfer)}`, cellX + padding, textY);
-                textY += 5;
+                textY += 4;
               }
             }
 
-            // 은행입금 (2배 크게)
+            // 은행입금 (항상 표시, 조건 제거)
             if (closing && closing.isConfirmed) {
-              doc.setFontSize(11);
+              doc.setFontSize(10);
               doc.setTextColor(22, 163, 74);
               doc.text(`은행입금: ${closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}`, cellX + padding, textY);
-              textY += 5;
+              textY += 4;
             }
-          }
 
-          // 방문인원 (2배 크게)
-          if (viewType === "sales" && visitor && visitor.totalVisitors > 0 && textY < cellY + rowHeight - 4) {
-            doc.setFontSize(10);
-            doc.setTextColor(147, 51, 234);
-            doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors})`, cellX + padding, textY);
+            // 방문인원 (항상 표시, 조건 제거)
+            if (visitor && visitor.totalVisitors > 0) {
+              doc.setFontSize(9);
+              doc.setTextColor(147, 51, 234);
+              doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors})`, cellX + padding, textY);
+            }
           }
 
           if (viewType === "refund") {
@@ -442,26 +442,28 @@ function SalesCalendar() {
 
         if (weeklyTotal.total > 0 && viewType === "sales") {
           let weeklyTextY = rowY + 24;
-          doc.setFontSize(11);
+          doc.setFontSize(10);
           doc.setTextColor(80, 80, 80);
           if (weeklyTotal.cash > 0) {
             doc.text(`현금 ${formatCurrency(weeklyTotal.cash)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-            weeklyTextY += 5;
+            weeklyTextY += 4;
           }
           if (weeklyTotal.card > 0) {
             doc.text(`카드 ${formatCurrency(weeklyTotal.card)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-            weeklyTextY += 5;
+            weeklyTextY += 4;
           }
           if (weeklyTotal.transfer > 0) {
             doc.text(`이체 ${formatCurrency(weeklyTotal.transfer)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-            weeklyTextY += 5;
+            weeklyTextY += 4;
           }
-          if (weeklyTotal.hasClosing && weeklyTextY < rowY + rowHeight - 4) {
+          // 은행입금 (항상 표시)
+          if (weeklyTotal.hasClosing) {
             doc.setTextColor(22, 163, 74);
             doc.text(`은행입금 ${formatCurrency(weeklyTotal.bankDeposit)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
-            weeklyTextY += 5;
+            weeklyTextY += 4;
           }
-          if (weeklyTotal.totalVisitors > 0 && weeklyTextY < rowY + rowHeight - 4) {
+          // 방문인원 (항상 표시)
+          if (weeklyTotal.totalVisitors > 0) {
             doc.setTextColor(147, 51, 234);
             doc.text(`방문:${weeklyTotal.totalVisitors}명`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
           }
