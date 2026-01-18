@@ -388,6 +388,8 @@ export default function LockerOptionsDialog({
           const isFreeEntry = currentOptionType === 'free';
           let hasUnpaidAdditionalFee = false;
           const savedPaidAmount = currentLockerLogId ? localDb.getLockerLogAdditionalFeePaidAmount(currentLockerLogId) : 0;
+          const prepaidAmount = currentPrepaidAdditionalFee || 0;
+          const totalPaidAmount = savedPaidAmount + prepaidAmount;
           
           if (!currentNoAdditionalFee) {
             const additionalFeeCalc = calculateAdditionalFee(
@@ -402,12 +404,15 @@ export default function LockerOptionsDialog({
               foreignerAdditionalFeePeriod,
               isFreeEntry
             );
-            hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > savedPaidAmount;
+            // 추가요금이 (지불된 금액 + 선지급 금액) 보다 클 때만 미지불 상태
+            hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > totalPaidAmount;
           }
           
           console.log('[DEBUG] 알림창 표시 체크:', { 
             noAdditionalFee: currentNoAdditionalFee,
-            savedPaidAmount, 
+            savedPaidAmount,
+            prepaidAmount,
+            totalPaidAmount,
             hasUnpaidAdditionalFee,
             hasRentalItems 
           });
