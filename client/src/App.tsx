@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -24,6 +24,11 @@ import { Button } from "@/components/ui/button";
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
+
+// Check if current path is an admin route (no license check needed)
+function isAdminRoute(path: string): boolean {
+  return path.startsWith("/admin");
+}
 
 function Router() {
   return (
@@ -110,6 +115,28 @@ function MainLayout() {
   );
 }
 
+// Wrapper component that checks route and applies license gate conditionally
+function AppContent() {
+  const [location] = useLocation();
+  
+  // Admin routes bypass license check
+  if (isAdminRoute(location)) {
+    return <AdminLicenses />;
+  }
+  
+  // Demo mode bypasses license check
+  if (isDemoMode()) {
+    return <MainLayout />;
+  }
+  
+  // Regular routes need license verification
+  return (
+    <LicenseGate>
+      <MainLayout />
+    </LicenseGate>
+  );
+}
+
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [dbReady, setDbReady] = useState(false);
@@ -186,13 +213,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {isDemoMode() ? (
-          <MainLayout />
-        ) : (
-          <LicenseGate>
-            <MainLayout />
-          </LicenseGate>
-        )}
+        <AppContent />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
