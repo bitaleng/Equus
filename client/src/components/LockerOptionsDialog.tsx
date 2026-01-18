@@ -760,11 +760,15 @@ export default function LockerOptionsDialog({
    * - 분리결제: 부가세 미포함
    * - 단일결제: 현금영수증 체크 또는 카드결제 시 부가세 포함
    * - 추가요금도 별도 결제방식에 따라 부가세 적용
+   * - 선지급금(prepaidAdditionalFee)도 최종 요금에 포함
    */
   const calculateDisplayTotal = () => {
+    // 선지급금 계산 (입실 처리 시)
+    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    
     // 분리결제 시에는 부가세 미포함 금액 표시
     if (useSplitPayment) {
-      return calculateTotalPriceWithAdditionalFee();
+      return calculateTotalPriceWithAdditionalFee() + prepaidAmount;
     }
     
     // 기본요금 (부가세 적용 여부 확인)
@@ -774,9 +778,9 @@ export default function LockerOptionsDialog({
       baseFinalPrice = Math.round(baseFinalPrice * 1.1);
     }
     
-    // 추가요금이 없으면 기본요금만 반환
+    // 추가요금이 없으면 기본요금 + 선지급금 반환
     if (!isInUse || additionalFeeInfo.additionalFee === 0) {
-      return baseFinalPrice;
+      return baseFinalPrice + prepaidAmount;
     }
     
     // 입실시간과 현재시간의 영업일 비교
