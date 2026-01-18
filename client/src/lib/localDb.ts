@@ -821,6 +821,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 21: Add prepaid_additional_fee column to locker_logs (추가요금 선지급)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN prepaid_additional_fee INTEGER DEFAULT 0`);
+      console.log('Added prepaid_additional_fee column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -858,7 +866,8 @@ function createTables() {
       parent_locker INTEGER,
       deferred_payment INTEGER DEFAULT 0,
       customer_memo TEXT,
-      no_additional_fee INTEGER DEFAULT 0
+      no_additional_fee INTEGER DEFAULT 0,
+      prepaid_additional_fee INTEGER DEFAULT 0
     )
   `);
 
@@ -1113,6 +1122,7 @@ export function createEntry(entry: {
   deferredPayment?: boolean;  // 후불결제 여부
   customerMemo?: string;  // 손님 메모
   noAdditionalFee?: boolean;  // 추가요금없음 (VIP 등)
+  prepaidAdditionalFee?: number;  // 추가요금 선지급 금액
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1127,8 +1137,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1147,7 +1157,8 @@ export function createEntry(entry: {
       rentalItemsJson,
       entry.deferredPayment ? 1 : 0,
       entry.customerMemo || null,
-      entry.noAdditionalFee ? 1 : 0
+      entry.noAdditionalFee ? 1 : 0,
+      entry.prepaidAdditionalFee || 0
     ]
   );
 
@@ -1230,6 +1241,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.noAdditionalFee !== undefined) {
     sets.push('no_additional_fee = ?');
     values.push(updates.noAdditionalFee ? 1 : 0);
+  }
+  if (updates.prepaidAdditionalFee !== undefined) {
+    sets.push('prepaid_additional_fee = ?');
+    values.push(updates.prepaidAdditionalFee || 0);
   }
 
   if (sets.length > 0) {
@@ -6216,6 +6231,35 @@ export function getLockerLogAdditionalFeePaidAmount(logId: string): number {
   }
   
   return (result[0].values[0][0] as number) || 0;
+}
+
+// Get prepaid_additional_fee for a locker log (선지급 추가요금)
+export function getLockerLogPrepaidAdditionalFee(logId: string): number {
+  if (!db) throw new Error('Database not initialized');
+  
+  const result = db.exec(
+    `SELECT prepaid_additional_fee FROM locker_logs WHERE id = ?`,
+    [logId]
+  );
+  
+  if (result.length === 0 || result[0].values.length === 0) {
+    return 0;
+  }
+  
+  return (result[0].values[0][0] as number) || 0;
+}
+
+// Update prepaid_additional_fee for a locker log (선지급 추가요금 업데이트)
+export function updateLockerLogPrepaidAdditionalFee(logId: string, amount: number): boolean {
+  if (!db) throw new Error('Database not initialized');
+  
+  db.run(
+    `UPDATE locker_logs SET prepaid_additional_fee = ? WHERE id = ?`,
+    [amount, logId]
+  );
+  
+  saveDatabase();
+  return true;
 }
 
 export function exportDatabase(): {

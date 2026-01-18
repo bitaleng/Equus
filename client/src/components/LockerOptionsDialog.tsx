@@ -68,7 +68,8 @@ interface LockerOptionsDialogProps {
   currentDeferredPayment?: boolean; // 현재 후불결제 상태
   currentCustomerMemo?: string; // 현재 손님 메모
   currentNoAdditionalFee?: boolean; // 현재 추가요금없음 상태
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean) => void;
+  currentPrepaidAdditionalFee?: number; // 현재 선지급 추가요금
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -114,6 +115,7 @@ export default function LockerOptionsDialog({
   currentDeferredPayment = false, // 현재 후불결제 상태
   currentCustomerMemo = "", // 현재 손님 메모
   currentNoAdditionalFee = false, // 현재 추가요금없음 상태
+  currentPrepaidAdditionalFee = 0, // 현재 선지급 추가요금
   onApply,
   onCheckout,
   onCancel,
@@ -134,6 +136,8 @@ export default function LockerOptionsDialog({
   const [isForeigner, setIsForeigner] = useState(false);
   const [isFreeEntry, setIsFreeEntry] = useState(false);
   const [noAdditionalFee, setNoAdditionalFee] = useState(false); // 추가요금없음 (VIP 등)
+  const [hasPrepaidAdditionalFee, setHasPrepaidAdditionalFee] = useState(false); // 추가요금 선지급 체크박스
+  const [prepaidAdditionalFeeAmount, setPrepaidAdditionalFeeAmount] = useState<string>(""); // 추가요금 선지급 금액
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(isInUse ? currentPaymentMethod : null);
@@ -225,7 +229,7 @@ export default function LockerOptionsDialog({
         // noAdditionalFee가 true이면 추가요금 완전 면제
         const isForeigner = currentOptionType === 'foreigner';
         const isFreeEntry = currentOptionType === 'free';
-        let currentFee = 0;
+        let rawCurrentFee = 0;
         if (!currentNoAdditionalFee) {
           const currentFeeInfo = calculateAdditionalFee(
             entryTime || '',
@@ -239,18 +243,27 @@ export default function LockerOptionsDialog({
             foreignerAdditionalFeePeriod,
             isFreeEntry
           );
-          currentFee = currentFeeInfo.additionalFee;
+          rawCurrentFee = currentFeeInfo.additionalFee;
         }
         
-        console.log('[DEBUG] 다이얼로그 열림:', { logId: currentLockerLogId, currentFee, paidAmount });
+        // 선지급 금액 차감 적용
+        const prepaidFee = currentPrepaidAdditionalFee || 0;
+        const netCurrentFee = Math.max(0, rawCurrentFee - prepaidFee);
         
-        // 현재 추가요금과 정산된 금액 비교
-        if (currentFee > paidAmount) {
+        console.log('[DEBUG] 다이얼로그 열림:', { logId: currentLockerLogId, rawCurrentFee, prepaidFee, netCurrentFee, paidAmount });
+        
+        // 순 추가요금(선지급 차감 후)과 정산된 금액 비교
+        if (netCurrentFee > paidAmount) {
           // 미지불 추가요금 있음
           console.log('[DEBUG] 미지불 추가요금 있음 - checkoutResolved: false');
           setCheckoutResolved(false);
           setAdditionalFeeResolved(false);
-        } else if (paidAmount > 0 && currentFee <= paidAmount) {
+        } else if (netCurrentFee === 0 && rawCurrentFee > 0 && prepaidFee >= rawCurrentFee) {
+          // 선지급이 추가요금을 완전히 커버 - 완납 상태
+          console.log('[DEBUG] 선지급 완납 상태 - checkoutResolved: true');
+          setCheckoutResolved(true);
+          setAdditionalFeeResolved(true);
+        } else if (paidAmount > 0 && netCurrentFee <= paidAmount) {
           // 이미 완납된 상태
           console.log('[DEBUG] 추가요금 완납 상태 - checkoutResolved: true');
           setCheckoutResolved(true);
@@ -271,9 +284,17 @@ export default function LockerOptionsDialog({
       setAdditionalFeeDiscount("");
       // 추가요금없음 상태를 현재 값으로 초기화
       setNoAdditionalFee(currentNoAdditionalFee || false);
+      // 선지급 추가요금 상태를 현재 값으로 초기화
+      if (currentPrepaidAdditionalFee && currentPrepaidAdditionalFee > 0) {
+        setHasPrepaidAdditionalFee(true);
+        setPrepaidAdditionalFeeAmount(String(currentPrepaidAdditionalFee));
+      } else {
+        setHasPrepaidAdditionalFee(false);
+        setPrepaidAdditionalFeeAmount("");
+      }
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee]);
   
     
   // Initialize payment fields when dialog opens
@@ -597,6 +618,8 @@ export default function LockerOptionsDialog({
       setIsForeigner(false);
       setIsFreeEntry(false);
       setNoAdditionalFee(false); // 추가요금없음 상태도 초기화
+      setHasPrepaidAdditionalFee(false); // 선지급 추가요금 상태도 초기화
+      setPrepaidAdditionalFeeAmount(""); // 선지급 추가요금 금액도 초기화
       setIsDirectPrice(false);
       setDirectPrice("");
       setPaymentMethod(null);
@@ -605,6 +628,19 @@ export default function LockerOptionsDialog({
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
   }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
+
+  // 선지급 추가요금 초기화
+  useEffect(() => {
+    if (open) {
+      if (isInUse && currentPrepaidAdditionalFee > 0) {
+        setHasPrepaidAdditionalFee(true);
+        setPrepaidAdditionalFeeAmount(currentPrepaidAdditionalFee.toString());
+      } else if (!isInUse) {
+        setHasPrepaidAdditionalFee(false);
+        setPrepaidAdditionalFeeAmount("");
+      }
+    }
+  }, [open, isInUse, currentPrepaidAdditionalFee]);
 
   const calculateFinalPrice = () => {
     // 우선순위 0: 무료입장
@@ -996,7 +1032,8 @@ export default function LockerOptionsDialog({
       console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo, noAdditionalFee);
+      const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo, noAdditionalFee, prepaidFee);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1038,7 +1075,8 @@ export default function LockerOptionsDialog({
     // 후불결제 시 결제 금액을 0원으로 처리
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo, noAdditionalFee);
+      const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo, noAdditionalFee, prepaidFee);
       setDialogOpen(false);
       return;
     }
@@ -1083,7 +1121,8 @@ export default function LockerOptionsDialog({
     
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo, noAdditionalFee);
+    const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo, noAdditionalFee, prepaidFee);
     setDialogOpen(false);
   };
 
@@ -1215,7 +1254,8 @@ export default function LockerOptionsDialog({
     const finalPaymentMethod = paymentMethod || 'cash';
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo, noAdditionalFee);
+    const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo, noAdditionalFee, prepaidFee);
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
@@ -1817,11 +1857,24 @@ export default function LockerOptionsDialog({
   // noAdditionalFee가 true이면 추가요금 완전 면제
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const isCurrentlyFreeEntry = currentOptionType === 'free';
-  const additionalFeeInfo = entryTime && isInUse
+  const rawAdditionalFeeInfo = entryTime && isInUse
     ? (currentNoAdditionalFee 
         ? { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 }
         : calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry))
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
+  
+  // 선지급 금액 차감 적용 - 다이얼로그에서 입력 중인 값 우선 사용 (미리보기)
+  // hasPrepaidAdditionalFee가 true이고 금액이 입력되어 있으면 입력값 사용, 아니면 저장된 값 사용
+  const effectivePrepaidAmount = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount 
+    ? parseInt(prepaidAdditionalFeeAmount) || 0 
+    : (currentPrepaidAdditionalFee || 0);
+  const netAdditionalFee = Math.max(0, rawAdditionalFeeInfo.additionalFee - effectivePrepaidAmount);
+  const additionalFeeInfo = {
+    ...rawAdditionalFeeInfo,
+    additionalFee: netAdditionalFee,
+    prepaidAmount: effectivePrepaidAmount,
+    rawAdditionalFee: rawAdditionalFeeInfo.additionalFee,
+  };
   
   // Note: Additional fee comparison is now done in the dialog open useEffect above
   // This separate useEffect is no longer needed as we calculate fees directly when dialog opens
@@ -2000,6 +2053,43 @@ export default function LockerOptionsDialog({
                 <Label htmlFor="no-additional-fee" className="text-sm font-semibold cursor-pointer text-purple-600 dark:text-purple-400">
                   추가요금없음 (VIP/지인)
                 </Label>
+              </div>
+            )}
+
+            {/* 추가요금 선지급 체크박스 - 무료입장/추가요금없음이 아닌 경우에만 표시 */}
+            {!isFreeEntry && !noAdditionalFee && (
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="prepaid-additional-fee" 
+                    checked={hasPrepaidAdditionalFee}
+                    onCheckedChange={(checked) => {
+                      setHasPrepaidAdditionalFee(checked as boolean);
+                      if (!checked) {
+                        setPrepaidAdditionalFeeAmount("");
+                      }
+                    }}
+                    data-testid="checkbox-prepaid-additional-fee"
+                  />
+                  <Label htmlFor="prepaid-additional-fee" className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-400">
+                    추가요금 선지급 (야간요금/장기이용 미리 결제)
+                  </Label>
+                </div>
+                {hasPrepaidAdditionalFee && (
+                  <div className="ml-6">
+                    <Input
+                      type="number"
+                      placeholder="선지급 금액 입력 (예: 5000)"
+                      value={prepaidAdditionalFeeAmount}
+                      onChange={(e) => setPrepaidAdditionalFeeAmount(e.target.value)}
+                      className="w-full"
+                      data-testid="input-prepaid-additional-fee"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {prepaidAdditionalFeeAmount ? `${parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 선지급` : "선지급한 추가요금 금액을 입력하세요"}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2308,13 +2398,44 @@ export default function LockerOptionsDialog({
             </div>
             )}
 
+            {/* 선지급 금액이 추가요금을 완전히 커버한 경우 */}
+            {isInUse && additionalFeeInfo.prepaidAmount > 0 && additionalFeeInfo.rawAdditionalFee > 0 && additionalFeeInfo.additionalFee === 0 && (
+              <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-green-700 dark:text-green-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">{additionalFeeInfo.rawAdditionalFee.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-green-700 dark:text-green-300">선지급 차감</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">-{additionalFeeInfo.prepaidAmount.toLocaleString()}원</span>
+                </div>
+                <div className="flex justify-between text-sm border-t border-green-300 dark:border-green-700 pt-1">
+                  <span className="text-green-700 dark:text-green-300 font-semibold">추가 결제 필요</span>
+                  <span className="font-bold text-green-700 dark:text-green-300">0원 (완납)</span>
+                </div>
+              </div>
+            )}
+
             {/* 추가요금 섹션 - 추가요금이 있을 때만 표시 */}
             {isInUse && additionalFeeInfo.additionalFee > 0 && (
               <div className="space-y-3 p-4 border rounded-lg bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
                 <div className="flex justify-between text-sm">
                   <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
-                  <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
+                  <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.rawAdditionalFee.toLocaleString()}원</span>
                 </div>
+                {/* 선지급 금액이 있지만 추가요금이 남아있는 경우 */}
+                {additionalFeeInfo.prepaidAmount > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm text-blue-600 dark:text-blue-400">
+                      <span>선지급 차감</span>
+                      <span className="font-bold">-{additionalFeeInfo.prepaidAmount.toLocaleString()}원</span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-orange-300 dark:border-orange-700 pt-2">
+                      <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 결제 필요</span>
+                      <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.additionalFee.toLocaleString()}원</span>
+                    </div>
+                  </>
+                )}
 
                 {/* 추가요금 지불방식 */}
                 <div className="space-y-3">
