@@ -1024,9 +1024,11 @@ export default function Home() {
       foreignerAdditionalFeePeriod
     );
     
-    // 추가요금 완납 여부 확인: 현재 추가요금이 지불된 금액 이하면 완납
+    // 추가요금 완납 여부 확인: 현재 추가요금이 (지불된 금액 + 선지급 금액) 이하면 완납
     const paidAmount = (log as any).additionalFeePaidAmount || 0;
-    const hasUnpaidAdditionalFee = additionalFee > paidAmount;
+    const prepaidAmount = (log as any).prepaidAdditionalFee || 0;
+    const totalPaidAmount = paidAmount + prepaidAmount;
+    const hasUnpaidAdditionalFee = additionalFee > totalPaidAmount;
     
     // 미지불 추가요금이 있을 때만 횟수 표시
     additionalFeeCounts[log.lockerNumber] = hasUnpaidAdditionalFee ? additionalFeeCount : 0;
