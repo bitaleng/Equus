@@ -770,22 +770,29 @@ export default function LockerOptionsDialog({
    * - 분리결제: 부가세 미포함
    * - 단일결제: 현금영수증 체크 또는 카드결제 시 부가세 포함
    * - 추가요금도 별도 결제방식에 따라 부가세 적용
-   * - 선지급금(prepaidAdditionalFee)도 최종 요금에 포함
+   * - 선지급금(prepaidAdditionalFee)도 최종 요금에 포함 (부가세도 함께 적용)
    */
   const calculateDisplayTotal = () => {
     // 선지급금 계산 (입실 처리 시)
-    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    let prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     
     // 분리결제 시에는 부가세 미포함 금액 표시
     if (useSplitPayment) {
       return calculateTotalPriceWithAdditionalFee() + prepaidAmount;
     }
     
+    // 부가세 적용 여부 확인
+    const baseVatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+    
     // 기본요금 (부가세 적용 여부 확인)
     let baseFinalPrice = calculateFinalPrice();
-    const baseVatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
     if (baseVatApplied) {
       baseFinalPrice = Math.round(baseFinalPrice * 1.1);
+    }
+    
+    // 선지급금에도 부가세 적용 (단일결제 시)
+    if (baseVatApplied && prepaidAmount > 0) {
+      prepaidAmount = Math.round(prepaidAmount * 1.1);
     }
     
     // 추가요금이 없으면 기본요금 + 선지급금 반환
