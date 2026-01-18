@@ -1705,6 +1705,9 @@ export default function Home() {
     cancelled: log.cancelled,
     notes: log.notes,
     paymentMethod: log.paymentMethod,
+    paymentCash: log.paymentCash, // 분리결제 표시용
+    paymentCard: log.paymentCard, // 분리결제 표시용
+    paymentTransfer: log.paymentTransfer, // 분리결제 표시용
     additionalFeeOnly: log.additionalFeeOnly,
     hasSameDayFee: (log as any).hasSameDayFee || false,
     parentLocker: log.parentLocker || null,
