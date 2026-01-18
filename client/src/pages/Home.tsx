@@ -1302,11 +1302,21 @@ export default function Home() {
     const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
     const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
     const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
+    
+    // 선지급금 포함
+    const prepaidAmount = prepaidAdditionalFee || 0;
+
+    // 결제 금액 합계로 actualFinalPrice 계산 (부가세 포함)
+    // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
+    // 이렇게 해야 선지급 취소 후에도 VAT가 올바르게 반영됨
+    const actualFinalPrice = deferredPayment || optionType === 'free' 
+      ? finalPrice + prepaidAmount
+      : (actualPaymentCash + actualPaymentCard + actualPaymentTransfer) || (finalPrice + prepaidAmount);
 
     localDb.updateEntry(selectedEntry.id, { 
       optionType, 
       optionAmount, 
-      finalPrice, 
+      finalPrice: actualFinalPrice,  // 결제금액 합계(VAT 포함)를 최종요금으로 저장
       notes, 
       paymentMethod,
       paymentCash: actualPaymentCash,
