@@ -821,7 +821,7 @@ export default function LockerOptionsDialog({
     return includeBasePrice ? baseFinalPrice + additionalFee : additionalFee;
   };
 
-  // Generate notes from rental items
+  // Generate notes from rental items and prepaid fee
   const generateNotes = () => {
     const items: string[] = [];
     selectedRentalItems.forEach(itemId => {
@@ -830,6 +830,13 @@ export default function LockerOptionsDialog({
         items.push(item.name);
       }
     });
+    
+    // 선지급금 정보 추가
+    const prepaidAmount = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+    if (prepaidAmount > 0) {
+      items.push(`추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`);
+    }
+    
     return items.length > 0 ? items.join(', ') : '';
   };
 
