@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Key, ShieldCheck, AlertTriangle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { isStaticHosting } from "@/lib/demoMode";
 
 interface LicenseGateProps {
   children: React.ReactNode;
@@ -58,13 +59,14 @@ export default function LicenseGate({ children }: LicenseGateProps) {
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   
-  // 개발 환경에서는 라이선스 체크 우회
+  // 개발 환경 또는 정적 호스팅에서는 라이선스 체크 우회
   const isDevelopment = import.meta.env.DEV;
+  const isStatic = isStaticHosting();
 
   useEffect(() => {
-    // 개발 환경에서는 바로 통과
-    if (isDevelopment) {
-      console.log('[LicenseGate] Development mode - bypassing license check');
+    // 개발 환경 또는 정적 호스팅(Netlify 등)에서는 바로 통과
+    if (isDevelopment || isStatic) {
+      console.log('[LicenseGate] Bypassing license check:', isDevelopment ? 'development mode' : 'static hosting');
       setIsValidated(true);
       setIsLoading(false);
       return;
@@ -77,7 +79,7 @@ export default function LicenseGate({ children }: LicenseGateProps) {
     } else {
       setIsLoading(false);
     }
-  }, [isDevelopment]);
+  }, [isDevelopment, isStatic]);
 
   const validateLicense = async (key: string) => {
     setIsValidating(true);

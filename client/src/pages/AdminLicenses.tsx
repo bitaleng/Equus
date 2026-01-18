@@ -9,9 +9,10 @@ import { queryClient } from "@/lib/queryClient";
 import { Badge } from "@/components/ui/badge";
 import { 
   Key, Plus, Trash2, RefreshCw, Shield, ShieldOff, 
-  Smartphone, AlertTriangle, ArrowLeft, Copy, Check, Lock
+  Smartphone, AlertTriangle, ArrowLeft, Copy, Check, Lock, CloudOff
 } from "lucide-react";
 import { Link } from "wouter";
+import { isStaticHosting } from "@/lib/demoMode";
 import {
   Dialog,
   DialogContent,
@@ -171,7 +172,45 @@ function AdminAuthGate({ children, onAuthenticated }: { children: React.ReactNod
   );
 }
 
+function StaticHostingMessage() {
+  return (
+    <div className="min-h-screen bg-background p-4">
+      <div className="max-w-2xl mx-auto">
+        <Link href="/settings">
+          <Button variant="ghost" className="mb-4" data-testid="button-back-settings">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            설정으로 돌아가기
+          </Button>
+        </Link>
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <CloudOff className="h-8 w-8 text-muted-foreground" />
+              <div>
+                <CardTitle>라이센스 관리 사용 불가</CardTitle>
+                <CardDescription>정적 호스팅에서는 이 기능을 사용할 수 없습니다</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">
+              라이센스 관리 기능은 백엔드 서버가 필요합니다. 
+              Netlify, Vercel 등 정적 호스팅에서는 백엔드 API가 작동하지 않습니다.
+            </p>
+            <p className="text-muted-foreground mt-4">
+              이 기능을 사용하려면 백엔드 서버가 포함된 환경(Replit 등)에서 앱을 실행하세요.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminLicenses() {
+  // 정적 호스팅(Netlify 등)에서는 백엔드 API가 없으므로 사용 불가
+  const isStatic = isStaticHosting();
+  
   const { toast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -182,6 +221,9 @@ export default function AdminLicenses() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
+    // 정적 호스팅에서는 API 호출 안함
+    if (isStatic) return;
+    
     const savedKey = getAdminKey();
     if (savedKey) {
       fetch("/api/admin/licenses", {
@@ -196,7 +238,7 @@ export default function AdminLicenses() {
         clearAdminKey();
       });
     }
-  }, []);
+  }, [isStatic]);
 
   const { data: licensesData, isLoading, refetch } = useQuery<{ success: boolean; licenses: License[] }>({
     queryKey: ['/api/admin/licenses'],
@@ -204,7 +246,7 @@ export default function AdminLicenses() {
       const res = await adminApiRequest('GET', '/api/admin/licenses');
       return res.json();
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !isStatic,
   });
 
   const licenses = licensesData?.licenses || [];
@@ -317,6 +359,11 @@ export default function AdminLicenses() {
       minute: '2-digit'
     });
   };
+
+  // 정적 호스팅에서는 안내 메시지 표시
+  if (isStatic) {
+    return <StaticHostingMessage />;
+  }
 
   if (!isAuthenticated) {
     return (

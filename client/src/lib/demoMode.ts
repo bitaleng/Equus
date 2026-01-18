@@ -2,6 +2,16 @@ const DEMO_START_DATE_KEY = 'demo_start_date';
 const DEMO_TRIAL_MS = 7 * 24 * 60 * 60 * 1000; // 정확히 7일 (168시간)
 const DEMO_EXPIRED_PASSWORD = '70557718';
 
+export function isStaticHosting(): boolean {
+  if (typeof window === 'undefined') return false;
+  const hostname = window.location.hostname;
+  return hostname.includes('netlify.app') || 
+         hostname.includes('netlify.com') ||
+         hostname.includes('vercel.app') ||
+         hostname.includes('github.io') ||
+         hostname.includes('pages.dev');
+}
+
 export function isDemoMode(): boolean {
   if (typeof window === 'undefined') return false;
   const urlParams = new URLSearchParams(window.location.search);
