@@ -57,8 +57,19 @@ export default function LicenseGate({ children }: LicenseGateProps) {
   const [inputKey, setInputKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  
+  // 개발 환경에서는 라이선스 체크 우회
+  const isDevelopment = import.meta.env.DEV;
 
   useEffect(() => {
+    // 개발 환경에서는 바로 통과
+    if (isDevelopment) {
+      console.log('[LicenseGate] Development mode - bypassing license check');
+      setIsValidated(true);
+      setIsLoading(false);
+      return;
+    }
+    
     const storedLicense = localStorage.getItem(LICENSE_STORAGE_KEY);
     if (storedLicense) {
       setLicenseKey(storedLicense);
@@ -66,7 +77,7 @@ export default function LicenseGate({ children }: LicenseGateProps) {
     } else {
       setIsLoading(false);
     }
-  }, []);
+  }, [isDevelopment]);
 
   const validateLicense = async (key: string) => {
     setIsValidating(true);
