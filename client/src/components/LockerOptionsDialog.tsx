@@ -168,6 +168,7 @@ export default function LockerOptionsDialog({
   // 선지급금 취소 시 환불 방식 선택 다이얼로그
   const [showPrepaidRefundDialog, setShowPrepaidRefundDialog] = useState(false);
   const [prepaidRefundMethod, setPrepaidRefundMethod] = useState<'cash' | 'card' | 'transfer' | null>(null);
+  const [prepaidRefundIncludeVat, setPrepaidRefundIncludeVat] = useState(false); // 환불 시 부가세 포함 여부
   const [pendingPrepaidCancellation, setPendingPrepaidCancellation] = useState<{
     originalAmount: number;
     originalPaymentCash: number;
@@ -3647,36 +3648,24 @@ export default function LockerOptionsDialog({
               {(() => {
                 // 기본 선지급 금액
                 const basePrepaidAmount = pendingPrepaidCancellation?.originalAmount || 0;
+                const vatIncludedAmount = Math.round(basePrepaidAmount * 1.1);
                 const cashPayment = pendingPrepaidCancellation?.originalPaymentCash || 0;
                 const cardPayment = pendingPrepaidCancellation?.originalPaymentCard || 0;
                 const transferPayment = pendingPrepaidCancellation?.originalPaymentTransfer || 0;
                 
-                // 결제수단별 VAT 적용 환불 금액 계산
-                // 현금/이체: enableCashReceiptVat && isCashReceipt인 경우 VAT 적용
-                // 카드: enableCardVat인 경우 VAT 적용
-                const cashRefundAmount = (enableCashReceiptVat && isCashReceipt) 
-                  ? Math.round(basePrepaidAmount * 1.1) 
-                  : basePrepaidAmount;
-                const cardRefundAmount = enableCardVat 
-                  ? Math.round(basePrepaidAmount * 1.1) 
-                  : basePrepaidAmount;
-                const transferRefundAmount = (enableCashReceiptVat && isCashReceipt) 
-                  ? Math.round(basePrepaidAmount * 1.1) 
-                  : basePrepaidAmount;
+                // 현재 선택에 따른 환불 금액
+                const currentRefundAmount = prepaidRefundIncludeVat ? vatIncludedAmount : basePrepaidAmount;
                 
                 // 환불 가능 여부 (결제금액이 환불금액 이상인지)
-                const cashEligible = cashPayment >= cashRefundAmount && cashPayment > 0;
-                const cardEligible = cardPayment >= cardRefundAmount && cardPayment > 0;
-                const transferEligible = transferPayment >= transferRefundAmount && transferPayment > 0;
+                const cashEligible = cashPayment >= currentRefundAmount && cashPayment > 0;
+                const cardEligible = cardPayment >= currentRefundAmount && cardPayment > 0;
+                const transferEligible = transferPayment >= currentRefundAmount && transferPayment > 0;
                 const noEligibleMethods = !cashEligible && !cardEligible && !transferEligible;
                 
-                // 선택된 수단의 환불 금액
-                const getSelectedRefundAmount = () => {
-                  if (prepaidRefundMethod === 'cash') return cashRefundAmount;
-                  if (prepaidRefundMethod === 'card') return cardRefundAmount;
-                  if (prepaidRefundMethod === 'transfer') return transferRefundAmount;
-                  return basePrepaidAmount;
-                };
+                // VAT 포함 시 환불 가능한 수단이 있는지
+                const anyEligibleWithVat = (cashPayment >= vatIncludedAmount) || 
+                                           (cardPayment >= vatIncludedAmount) || 
+                                           (transferPayment >= vatIncludedAmount);
                 
                 return (
                   <>
@@ -3706,6 +3695,39 @@ export default function LockerOptionsDialog({
                       </div>
                     </div>
 
+                    {/* 부가세 포함 여부 선택 */}
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">환불 금액 선택:</p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={!prepaidRefundIncludeVat ? 'default' : 'outline'}
+                          onClick={() => {
+                            setPrepaidRefundIncludeVat(false);
+                            setPrepaidRefundMethod(null); // 환불 수단 초기화
+                          }}
+                          className={`flex-1 ${!prepaidRefundIncludeVat ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                          data-testid="button-refund-no-vat"
+                        >
+                          {basePrepaidAmount.toLocaleString()}원
+                        </Button>
+                        {anyEligibleWithVat && (
+                          <Button
+                            type="button"
+                            variant={prepaidRefundIncludeVat ? 'default' : 'outline'}
+                            onClick={() => {
+                              setPrepaidRefundIncludeVat(true);
+                              setPrepaidRefundMethod(null); // 환불 수단 초기화
+                            }}
+                            className={`flex-1 ${prepaidRefundIncludeVat ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                            data-testid="button-refund-with-vat"
+                          >
+                            {vatIncludedAmount.toLocaleString()}원 (VAT 포함)
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <p className="text-sm font-medium">환불 받을 결제 수단 (환불 금액 이상 결제한 수단만 선택 가능):</p>
                       <div className="flex gap-2">
@@ -3717,7 +3739,7 @@ export default function LockerOptionsDialog({
                             className={`flex-1 ${prepaidRefundMethod === 'cash' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-cash"
                           >
-                            현금 ({cashRefundAmount.toLocaleString()}원)
+                            현금
                           </Button>
                         )}
                         {cardEligible && (
@@ -3728,7 +3750,7 @@ export default function LockerOptionsDialog({
                             className={`flex-1 ${prepaidRefundMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-card"
                           >
-                            카드 ({cardRefundAmount.toLocaleString()}원)
+                            카드
                           </Button>
                         )}
                         {transferEligible && (
@@ -3739,14 +3761,14 @@ export default function LockerOptionsDialog({
                             className={`flex-1 ${prepaidRefundMethod === 'transfer' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-transfer"
                           >
-                            이체 ({transferRefundAmount.toLocaleString()}원)
+                            이체
                           </Button>
                         )}
                       </div>
                       {noEligibleMethods && (
                         <p className="text-sm text-red-600 dark:text-red-400">
-                          환불 금액보다 큰 결제 수단이 없습니다. 
-                          선지급금 취소가 불가능합니다.
+                          선택한 환불 금액({currentRefundAmount.toLocaleString()}원)보다 큰 결제 수단이 없습니다.
+                          {prepaidRefundIncludeVat && " VAT 미포함 금액으로 다시 시도해주세요."}
                         </p>
                       )}
                     </div>
@@ -3757,8 +3779,8 @@ export default function LockerOptionsDialog({
                           {prepaidRefundMethod === 'cash' && '현금'}
                           {prepaidRefundMethod === 'card' && '카드'}
                           {prepaidRefundMethod === 'transfer' && '이체'}
-                          에서 {getSelectedRefundAmount().toLocaleString()}원을 환불합니다.
-                          {getSelectedRefundAmount() !== basePrepaidAmount && (
+                          에서 {currentRefundAmount.toLocaleString()}원을 환불합니다.
+                          {prepaidRefundIncludeVat && (
                             <span className="text-xs ml-1">(VAT 10% 포함)</span>
                           )}
                         </p>
@@ -3774,6 +3796,7 @@ export default function LockerOptionsDialog({
               onClick={() => {
                 setShowPrepaidRefundDialog(false);
                 setPrepaidRefundMethod(null);
+                setPrepaidRefundIncludeVat(false);
                 setPendingPrepaidCancellation(null);
               }}
               data-testid="button-prepaid-refund-cancel"
@@ -3787,19 +3810,10 @@ export default function LockerOptionsDialog({
                   // 기본 선지급 금액
                   const basePrepaidAmount = pendingPrepaidCancellation.originalAmount;
                   
-                  // 결제수단별 VAT 적용 환불 금액 계산
-                  let refundAmount = basePrepaidAmount;
-                  if (prepaidRefundMethod === 'cash' || prepaidRefundMethod === 'transfer') {
-                    // 현금/이체: 현금영수증 발급 시 VAT 적용
-                    if (enableCashReceiptVat && isCashReceipt) {
-                      refundAmount = Math.round(basePrepaidAmount * 1.1);
-                    }
-                  } else if (prepaidRefundMethod === 'card') {
-                    // 카드: 카드 VAT 설정 시 VAT 적용
-                    if (enableCardVat) {
-                      refundAmount = Math.round(basePrepaidAmount * 1.1);
-                    }
-                  }
+                  // 사용자가 선택한 VAT 포함 여부에 따라 환불 금액 계산
+                  const refundAmount = prepaidRefundIncludeVat 
+                    ? Math.round(basePrepaidAmount * 1.1) 
+                    : basePrepaidAmount;
                   
                   // 모든 결제 수단 값을 새로운 값으로 설정 (선택된 수단에서만 차감)
                   let newCash = pendingPrepaidCancellation.originalPaymentCash;
@@ -3822,7 +3836,8 @@ export default function LockerOptionsDialog({
                   // 선지급금 취소 메모 추가
                   const refundMethodName = prepaidRefundMethod === 'cash' ? '현금' : prepaidRefundMethod === 'card' ? '카드' : '이체';
                   const cancelTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                  const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (${refundMethodName} ${refundAmount.toLocaleString()}원 환불)`;
+                  const vatNote = prepaidRefundIncludeVat ? ', VAT포함' : '';
+                  const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (${refundMethodName} ${refundAmount.toLocaleString()}원 환불${vatNote})`;
                   const updatedMemo = customerMemo.trim() 
                     ? `${customerMemo}\n${cancelMemoText}` 
                     : cancelMemoText;
@@ -3839,6 +3854,7 @@ export default function LockerOptionsDialog({
                 // 다이얼로그 닫기
                 setShowPrepaidRefundDialog(false);
                 setPrepaidRefundMethod(null);
+                setPrepaidRefundIncludeVat(false);
                 setPendingPrepaidCancellation(null);
               }}
               disabled={!prepaidRefundMethod}
