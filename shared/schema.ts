@@ -562,3 +562,38 @@ export type InsertLockerEvent = z.infer<typeof insertLockerEventSchema>;
 export type LockerHardwareState = 'idle' | 'reserved' | 'shoe_unlocked' | 'key_removed' | 'wardrobe_in_use' | 'checkout_pending' | 'locked';
 export type CommandType = 'unlock_shoe' | 'lock_shoe' | 'unlock_wardrobe' | 'lock_wardrobe' | 'lock_all' | 'sync_state' | 'heartbeat';
 export type EventType = 'door_opened' | 'door_closed' | 'key_inserted' | 'key_removed' | 'lock_engaged' | 'lock_released' | 'device_online' | 'device_offline' | 'error';
+
+// License System - 라이선스 관리
+export const licenseStatusEnum = pgEnum('license_status', ['active', 'suspended', 'expired']);
+
+export const licenses = pgTable("licenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  licenseKey: varchar("license_key", { length: 32 }).notNull().unique(), // 고유 라이선스 키
+  customerName: varchar("customer_name", { length: 100 }).notNull(), // 고객명 (업체명)
+  customerContact: varchar("customer_contact", { length: 50 }), // 연락처
+  status: licenseStatusEnum("status").notNull().default('active'), // 라이선스 상태
+  deviceId: varchar("device_id", { length: 64 }), // 등록된 기기 ID (브라우저 fingerprint)
+  deviceInfo: text("device_info"), // 기기 정보 (브라우저, OS 등)
+  registeredAt: timestamp("registered_at", { withTimezone: true }), // 기기 등록 시간
+  expiresAt: timestamp("expires_at", { withTimezone: true }), // 만료일 (null = 무기한)
+  notes: text("notes"), // 관리자 메모
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// License Schemas
+export const insertLicenseSchema = createInsertSchema(licenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateLicenseSchema = createInsertSchema(licenses).omit({
+  id: true,
+  createdAt: true,
+}).partial();
+
+// License Types
+export type License = typeof licenses.$inferSelect;
+export type InsertLicense = z.infer<typeof insertLicenseSchema>;
+export type UpdateLicense = z.infer<typeof updateLicenseSchema>;

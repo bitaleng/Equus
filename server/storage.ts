@@ -5,6 +5,7 @@ import {
   lockerHardware,
   lockerCommands,
   lockerEvents,
+  licenses,
   type HardwareDevice,
   type InsertHardwareDevice,
   type UpdateHardwareDevice,
@@ -18,6 +19,9 @@ import {
   type InsertLockerEvent,
   type LockerHardwareState,
   type CommandType,
+  type License,
+  type InsertLicense,
+  type UpdateLicense,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -57,6 +61,16 @@ export interface IStorage {
   confirmKeyRemoved(lockerNumber: number): Promise<LockerHardware | undefined>;
   checkoutLocker(lockerNumber: number): Promise<LockerHardware | undefined>;
   resetLocker(lockerNumber: number): Promise<LockerHardware | undefined>;
+  
+  // License Management
+  getLicenseByKey(licenseKey: string): Promise<License | undefined>;
+  getAllLicenses(): Promise<License[]>;
+  createLicense(license: InsertLicense): Promise<License>;
+  updateLicense(licenseKey: string, updates: UpdateLicense): Promise<License | undefined>;
+  deleteLicense(licenseKey: string): Promise<boolean>;
+  registerDevice(licenseKey: string, deviceId: string, deviceInfo?: string): Promise<License | undefined>;
+  unregisterDevice(licenseKey: string): Promise<License | undefined>;
+  validateLicense(licenseKey: string, deviceId: string): Promise<{ valid: boolean; reason?: string; license?: License }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -328,6 +342,112 @@ export class DatabaseStorage implements IStorage {
       keyInserted: true,
       doorOpen: false,
     });
+  }
+
+  // License Management
+  async getLicenseByKey(licenseKey: string): Promise<License | undefined> {
+    const [license] = await db
+      .select()
+      .from(licenses)
+      .where(eq(licenses.licenseKey, licenseKey));
+    return license || undefined;
+  }
+
+  async getAllLicenses(): Promise<License[]> {
+    return await db.select().from(licenses).orderBy(desc(licenses.createdAt));
+  }
+
+  async createLicense(license: InsertLicense): Promise<License> {
+    const [created] = await db
+      .insert(licenses)
+      .values(license)
+      .returning();
+    return created;
+  }
+
+  async updateLicense(licenseKey: string, updates: UpdateLicense): Promise<License | undefined> {
+    const [updated] = await db
+      .update(licenses)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(licenses.licenseKey, licenseKey))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteLicense(licenseKey: string): Promise<boolean> {
+    const result = await db
+      .delete(licenses)
+      .where(eq(licenses.licenseKey, licenseKey))
+      .returning();
+    return result.length > 0;
+  }
+
+  async registerDevice(licenseKey: string, deviceId: string, deviceInfo?: string): Promise<License | undefined> {
+    const license = await this.getLicenseByKey(licenseKey);
+    if (!license) return undefined;
+    
+    // 이미 다른 기기가 등록되어 있으면 등록 불가
+    if (license.deviceId && license.deviceId !== deviceId) {
+      return undefined;
+    }
+
+    const [updated] = await db
+      .update(licenses)
+      .set({
+        deviceId,
+        deviceInfo: deviceInfo || null,
+        registeredAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(licenses.licenseKey, licenseKey))
+      .returning();
+    return updated || undefined;
+  }
+
+  async unregisterDevice(licenseKey: string): Promise<License | undefined> {
+    const [updated] = await db
+      .update(licenses)
+      .set({
+        deviceId: null,
+        deviceInfo: null,
+        registeredAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(licenses.licenseKey, licenseKey))
+      .returning();
+    return updated || undefined;
+  }
+
+  async validateLicense(licenseKey: string, deviceId: string): Promise<{ valid: boolean; reason?: string; license?: License }> {
+    const license = await this.getLicenseByKey(licenseKey);
+    
+    if (!license) {
+      return { valid: false, reason: "라이선스 키가 존재하지 않습니다." };
+    }
+
+    if (license.status === 'suspended') {
+      return { valid: false, reason: "라이선스가 일시 중지되었습니다.", license };
+    }
+
+    if (license.status === 'expired') {
+      return { valid: false, reason: "라이선스가 만료되었습니다.", license };
+    }
+
+    if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
+      return { valid: false, reason: "라이선스가 만료되었습니다.", license };
+    }
+
+    // 기기 미등록 상태 - 새 기기 등록 가능
+    if (!license.deviceId) {
+      return { valid: true, reason: "새 기기 등록 가능", license };
+    }
+
+    // 등록된 기기와 일치하는지 확인
+    if (license.deviceId !== deviceId) {
+      return { valid: false, reason: "다른 기기에서 이미 등록되어 있습니다. 기존 기기에서 등록 해제 후 다시 시도해주세요.", license };
+    }
+
+    return { valid: true, license };
   }
 }
 

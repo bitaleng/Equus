@@ -524,4 +524,161 @@ export function registerRoutes(app: Express) {
       res.status(500).json({ error: "Failed to get system status" });
     }
   });
+
+  // ==================== License Management API ====================
+  
+  // Generate random license key
+  function generateLicenseKey(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let key = '';
+    for (let i = 0; i < 16; i++) {
+      if (i > 0 && i % 4 === 0) key += '-';
+      key += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return key;
+  }
+
+  // Validate license (public endpoint for client)
+  app.post("/api/license/validate", async (req, res) => {
+    try {
+      const { licenseKey, deviceId, deviceInfo } = req.body;
+      
+      if (!licenseKey || !deviceId) {
+        return res.status(400).json({ valid: false, reason: "라이선스 키와 기기 ID가 필요합니다." });
+      }
+
+      const result = await storage.validateLicense(licenseKey, deviceId);
+      
+      if (result.valid && result.license && !result.license.deviceId) {
+        // 새 기기 등록
+        await storage.registerDevice(licenseKey, deviceId, deviceInfo);
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error validating license:", error);
+      res.status(500).json({ valid: false, reason: "라이선스 검증 중 오류가 발생했습니다." });
+    }
+  });
+
+  // Unregister device (public endpoint for client)
+  app.post("/api/license/unregister", async (req, res) => {
+    try {
+      const { licenseKey, deviceId } = req.body;
+      
+      if (!licenseKey || !deviceId) {
+        return res.status(400).json({ success: false, reason: "라이선스 키와 기기 ID가 필요합니다." });
+      }
+
+      const license = await storage.getLicenseByKey(licenseKey);
+      if (!license) {
+        return res.status(404).json({ success: false, reason: "라이선스를 찾을 수 없습니다." });
+      }
+
+      if (license.deviceId !== deviceId) {
+        return res.status(403).json({ success: false, reason: "현재 기기에서만 등록 해제할 수 있습니다." });
+      }
+
+      const updated = await storage.unregisterDevice(licenseKey);
+      if (updated) {
+        res.json({ success: true, message: "기기 등록이 해제되었습니다." });
+      } else {
+        res.status(500).json({ success: false, reason: "등록 해제 중 오류가 발생했습니다." });
+      }
+    } catch (error) {
+      console.error("Error unregistering device:", error);
+      res.status(500).json({ success: false, reason: "기기 등록 해제 중 오류가 발생했습니다." });
+    }
+  });
+
+  // Get all licenses (admin only - TODO: add admin auth)
+  app.get("/api/admin/licenses", async (req, res) => {
+    try {
+      const licenses = await storage.getAllLicenses();
+      res.json({ success: true, licenses });
+    } catch (error) {
+      console.error("Error getting licenses:", error);
+      res.status(500).json({ success: false, error: "Failed to get licenses" });
+    }
+  });
+
+  // Create new license (admin only)
+  app.post("/api/admin/licenses", async (req, res) => {
+    try {
+      const { customerName, customerContact, notes, expiresAt } = req.body;
+      
+      if (!customerName) {
+        return res.status(400).json({ success: false, error: "고객명은 필수입니다." });
+      }
+
+      const licenseKey = generateLicenseKey();
+      const license = await storage.createLicense({
+        licenseKey,
+        customerName,
+        customerContact: customerContact || null,
+        notes: notes || null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        status: 'active',
+      });
+
+      res.status(201).json({ success: true, license });
+    } catch (error) {
+      console.error("Error creating license:", error);
+      res.status(500).json({ success: false, error: "Failed to create license" });
+    }
+  });
+
+  // Update license (admin only)
+  app.patch("/api/admin/licenses/:licenseKey", async (req, res) => {
+    try {
+      const { status, customerName, customerContact, notes, expiresAt } = req.body;
+      const updates: any = {};
+      
+      if (status) updates.status = status;
+      if (customerName) updates.customerName = customerName;
+      if (customerContact !== undefined) updates.customerContact = customerContact;
+      if (notes !== undefined) updates.notes = notes;
+      if (expiresAt !== undefined) updates.expiresAt = expiresAt ? new Date(expiresAt) : null;
+
+      const license = await storage.updateLicense(req.params.licenseKey, updates);
+      if (!license) {
+        return res.status(404).json({ success: false, error: "License not found" });
+      }
+
+      res.json({ success: true, license });
+    } catch (error) {
+      console.error("Error updating license:", error);
+      res.status(500).json({ success: false, error: "Failed to update license" });
+    }
+  });
+
+  // Force unregister device (admin only)
+  app.post("/api/admin/licenses/:licenseKey/unregister", async (req, res) => {
+    try {
+      const license = await storage.unregisterDevice(req.params.licenseKey);
+      if (!license) {
+        return res.status(404).json({ success: false, error: "License not found" });
+      }
+
+      res.json({ success: true, license, message: "기기 등록이 해제되었습니다." });
+    } catch (error) {
+      console.error("Error force unregistering device:", error);
+      res.status(500).json({ success: false, error: "Failed to unregister device" });
+    }
+  });
+
+  // Delete license (admin only)
+  app.delete("/api/admin/licenses/:licenseKey", async (req, res) => {
+    try {
+      const deleted = await storage.deleteLicense(req.params.licenseKey);
+      if (!deleted) {
+        return res.status(404).json({ success: false, error: "License not found" });
+      }
+
+      res.json({ success: true, message: "라이선스가 삭제되었습니다." });
+    } catch (error) {
+      console.error("Error deleting license:", error);
+      res.status(500).json({ success: false, error: "Failed to delete license" });
+    }
+  });
 }
