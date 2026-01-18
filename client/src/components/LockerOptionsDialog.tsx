@@ -2145,18 +2145,13 @@ export default function LockerOptionsDialog({
                         const liveCard = paymentCard !== "" ? parseInt(paymentCard) || 0 : (currentPaymentCard || 0);
                         const liveTransfer = paymentTransfer !== "" ? parseInt(paymentTransfer) || 0 : (currentPaymentTransfer || 0);
                         
-                        // VAT 비율 계산: 실제 결제총액 / 기본요금 (선지급 포함)
-                        // 이 방식은 실제로 VAT가 적용되었는지 여부를 결제금액에서 추론
-                        const currentTotalPayment = liveCash + liveCard + liveTransfer;
-                        const basePriceWithPrepaid = calculateFinalPrice(); // 선지급 포함된 최종금액
-                        const vatMultiplier = basePriceWithPrepaid > 0 ? currentTotalPayment / basePriceWithPrepaid : 1;
-                        // VAT가 적용된 환불 금액 계산
-                        const refundAmountWithVat = Math.round(currentPrepaidAdditionalFee * vatMultiplier);
+                        // 환불 금액 = 선지급 금액 그대로 (VAT 계산 없음)
+                        const refundAmount = currentPrepaidAdditionalFee;
                         
                         if (hasSplitPayment) {
                           // 분리결제: 환불 방식 선택 다이얼로그 표시
                           setPendingPrepaidCancellation({
-                            originalAmount: refundAmountWithVat, // VAT 포함 금액
+                            originalAmount: refundAmount, // 선지급 금액 그대로
                             originalPaymentCash: liveCash,
                             originalPaymentCard: liveCard,
                             originalPaymentTransfer: liveTransfer,
@@ -2169,13 +2164,13 @@ export default function LockerOptionsDialog({
                           let newCard = liveCard;
                           let newTransfer = liveTransfer;
                           
-                          // 사용된 결제수단 찾아서 VAT 포함 금액 차감
+                          // 사용된 결제수단 찾아서 선지급 금액 차감
                           if (newCash > 0) {
-                            newCash = Math.max(0, newCash - refundAmountWithVat);
+                            newCash = Math.max(0, newCash - refundAmount);
                           } else if (newCard > 0) {
-                            newCard = Math.max(0, newCard - refundAmountWithVat);
+                            newCard = Math.max(0, newCard - refundAmount);
                           } else if (newTransfer > 0) {
-                            newTransfer = Math.max(0, newTransfer - refundAmountWithVat);
+                            newTransfer = Math.max(0, newTransfer - refundAmount);
                           }
                           
                           // 결제금액 상태 업데이트 (handleSaveChanges에서 사용)
@@ -3679,10 +3674,6 @@ export default function LockerOptionsDialog({
                     {prepaidRefundMethod === 'card' && '카드'}
                     {prepaidRefundMethod === 'transfer' && '이체'}
                     에서 {pendingPrepaidCancellation.originalAmount.toLocaleString()}원을 환불합니다.
-                    {/* VAT가 포함된 경우 표시 (기본 선지급금과 비교) */}
-                    {currentPrepaidAdditionalFee !== pendingPrepaidCancellation.originalAmount && 
-                      <span className="text-xs ml-1">(VAT 포함)</span>
-                    }
                   </p>
                 </div>
               )}
