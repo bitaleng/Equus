@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PasswordAuth } from "@/components/PasswordAuth";
+import LicenseGate from "@/components/LicenseGate";
 import Home from "@/pages/Home";
 import LogsPage from "@/pages/LogsPage";
 import ScanLogsPage from "@/pages/ScanLogsPage";
@@ -183,7 +184,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <MainLayout />
+        {isDemoMode() ? (
+          <MainLayout />
+        ) : (
+          <LicenseGate>
+            <MainLayout />
+          </LicenseGate>
+        )}
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -39,6 +39,8 @@ import {
 } from "@/components/ui/collapsible";
 import PatternLockDialog, { checkBiometricSupport, registerBiometricCredential, authenticateWithBiometric } from "@/components/PatternLockDialog";
 import DeviceManagement from "@/components/DeviceManagement";
+import { unregisterDevice, useLicenseInfo } from "@/components/LicenseGate";
+import { isDemoMode } from "@/lib/demoMode";
 import * as localDb from "@/lib/localDb";
 
 interface Settings {
@@ -225,6 +227,10 @@ export default function Settings() {
   // Data management section collapsible states
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
   const [showDataManagementAuth, setShowDataManagementAuth] = useState(false);
+  
+  const [isLicenseSectionOpen, setIsLicenseSectionOpen] = useState(false);
+  const [isUnregistering, setIsUnregistering] = useState(false);
+  const licenseInfo = useLicenseInfo();
 
   // Data export/import states
   const [isExporting, setIsExporting] = useState(false);
@@ -1032,6 +1038,36 @@ export default function Settings() {
         description: "영업일 재계산 중 오류가 발생했습니다.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleUnregisterDevice = async () => {
+    setIsUnregistering(true);
+    try {
+      const result = await unregisterDevice();
+      if (result.success) {
+        toast({
+          title: "기기 등록 해제 완료",
+          description: result.message,
+        });
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        toast({
+          title: "등록 해제 실패",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "등록 해제 실패",
+        description: "서버 연결에 실패했습니다.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUnregistering(false);
     }
   };
 
@@ -2633,6 +2669,89 @@ export default function Settings() {
               </CollapsibleContent>
             </Collapsible>
           </Card>
+
+          {/* 라이선스 관리 - 데모 모드가 아닐 때만 표시 */}
+          {!isDemoMode() && licenseInfo.licenseKey && (
+            <Card>
+              <Collapsible 
+                open={isLicenseSectionOpen} 
+                onOpenChange={setIsLicenseSectionOpen}
+              >
+                <CardHeader>
+                  <CollapsibleTrigger asChild>
+                    <div className="flex items-center justify-between cursor-pointer hover-elevate active-elevate-2 rounded-md p-2 -m-2">
+                      <div className="flex items-center gap-2">
+                        <Key className="h-5 w-5 text-green-500" />
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            라이선스 관리
+                          </CardTitle>
+                          <CardDescription className="mt-1">
+                            라이선스 및 기기 등록 관리
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform duration-200 ${isLicenseSectionOpen ? 'rotate-180' : ''}`} />
+                    </div>
+                  </CollapsibleTrigger>
+                </CardHeader>
+                
+                <CollapsibleContent>
+                  <CardContent className="space-y-4 pt-0">
+                    <div className="p-4 border rounded-lg bg-muted/30">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Key className="h-6 w-6 text-green-500" />
+                        <div>
+                          <p className="font-medium">라이선스 정보</p>
+                          <p className="text-sm text-muted-foreground">
+                            현재 기기에서 인증됨
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">라이선스 키</span>
+                          <span className="font-mono">{licenseInfo.licenseKey}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">기기 ID</span>
+                          <span className="font-mono text-xs">{licenseInfo.deviceId?.slice(0, 16)}...</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 border border-orange-500/50 rounded-lg bg-orange-500/5">
+                      <div className="flex items-start gap-3">
+                        <LogOut className="h-5 w-5 text-orange-500 mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-medium text-orange-600 dark:text-orange-400 mb-1">기기 등록 해제</h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            현재 기기의 라이선스 등록을 해제합니다.
+                            <br />
+                            <span className="text-xs">
+                              • 새로운 기기에서 동일한 라이선스로 등록할 수 있습니다<br />
+                              • 해제 후 이 기기에서는 앱을 사용할 수 없습니다
+                            </span>
+                          </p>
+                          <Button
+                            onClick={handleUnregisterDevice}
+                            disabled={isUnregistering}
+                            variant="outline"
+                            className="border-orange-500 text-orange-600 hover:bg-orange-500/10 dark:text-orange-400"
+                            data-testid="button-unregister-device"
+                          >
+                            <LogOut className="h-4 w-4 mr-2" />
+                            {isUnregistering ? "해제 중..." : "기기 등록 해제"}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </CollapsibleContent>
+              </Collapsible>
+            </Card>
+          )}
 
           {/* 데이터 관리 */}
           <Card>
