@@ -12,6 +12,31 @@ import {
 import { z } from "zod";
 import CryptoJS from "crypto-js";
 
+// Admin Authentication Middleware
+// Uses ADMIN_KEY environment variable (required in production)
+const ADMIN_KEY = process.env.ADMIN_KEY;
+const IS_DEVELOPMENT = process.env.NODE_ENV === "development";
+const DEFAULT_DEV_KEY = "equus-admin-2025";
+
+function adminAuth(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers["x-admin-key"] as string;
+  
+  // In production, ADMIN_KEY is required
+  if (!IS_DEVELOPMENT && !ADMIN_KEY) {
+    console.error("ADMIN_KEY environment variable is required in production");
+    return res.status(500).json({ success: false, error: "서버 설정 오류" });
+  }
+  
+  // Use environment key, or fallback to dev key only in development
+  const expectedKey = ADMIN_KEY || (IS_DEVELOPMENT ? DEFAULT_DEV_KEY : null);
+  
+  if (!expectedKey || !authHeader || authHeader !== expectedKey) {
+    return res.status(401).json({ success: false, error: "관리자 권한이 필요합니다." });
+  }
+  
+  next();
+}
+
 // HMAC Authentication Middleware for Device API
 async function deviceAuth(req: Request, res: Response, next: NextFunction) {
   const deviceId = req.headers["x-device-id"] as string;
@@ -591,8 +616,8 @@ export function registerRoutes(app: Express) {
     }
   });
 
-  // Get all licenses (admin only - TODO: add admin auth)
-  app.get("/api/admin/licenses", async (req, res) => {
+  // Get all licenses (admin only)
+  app.get("/api/admin/licenses", adminAuth, async (req, res) => {
     try {
       const licenses = await storage.getAllLicenses();
       res.json({ success: true, licenses });
@@ -603,7 +628,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Create new license (admin only)
-  app.post("/api/admin/licenses", async (req, res) => {
+  app.post("/api/admin/licenses", adminAuth, async (req, res) => {
     try {
       const { customerName, customerContact, notes, expiresAt } = req.body;
       
@@ -629,7 +654,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Update license (admin only)
-  app.patch("/api/admin/licenses/:licenseKey", async (req, res) => {
+  app.patch("/api/admin/licenses/:licenseKey", adminAuth, async (req, res) => {
     try {
       const { status, customerName, customerContact, notes, expiresAt } = req.body;
       const updates: any = {};
@@ -653,7 +678,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Force unregister device (admin only)
-  app.post("/api/admin/licenses/:licenseKey/unregister", async (req, res) => {
+  app.post("/api/admin/licenses/:licenseKey/unregister", adminAuth, async (req, res) => {
     try {
       const license = await storage.unregisterDevice(req.params.licenseKey);
       if (!license) {
@@ -668,7 +693,7 @@ export function registerRoutes(app: Express) {
   });
 
   // Delete license (admin only)
-  app.delete("/api/admin/licenses/:licenseKey", async (req, res) => {
+  app.delete("/api/admin/licenses/:licenseKey", adminAuth, async (req, res) => {
     try {
       const deleted = await storage.deleteLicense(req.params.licenseKey);
       if (!deleted) {

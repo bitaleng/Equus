@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -2744,6 +2744,27 @@ export default function Settings() {
                             <LogOut className="h-4 w-4 mr-2" />
                             {isUnregistering ? "해제 중..." : "기기 등록 해제"}
                           </Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 border rounded-lg bg-muted/30">
+                      <div className="flex items-start gap-3">
+                        <Shield className="h-5 w-5 text-primary mt-0.5" />
+                        <div className="flex-1">
+                          <h4 className="font-medium mb-1">라이선스 관리 (관리자)</h4>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            새 라이선스 생성, 기기 강제 해제 등 관리 기능
+                          </p>
+                          <Link href="/admin/licenses">
+                            <Button
+                              variant="outline"
+                              data-testid="button-admin-licenses"
+                            >
+                              <ExternalLink className="h-4 w-4 mr-2" />
+                              관리자 페이지 열기
+                            </Button>
+                          </Link>
                         </div>
                       </div>
                     </div>
