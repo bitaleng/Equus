@@ -2384,7 +2384,7 @@ export function updateDailySummary(businessDay: string) {
   // Get locker logs summary
   // 후불결제(deferred_payment = 1)인 경우 매출에서 제외
   // NULL은 후불결제가 아닌 것으로 처리 (이전 데이터 호환성)
-  // 선지급 추가요금(prepaid_additional_fee)도 매출에 포함
+  // 참고: final_price에는 이미 선지급금(prepaid_additional_fee)이 포함되어 있음
   const result = db.exec(
     `SELECT 
       COUNT(*) as total_visitors,
@@ -2394,8 +2394,7 @@ export function updateDailySummary(businessDay: string) {
       COUNT(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' THEN 1 END) as foreigner_count,
       COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) THEN final_price ELSE 0 END), 0) as foreigner_sales,
       COUNT(CASE WHEN time_type = '주간' AND status != 'cancelled' THEN 1 END) as day_visitors,
-      COUNT(CASE WHEN time_type = '야간' AND status != 'cancelled' THEN 1 END) as night_visitors,
-      COALESCE(SUM(CASE WHEN status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) THEN COALESCE(prepaid_additional_fee, 0) ELSE 0 END), 0) as prepaid_fee_total
+      COUNT(CASE WHEN time_type = '야간' AND status != 'cancelled' THEN 1 END) as night_visitors
     FROM locker_logs
     WHERE business_day = ?`,
     [businessDay]
@@ -2403,9 +2402,10 @@ export function updateDailySummary(businessDay: string) {
 
   if (result.length === 0 || result[0].values.length === 0) return;
 
-  const [totalVisitors, baseSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors, prepaidFeeTotal] = result[0].values[0];
+  const [totalVisitors, baseSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
 
   // Get additional fee events for this business day (fees recorded at checkout time)
+  // 참고: 이것은 퇴실 시 발생하는 추가요금이며, 입실 시 선지급금과는 별개임
   const additionalFeeResult = db.exec(
     `SELECT COALESCE(SUM(fee_amount), 0) as additional_fee_total
      FROM additional_fee_events
@@ -2417,8 +2417,8 @@ export function updateDailySummary(businessDay: string) {
     ? additionalFeeResult[0].values[0][0] 
     : 0;
 
-  // Total sales = base sales from locker_logs + additional fees from checkout time + prepaid additional fees
-  const totalSales = (baseSales as number) + (additionalFeeTotal as number) + (prepaidFeeTotal as number);
+  // Total sales = base sales from locker_logs (선지급금 포함) + additional fees from checkout time
+  const totalSales = (baseSales as number) + (additionalFeeTotal as number);
 
   // Insert or update
   db.run(

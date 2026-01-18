@@ -1168,15 +1168,19 @@ export default function Home() {
 
       // 결제 금액 합계로 finalPrice 계산 (부가세 포함)
       // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
-      const actualFinalPrice = deferredPayment || optionType === 'free' 
+      const baseFinalPrice = deferredPayment || optionType === 'free' 
         ? finalPrice 
         : (actualPaymentCash + actualPaymentCard + actualPaymentTransfer) || finalPrice;
+      
+      // 선지급 추가요금을 최종 요금에 포함 (표시 및 기록용)
+      const prepaidAmount = prepaidAdditionalFee || 0;
+      const actualFinalPrice = baseFinalPrice + prepaidAmount;
 
       const lockerLogId = localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
         timeType: newLockerInfo.timeType,
         basePrice: newLockerInfo.basePrice,
-        finalPrice: actualFinalPrice,  // 부가세 포함된 실제 결제 금액
+        finalPrice: actualFinalPrice,  // 기본요금 + 선지급금 포함
         businessDay,
         optionType,
         optionAmount,
