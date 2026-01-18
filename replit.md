@@ -36,6 +36,16 @@ The system now operates as a full-stack application with both offline (PWA) and 
 - `locker_hardware` - Physical locker hardware state (lock state, door state, key presence)
 - `locker_commands` - Command queue for hardware operations
 - `locker_events` - Event log for hardware state changes
+- `licenses` - License key management for device registration
+
+**License & Device Registration System:**
+- License key validation to prevent unauthorized URL sharing
+- One device per license restriction with device transfer capability
+- Device fingerprinting for browser identification
+- Demo mode bypasses license check for development
+- Admin page (/admin/licenses) for license management (requires admin authentication)
+- Environment variable `ADMIN_KEY` required for production admin access
+- Default dev key "equus-admin-2025" available only in development mode
 
 ### Feature Specifications
 Key features include:
