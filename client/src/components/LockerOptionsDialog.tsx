@@ -821,7 +821,7 @@ export default function LockerOptionsDialog({
     return includeBasePrice ? baseFinalPrice + additionalFee : additionalFee;
   };
 
-  // Generate notes from rental items and prepaid fee
+  // Generate notes from rental items
   const generateNotes = () => {
     const items: string[] = [];
     selectedRentalItems.forEach(itemId => {
@@ -830,13 +830,6 @@ export default function LockerOptionsDialog({
         items.push(item.name);
       }
     });
-    
-    // 선지급금 정보 추가
-    const prepaidAmount = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    if (prepaidAmount > 0) {
-      items.push(`추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`);
-    }
-    
     return items.length > 0 ? items.join(', ') : '';
   };
 
@@ -1055,13 +1048,26 @@ export default function LockerOptionsDialog({
     const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     const computedFinalPrice = baseFinalPrice + prepaidAmount; // 선지급금 포함 총액
     
+    // 선지급금 정보를 메모에 자동 기록
+    let finalCustomerMemo = customerMemo;
+    if (prepaidAmount > 0) {
+      const prepaidMemoText = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      // 중복 방지: 이미 같은 내용이 있으면 추가하지 않음
+      if (!customerMemo.includes(prepaidMemoText)) {
+        finalCustomerMemo = customerMemo.trim() 
+          ? `${customerMemo}\n${prepaidMemoText}` 
+          : prepaidMemoText;
+        setCustomerMemo(finalCustomerMemo);
+      }
+    }
+    
     // 무료입장일 경우 결제방식 없이 바로 처리
     if (isFreeEntry) {
       console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, customerMemo, noAdditionalFee, prepaidFee);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1104,7 +1110,7 @@ export default function LockerOptionsDialog({
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, customerMemo, noAdditionalFee, prepaidFee);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee);
       setDialogOpen(false);
       return;
     }
@@ -1150,7 +1156,7 @@ export default function LockerOptionsDialog({
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, customerMemo, noAdditionalFee, prepaidFee);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee);
     setDialogOpen(false);
   };
 
@@ -1181,6 +1187,21 @@ export default function LockerOptionsDialog({
     }
     
     const computedFinalPrice = calculateFinalPrice();
+    
+    // 선지급금 정보를 메모에 자동 기록 (새로 선지급금을 추가하는 경우에만)
+    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    let finalCustomerMemo = customerMemo;
+    if (prepaidAmount > 0 && prepaidAmount !== currentPrepaidAdditionalFee) {
+      // 새로운 선지급금이 추가되거나 금액이 변경된 경우에만 메모 추가
+      const prepaidMemoText = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      // 중복 방지: 이미 같은 내용이 있으면 추가하지 않음
+      if (!customerMemo.includes(prepaidMemoText)) {
+        finalCustomerMemo = customerMemo.trim() 
+          ? `${customerMemo}\n${prepaidMemoText}` 
+          : prepaidMemoText;
+        setCustomerMemo(finalCustomerMemo);
+      }
+    }
     
     // Get payment breakdown
     let cashVal: number | undefined;
@@ -1329,11 +1350,11 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, customerMemo, noAdditionalFee, prepaidFee);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee);
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
-      localDb.updateLockerLogMemo(currentLockerLogId, customerMemo);
+      localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
       
       // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
       // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
