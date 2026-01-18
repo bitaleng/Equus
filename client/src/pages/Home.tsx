@@ -1162,25 +1162,13 @@ export default function Home() {
       // 후불결제인 경우: 결제금액을 0으로 설정 (결제완료 버튼 눌렀을 때 실제 금액 기록)
       // finalPrice는 유지 (나중에 결제완료 시 참조용)
       // 일일요약(updateDailySummary)에서 deferred_payment=1인 항목은 매출에서 자동 제외됨
-      let actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
-      let actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
-      let actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
+      const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
+      const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
+      const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
       
-      // 선지급 추가요금을 결제금액에도 포함 (결제수단에 따라 추가)
+      // 선지급금은 다이얼로그에서 이미 결제금액에 포함되어 전달됨
+      // (단일결제: computedFinalPrice에 포함, 분리결제: 사용자가 직접 입력)
       const prepaidAmount = prepaidAdditionalFee || 0;
-      if (prepaidAmount > 0 && !deferredPayment) {
-        // 선지급금은 주 결제수단으로 함께 결제됨
-        if (paymentMethod === 'cash') {
-          actualPaymentCash += prepaidAmount;
-        } else if (paymentMethod === 'card') {
-          actualPaymentCard += prepaidAmount;
-        } else if (paymentMethod === 'transfer') {
-          actualPaymentTransfer += prepaidAmount;
-        } else if (paymentMethod === 'split') {
-          // 분리결제 시 현금에 추가 (가장 흔한 경우)
-          actualPaymentCash += prepaidAmount;
-        }
-      }
 
       // 결제 금액 합계로 finalPrice 계산 (부가세 포함)
       // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
