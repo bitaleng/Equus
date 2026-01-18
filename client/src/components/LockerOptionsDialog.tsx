@@ -1051,9 +1051,11 @@ export default function LockerOptionsDialog({
     // 선지급금 정보를 메모에 자동 기록
     let finalCustomerMemo = customerMemo;
     if (prepaidAmount > 0) {
-      const prepaidMemoText = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
-      // 중복 방지: 이미 같은 내용이 있으면 추가하지 않음
-      if (!customerMemo.includes(prepaidMemoText)) {
+      const checkTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const prepaidMemoText = `[${checkTime}] 추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      // 중복 방지: 같은 금액의 선지급 기록이 있으면 추가하지 않음
+      const prepaidPattern = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      if (!customerMemo.includes(prepaidPattern)) {
         finalCustomerMemo = customerMemo.trim() 
           ? `${customerMemo}\n${prepaidMemoText}` 
           : prepaidMemoText;
@@ -1193,9 +1195,11 @@ export default function LockerOptionsDialog({
     let finalCustomerMemo = customerMemo;
     if (prepaidAmount > 0 && prepaidAmount !== currentPrepaidAdditionalFee) {
       // 새로운 선지급금이 추가되거나 금액이 변경된 경우에만 메모 추가
-      const prepaidMemoText = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
-      // 중복 방지: 이미 같은 내용이 있으면 추가하지 않음
-      if (!customerMemo.includes(prepaidMemoText)) {
+      const checkTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const prepaidMemoText = `[${checkTime}] 추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      // 중복 방지: 같은 금액의 선지급 기록이 있으면 추가하지 않음
+      const prepaidPattern = `추가요금 ${prepaidAmount.toLocaleString()}원 선지급받음`;
+      if (!customerMemo.includes(prepaidPattern)) {
         finalCustomerMemo = customerMemo.trim() 
           ? `${customerMemo}\n${prepaidMemoText}` 
           : prepaidMemoText;
@@ -2223,6 +2227,14 @@ export default function LockerOptionsDialog({
                           setPaymentCash(String(newCash));
                           setPaymentCard(String(newCard));
                           setPaymentTransfer(String(newTransfer));
+                          
+                          // 선지급금 취소 메모 추가
+                          const cancelTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                          const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (환불: ${refundAmount.toLocaleString()}원)`;
+                          const updatedMemo = customerMemo.trim() 
+                            ? `${customerMemo}\n${cancelMemoText}` 
+                            : cancelMemoText;
+                          setCustomerMemo(updatedMemo);
                           
                           setHasPrepaidAdditionalFee(false);
                           setPrepaidAdditionalFeeAmount("");
@@ -3799,6 +3811,15 @@ export default function LockerOptionsDialog({
                   setPaymentCash(newCash > 0 ? String(newCash) : "0");
                   setPaymentCard(newCard > 0 ? String(newCard) : "0");
                   setPaymentTransfer(newTransfer > 0 ? String(newTransfer) : "0");
+                  
+                  // 선지급금 취소 메모 추가
+                  const refundMethodName = prepaidRefundMethod === 'cash' ? '현금' : prepaidRefundMethod === 'card' ? '카드' : '이체';
+                  const cancelTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                  const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (${refundMethodName} ${refundAmount.toLocaleString()}원 환불)`;
+                  const updatedMemo = customerMemo.trim() 
+                    ? `${customerMemo}\n${cancelMemoText}` 
+                    : cancelMemoText;
+                  setCustomerMemo(updatedMemo);
                   
                   // 선지급금 체크박스 해제 및 금액 초기화
                   setHasPrepaidAdditionalFee(false);
