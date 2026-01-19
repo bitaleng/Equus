@@ -1114,7 +1114,8 @@ export default function Home() {
     deferredPayment?: boolean, // 후불결제 여부
     customerMemo?: string, // 손님 메모
     noAdditionalFee?: boolean, // 추가요금없음 (VIP 등)
-    prepaidAdditionalFee?: number // 추가요금 선지급 금액
+    prepaidAdditionalFee?: number, // 추가요금 선지급 금액
+    isCashReceipt?: boolean // 현금영수증 발행 여부
   ) => {
     // Use ref to get the latest openDialogs state (prevents stale closure issue)
     const currentOpenDialogs = openDialogsRef.current;
@@ -1194,6 +1195,7 @@ export default function Home() {
         customerMemo: customerMemo || undefined,  // 손님 메모
         noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 (VIP 등)
         prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급
+        isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부
       });
 
       // Mark the scan log as processed (if there was a scan)
@@ -1326,6 +1328,7 @@ export default function Home() {
       customerMemo: customerMemo || undefined,  // 손님 메모
       noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 상태 유지
       prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급 상태 유지
+      isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부 유지
     });
     
     // Handle rental items for existing entry (if saving changes)
@@ -2340,8 +2343,9 @@ export default function Home() {
                           currentCustomerMemo={(selectedEntry as any)?.customerMemo || ""}
                           currentNoAdditionalFee={(selectedEntry as any)?.noAdditionalFee || false}
                           currentPrepaidAdditionalFee={(selectedEntry as any)?.prepaidAdditionalFee || 0}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee)
+                          currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt) => 
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo) => 
                             handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo)

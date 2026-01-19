@@ -829,6 +829,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 22: Add is_cash_receipt column to locker_logs (현금영수증 발행 여부)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN is_cash_receipt INTEGER DEFAULT 0`);
+      console.log('Added is_cash_receipt column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -867,7 +875,8 @@ function createTables() {
       deferred_payment INTEGER DEFAULT 0,
       customer_memo TEXT,
       no_additional_fee INTEGER DEFAULT 0,
-      prepaid_additional_fee INTEGER DEFAULT 0
+      prepaid_additional_fee INTEGER DEFAULT 0,
+      is_cash_receipt INTEGER DEFAULT 0
     )
   `);
 
@@ -1123,6 +1132,7 @@ export function createEntry(entry: {
   customerMemo?: string;  // 손님 메모
   noAdditionalFee?: boolean;  // 추가요금없음 (VIP 등)
   prepaidAdditionalFee?: number;  // 추가요금 선지급 금액
+  isCashReceipt?: boolean;  // 현금영수증 발행 여부
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1137,8 +1147,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1158,7 +1168,8 @@ export function createEntry(entry: {
       entry.deferredPayment ? 1 : 0,
       entry.customerMemo || null,
       entry.noAdditionalFee ? 1 : 0,
-      entry.prepaidAdditionalFee || 0
+      entry.prepaidAdditionalFee || 0,
+      entry.isCashReceipt ? 1 : 0
     ]
   );
 
@@ -1245,6 +1256,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.prepaidAdditionalFee !== undefined) {
     sets.push('prepaid_additional_fee = ?');
     values.push(updates.prepaidAdditionalFee || 0);
+  }
+  if (updates.isCashReceipt !== undefined) {
+    sets.push('is_cash_receipt = ?');
+    values.push(updates.isCashReceipt ? 1 : 0);
   }
 
   if (sets.length > 0) {
