@@ -3,122 +3,109 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Key, ShieldCheck, AlertTriangle } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
-import { isStaticHosting } from "@/lib/demoMode";
+import { Loader2, Key, ShieldCheck, AlertTriangle, Calendar, RefreshCw } from "lucide-react";
+import { isStaticHosting, isDemoMode, getDemoRemainingDays, isDemoExpired } from "@/lib/demoMode";
+import { 
+  validateLicenseKey, 
+  getStoredLicense, 
+  storeLicense, 
+  clearLicense,
+  checkStoredLicenseValidity,
+  LicenseData 
+} from "@/lib/licenseValidation";
 
 interface LicenseGateProps {
   children: React.ReactNode;
 }
 
 const LICENSE_STORAGE_KEY = "rest_hotel_license";
-const DEVICE_ID_KEY = "rest_hotel_device_id";
-
-function generateDeviceId(): string {
-  const nav = window.navigator;
-  const screen = window.screen;
-  const data = [
-    nav.userAgent,
-    nav.language,
-    screen.width,
-    screen.height,
-    screen.colorDepth,
-    new Date().getTimezoneOffset(),
-  ].join("|");
-  
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  
-  const randomPart = Math.random().toString(36).substring(2, 10);
-  return `${Math.abs(hash).toString(16)}-${randomPart}`;
-}
-
-function getDeviceId(): string {
-  let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  if (!deviceId) {
-    deviceId = generateDeviceId();
-    localStorage.setItem(DEVICE_ID_KEY, deviceId);
-  }
-  return deviceId;
-}
-
-function getDeviceInfo(): string {
-  const nav = window.navigator;
-  return `${nav.userAgent} | ${nav.platform} | ${nav.language}`;
-}
 
 export default function LicenseGate({ children }: LicenseGateProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isValidated, setIsValidated] = useState(false);
-  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseData, setLicenseData] = useState<LicenseData | null>(null);
   const [inputKey, setInputKey] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isValidating, setIsValidating] = useState(false);
+  const [showExpiryWarning, setShowExpiryWarning] = useState(false);
   
-  // 개발 환경 또는 정적 호스팅에서는 라이선스 체크 우회
   const isDevelopment = import.meta.env.DEV;
   const isStatic = isStaticHosting();
+  const isDemo = isDemoMode();
 
   useEffect(() => {
-    // 개발 환경 또는 정적 호스팅(Netlify 등)에서는 바로 통과
-    if (isDevelopment || isStatic) {
-      console.log('[LicenseGate] Bypassing license check:', isDevelopment ? 'development mode' : 'static hosting');
+    if (isDevelopment) {
+      console.log('[LicenseGate] Bypassing license check: development mode');
       setIsValidated(true);
       setIsLoading(false);
       return;
     }
     
-    const storedLicense = localStorage.getItem(LICENSE_STORAGE_KEY);
-    if (storedLicense) {
-      setLicenseKey(storedLicense);
-      validateLicense(storedLicense);
+    if (isStatic && isDemo) {
+      const expired = isDemoExpired();
+      if (expired) {
+        console.log('[LicenseGate] Demo expired, checking for license');
+      } else {
+        console.log('[LicenseGate] Demo mode active, remaining days:', getDemoRemainingDays());
+        setIsValidated(true);
+        setIsLoading(false);
+        return;
+      }
+    }
+    
+    const storedLicenseData = checkStoredLicenseValidity();
+    
+    if (storedLicenseData) {
+      if (storedLicenseData.isExpired) {
+        setError("라이선스가 만료되었습니다. 새 라이선스를 입력해주세요.");
+        clearLicense();
+        setIsLoading(false);
+      } else {
+        setLicenseData(storedLicenseData);
+        setIsValidated(true);
+        
+        if (storedLicenseData.daysRemaining <= 30) {
+          setShowExpiryWarning(true);
+        }
+        setIsLoading(false);
+      }
     } else {
       setIsLoading(false);
     }
-  }, [isDevelopment, isStatic]);
+  }, [isDevelopment, isStatic, isDemo]);
 
-  const validateLicense = async (key: string) => {
-    setIsValidating(true);
+  const handleValidate = () => {
     setError(null);
     
-    try {
-      const deviceId = getDeviceId();
-      const deviceInfo = getDeviceInfo();
-      
-      const response = await apiRequest("POST", "/api/license/validate", { 
-        licenseKey: key, 
-        deviceId, 
-        deviceInfo 
-      });
-      const result = await response.json();
-
-      if (result.valid) {
-        localStorage.setItem(LICENSE_STORAGE_KEY, key);
-        setLicenseKey(key);
-        setIsValidated(true);
-      } else {
-        setError(result.reason || "라이선스 검증에 실패했습니다.");
-        localStorage.removeItem(LICENSE_STORAGE_KEY);
-      }
-    } catch (err) {
-      console.error("License validation error:", err);
-      setError("서버 연결에 실패했습니다. 인터넷 연결을 확인해주세요.");
-    } finally {
-      setIsLoading(false);
-      setIsValidating(false);
+    const cleanKey = inputKey.trim().toUpperCase();
+    if (!cleanKey || cleanKey.length < 19) {
+      setError("올바른 라이선스 키를 입력해주세요.");
+      return;
+    }
+    
+    const result = validateLicenseKey(cleanKey);
+    
+    if (!result) {
+      setError("유효하지 않은 라이선스 키입니다. 키를 다시 확인해주세요.");
+      return;
+    }
+    
+    if (result.isExpired) {
+      setError(`라이선스가 만료되었습니다. (만료일: ${result.expiryDate.toLocaleDateString('ko-KR')})`);
+      return;
+    }
+    
+    storeLicense(cleanKey);
+    setLicenseData(result);
+    setIsValidated(true);
+    
+    if (result.daysRemaining <= 30) {
+      setShowExpiryWarning(true);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanKey = inputKey.trim().toUpperCase();
-    if (cleanKey) {
-      validateLicense(cleanKey);
-    }
+    handleValidate();
   };
 
   const formatLicenseInput = (value: string) => {
@@ -135,6 +122,15 @@ export default function LicenseGate({ children }: LicenseGateProps) {
     setInputKey(formatted);
   };
 
+  const handleReactivate = () => {
+    clearLicense();
+    setIsValidated(false);
+    setLicenseData(null);
+    setInputKey("");
+    setError(null);
+    setShowExpiryWarning(false);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -147,7 +143,25 @@ export default function LicenseGate({ children }: LicenseGateProps) {
   }
 
   if (isValidated) {
-    return <>{children}</>;
+    return (
+      <>
+        {showExpiryWarning && licenseData && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-amber-950 px-4 py-2 text-center text-sm font-medium">
+            <Calendar className="inline-block h-4 w-4 mr-2" />
+            라이선스 만료 {licenseData.daysRemaining}일 전 (만료일: {licenseData.expiryDate.toLocaleDateString('ko-KR')})
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-4 h-6 text-amber-950 hover:bg-amber-600"
+              onClick={() => setShowExpiryWarning(false)}
+            >
+              닫기
+            </Button>
+          </div>
+        )}
+        {children}
+      </>
+    );
   }
 
   return (
@@ -174,12 +188,11 @@ export default function LicenseGate({ children }: LicenseGateProps) {
             <div className="space-y-2">
               <Input
                 type="text"
-                placeholder="XXXX-XXXX-XXXX-XXXX"
+                placeholder="EQUS-XXXX-XXXX-XXXX"
                 value={inputKey}
                 onChange={handleInputChange}
                 className="text-center text-lg font-mono tracking-wider"
                 maxLength={19}
-                disabled={isValidating}
                 data-testid="input-license-key"
               />
               <p className="text-xs text-muted-foreground text-center">
@@ -190,27 +203,18 @@ export default function LicenseGate({ children }: LicenseGateProps) {
             <Button
               type="submit"
               className="w-full"
-              disabled={inputKey.length < 19 || isValidating}
+              disabled={inputKey.length < 19}
               data-testid="button-activate-license"
             >
-              {isValidating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  인증 중...
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="mr-2 h-4 w-4" />
-                  라이선스 인증
-                </>
-              )}
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              라이선스 인증
             </Button>
           </form>
 
           <div className="mt-6 pt-4 border-t text-center">
             <p className="text-sm text-muted-foreground">
               라이선스가 없으신가요?{" "}
-              <a href="#" className="text-primary hover:underline">
+              <a href="mailto:support@example.com" className="text-primary hover:underline">
                 문의하기
               </a>
             </p>
@@ -222,31 +226,29 @@ export default function LicenseGate({ children }: LicenseGateProps) {
 }
 
 export function useLicenseInfo() {
-  const licenseKey = localStorage.getItem(LICENSE_STORAGE_KEY);
-  const deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  return { licenseKey, deviceId };
+  const licenseKey = getStoredLicense();
+  const licenseData = licenseKey ? validateLicenseKey(licenseKey) : null;
+  
+  return { 
+    licenseKey, 
+    licenseData,
+    isValid: licenseData?.isValid && !licenseData?.isExpired,
+    daysRemaining: licenseData?.daysRemaining ?? 0,
+    expiryDate: licenseData?.expiryDate
+  };
+}
+
+export function clearStoredLicense(): void {
+  clearLicense();
 }
 
 export async function unregisterDevice(): Promise<{ success: boolean; message?: string }> {
-  const licenseKey = localStorage.getItem(LICENSE_STORAGE_KEY);
-  const deviceId = localStorage.getItem(DEVICE_ID_KEY);
-
-  if (!licenseKey || !deviceId) {
+  const licenseKey = getStoredLicense();
+  
+  if (!licenseKey) {
     return { success: false, message: "등록된 라이선스가 없습니다." };
   }
-
-  try {
-    const response = await apiRequest("POST", "/api/license/unregister", { licenseKey, deviceId });
-    const result = await response.json();
-
-    if (result.success) {
-      localStorage.removeItem(LICENSE_STORAGE_KEY);
-      return { success: true, message: "기기 등록이 해제되었습니다. 새로운 기기에서 로그인할 수 있습니다." };
-    } else {
-      return { success: false, message: result.reason || "등록 해제에 실패했습니다." };
-    }
-  } catch (err) {
-    console.error("Unregister error:", err);
-    return { success: false, message: "서버 연결에 실패했습니다." };
-  }
+  
+  clearLicense();
+  return { success: true, message: "라이선스가 해제되었습니다. 새 라이선스를 입력해주세요." };
 }

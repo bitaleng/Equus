@@ -38,14 +38,15 @@ The system now operates as a full-stack application with both offline (PWA) and 
 - `locker_events` - Event log for hardware state changes
 - `licenses` - License key management for device registration
 
-**License & Device Registration System:**
-- License key validation to prevent unauthorized URL sharing
-- One device per license restriction with device transfer capability
-- Device fingerprinting for browser identification
-- Demo mode bypasses license check for development
-- Admin page (/admin/licenses) for license management (requires admin authentication)
-- Environment variable `ADMIN_KEY` required for production admin access
-- Default dev key "equus-admin-2025" available only in development mode
+**Offline License System (For Static Hosting):**
+- Cryptographic license validation using HMAC-SHA256 signatures
+- Client-side only validation - no server calls needed
+- Works with Netlify free hosting (zero monthly cost)
+- License format: `EQUS-XXXX-XXXX-XXXX` (customer code + expiry date + signature)
+- Admin tool: `license-generator.html` - runs locally without internet
+- Demo mode with `?demo=true` URL parameter (7-day trial, PWA install blocked)
+- Expiry warning shown 30 days before license expires
+- See `OFFLINE_LICENSE_GUIDE.md` for detailed usage instructions
 
 ### Feature Specifications
 Key features include:

@@ -5,6 +5,12 @@
 [build.environment]
   NODE_VERSION = "20"
 
+# License generator - serve as static file (before SPA redirect)
+[[redirects]]
+  from = "/license-generator.html"
+  to = "/license-generator.html"
+  status = 200
+
 # SPA routing - redirect all routes to index.html
 [[redirects]]
   from = "/*"
