@@ -3819,23 +3819,42 @@ export default function LockerOptionsDialog({
                     ? Math.round(basePrepaidAmount * 1.1) 
                     : basePrepaidAmount;
                   
-                  // 모든 결제 수단 값을 새로운 값으로 설정 (선택된 수단에서만 차감)
-                  let newCash = pendingPrepaidCancellation.originalPaymentCash;
-                  let newCard = pendingPrepaidCancellation.originalPaymentCard;
-                  let newTransfer = pendingPrepaidCancellation.originalPaymentTransfer;
+                  // 원래 결제 금액에서 VAT가 적용되었는지 확인
+                  // 카드: enableCardVat가 true면 VAT 적용됨
+                  // 현금/이체: enableCashReceiptVat && isCashReceipt가 true면 VAT 적용됨
+                  const originalCashHadVat = enableCashReceiptVat && isCashReceipt;
+                  const originalCardHadVat = enableCardVat;
+                  const originalTransferHadVat = enableCashReceiptVat && isCashReceipt;
+                  
+                  // 원래 결제 금액을 기본 금액으로 변환 (VAT 제거)
+                  // 분리결제창에서는 기본 금액을 입력하면 VAT를 다시 계산하므로
+                  const originalCashBase = originalCashHadVat 
+                    ? Math.round(pendingPrepaidCancellation.originalPaymentCash / 1.1) 
+                    : pendingPrepaidCancellation.originalPaymentCash;
+                  const originalCardBase = originalCardHadVat 
+                    ? Math.round(pendingPrepaidCancellation.originalPaymentCard / 1.1) 
+                    : pendingPrepaidCancellation.originalPaymentCard;
+                  const originalTransferBase = originalTransferHadVat 
+                    ? Math.round(pendingPrepaidCancellation.originalPaymentTransfer / 1.1) 
+                    : pendingPrepaidCancellation.originalPaymentTransfer;
+                  
+                  // 환불할 기본 금액 (선지급 원금)
+                  let newCashBase = originalCashBase;
+                  let newCardBase = originalCardBase;
+                  let newTransferBase = originalTransferBase;
                   
                   if (prepaidRefundMethod === 'cash') {
-                    newCash = Math.max(0, newCash - refundAmount);
+                    newCashBase = Math.max(0, originalCashBase - basePrepaidAmount);
                   } else if (prepaidRefundMethod === 'card') {
-                    newCard = Math.max(0, newCard - refundAmount);
+                    newCardBase = Math.max(0, originalCardBase - basePrepaidAmount);
                   } else if (prepaidRefundMethod === 'transfer') {
-                    newTransfer = Math.max(0, newTransfer - refundAmount);
+                    newTransferBase = Math.max(0, originalTransferBase - basePrepaidAmount);
                   }
                   
-                  // 모든 결제금액 상태 업데이트
-                  setPaymentCash(newCash > 0 ? String(newCash) : "0");
-                  setPaymentCard(newCard > 0 ? String(newCard) : "0");
-                  setPaymentTransfer(newTransfer > 0 ? String(newTransfer) : "0");
+                  // 모든 결제금액 상태 업데이트 (기본 금액으로 설정, VAT는 분리결제창에서 다시 계산됨)
+                  setPaymentCash(newCashBase > 0 ? String(newCashBase) : "0");
+                  setPaymentCard(newCardBase > 0 ? String(newCardBase) : "0");
+                  setPaymentTransfer(newTransferBase > 0 ? String(newTransferBase) : "0");
                   
                   // 선지급금 취소 메모 추가
                   const refundMethodName = prepaidRefundMethod === 'cash' ? '현금' : prepaidRefundMethod === 'card' ? '카드' : '이체';
