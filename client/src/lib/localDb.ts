@@ -6314,7 +6314,7 @@ export function exportDatabase(): {
       });
     };
     
-    // Export all tables
+    // Export all tables (including user-defined settings like pricing_options)
     const tables = [
       'locker_logs',
       'locker_daily_summaries',
@@ -6328,7 +6328,8 @@ export function exportDatabase(): {
       'expense_categories',
       'barcode_mappings',
       'rfid_mappings',
-      'scan_logs'
+      'scan_logs',
+      'pricing_options'  // 추가 요금옵션 (사용자 정의)
     ];
     
     tables.forEach(tableName => {
@@ -6407,8 +6408,9 @@ export function importDatabase(jsonString: string): {
     
     console.log(`Importing database backup from ${importData.exportDate}`);
     
-    // Clear existing data from all tables
+    // Clear existing data from all tables (including user-defined settings)
     const tables = [
+      'pricing_options',  // 추가 요금옵션 (사용자 정의)
       'scan_logs',
       'rfid_mappings',
       'barcode_mappings',
@@ -6495,7 +6497,7 @@ export function importDatabase(jsonString: string): {
       console.log(`Imported ${imported}/${data.length} rows for ${tableName}`);
     };
     
-    // Import tables in order (system_metadata first, then others)
+    // Import tables in order (system_metadata first, then others, user-defined settings included)
     const importOrder = [
       'system_metadata',
       'locker_groups',
@@ -6509,7 +6511,8 @@ export function importDatabase(jsonString: string): {
       'expense_categories',
       'barcode_mappings',
       'rfid_mappings',
-      'scan_logs'
+      'scan_logs',
+      'pricing_options'  // 추가 요금옵션 (사용자 정의)
     ];
     
     importOrder.forEach(tableName => {
