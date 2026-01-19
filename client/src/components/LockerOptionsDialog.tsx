@@ -333,9 +333,28 @@ export default function LockerOptionsDialog({
         ].filter(Boolean).length;
         
         setUseSplitPayment(paymentCount > 1);
-        setPaymentCash(currentPaymentCash !== undefined ? String(currentPaymentCash) : "");
-        setPaymentCard(currentPaymentCard !== undefined ? String(currentPaymentCard) : "");
-        setPaymentTransfer(currentPaymentTransfer !== undefined ? String(currentPaymentTransfer) : "");
+        
+        // 분리결제창에서 VAT를 다시 적용하므로, DB에 저장된 VAT 포함 금액을 기본 금액으로 변환
+        // 현금/이체: enableCashReceiptVat && currentIsCashReceipt인 경우 VAT가 포함되어 있음
+        // 카드: enableCardVat인 경우 VAT가 포함되어 있음
+        const cashHadVat = enableCashReceiptVat && currentIsCashReceipt;
+        const cardHadVat = enableCardVat;
+        const transferHadVat = enableCashReceiptVat && currentIsCashReceipt;
+        
+        // VAT 포함 금액을 기본 금액으로 변환 (VAT 제거)
+        const baseCash = (cashHadVat && currentPaymentCash) 
+          ? Math.round(currentPaymentCash / 1.1) 
+          : currentPaymentCash;
+        const baseCard = (cardHadVat && currentPaymentCard) 
+          ? Math.round(currentPaymentCard / 1.1) 
+          : currentPaymentCard;
+        const baseTransfer = (transferHadVat && currentPaymentTransfer) 
+          ? Math.round(currentPaymentTransfer / 1.1) 
+          : currentPaymentTransfer;
+        
+        setPaymentCash(baseCash !== undefined ? String(baseCash) : "");
+        setPaymentCard(baseCard !== undefined ? String(baseCard) : "");
+        setPaymentTransfer(baseTransfer !== undefined ? String(baseTransfer) : "");
       } else {
         // For new entries, default to single payment method (no split payment)
         setUseSplitPayment(false);
@@ -344,7 +363,7 @@ export default function LockerOptionsDialog({
         setPaymentTransfer("");
       }
     }
-  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice]);
+  }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice, enableCashReceiptVat, currentIsCashReceipt, enableCardVat]);
 
   // Load rental items and pricing options from database on mount
   useEffect(() => {
