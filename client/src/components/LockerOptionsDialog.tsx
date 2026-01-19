@@ -582,8 +582,35 @@ export default function LockerOptionsDialog({
   // Initialize other state from current option data when dialog opens or closes
   useEffect(() => {
     if (open) {
-      // For existing entries (isInUse), use current payment method. For new entries, set to null (must select)
-      setPaymentMethod(isInUse ? currentPaymentMethod : null);
+      // For existing entries (isInUse), determine payment method from actual payment values
+      // This handles cases where refunds changed which payment method has remaining value
+      if (isInUse) {
+        // Check which payment methods have values
+        const hasCash = currentPaymentCash && currentPaymentCash > 0;
+        const hasCard = currentPaymentCard && currentPaymentCard > 0;
+        const hasTransfer = currentPaymentTransfer && currentPaymentTransfer > 0;
+        const paymentCount = [hasCash, hasCard, hasTransfer].filter(Boolean).length;
+        
+        if (paymentCount === 1) {
+          // Single payment - set the correct method
+          if (hasCash) {
+            setPaymentMethod('cash');
+          } else if (hasCard) {
+            setPaymentMethod('card');
+          } else if (hasTransfer) {
+            setPaymentMethod('transfer');
+          }
+        } else if (paymentCount > 1) {
+          // Split payment - use the stored method (first payment method entered)
+          setPaymentMethod(currentPaymentMethod);
+        } else {
+          // No payment yet - use stored method or default
+          setPaymentMethod(currentPaymentMethod);
+        }
+      } else {
+        // New entries - must select payment method
+        setPaymentMethod(null);
+      }
       
       // 후불결제 상태 초기화 (기존 입실인 경우)
       if (isInUse) {
@@ -666,7 +693,7 @@ export default function LockerOptionsDialog({
       setIsDeferredPayment(false); // 후불결제 상태도 초기화
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse, currentPaymentCash, currentPaymentCard, currentPaymentTransfer]);
 
   // 선지급 추가요금 초기화
   useEffect(() => {
