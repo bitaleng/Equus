@@ -2204,60 +2204,68 @@ export default function LockerOptionsDialog({
                         ].filter(Boolean).length > 1;
                         
                         // 라이브 상태 값이 있으면 사용, 없으면 props 사용
-                        const liveCash = paymentCash !== "" ? parseInt(paymentCash) || 0 : (currentPaymentCash || 0);
-                        const liveCard = paymentCard !== "" ? parseInt(paymentCard) || 0 : (currentPaymentCard || 0);
-                        const liveTransfer = paymentTransfer !== "" ? parseInt(paymentTransfer) || 0 : (currentPaymentTransfer || 0);
+                        // 참고: 분리결제 필드에는 기본 금액(VAT 제외)이 표시됨
+                        const liveCashBase = paymentCash !== "" ? parseInt(paymentCash) || 0 : (currentPaymentCash || 0);
+                        const liveCardBase = paymentCard !== "" ? parseInt(paymentCard) || 0 : (currentPaymentCard || 0);
+                        const liveTransferBase = paymentTransfer !== "" ? parseInt(paymentTransfer) || 0 : (currentPaymentTransfer || 0);
+                        
+                        // 환불 다이얼로그에서는 VAT 포함 금액으로 표시해야 함
+                        // 현금/이체: enableCashReceiptVat && isCashReceipt인 경우 VAT 적용
+                        // 카드: enableCardVat인 경우 VAT 적용
+                        const cashWithVat = (enableCashReceiptVat && isCashReceipt && liveCashBase > 0) 
+                          ? Math.round(liveCashBase * 1.1) : liveCashBase;
+                        const cardWithVat = (enableCardVat && liveCardBase > 0) 
+                          ? Math.round(liveCardBase * 1.1) : liveCardBase;
+                        const transferWithVat = (enableCashReceiptVat && isCashReceipt && liveTransferBase > 0) 
+                          ? Math.round(liveTransferBase * 1.1) : liveTransferBase;
                         
                         // 기본 환불 금액 = 선지급 금액 그대로
                         const basePrepaidAmount = currentPrepaidAdditionalFee;
                         
                         if (hasSplitPayment) {
                           // 분리결제: 환불 방식 선택 다이얼로그 표시
-                          // VAT 계산은 다이얼로그에서 결제수단 선택 시 적용
+                          // VAT 포함 금액으로 저장 (환불 다이얼로그에서 VAT 포함 금액으로 표시)
                           setPendingPrepaidCancellation({
                             originalAmount: basePrepaidAmount, // 기본 선지급 금액 (VAT 미적용)
-                            originalPaymentCash: liveCash,
-                            originalPaymentCard: liveCard,
-                            originalPaymentTransfer: liveTransfer,
+                            originalPaymentCash: cashWithVat,   // VAT 포함 금액
+                            originalPaymentCard: cardWithVat,   // VAT 포함 금액
+                            originalPaymentTransfer: transferWithVat, // VAT 포함 금액
                           });
                           setShowPrepaidRefundDialog(true);
                           return; // 체크박스 상태 변경 보류
                         } else {
-                          // 단일결제: 결제수단에서 자동 차감
-                          let newCash = liveCash;
-                          let newCard = liveCard;
-                          let newTransfer = liveTransfer;
+                          // 단일결제: 결제수단에서 자동 차감 (기본 금액 기준)
+                          let newCashBase = liveCashBase;
+                          let newCardBase = liveCardBase;
+                          let newTransferBase = liveTransferBase;
                           
-                          // VAT 적용 여부 확인 후 환불 금액 계산
-                          // 현금: enableCashReceiptVat && isCashReceipt인 경우 VAT 적용
-                          // 카드: enableCardVat인 경우 VAT 적용
-                          // 이체: enableCashReceiptVat && isCashReceipt인 경우 VAT 적용
-                          let refundAmount = basePrepaidAmount;
-                          
-                          if (newCash > 0) {
-                            // 현금 환불: 현금영수증 발급 시에만 VAT 적용
-                            if (enableCashReceiptVat && isCashReceipt) {
-                              refundAmount = Math.round(basePrepaidAmount * 1.1);
-                            }
-                            newCash = Math.max(0, newCash - refundAmount);
-                          } else if (newCard > 0) {
-                            // 카드 환불: 카드 VAT 설정 시 VAT 적용
-                            if (enableCardVat) {
-                              refundAmount = Math.round(basePrepaidAmount * 1.1);
-                            }
-                            newCard = Math.max(0, newCard - refundAmount);
-                          } else if (newTransfer > 0) {
-                            // 이체 환불: 현금영수증 발급 시에만 VAT 적용
-                            if (enableCashReceiptVat && isCashReceipt) {
-                              refundAmount = Math.round(basePrepaidAmount * 1.1);
-                            }
-                            newTransfer = Math.max(0, newTransfer - refundAmount);
+                          // 환불은 기본 금액(선지급 원금)에서 차감
+                          // 분리결제 필드에는 기본 금액이 표시되므로 기본 금액에서 차감
+                          if (newCashBase > 0 || cashWithVat > 0) {
+                            // 현금에서 차감 (기본 금액 기준)
+                            newCashBase = Math.max(0, liveCashBase - basePrepaidAmount);
+                          } else if (newCardBase > 0 || cardWithVat > 0) {
+                            // 카드에서 차감 (기본 금액 기준)
+                            newCardBase = Math.max(0, liveCardBase - basePrepaidAmount);
+                          } else if (newTransferBase > 0 || transferWithVat > 0) {
+                            // 이체에서 차감 (기본 금액 기준)
+                            newTransferBase = Math.max(0, liveTransferBase - basePrepaidAmount);
                           }
                           
-                          // 결제금액 상태 업데이트 (handleSaveChanges에서 사용)
-                          setPaymentCash(String(newCash));
-                          setPaymentCard(String(newCard));
-                          setPaymentTransfer(String(newTransfer));
+                          // 환불 금액 계산 (메모용 - VAT 포함 여부에 따라)
+                          let refundAmount = basePrepaidAmount;
+                          if (liveCashBase > 0 && enableCashReceiptVat && isCashReceipt) {
+                            refundAmount = Math.round(basePrepaidAmount * 1.1);
+                          } else if (liveCardBase > 0 && enableCardVat) {
+                            refundAmount = Math.round(basePrepaidAmount * 1.1);
+                          } else if (liveTransferBase > 0 && enableCashReceiptVat && isCashReceipt) {
+                            refundAmount = Math.round(basePrepaidAmount * 1.1);
+                          }
+                          
+                          // 결제금액 상태 업데이트 (기본 금액으로 설정)
+                          setPaymentCash(String(newCashBase));
+                          setPaymentCard(String(newCardBase));
+                          setPaymentTransfer(String(newTransferBase));
                           
                           // 선지급금 취소 메모 추가
                           const cancelTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
