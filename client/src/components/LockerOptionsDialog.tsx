@@ -3913,21 +3913,43 @@ export default function LockerOptionsDialog({
                       const splitCardVal = parseInt(splitRefundCard) || 0;
                       const splitTransferVal = parseInt(splitRefundTransfer) || 0;
                       const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
-                      const isValidSplit = splitTotal === currentRefundAmount;
-                      const isCashOverLimit = splitCashVal > cashPayment;
-                      const isCardOverLimit = splitCardVal > cardPayment;
-                      const isTransferOverLimit = splitTransferVal > transferPayment;
+                      
+                      // 분할취소: 기본금액(선지급금)을 분배하면 됨
+                      const isValidSplit = splitTotal === basePrepaidAmount;
+                      
+                      // 각 결제방식별 VAT 적용 여부
+                      const cashHadVat = enableCashReceiptVat && isCashReceipt;
+                      const cardHadVat = enableCardVat;
+                      const transferHadVat = enableCashReceiptVat && isCashReceipt;
+                      
+                      // 각 결제방식별 실제 환불될 금액 (VAT 포함 시)
+                      const actualCashRefund = cashHadVat ? Math.round(splitCashVal * 1.1) : splitCashVal;
+                      const actualCardRefund = cardHadVat ? Math.round(splitCardVal * 1.1) : splitCardVal;
+                      const actualTransferRefund = transferHadVat ? Math.round(splitTransferVal * 1.1) : splitTransferVal;
+                      
+                      // 각 결제방식별 최대 환불 가능 기본금액 (VAT 역산)
+                      const maxCashBase = cashHadVat ? Math.floor(cashPayment / 1.1) : cashPayment;
+                      const maxCardBase = cardHadVat ? Math.floor(cardPayment / 1.1) : cardPayment;
+                      const maxTransferBase = transferHadVat ? Math.floor(transferPayment / 1.1) : transferPayment;
+                      
+                      // 초과 체크 (실제 환불금액이 결제금액을 초과하는지)
+                      const isCashOverLimit = actualCashRefund > cashPayment;
+                      const isCardOverLimit = actualCardRefund > cardPayment;
+                      const isTransferOverLimit = actualTransferRefund > transferPayment;
                       const hasOverLimit = isCashOverLimit || isCardOverLimit || isTransferOverLimit;
                       
                       return (
                         <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-950 rounded-md border border-amber-200 dark:border-amber-800">
                           <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                            각 결제수단별 환불 금액 입력 (합계: {currentRefundAmount.toLocaleString()}원)
+                            선지급금 {basePrepaidAmount.toLocaleString()}원을 결제수단별로 분배 입력
                           </p>
                           <div className="grid grid-cols-3 gap-2">
                             {cashPayment > 0 && (
                               <div className="space-y-1">
-                                <Label className="text-xs">현금 (최대 {cashPayment.toLocaleString()})</Label>
+                                <Label className="text-xs">
+                                  현금 (최대 {maxCashBase.toLocaleString()})
+                                  {cashHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
+                                </Label>
                                 <Input
                                   type="number"
                                   placeholder="0"
@@ -3936,11 +3958,19 @@ export default function LockerOptionsDialog({
                                   className={`text-sm ${isCashOverLimit ? 'border-red-500' : ''}`}
                                   data-testid="input-split-refund-cash"
                                 />
+                                {splitCashVal > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    실제 차감: {actualCashRefund.toLocaleString()}원
+                                  </p>
+                                )}
                               </div>
                             )}
                             {cardPayment > 0 && (
                               <div className="space-y-1">
-                                <Label className="text-xs">카드 (최대 {cardPayment.toLocaleString()})</Label>
+                                <Label className="text-xs">
+                                  카드 (최대 {maxCardBase.toLocaleString()})
+                                  {cardHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
+                                </Label>
                                 <Input
                                   type="number"
                                   placeholder="0"
@@ -3949,11 +3979,19 @@ export default function LockerOptionsDialog({
                                   className={`text-sm ${isCardOverLimit ? 'border-red-500' : ''}`}
                                   data-testid="input-split-refund-card"
                                 />
+                                {splitCardVal > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    실제 차감: {actualCardRefund.toLocaleString()}원
+                                  </p>
+                                )}
                               </div>
                             )}
                             {transferPayment > 0 && (
                               <div className="space-y-1">
-                                <Label className="text-xs">이체 (최대 {transferPayment.toLocaleString()})</Label>
+                                <Label className="text-xs">
+                                  이체 (최대 {maxTransferBase.toLocaleString()})
+                                  {transferHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
+                                </Label>
                                 <Input
                                   type="number"
                                   placeholder="0"
@@ -3962,21 +4000,26 @@ export default function LockerOptionsDialog({
                                   className={`text-sm ${isTransferOverLimit ? 'border-red-500' : ''}`}
                                   data-testid="input-split-refund-transfer"
                                 />
+                                {splitTransferVal > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    실제 차감: {actualTransferRefund.toLocaleString()}원
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
                           <div className="flex justify-between items-center text-sm">
                             <span className={`${isValidSplit && !hasOverLimit ? 'text-green-600' : 'text-amber-600'}`}>
-                              현재 합계: {splitTotal.toLocaleString()}원
+                              분배 합계: {splitTotal.toLocaleString()}원
                             </span>
                             {hasOverLimit && (
                               <span className="text-red-600">결제 금액 초과!</span>
                             )}
                             {!isValidSplit && !hasOverLimit && (
                               <span className="text-amber-600">
-                                {splitTotal < currentRefundAmount 
-                                  ? `${(currentRefundAmount - splitTotal).toLocaleString()}원 더 필요` 
-                                  : `${(splitTotal - currentRefundAmount).toLocaleString()}원 초과`}
+                                {splitTotal < basePrepaidAmount 
+                                  ? `${(basePrepaidAmount - splitTotal).toLocaleString()}원 더 필요` 
+                                  : `${(splitTotal - basePrepaidAmount).toLocaleString()}원 초과`}
                               </span>
                             )}
                           </div>
@@ -4003,25 +4046,41 @@ export default function LockerOptionsDialog({
                       const splitCardVal = parseInt(splitRefundCard) || 0;
                       const splitTransferVal = parseInt(splitRefundTransfer) || 0;
                       const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
-                      const isValidSplit = splitTotal === currentRefundAmount;
-                      const isCashOverLimit = splitCashVal > cashPayment;
-                      const isCardOverLimit = splitCardVal > cardPayment;
-                      const isTransferOverLimit = splitTransferVal > transferPayment;
+                      const isValidSplit = splitTotal === basePrepaidAmount;
+                      
+                      // 각 결제방식별 VAT 적용 여부
+                      const cashHadVat = enableCashReceiptVat && isCashReceipt;
+                      const cardHadVat = enableCardVat;
+                      const transferHadVat = enableCashReceiptVat && isCashReceipt;
+                      
+                      // 각 결제방식별 실제 환불될 금액 (VAT 포함 시)
+                      const actualCashRefund = cashHadVat ? Math.round(splitCashVal * 1.1) : splitCashVal;
+                      const actualCardRefund = cardHadVat ? Math.round(splitCardVal * 1.1) : splitCardVal;
+                      const actualTransferRefund = transferHadVat ? Math.round(splitTransferVal * 1.1) : splitTransferVal;
+                      const totalActualRefund = actualCashRefund + actualCardRefund + actualTransferRefund;
+                      
+                      // 초과 체크 (실제 환불금액이 결제금액을 초과하는지)
+                      const isCashOverLimit = actualCashRefund > cashPayment;
+                      const isCardOverLimit = actualCardRefund > cardPayment;
+                      const isTransferOverLimit = actualTransferRefund > transferPayment;
                       const hasOverLimit = isCashOverLimit || isCardOverLimit || isTransferOverLimit;
                       
                       if (isValidSplit && !hasOverLimit) {
                         const parts = [];
-                        if (splitCashVal > 0) parts.push(`현금 ${splitCashVal.toLocaleString()}원`);
-                        if (splitCardVal > 0) parts.push(`카드 ${splitCardVal.toLocaleString()}원`);
-                        if (splitTransferVal > 0) parts.push(`이체 ${splitTransferVal.toLocaleString()}원`);
+                        if (splitCashVal > 0) {
+                          parts.push(`현금 ${actualCashRefund.toLocaleString()}원${cashHadVat ? '(VAT포함)' : ''}`);
+                        }
+                        if (splitCardVal > 0) {
+                          parts.push(`카드 ${actualCardRefund.toLocaleString()}원${cardHadVat ? '(VAT포함)' : ''}`);
+                        }
+                        if (splitTransferVal > 0) {
+                          parts.push(`이체 ${actualTransferRefund.toLocaleString()}원${transferHadVat ? '(VAT포함)' : ''}`);
+                        }
                         
                         return (
                           <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
                             <p className="text-sm text-green-700 dark:text-green-300">
-                              {parts.join(', ')}을(를) 환불합니다.
-                              {prepaidRefundIncludeVat && (
-                                <span className="text-xs ml-1">(VAT 10% 포함)</span>
-                              )}
+                              {parts.join(' + ')} = 총 {totalActualRefund.toLocaleString()}원 환불
                             </p>
                           </div>
                         );
@@ -4084,24 +4143,26 @@ export default function LockerOptionsDialog({
                   
                   if (prepaidRefundMethod === 'split') {
                     // 분할 환불 처리
+                    // 사용자가 입력한 금액은 기본금액(선지급금 분배)
                     const splitCashVal = parseInt(splitRefundCash) || 0;
                     const splitCardVal = parseInt(splitRefundCard) || 0;
                     const splitTransferVal = parseInt(splitRefundTransfer) || 0;
                     
-                    // VAT 포함 금액에서 기본 금액으로 변환 후 차감
-                    const cashRefundBase = originalCashHadVat ? Math.round(splitCashVal / 1.1) : splitCashVal;
-                    const cardRefundBase = originalCardHadVat ? Math.round(splitCardVal / 1.1) : splitCardVal;
-                    const transferRefundBase = originalTransferHadVat ? Math.round(splitTransferVal / 1.1) : splitTransferVal;
+                    // 각 결제방식에서 차감할 기본금액 = 사용자 입력값
+                    // (사용자가 기본금액을 분배했으므로 직접 차감)
+                    newCashBase = Math.max(0, originalCashBase - splitCashVal);
+                    newCardBase = Math.max(0, originalCardBase - splitCardVal);
+                    newTransferBase = Math.max(0, originalTransferBase - splitTransferVal);
                     
-                    newCashBase = Math.max(0, originalCashBase - cashRefundBase);
-                    newCardBase = Math.max(0, originalCardBase - cardRefundBase);
-                    newTransferBase = Math.max(0, originalTransferBase - transferRefundBase);
+                    // 환불 내역 텍스트 생성 (실제 환불 금액 = 기본금액 + VAT)
+                    const actualCashRefund = originalCashHadVat ? Math.round(splitCashVal * 1.1) : splitCashVal;
+                    const actualCardRefund = originalCardHadVat ? Math.round(splitCardVal * 1.1) : splitCardVal;
+                    const actualTransferRefund = originalTransferHadVat ? Math.round(splitTransferVal * 1.1) : splitTransferVal;
                     
-                    // 환불 내역 텍스트 생성
                     const parts = [];
-                    if (splitCashVal > 0) parts.push(`현금 ${splitCashVal.toLocaleString()}원`);
-                    if (splitCardVal > 0) parts.push(`카드 ${splitCardVal.toLocaleString()}원`);
-                    if (splitTransferVal > 0) parts.push(`이체 ${splitTransferVal.toLocaleString()}원`);
+                    if (splitCashVal > 0) parts.push(`현금 ${actualCashRefund.toLocaleString()}원${originalCashHadVat ? '(VAT포함)' : ''}`);
+                    if (splitCardVal > 0) parts.push(`카드 ${actualCardRefund.toLocaleString()}원${originalCardHadVat ? '(VAT포함)' : ''}`);
+                    if (splitTransferVal > 0) parts.push(`이체 ${actualTransferRefund.toLocaleString()}원${originalTransferHadVat ? '(VAT포함)' : ''}`);
                     refundMethodName = parts.join('+');
                   } else if (prepaidRefundMethod === 'cash') {
                     newCashBase = Math.max(0, originalCashBase - basePrepaidAmount);
@@ -4154,18 +4215,28 @@ export default function LockerOptionsDialog({
                   const splitTransferVal = parseInt(splitRefundTransfer) || 0;
                   const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
                   const basePrepaidAmount = pendingPrepaidCancellation?.originalAmount || 0;
-                  const currentRefundAmount = prepaidRefundIncludeVat 
-                    ? Math.round(basePrepaidAmount * 1.1) 
-                    : basePrepaidAmount;
+                  
+                  // 분할취소: 기본금액(선지급금)을 분배해야 함
+                  const isValidSplit = splitTotal === basePrepaidAmount;
+                  
+                  // 각 결제방식별 VAT 적용 여부
+                  const cashHadVat = enableCashReceiptVat && isCashReceipt;
+                  const cardHadVat = enableCardVat;
+                  const transferHadVat = enableCashReceiptVat && isCashReceipt;
+                  
+                  // 실제 환불 금액 계산 (VAT 포함 시)
+                  const actualCashRefund = cashHadVat ? Math.round(splitCashVal * 1.1) : splitCashVal;
+                  const actualCardRefund = cardHadVat ? Math.round(splitCardVal * 1.1) : splitCardVal;
+                  const actualTransferRefund = transferHadVat ? Math.round(splitTransferVal * 1.1) : splitTransferVal;
                   
                   const cashPayment = pendingPrepaidCancellation?.originalPaymentCash || 0;
                   const cardPayment = pendingPrepaidCancellation?.originalPaymentCard || 0;
                   const transferPayment = pendingPrepaidCancellation?.originalPaymentTransfer || 0;
                   
-                  const isValidSplit = splitTotal === currentRefundAmount;
-                  const hasOverLimit = splitCashVal > cashPayment || 
-                                       splitCardVal > cardPayment || 
-                                       splitTransferVal > transferPayment;
+                  // 실제 환불 금액이 결제 금액을 초과하면 안됨
+                  const hasOverLimit = actualCashRefund > cashPayment || 
+                                       actualCardRefund > cardPayment || 
+                                       actualTransferRefund > transferPayment;
                   
                   return !isValidSplit || hasOverLimit;
                 }
