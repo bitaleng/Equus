@@ -837,6 +837,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
     
+    // Step 23: Add additional_fee_payment_method column to locker_logs (추가요금 결제방식)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer'))`);
+      console.log('Added additional_fee_payment_method column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -876,7 +884,8 @@ function createTables() {
       customer_memo TEXT,
       no_additional_fee INTEGER DEFAULT 0,
       prepaid_additional_fee INTEGER DEFAULT 0,
-      is_cash_receipt INTEGER DEFAULT 0
+      is_cash_receipt INTEGER DEFAULT 0,
+      additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer'))
     )
   `);
 
@@ -1133,6 +1142,7 @@ export function createEntry(entry: {
   noAdditionalFee?: boolean;  // 추가요금없음 (VIP 등)
   prepaidAdditionalFee?: number;  // 추가요금 선지급 금액
   isCashReceipt?: boolean;  // 현금영수증 발행 여부
+  additionalFeePaymentMethod?: string;  // 추가요금 결제방식
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1147,8 +1157,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1169,7 +1179,8 @@ export function createEntry(entry: {
       entry.customerMemo || null,
       entry.noAdditionalFee ? 1 : 0,
       entry.prepaidAdditionalFee || 0,
-      entry.isCashReceipt ? 1 : 0
+      entry.isCashReceipt ? 1 : 0,
+      entry.additionalFeePaymentMethod || null
     ]
   );
 
@@ -1260,6 +1271,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.isCashReceipt !== undefined) {
     sets.push('is_cash_receipt = ?');
     values.push(updates.isCashReceipt ? 1 : 0);
+  }
+  if (updates.additionalFeePaymentMethod !== undefined) {
+    sets.push('additional_fee_payment_method = ?');
+    values.push(updates.additionalFeePaymentMethod || null);
   }
 
   if (sets.length > 0) {

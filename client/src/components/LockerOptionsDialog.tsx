@@ -70,7 +70,8 @@ interface LockerOptionsDialogProps {
   currentNoAdditionalFee?: boolean; // 현재 추가요금없음 상태
   currentPrepaidAdditionalFee?: number; // 현재 선지급 추가요금
   currentIsCashReceipt?: boolean; // 현재 현금영수증 발행 여부
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean) => void;
+  currentAdditionalFeePaymentMethod?: 'card' | 'cash' | 'transfer'; // 현재 추가요금 결제방식
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer') => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -118,6 +119,7 @@ export default function LockerOptionsDialog({
   currentNoAdditionalFee = false, // 현재 추가요금없음 상태
   currentPrepaidAdditionalFee = 0, // 현재 선지급 추가요금
   currentIsCashReceipt = false, // 현재 현금영수증 발행 여부
+  currentAdditionalFeePaymentMethod, // 현재 추가요금 결제방식
   onApply,
   onCheckout,
   onCancel,
@@ -154,7 +156,7 @@ export default function LockerOptionsDialog({
   const [isAdditionalFeeCashReceipt, setIsAdditionalFeeCashReceipt] = useState(false); // 추가요금 현금영수증
   
   // Additional fee payment states
-  const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>('cash');
+  const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentAdditionalFeePaymentMethod || 'cash');
   const [additionalFeePaymentCash, setAdditionalFeePaymentCash] = useState<string>("");
   const [additionalFeePaymentCard, setAdditionalFeePaymentCard] = useState<string>("");
   const [additionalFeePaymentTransfer, setAdditionalFeePaymentTransfer] = useState<string>("");
@@ -169,7 +171,7 @@ export default function LockerOptionsDialog({
   
   // 선지급금 취소 시 환불 방식 선택 다이얼로그
   const [showPrepaidRefundDialog, setShowPrepaidRefundDialog] = useState(false);
-  const [prepaidRefundMethod, setPrepaidRefundMethod] = useState<'cash' | 'card' | 'transfer' | null>(null);
+  const [prepaidRefundMethod, setPrepaidRefundMethod] = useState<'cash' | 'card' | 'transfer' | 'split' | null>(null);
   const [prepaidRefundIncludeVat, setPrepaidRefundIncludeVat] = useState(false); // 환불 시 부가세 포함 여부
   const [pendingPrepaidCancellation, setPendingPrepaidCancellation] = useState<{
     originalAmount: number;
@@ -177,6 +179,10 @@ export default function LockerOptionsDialog({
     originalPaymentCard: number;
     originalPaymentTransfer: number;
   } | null>(null);
+  // 분할 환불 금액 입력 상태
+  const [splitRefundCash, setSplitRefundCash] = useState<string>("");
+  const [splitRefundCard, setSplitRefundCard] = useState<string>("");
+  const [splitRefundTransfer, setSplitRefundTransfer] = useState<string>("");
   
   // Locker swap states
   const [showSwapDialog, setShowSwapDialog] = useState(false);
@@ -307,9 +313,11 @@ export default function LockerOptionsDialog({
       }
       // 현금영수증 발행 상태를 현재 값으로 초기화
       setIsCashReceipt(currentIsCashReceipt || false);
+      // 추가요금 결제방식을 현재 값으로 초기화
+      setAdditionalFeePaymentMethod(currentAdditionalFeePaymentMethod || 'cash');
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod]);
   
     
   // Initialize payment fields when dialog opens
@@ -1127,7 +1135,7 @@ export default function LockerOptionsDialog({
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee, false);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1170,7 +1178,7 @@ export default function LockerOptionsDialog({
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee, false);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod);
       setDialogOpen(false);
       return;
     }
@@ -1216,7 +1224,7 @@ export default function LockerOptionsDialog({
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
     setDialogOpen(false);
   };
 
@@ -1448,7 +1456,7 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
@@ -3823,13 +3831,18 @@ export default function LockerOptionsDialog({
                     </div>
 
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">환불 받을 결제 수단 (환불 금액 이상 결제한 수단만 선택 가능):</p>
-                      <div className="flex gap-2">
+                      <p className="text-sm font-medium">환불 받을 결제 수단:</p>
+                      <div className="flex gap-2 flex-wrap">
                         {cashEligible && (
                           <Button
                             type="button"
                             variant={prepaidRefundMethod === 'cash' ? 'default' : 'outline'}
-                            onClick={() => setPrepaidRefundMethod('cash')}
+                            onClick={() => {
+                              setPrepaidRefundMethod('cash');
+                              setSplitRefundCash("");
+                              setSplitRefundCard("");
+                              setSplitRefundTransfer("");
+                            }}
                             className={`flex-1 ${prepaidRefundMethod === 'cash' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-cash"
                           >
@@ -3840,7 +3853,12 @@ export default function LockerOptionsDialog({
                           <Button
                             type="button"
                             variant={prepaidRefundMethod === 'card' ? 'default' : 'outline'}
-                            onClick={() => setPrepaidRefundMethod('card')}
+                            onClick={() => {
+                              setPrepaidRefundMethod('card');
+                              setSplitRefundCash("");
+                              setSplitRefundCard("");
+                              setSplitRefundTransfer("");
+                            }}
                             className={`flex-1 ${prepaidRefundMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-card"
                           >
@@ -3851,23 +3869,122 @@ export default function LockerOptionsDialog({
                           <Button
                             type="button"
                             variant={prepaidRefundMethod === 'transfer' ? 'default' : 'outline'}
-                            onClick={() => setPrepaidRefundMethod('transfer')}
+                            onClick={() => {
+                              setPrepaidRefundMethod('transfer');
+                              setSplitRefundCash("");
+                              setSplitRefundCard("");
+                              setSplitRefundTransfer("");
+                            }}
                             className={`flex-1 ${prepaidRefundMethod === 'transfer' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                             data-testid="button-refund-transfer"
                           >
                             이체
                           </Button>
                         )}
+                        {/* 분할 환불 버튼 - 환불 금액이 개별 결제수단보다 큰 경우 */}
+                        {noEligibleMethods && (cashPayment > 0 || cardPayment > 0 || transferPayment > 0) && (
+                          <Button
+                            type="button"
+                            variant={prepaidRefundMethod === 'split' ? 'default' : 'outline'}
+                            onClick={() => {
+                              setPrepaidRefundMethod('split');
+                              setSplitRefundCash("");
+                              setSplitRefundCard("");
+                              setSplitRefundTransfer("");
+                            }}
+                            className={`flex-1 ${prepaidRefundMethod === 'split' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                            data-testid="button-refund-split"
+                          >
+                            분할 환불
+                          </Button>
+                        )}
                       </div>
-                      {noEligibleMethods && (
-                        <p className="text-sm text-red-600 dark:text-red-400">
-                          선택한 환불 금액({currentRefundAmount.toLocaleString()}원)보다 큰 결제 수단이 없습니다.
-                          {prepaidRefundIncludeVat && " VAT 미포함 금액으로 다시 시도해주세요."}
+                      {noEligibleMethods && prepaidRefundMethod !== 'split' && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                          환불 금액({currentRefundAmount.toLocaleString()}원)보다 큰 결제 수단이 없습니다.
+                          '분할 환불'을 선택하여 각 결제수단별로 환불 금액을 지정할 수 있습니다.
                         </p>
                       )}
                     </div>
 
-                    {prepaidRefundMethod && pendingPrepaidCancellation && (
+                    {/* 분할 환불 입력 UI */}
+                    {prepaidRefundMethod === 'split' && pendingPrepaidCancellation && (() => {
+                      const splitCashVal = parseInt(splitRefundCash) || 0;
+                      const splitCardVal = parseInt(splitRefundCard) || 0;
+                      const splitTransferVal = parseInt(splitRefundTransfer) || 0;
+                      const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
+                      const isValidSplit = splitTotal === currentRefundAmount;
+                      const isCashOverLimit = splitCashVal > cashPayment;
+                      const isCardOverLimit = splitCardVal > cardPayment;
+                      const isTransferOverLimit = splitTransferVal > transferPayment;
+                      const hasOverLimit = isCashOverLimit || isCardOverLimit || isTransferOverLimit;
+                      
+                      return (
+                        <div className="space-y-3 p-3 bg-amber-50 dark:bg-amber-950 rounded-md border border-amber-200 dark:border-amber-800">
+                          <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                            각 결제수단별 환불 금액 입력 (합계: {currentRefundAmount.toLocaleString()}원)
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {cashPayment > 0 && (
+                              <div className="space-y-1">
+                                <Label className="text-xs">현금 (최대 {cashPayment.toLocaleString()})</Label>
+                                <Input
+                                  type="number"
+                                  placeholder="0"
+                                  value={splitRefundCash}
+                                  onChange={(e) => setSplitRefundCash(e.target.value)}
+                                  className={`text-sm ${isCashOverLimit ? 'border-red-500' : ''}`}
+                                  data-testid="input-split-refund-cash"
+                                />
+                              </div>
+                            )}
+                            {cardPayment > 0 && (
+                              <div className="space-y-1">
+                                <Label className="text-xs">카드 (최대 {cardPayment.toLocaleString()})</Label>
+                                <Input
+                                  type="number"
+                                  placeholder="0"
+                                  value={splitRefundCard}
+                                  onChange={(e) => setSplitRefundCard(e.target.value)}
+                                  className={`text-sm ${isCardOverLimit ? 'border-red-500' : ''}`}
+                                  data-testid="input-split-refund-card"
+                                />
+                              </div>
+                            )}
+                            {transferPayment > 0 && (
+                              <div className="space-y-1">
+                                <Label className="text-xs">이체 (최대 {transferPayment.toLocaleString()})</Label>
+                                <Input
+                                  type="number"
+                                  placeholder="0"
+                                  value={splitRefundTransfer}
+                                  onChange={(e) => setSplitRefundTransfer(e.target.value)}
+                                  className={`text-sm ${isTransferOverLimit ? 'border-red-500' : ''}`}
+                                  data-testid="input-split-refund-transfer"
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className={`${isValidSplit && !hasOverLimit ? 'text-green-600' : 'text-amber-600'}`}>
+                              현재 합계: {splitTotal.toLocaleString()}원
+                            </span>
+                            {hasOverLimit && (
+                              <span className="text-red-600">결제 금액 초과!</span>
+                            )}
+                            {!isValidSplit && !hasOverLimit && (
+                              <span className="text-amber-600">
+                                {splitTotal < currentRefundAmount 
+                                  ? `${(currentRefundAmount - splitTotal).toLocaleString()}원 더 필요` 
+                                  : `${(splitTotal - currentRefundAmount).toLocaleString()}원 초과`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {prepaidRefundMethod && prepaidRefundMethod !== 'split' && pendingPrepaidCancellation && (
                       <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
                         <p className="text-sm text-green-700 dark:text-green-300">
                           {prepaidRefundMethod === 'cash' && '현금'}
@@ -3880,6 +3997,37 @@ export default function LockerOptionsDialog({
                         </p>
                       </div>
                     )}
+                    
+                    {prepaidRefundMethod === 'split' && pendingPrepaidCancellation && (() => {
+                      const splitCashVal = parseInt(splitRefundCash) || 0;
+                      const splitCardVal = parseInt(splitRefundCard) || 0;
+                      const splitTransferVal = parseInt(splitRefundTransfer) || 0;
+                      const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
+                      const isValidSplit = splitTotal === currentRefundAmount;
+                      const isCashOverLimit = splitCashVal > cashPayment;
+                      const isCardOverLimit = splitCardVal > cardPayment;
+                      const isTransferOverLimit = splitTransferVal > transferPayment;
+                      const hasOverLimit = isCashOverLimit || isCardOverLimit || isTransferOverLimit;
+                      
+                      if (isValidSplit && !hasOverLimit) {
+                        const parts = [];
+                        if (splitCashVal > 0) parts.push(`현금 ${splitCashVal.toLocaleString()}원`);
+                        if (splitCardVal > 0) parts.push(`카드 ${splitCardVal.toLocaleString()}원`);
+                        if (splitTransferVal > 0) parts.push(`이체 ${splitTransferVal.toLocaleString()}원`);
+                        
+                        return (
+                          <div className="p-3 bg-green-50 dark:bg-green-950 rounded-md border border-green-200 dark:border-green-800">
+                            <p className="text-sm text-green-700 dark:text-green-300">
+                              {parts.join(', ')}을(를) 환불합니다.
+                              {prepaidRefundIncludeVat && (
+                                <span className="text-xs ml-1">(VAT 10% 포함)</span>
+                              )}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </>
                 );
               })()}
@@ -3932,13 +4080,38 @@ export default function LockerOptionsDialog({
                   let newCashBase = originalCashBase;
                   let newCardBase = originalCardBase;
                   let newTransferBase = originalTransferBase;
+                  let refundMethodName = '';
                   
-                  if (prepaidRefundMethod === 'cash') {
+                  if (prepaidRefundMethod === 'split') {
+                    // 분할 환불 처리
+                    const splitCashVal = parseInt(splitRefundCash) || 0;
+                    const splitCardVal = parseInt(splitRefundCard) || 0;
+                    const splitTransferVal = parseInt(splitRefundTransfer) || 0;
+                    
+                    // VAT 포함 금액에서 기본 금액으로 변환 후 차감
+                    const cashRefundBase = originalCashHadVat ? Math.round(splitCashVal / 1.1) : splitCashVal;
+                    const cardRefundBase = originalCardHadVat ? Math.round(splitCardVal / 1.1) : splitCardVal;
+                    const transferRefundBase = originalTransferHadVat ? Math.round(splitTransferVal / 1.1) : splitTransferVal;
+                    
+                    newCashBase = Math.max(0, originalCashBase - cashRefundBase);
+                    newCardBase = Math.max(0, originalCardBase - cardRefundBase);
+                    newTransferBase = Math.max(0, originalTransferBase - transferRefundBase);
+                    
+                    // 환불 내역 텍스트 생성
+                    const parts = [];
+                    if (splitCashVal > 0) parts.push(`현금 ${splitCashVal.toLocaleString()}원`);
+                    if (splitCardVal > 0) parts.push(`카드 ${splitCardVal.toLocaleString()}원`);
+                    if (splitTransferVal > 0) parts.push(`이체 ${splitTransferVal.toLocaleString()}원`);
+                    refundMethodName = parts.join('+');
+                  } else if (prepaidRefundMethod === 'cash') {
                     newCashBase = Math.max(0, originalCashBase - basePrepaidAmount);
+                    refundMethodName = '현금';
                   } else if (prepaidRefundMethod === 'card') {
                     newCardBase = Math.max(0, originalCardBase - basePrepaidAmount);
+                    refundMethodName = '카드';
                   } else if (prepaidRefundMethod === 'transfer') {
                     newTransferBase = Math.max(0, originalTransferBase - basePrepaidAmount);
+                    refundMethodName = '이체';
                   }
                   
                   // 모든 결제금액 상태 업데이트 (기본 금액으로 설정, VAT는 분리결제창에서 다시 계산됨)
@@ -3947,10 +4120,9 @@ export default function LockerOptionsDialog({
                   setPaymentTransfer(newTransferBase > 0 ? String(newTransferBase) : "0");
                   
                   // 선지급금 취소 메모 추가
-                  const refundMethodName = prepaidRefundMethod === 'cash' ? '현금' : prepaidRefundMethod === 'card' ? '카드' : '이체';
                   const cancelTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                   const vatNote = prepaidRefundIncludeVat ? ', VAT포함' : '';
-                  const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (${refundMethodName} ${refundAmount.toLocaleString()}원 환불${vatNote})`;
+                  const cancelMemoText = `[${cancelTime}] 선지급금 ${basePrepaidAmount.toLocaleString()}원 취소 (${refundMethodName} 환불${vatNote})`;
                   const updatedMemo = customerMemo.trim() 
                     ? `${customerMemo}\n${cancelMemoText}` 
                     : cancelMemoText;
@@ -3969,8 +4141,36 @@ export default function LockerOptionsDialog({
                 setPrepaidRefundMethod(null);
                 setPrepaidRefundIncludeVat(false);
                 setPendingPrepaidCancellation(null);
+                setSplitRefundCash("");
+                setSplitRefundCard("");
+                setSplitRefundTransfer("");
               }}
-              disabled={!prepaidRefundMethod}
+              disabled={(() => {
+                if (!prepaidRefundMethod) return true;
+                if (prepaidRefundMethod === 'split') {
+                  // 분할 환불 시 유효성 검사
+                  const splitCashVal = parseInt(splitRefundCash) || 0;
+                  const splitCardVal = parseInt(splitRefundCard) || 0;
+                  const splitTransferVal = parseInt(splitRefundTransfer) || 0;
+                  const splitTotal = splitCashVal + splitCardVal + splitTransferVal;
+                  const basePrepaidAmount = pendingPrepaidCancellation?.originalAmount || 0;
+                  const currentRefundAmount = prepaidRefundIncludeVat 
+                    ? Math.round(basePrepaidAmount * 1.1) 
+                    : basePrepaidAmount;
+                  
+                  const cashPayment = pendingPrepaidCancellation?.originalPaymentCash || 0;
+                  const cardPayment = pendingPrepaidCancellation?.originalPaymentCard || 0;
+                  const transferPayment = pendingPrepaidCancellation?.originalPaymentTransfer || 0;
+                  
+                  const isValidSplit = splitTotal === currentRefundAmount;
+                  const hasOverLimit = splitCashVal > cashPayment || 
+                                       splitCardVal > cardPayment || 
+                                       splitTransferVal > transferPayment;
+                  
+                  return !isValidSplit || hasOverLimit;
+                }
+                return false;
+              })()}
               className="bg-blue-600 hover:bg-blue-700"
               data-testid="button-prepaid-refund-confirm"
             >
