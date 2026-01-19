@@ -5,12 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Convert amount to Korean notation (e.g., 10000 => "1만", 5000 => "5천")
+// Convert amount to Korean notation (e.g., 10000 => "1만", 5500 => "5천5백")
 function formatKoreanAmount(amount: number): string {
   if (amount === 0) return "";
   
   const man = Math.floor(amount / 10000);
   const cheon = Math.floor((amount % 10000) / 1000);
+  const baek = Math.floor((amount % 1000) / 100);
   
   let result = "";
   if (man > 0) {
@@ -18,6 +19,9 @@ function formatKoreanAmount(amount: number): string {
   }
   if (cheon > 0) {
     result += `${cheon}천`;
+  }
+  if (baek > 0) {
+    result += `${baek}백`;
   }
   
   return result || `${amount}`;
