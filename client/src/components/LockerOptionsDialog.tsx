@@ -1264,14 +1264,13 @@ export default function LockerOptionsDialog({
     if (useSplitPayment) {
       if (hasExistingSplitPayment && paymentModifiedByRefund) {
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
-        // 주의: 기존 결제에는 VAT가 이미 포함되어 있으므로 computedFinalPrice와 직접 비교하면 안됨
-        // 환불 금액은 선지급금 원금만 차감하고, VAT 포함 금액과의 정합성 검증은 생략
-        cashVal = parseInt(paymentCash) || 0;
-        cardVal = parseInt(paymentCard) || 0;
-        transferVal = parseInt(paymentTransfer) || 0;
+        // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
+        let cashBase = parseInt(paymentCash) || 0;
+        let cardBase = parseInt(paymentCard) || 0;
+        let transferBase = parseInt(paymentTransfer) || 0;
         
         // 음수가 되지 않는지만 확인
-        if ((cashVal || 0) < 0 || (cardVal || 0) < 0 || (transferVal || 0) < 0) {
+        if (cashBase < 0 || cardBase < 0 || transferBase < 0) {
           toast({
             title: "결제 금액 오류",
             description: "결제 금액이 0원 미만이 될 수 없습니다.",
@@ -1279,10 +1278,29 @@ export default function LockerOptionsDialog({
           });
           return;
         }
-        // undefined로 변환 (0이면 undefined)
-        cashVal = cashVal > 0 ? cashVal : undefined;
-        cardVal = cardVal > 0 ? cardVal : undefined;
-        transferVal = transferVal > 0 ? transferVal : undefined;
+        
+        // 기본 금액에 VAT 적용하여 저장
+        const settings = localDb.getSettings();
+        
+        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+        if (settings.enableCashReceiptVat && isCashReceipt) {
+          if (cashBase > 0) {
+            cashVal = Math.round(cashBase * 1.1);
+          }
+          if (transferBase > 0) {
+            transferVal = Math.round(transferBase * 1.1);
+          }
+        } else {
+          cashVal = cashBase > 0 ? cashBase : undefined;
+          transferVal = transferBase > 0 ? transferBase : undefined;
+        }
+        
+        // 카드: 카드 부가세 설정이 ON이면 자동 적용
+        if (settings.enableCardVat && cardBase > 0) {
+          cardVal = Math.round(cardBase * 1.1);
+        } else {
+          cardVal = cardBase > 0 ? cardBase : undefined;
+        }
       } else if (hasExistingSplitPayment && !paymentModifiedByRefund) {
         // 기존 분리결제가 있고 환불 수정이 없으면 기존 값 사용
         cashVal = currentPaymentCash;
@@ -1318,14 +1336,13 @@ export default function LockerOptionsDialog({
     } else {
       if (hasExistingSinglePayment && paymentModifiedByRefund) {
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
-        // 주의: 기존 결제에는 VAT가 이미 포함되어 있으므로 computedFinalPrice와 직접 비교하면 안됨
-        // 환불 금액은 선지급금 원금만 차감하고, VAT 포함 금액과의 정합성 검증은 생략
-        cashVal = parseInt(paymentCash) || 0;
-        cardVal = parseInt(paymentCard) || 0;
-        transferVal = parseInt(paymentTransfer) || 0;
+        // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
+        let cashBase = parseInt(paymentCash) || 0;
+        let cardBase = parseInt(paymentCard) || 0;
+        let transferBase = parseInt(paymentTransfer) || 0;
         
         // 음수가 되지 않는지만 확인
-        if ((cashVal || 0) < 0 || (cardVal || 0) < 0 || (transferVal || 0) < 0) {
+        if (cashBase < 0 || cardBase < 0 || transferBase < 0) {
           toast({
             title: "결제 금액 오류",
             description: "결제 금액이 0원 미만이 될 수 없습니다.",
@@ -1333,10 +1350,29 @@ export default function LockerOptionsDialog({
           });
           return;
         }
-        // undefined로 변환 (0이면 undefined)
-        cashVal = cashVal > 0 ? cashVal : undefined;
-        cardVal = cardVal > 0 ? cardVal : undefined;
-        transferVal = transferVal > 0 ? transferVal : undefined;
+        
+        // 기본 금액에 VAT 적용하여 저장
+        const settings = localDb.getSettings();
+        
+        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
+        if (settings.enableCashReceiptVat && isCashReceipt) {
+          if (cashBase > 0) {
+            cashVal = Math.round(cashBase * 1.1);
+          }
+          if (transferBase > 0) {
+            transferVal = Math.round(transferBase * 1.1);
+          }
+        } else {
+          cashVal = cashBase > 0 ? cashBase : undefined;
+          transferVal = transferBase > 0 ? transferBase : undefined;
+        }
+        
+        // 카드: 카드 부가세 설정이 ON이면 자동 적용
+        if (settings.enableCardVat && cardBase > 0) {
+          cardVal = Math.round(cardBase * 1.1);
+        } else {
+          cardVal = cardBase > 0 ? cardBase : undefined;
+        }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund) {
         // 기존 단일결제가 있고 환불 수정이 없으면 기존 값 사용
         cashVal = currentPaymentCash;
