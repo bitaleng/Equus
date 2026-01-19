@@ -6340,14 +6340,28 @@ export function exportDatabase(): {
       }
     });
     
-    // Export localStorage settings (excluding database itself)
+    // Export localStorage settings (excluding database itself and device-specific data)
+    // Include all user settings and preferences that should persist across app updates
     const localStorageKeys = [
+      // 시스템 설정
       'settings',
+      // 보안 설정
       'staff_pattern',
       'staff_password',
+      'security_enabled',
+      'security_pattern',
+      'webauthn_enabled',
+      'webauthn_credential_id',
+      // 금전 관리
       'cash_register',
       'last_settlement_reminder_date',
-      'daily_memo'
+      // 메모
+      'daily_memo',
+      // UI 설정
+      'workspaceFloatingMode',
+      'workspaceFloatingPosition',
+      'workspaceFloatingSize',
+      'uiLayoutMode'
     ];
     
     localStorageKeys.forEach(key => {
@@ -6421,13 +6435,27 @@ export function importDatabase(jsonString: string): {
     });
     
     // Clear localStorage settings (except authenticated and database)
+    // Include all user settings and preferences that should persist across app updates
     const localStorageKeys = [
+      // 시스템 설정
       'settings',
+      // 보안 설정
       'staff_pattern',
       'staff_password',
+      'security_enabled',
+      'security_pattern',
+      'webauthn_enabled',
+      'webauthn_credential_id',
+      // 금전 관리
       'cash_register',
       'last_settlement_reminder_date',
-      'daily_memo'
+      // 메모
+      'daily_memo',
+      // UI 설정
+      'workspaceFloatingMode',
+      'workspaceFloatingPosition',
+      'workspaceFloatingSize',
+      'uiLayoutMode'
     ];
     
     localStorageKeys.forEach(key => {
