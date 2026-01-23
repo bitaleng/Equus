@@ -1,0 +1,150 @@
+이건 삼성 갤럭시탭 + 안드로이드 + 웹뷰/크롬 조합에서 꽤 자주 발생하는 케이스입니다.
+
+아래를 중요도 순서대로 점검하시는 것이 가장 효율적입니다.
+
+1. <input> / <textarea>에 readonly 또는 disabled가 걸려 있는지 확인 (가장 흔함)
+
+키보드가 절대 뜨지 않는 대표 원인입니다.
+
+<input type="text" readonly>
+<input type="text" disabled>
+
+
+JS로 동적으로 붙는 경우도 많습니다:
+
+input.setAttribute("readonly", true);
+
+
+✔ 해결
+
+readonly / disabled 제거
+
+입력 전용 UX를 만들려고 임시로 걸어둔 경우라도, 키보드는 호출되지 않습니다.
+
+2. contenteditable + 포커스 처리 문제 (PWA에서 매우 빈번)
+
+아래 구조를 쓰고 있다면 문제 발생 확률이 높습니다.
+
+<div contenteditable="true"></div>
+
+
+특히 PWA + Android에서는 명시적 focus() 호출이 없으면 키보드가 안 뜹니다.
+
+✔ 반드시 JS에서 사용자 터치 이벤트 안에서 포커스 호출:
+
+element.addEventListener("touchstart", () => {
+  element.focus();
+});
+
+
+⚠️ setTimeout, Promise, async 내부에서 focus() → 키보드 안 뜸
+
+3. CSS로 키보드 호출을 막고 있는 경우 (의외로 많음)
+❌ 이런 CSS가 있으면 문제 발생
+input {
+  pointer-events: none;
+}
+
+body {
+  touch-action: none;
+}
+
+
+또는
+
+* {
+  user-select: none;
+}
+
+
+✔ 해결
+
+입력 필드에는 최소한 아래 보장
+
+input, textarea {
+  pointer-events: auto;
+  user-select: text;
+}
+
+4. position: fixed + viewport 설정 문제 (삼성 태블릿 특화 이슈)
+
+삼성 갤럭시탭은 PWA + fixed 레이아웃에서 키보드 호출을 종종 막습니다.
+
+체크 1: viewport
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
+
+
+❌ 아래 설정은 키보드 오류 유발 가능
+
+maximum-scale=1.0, user-scalable=no
+
+
+✔ 제거 권장
+
+체크 2: 입력창이 fixed 컨테이너 안에 있는지
+.container {
+  position: fixed;
+  height: 100vh;
+}
+
+
+✔ 해결 방법
+
+입력 필드만이라도 position: relative
+
+또는 키보드 호출 시 fixed 해제
+
+5. PWA 특유 문제: display: standalone + input focus 버그
+
+manifest.json 확인:
+
+"display": "standalone"
+
+
+이 설정 자체는 정상이나, 삼성 웹뷰에서는 키보드 버그가 있음.
+
+✔ 임시 해결책 (실무에서 자주 씀)
+
+input.addEventListener("focus", () => {
+  window.scrollTo(0, 0);
+});
+
+
+또는
+
+document.body.style.height = "100%";
+
+6. 삼성 키보드 자체 설정 문제 (의외로 실제 원인인 경우 있음)
+
+갤럭시탭 A9+에서 물리 키보드 오인식되면 터치 키보드가 안 뜹니다.
+
+✔ 태블릿 설정 확인
+설정 → 일반 → 키보드 → 물리 키보드
+→ 연결된 키보드 없음인지 확인
+
+또는
+설정 → 일반 → 삼성 키보드 → 터치 키보드 자동 표시 활성화
+
+7. 지금 올린 아이콘의 정체 (중요)
+
+이미지에 보이는 아이콘은:
+
+🔑 → 비밀번호 / 자동완성 서비스
+
+💳 → 결제·카드 자동완성
+
+📍 → 위치 자동완성
+
+👉 **즉, 입력 필드 자체는 “입력 가능” 상태로 인식되었으나
+“텍스트 키보드를 호출할 조건을 충족하지 못한 상태”**입니다.
+
+이건 하드웨어 고장이 아니라 웹 쪽 문제입니다.
+
+가장 가능성 높은 원인 TOP 3 (경험상)
+
+readonly / disabled가 JS로 동적 적용됨
+
+contenteditable + focus() 누락
+
+PWA + fixed 레이아웃 + viewport 문제

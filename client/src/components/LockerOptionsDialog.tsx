@@ -3477,6 +3477,7 @@ export default function LockerOptionsDialog({
                 <Input
                   id="swap-target"
                   type="number"
+                  inputMode="numeric"
                   min="1"
                   max="200"
                   value={swapTargetLocker}
@@ -3484,6 +3485,10 @@ export default function LockerOptionsDialog({
                   placeholder="락카 번호 입력 (1-200)"
                   data-testid="input-swap-target"
                   autoFocus
+                  onTouchStart={(e) => {
+                    const target = e.currentTarget;
+                    requestAnimationFrame(() => target.focus());
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();

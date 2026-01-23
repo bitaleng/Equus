@@ -245,6 +245,16 @@
  */
 @layer utilities {
 
+  /* Samsung tablet PWA keyboard fix - ensure inputs can receive touch and keyboard events */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    touch-action: manipulation;
+  }
+
   /* Hide ugly search cancel button in Chrome until we can style it properly */
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;
