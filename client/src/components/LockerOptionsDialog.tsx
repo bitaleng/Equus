@@ -1382,7 +1382,13 @@ export default function LockerOptionsDialog({
         }
       }
     } else {
+      console.log('[DEBUG] 단일결제 분기 진입, 조건 확인:', {
+        cond1: hasExistingSinglePayment && paymentModifiedByRefund,
+        cond2: hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod,
+        willUseElse: !(hasExistingSinglePayment && paymentModifiedByRefund) && !(hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod)
+      });
       if (hasExistingSinglePayment && paymentModifiedByRefund) {
+        console.log('[DEBUG] 분기1: 환불로 결제금액 수정된 경우');
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
         // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
         let cashBase = parseInt(paymentCash) || 0;
@@ -1422,11 +1428,13 @@ export default function LockerOptionsDialog({
           cardVal = cardBase > 0 ? cardBase : undefined;
         }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
+        console.log('[DEBUG] 분기2: 결제방식 변경 없음 - 기존 값 유지');
         // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
         cashVal = currentPaymentCash;
         cardVal = currentPaymentCard;
         transferVal = currentPaymentTransfer;
       } else {
+        console.log('[DEBUG] 분기3: 결제방식 변경됨 - 새 값 할당, paymentMethod:', paymentMethod);
         // 신규 단일결제: 금액 할당 및 부가세 적용
         if (paymentMethod === 'cash') {
           cashVal = computedFinalPrice;
