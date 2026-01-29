@@ -1408,8 +1408,8 @@ export default function LockerOptionsDialog({
         } else {
           cardVal = cardBase > 0 ? cardBase : undefined;
         }
-      } else if (hasExistingSinglePayment && !paymentModifiedByRefund) {
-        // 기존 단일결제가 있고 환불 수정이 없으면 기존 값 사용
+      } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
+        // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
         cashVal = currentPaymentCash;
         cardVal = currentPaymentCard;
         transferVal = currentPaymentTransfer;
