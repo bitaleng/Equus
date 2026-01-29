@@ -1382,13 +1382,51 @@ export default function LockerOptionsDialog({
         }
       }
     } else {
+      // 결제방식 변경 여부 확인 (핵심!)
+      const paymentMethodChanged = paymentMethod !== currentPaymentMethod;
+      
       console.log('[DEBUG] 단일결제 분기 진입, 조건 확인:', {
-        cond1: hasExistingSinglePayment && paymentModifiedByRefund,
-        cond2: hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod,
-        willUseElse: !(hasExistingSinglePayment && paymentModifiedByRefund) && !(hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod)
+        cond1: hasExistingSinglePayment && paymentModifiedByRefund && !paymentMethodChanged,
+        cond2: hasExistingSinglePayment && !paymentModifiedByRefund && !paymentMethodChanged,
+        cond3_paymentMethodChanged: paymentMethodChanged,
+        willRecalculate: paymentMethodChanged
       });
-      if (hasExistingSinglePayment && paymentModifiedByRefund) {
-        console.log('[DEBUG] 분기1: 환불로 결제금액 수정된 경우');
+      
+      // 결제방식이 변경된 경우: 새로운 결제방식으로 금액 재할당 (우선순위 최상위)
+      if (paymentMethodChanged) {
+        console.log('[DEBUG] 결제방식 변경됨 - 새 결제방식으로 금액 재할당:', paymentMethod);
+        if (paymentMethod === 'cash') {
+          cashVal = computedFinalPrice;
+          cardVal = undefined;
+          transferVal = undefined;
+        } else if (paymentMethod === 'card') {
+          cashVal = undefined;
+          cardVal = computedFinalPrice;
+          transferVal = undefined;
+        } else if (paymentMethod === 'transfer') {
+          cashVal = undefined;
+          cardVal = undefined;
+          transferVal = computedFinalPrice;
+        }
+        
+        // 단일 결제 시 부가세 적용
+        const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+        if (vatApplied) {
+          const priceWithVat = Math.round(computedFinalPrice * 1.1);
+          if (paymentMethod === 'cash') {
+            cashVal = priceWithVat;
+          } else if (paymentMethod === 'card') {
+            cardVal = priceWithVat;
+          } else if (paymentMethod === 'transfer') {
+            transferVal = priceWithVat;
+          }
+          // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+          if (optionType === 'direct_price') {
+            optionAmount = Math.round(computedFinalPrice * 1.1);
+          }
+        }
+      } else if (hasExistingSinglePayment && paymentModifiedByRefund) {
+        console.log('[DEBUG] 분기1: 환불로 결제금액 수정된 경우 (결제방식 동일)');
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
         // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
         let cashBase = parseInt(paymentCash) || 0;
