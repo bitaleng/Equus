@@ -1296,6 +1296,19 @@ export default function LockerOptionsDialog({
     // 환불 처리 시 모든 결제금액 상태가 설정됨 (빈 문자열이 아님)
     const paymentModifiedByRefund = paymentCash !== "" && paymentCard !== "" && paymentTransfer !== "";
     
+    // DEBUG: 결제방식 변경 디버깅
+    console.log('[DEBUG handleSaveOptions] 결제방식 디버깅:', {
+      paymentMethod,
+      currentPaymentMethod,
+      hasExistingSinglePayment,
+      paymentModifiedByRefund,
+      useSplitPayment,
+      currentPaymentCash,
+      currentPaymentCard,
+      currentPaymentTransfer,
+      paymentMethodChanged: paymentMethod !== currentPaymentMethod
+    });
+    
     if (useSplitPayment) {
       if (hasExistingSplitPayment && paymentModifiedByRefund) {
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
@@ -1453,6 +1466,15 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
+    
+    // DEBUG: 최종 결제값 확인
+    console.log('[DEBUG handleSaveOptions] 최종 결제값:', {
+      finalPaymentMethod,
+      cashVal,
+      cardVal,
+      transferVal,
+      computedFinalPrice
+    });
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
