@@ -1296,18 +1296,6 @@ export default function LockerOptionsDialog({
     // 환불 처리 시 모든 결제금액 상태가 설정됨 (빈 문자열이 아님)
     const paymentModifiedByRefund = paymentCash !== "" && paymentCard !== "" && paymentTransfer !== "";
     
-    // DEBUG: 결제방식 변경 디버깅
-    console.log('[DEBUG handleSaveOptions] 결제방식 디버깅:', {
-      paymentMethod,
-      currentPaymentMethod,
-      hasExistingSinglePayment,
-      paymentModifiedByRefund,
-      useSplitPayment,
-      currentPaymentCash,
-      currentPaymentCard,
-      currentPaymentTransfer,
-      paymentMethodChanged: paymentMethod !== currentPaymentMethod
-    });
     
     if (useSplitPayment) {
       if (hasExistingSplitPayment && paymentModifiedByRefund) {
@@ -1385,16 +1373,8 @@ export default function LockerOptionsDialog({
       // 결제방식 변경 여부 확인 (핵심!)
       const paymentMethodChanged = paymentMethod !== currentPaymentMethod;
       
-      console.log('[DEBUG] 단일결제 분기 진입, 조건 확인:', {
-        cond1: hasExistingSinglePayment && paymentModifiedByRefund && !paymentMethodChanged,
-        cond2: hasExistingSinglePayment && !paymentModifiedByRefund && !paymentMethodChanged,
-        cond3_paymentMethodChanged: paymentMethodChanged,
-        willRecalculate: paymentMethodChanged
-      });
-      
       // 결제방식이 변경된 경우: 새로운 결제방식으로 금액 재할당 (우선순위 최상위)
       if (paymentMethodChanged) {
-        console.log('[DEBUG] 결제방식 변경됨 - 새 결제방식으로 금액 재할당:', paymentMethod);
         if (paymentMethod === 'cash') {
           cashVal = computedFinalPrice;
           cardVal = undefined;
@@ -1426,7 +1406,6 @@ export default function LockerOptionsDialog({
           }
         }
       } else if (hasExistingSinglePayment && paymentModifiedByRefund) {
-        console.log('[DEBUG] 분기1: 환불로 결제금액 수정된 경우 (결제방식 동일)');
         // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
         // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
         let cashBase = parseInt(paymentCash) || 0;
@@ -1466,13 +1445,11 @@ export default function LockerOptionsDialog({
           cardVal = cardBase > 0 ? cardBase : undefined;
         }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
-        console.log('[DEBUG] 분기2: 결제방식 변경 없음 - 기존 값 유지');
         // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
         cashVal = currentPaymentCash;
         cardVal = currentPaymentCard;
         transferVal = currentPaymentTransfer;
       } else {
-        console.log('[DEBUG] 분기3: 결제방식 변경됨 - 새 값 할당, paymentMethod:', paymentMethod);
         // 신규 단일결제: 금액 할당 및 부가세 적용
         if (paymentMethod === 'cash') {
           cashVal = computedFinalPrice;
@@ -1512,15 +1489,6 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
-    
-    // DEBUG: 최종 결제값 확인
-    console.log('[DEBUG handleSaveOptions] 최종 결제값:', {
-      finalPaymentMethod,
-      cashVal,
-      cardVal,
-      transferVal,
-      computedFinalPrice
-    });
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
