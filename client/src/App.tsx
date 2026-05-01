@@ -4,7 +4,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { SidebarProvider, useSidebar } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { PasswordAuth } from "@/components/PasswordAuth";
 import LicenseGate from "@/components/LicenseGate";
@@ -15,17 +15,17 @@ import Settings from "@/pages/Settings";
 import ExpensesPage from "@/pages/ExpensesPage";
 import ClosingPage from "@/pages/ClosingPage";
 import SalesReportPage from "@/pages/SalesReportPage";
+import CashRegisterPage from "@/pages/CashRegisterPage";
 import AdminLicenses from "@/pages/AdminLicenses";
 import NotFound from "@/pages/not-found";
-import { initDatabase, deleteOldData, getSettings } from "@/lib/localDb";
-import { getBusinessDay } from "@shared/businessDay";
-import { Menu } from "lucide-react";
+import { initDatabase, getSettings } from "@/lib/localDb";
+import { Menu, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
+import { isRouteLocked } from "@/lib/menuLock";
 
-// Check if current path is an admin route (no license check needed)
 function isAdminRoute(path: string): boolean {
   return path.startsWith("/admin");
 }
@@ -40,47 +40,65 @@ function Router() {
       <Route path="/expenses" component={ExpensesPage} />
       <Route path="/closing" component={ClosingPage} />
       <Route path="/sales-report" component={SalesReportPage} />
+      <Route path="/cash-register" component={CashRegisterPage} />
       <Route path="/admin/licenses" component={AdminLicenses} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-function MainLayout() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showPatternDialog, setShowPatternDialog] = useState(false);
+function RouteGuard({ children }: { children: React.ReactNode }) {
+  const [location, navigate] = useLocation();
+  const [unlockedRoutes, setUnlockedRoutes] = useState<Set<string>>(new Set());
+  const [showLock, setShowLock] = useState(false);
+  const [blockedRoute, setBlockedRoute] = useState('');
 
-  const handleSidebarOpenChange = (open: boolean) => {
-    console.log('handleSidebarOpenChange called - requested open:', open, 'current isSidebarOpen:', isSidebarOpen);
-    
-    if (open && !isSidebarOpen) {
-      // Check if security is enabled
-      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
-      
-      if (securityEnabled) {
-        // Security enabled - show pattern dialog
-        console.log('Security enabled - showing pattern dialog');
-        setShowPatternDialog(true);
-        // Don't change sidebar state yet, wait for pattern verification
-      } else {
-        // Security disabled - open sidebar directly
-        console.log('Security disabled - opening sidebar directly');
-        setIsSidebarOpen(true);
-      }
-    } else if (!open && isSidebarOpen) {
-      // Closing from open state - allow without pattern
-      console.log('Closing sidebar without pattern');
-      setIsSidebarOpen(false);
+  useEffect(() => {
+    if (isRouteLocked(location) && !unlockedRoutes.has(location)) {
+      setBlockedRoute(location);
+      setShowLock(true);
+    } else {
+      setShowLock(false);
+    }
+  }, [location, unlockedRoutes]);
+
+  const handlePatternCorrect = () => {
+    setUnlockedRoutes(prev => new Set([...prev, blockedRoute]));
+    setShowLock(false);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      setShowLock(false);
+      navigate('/');
     }
   };
 
-  const handlePatternCorrect = () => {
-    console.log('Pattern verified - opening sidebar');
-    setIsSidebarOpen(true);
-  };
+  if (showLock) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <Lock className="h-10 w-10 text-muted-foreground" />
+        <p className="text-muted-foreground text-sm">이 메뉴는 잠금 해제가 필요합니다</p>
+        <PatternLockDialog
+          open={true}
+          onOpenChange={handleDialogClose}
+          onPatternCorrect={handlePatternCorrect}
+          title="메뉴 잠금 해제"
+          description="패턴 또는 비밀번호를 입력하세요."
+          testId="dialog-route-pattern"
+        />
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+function MainLayout() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <SidebarProvider open={isSidebarOpen} onOpenChange={handleSidebarOpenChange}>
+    <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1">
@@ -88,48 +106,34 @@ function MainLayout() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => {
-                console.log('Toggle button clicked - current state:', isSidebarOpen);
-                handleSidebarOpenChange(!isSidebarOpen);
-              }}
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               data-testid="button-sidebar-toggle"
             >
               <Menu className="h-4 w-4" />
             </Button>
           </header>
           <main className="flex-1 overflow-auto">
-            <Router />
+            <RouteGuard>
+              <Router />
+            </RouteGuard>
           </main>
         </div>
       </div>
-
-      <PatternLockDialog
-        open={showPatternDialog}
-        onOpenChange={setShowPatternDialog}
-        onPatternCorrect={handlePatternCorrect}
-        title="메뉴 잠금 해제"
-        description="패턴을 그려서 메뉴에 접근하세요."
-        testId="dialog-menu-pattern"
-      />
     </SidebarProvider>
   );
 }
 
-// Wrapper component that checks route and applies license gate conditionally
 function AppContent() {
   const [location] = useLocation();
-  
-  // Admin routes bypass license check
+
   if (isAdminRoute(location)) {
     return <AdminLicenses />;
   }
-  
-  // Demo mode bypasses license check
+
   if (isDemoMode()) {
     return <MainLayout />;
   }
-  
-  // Regular routes need license verification
+
   return (
     <LicenseGate>
       <MainLayout />
@@ -141,34 +145,28 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [dbReady, setDbReady] = useState(false);
   const [wakeLockEnabled, setWakeLockEnabled] = useState(true);
-  
-  // Screen Wake Lock - prevents screen from turning off while app is running
+
   useWakeLock(wakeLockEnabled && isAuthenticated && dbReady);
 
   useEffect(() => {
-    // Block PWA install in demo mode
     if (isDemoMode()) {
       blockPwaInstall();
     }
-    
+
     const authenticated = localStorage.getItem("authenticated");
     if (authenticated === "true") {
       setIsAuthenticated(true);
     }
 
-    // Initialize database
     initDatabase().then(() => {
-      // Load wake lock setting
       const settings = getSettings();
       setWakeLockEnabled(settings.screenWakeLock !== false);
-      
       setDbReady(true);
     }).catch((error) => {
       console.error('Failed to initialize database:', error);
     });
   }, []);
 
-  // Listen for settings changes (when user toggles wake lock in settings)
   useEffect(() => {
     const handleStorageChange = () => {
       const settings = getSettings();
@@ -176,8 +174,7 @@ function App() {
     };
 
     window.addEventListener('storage', handleStorageChange);
-    
-    // Also check periodically for local changes (same tab)
+
     const interval = setInterval(() => {
       const settings = getSettings();
       setWakeLockEnabled(settings.screenWakeLock !== false);

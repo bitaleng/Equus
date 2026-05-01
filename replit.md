@@ -73,6 +73,15 @@ Key features include:
   - Works independently and simultaneously with USB RFID readers (keyboard/HID mode)
 - Data export functionality to Excel (.xlsx) and PDF.
 - Automated data cleanup for records older than one year and manual data reset options.
+- **Per-menu lock system:** Security changed from sidebar-level lock to per-route lock:
+  - Sidebar always opens freely (no pattern required)
+  - Each menu route can be individually locked/unlocked (`localStorage: locked_menu_routes`)
+  - Default locked routes: `/logs`, `/scan-logs`, `/settings`, `/closing`, `/expenses`, `/sales-report`
+  - `/cash-register` (시재금관리) is a separate page, unlocked by default
+  - Admin configures per-menu locks in Settings → 보안 → 메뉴별 잠금 설정
+  - Session memory: once unlocked, stays accessible until page refresh
+  - Helper: `client/src/lib/menuLock.ts`
+- **시재금관리 독립 페이지:** Extracted from Settings to `/cash-register` (`CashRegisterPage.tsx`) so it can be independently unlocked for temporary staff
 
 ## External Dependencies
 

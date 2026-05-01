@@ -42,6 +42,7 @@ import DeviceManagement from "@/components/DeviceManagement";
 import { unregisterDevice, useLicenseInfo } from "@/components/LicenseGate";
 import { isDemoMode } from "@/lib/demoMode";
 import * as localDb from "@/lib/localDb";
+import { getLockedRoutes, setLockedRoutes, MENU_ITEMS } from "@/lib/menuLock";
 
 interface Settings {
   businessDayStartHour: number;
@@ -193,6 +194,7 @@ export default function Settings() {
   const [securityEnabled, setSecurityEnabled] = useState(() => {
     return localStorage.getItem("security_enabled") !== "false";
   });
+  const [lockedMenuRoutes, setLockedMenuRoutesState] = useState<string[]>(() => getLockedRoutes());
   
   // Screen wake lock states
   const [isScreenSectionOpen, setIsScreenSectionOpen] = useState(false);
@@ -243,14 +245,6 @@ export default function Settings() {
   const rfidFileInputRef = useRef<HTMLInputElement>(null);
   const barcodeFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Cash register (시재금) states
-  const [cashRegister, setCashRegister] = useState({
-    count50000: 0,
-    count10000: 0,
-    count5000: 0,
-    count1000: 0,
-  });
-
   // Load settings and locker groups on mount
   useEffect(() => {
     const settings = localDb.getSettings();
@@ -260,16 +254,6 @@ export default function Settings() {
     loadPricingOptions();
     loadBarcodeMappings();
     loadRfidMappings();
-    
-    // Load cash register from localStorage
-    const savedCashRegister = localStorage.getItem('cash_register');
-    if (savedCashRegister) {
-      try {
-        setCashRegister(JSON.parse(savedCashRegister));
-      } catch (error) {
-        console.error('Failed to load cash register data:', error);
-      }
-    }
     
     // Check NFC support
     if ('NDEFReader' in window) {
@@ -907,6 +891,14 @@ export default function Settings() {
     });
   };
 
+  const handleMenuLockToggle = (url: string, locked: boolean) => {
+    const updated = locked
+      ? [...lockedMenuRoutes, url]
+      : lockedMenuRoutes.filter(r => r !== url);
+    setLockedMenuRoutesState(updated);
+    setLockedRoutes(updated);
+  };
+
   // Pattern change handlers
   const handleStartPatternChange = () => {
     setPatternChangeStep('verify');
@@ -1198,23 +1190,6 @@ export default function Settings() {
         variant: "destructive",
       });
     }
-  };
-
-  const handleSaveCashRegister = () => {
-    localStorage.setItem('cash_register', JSON.stringify(cashRegister));
-    toast({
-      title: "시재금 저장 완료",
-      description: "시재금이 성공적으로 저장되었습니다.",
-    });
-  };
-
-  const calculateCashTotal = () => {
-    return (
-      cashRegister.count50000 * 50000 +
-      cashRegister.count10000 * 10000 +
-      cashRegister.count5000 * 5000 +
-      cashRegister.count1000 * 1000
-    );
   };
 
   const handleAddRevenueItem = () => {
@@ -1715,101 +1690,6 @@ export default function Settings() {
                   예: 24시간 = 입실 시각 기준 24시간마다 추가요금 발생 (기본값: 24시간)
                 </p>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* 시재금 관리 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                시재금 관리
-              </CardTitle>
-              <CardDescription>
-                지폐 단위별 매수를 입력하여 시재금을 관리합니다
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="count50000">5만원권</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="count50000"
-                      type="number"
-                      min="0"
-                      value={cashRegister.count50000}
-                      onChange={(e) => setCashRegister({ ...cashRegister, count50000: parseInt(e.target.value) || 0 })}
-                      placeholder="매수"
-                      data-testid="input-count-50000"
-                    />
-                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
-                      {(cashRegister.count50000 * 50000).toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="count10000">1만원권</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="count10000"
-                      type="number"
-                      min="0"
-                      value={cashRegister.count10000}
-                      onChange={(e) => setCashRegister({ ...cashRegister, count10000: parseInt(e.target.value) || 0 })}
-                      placeholder="매수"
-                      data-testid="input-count-10000"
-                    />
-                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
-                      {(cashRegister.count10000 * 10000).toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="count5000">5천원권</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="count5000"
-                      type="number"
-                      min="0"
-                      value={cashRegister.count5000}
-                      onChange={(e) => setCashRegister({ ...cashRegister, count5000: parseInt(e.target.value) || 0 })}
-                      placeholder="매수"
-                      data-testid="input-count-5000"
-                    />
-                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
-                      {(cashRegister.count5000 * 5000).toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="count1000">1천원권</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="count1000"
-                      type="number"
-                      min="0"
-                      value={cashRegister.count1000}
-                      onChange={(e) => setCashRegister({ ...cashRegister, count1000: parseInt(e.target.value) || 0 })}
-                      placeholder="매수"
-                      data-testid="input-count-1000"
-                    />
-                    <span className="text-sm text-muted-foreground min-w-[100px] text-right">
-                      {(cashRegister.count1000 * 1000).toLocaleString()}원
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="pt-4 border-t">
-                <div className="flex items-center justify-between text-lg font-semibold">
-                  <span>시재금 총합</span>
-                  <span className="text-primary">{calculateCashTotal().toLocaleString()}원</span>
-                </div>
-              </div>
-              <Button onClick={handleSaveCashRegister} className="w-full" data-testid="button-save-cash-register">
-                <Save className="h-4 w-4 mr-2" />
-                시재금 저장
-              </Button>
             </CardContent>
           </Card>
 
@@ -2522,8 +2402,31 @@ export default function Settings() {
 
                   {securityEnabled && (
                     <>
+                      {/* 메뉴별 잠금 설정 */}
+                      <div className="space-y-3 border-t pt-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Lock className="h-4 w-4" />
+                          메뉴별 잠금 설정
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          잠금 해제된 메뉴는 비밀번호 없이 바로 접근할 수 있습니다. 임시직원이 사용할 메뉴의 잠금을 해제하세요.
+                        </p>
+                        <div className="space-y-2">
+                          {MENU_ITEMS.map((item) => (
+                            <div key={item.url} className="flex items-center justify-between p-3 border rounded-lg">
+                              <span className="text-sm font-medium">{item.label}</span>
+                              <Switch
+                                checked={lockedMenuRoutes.includes(item.url)}
+                                onCheckedChange={(checked) => handleMenuLockToggle(item.url, checked)}
+                                data-testid={`switch-lock-${item.url.replace('/', '')}`}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* 패턴 변경 */}
-                      <div className="space-y-3">
+                      <div className="space-y-3 border-t pt-4">
                         <h4 className="font-medium flex items-center gap-2">
                           <Grid3X3 className="h-4 w-4" />
                           패턴 잠금

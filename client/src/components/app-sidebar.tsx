@@ -1,4 +1,4 @@
-import { Home, FileText, Settings, Receipt, Calculator, ScanBarcode, BarChart3 } from "lucide-react";
+import { Home, FileText, Settings, Receipt, Calculator, ScanBarcode, BarChart3, Banknote } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -11,41 +11,14 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  {
-    title: "입실 관리",
-    url: "/",
-    icon: Home,
-  },
-  {
-    title: "상세 기록",
-    url: "/logs",
-    icon: FileText,
-  },
-  {
-    title: "스캔정보",
-    url: "/scan-logs",
-    icon: ScanBarcode,
-  },
-  {
-    title: "시스템 설정",
-    url: "/settings",
-    icon: Settings,
-  },
-  {
-    title: "정산하기",
-    url: "/closing",
-    icon: Calculator,
-  },
-  {
-    title: "지출관리",
-    url: "/expenses",
-    icon: Receipt,
-  },
-  {
-    title: "매출리포트",
-    url: "/sales-report",
-    icon: BarChart3,
-  },
+  { title: "입실 관리",   url: "/",               icon: Home        },
+  { title: "상세 기록",   url: "/logs",            icon: FileText    },
+  { title: "스캔정보",    url: "/scan-logs",        icon: ScanBarcode },
+  { title: "시스템 설정", url: "/settings",         icon: Settings    },
+  { title: "정산하기",    url: "/closing",          icon: Calculator  },
+  { title: "시재금관리",  url: "/cash-register",    icon: Banknote    },
+  { title: "지출관리",    url: "/expenses",         icon: Receipt     },
+  { title: "매출리포트",  url: "/sales-report",     icon: BarChart3   },
 ];
 
 export function AppSidebar() {
