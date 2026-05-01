@@ -65,6 +65,11 @@ Key features include:
 - Accurate revenue reporting for rental items, distinguishing rental fees from deposit handling.
 - Enhanced logging and filtering for historical data, including detailed statistics.
 - Barcode scan logging system for anti-theft monitoring, tracking all barcode scans with processed status and business day tracking.
+- **환불 처리 시스템:** 퇴실 시 또는 소급으로 환불 처리 가능:
+  - DB Schema: `locker_logs` 테이블에 `refund_amount`, `refund_note`, `refund_time` 컬럼 추가 (Migration Step 24)
+  - LockerOptionsDialog: 퇴실 전 "환불 처리" 토글 버튼 표시, 금액/사유 입력 가능
+  - LogsPage: 환불된 기록에 배지 표시, 비고 열에 소급 환불 버튼(RotateCcw 아이콘) 제공
+  - ClosingPage: 총매출에서 환불 차감 라인 표시, 순 매출 계산, 현금 정산에 환불 지출 반영
 - NFC auto-detection toggle mode for RFID locker keys on NFC-capable devices:
   - One-click activation enables continuous tag recognition without repeated button presses
   - Automatically pauses when dialogs open to prevent accidental scans

@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { calculateAdditionalFee, getBusinessDay } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
+import { RotateCcw } from "lucide-react";
 
 interface RentalItemInfo {
   itemId: string;
@@ -85,7 +86,9 @@ interface LockerOptionsDialogProps {
       transfer?: number;
       discount?: number;
     },
-    customerMemo?: string  // 손님 메모
+    customerMemo?: string,
+    refundAmount?: number,
+    refundNote?: string
   ) => void;
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
@@ -166,6 +169,10 @@ export default function LockerOptionsDialog({
   const [additionalFeePartialDiscount, setAdditionalFeePartialDiscount] = useState(false); // 일부 할인
   const [additionalFeeResolved, setAdditionalFeeResolved] = useState(false); // 추가요금 완납 처리
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
+  // 환불 처리 states
+  const [showRefund, setShowRefund] = useState(false);
+  const [refundAmount, setRefundAmount] = useState<string>("");
+  const [refundNote, setRefundNote] = useState<string>("");
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
   
@@ -1687,11 +1694,24 @@ export default function LockerOptionsDialog({
     const finalPaymentMethod = paymentMethod || 'cash';
     
     // Check if there are any rental items
+    const parsedRefundAmountClick = showRefund ? (parseInt(refundAmount) || 0) : 0;
+    const finalRefundNoteClick = showRefund && parsedRefundAmountClick > 0 ? refundNote : undefined;
+
     if (selectedRentalItems.size > 0) {
       setShowCheckoutConfirm(true);
     } else {
       const rentalItemInfo = generateRentalItemInfo();
-      onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment, customerMemo);
+      onCheckout(
+        finalPaymentMethod,
+        rentalItemInfo,
+        cashVal,
+        cardVal,
+        transferVal,
+        additionalFeePayment,
+        customerMemo,
+        parsedRefundAmountClick > 0 ? parsedRefundAmountClick : undefined,
+        finalRefundNoteClick
+      );
     }
   };
 
@@ -1818,7 +1838,19 @@ export default function LockerOptionsDialog({
     
     // paymentMethod should be set for existing entries (isInUse)
     const finalPaymentMethod = paymentMethod || 'cash';
-    onCheckout(finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, additionalFeePayment, customerMemo);
+    const parsedRefundAmount = showRefund ? (parseInt(refundAmount) || 0) : 0;
+    const finalRefundNote = showRefund && parsedRefundAmount > 0 ? refundNote : undefined;
+    onCheckout(
+      finalPaymentMethod,
+      rentalItemInfo,
+      cashVal,
+      cardVal,
+      transferVal,
+      additionalFeePayment,
+      customerMemo,
+      parsedRefundAmount > 0 ? parsedRefundAmount : undefined,
+      finalRefundNote
+    );
   };
 
   const handleWarningResolved = () => {
@@ -3345,6 +3377,60 @@ export default function LockerOptionsDialog({
               />
             </div>
           </div>
+
+          {/* 환불 처리 섹션 (퇴실 시에만 표시) */}
+          {isInUse && (
+            <div className="mx-6 mb-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowRefund(v => !v); if (showRefund) { setRefundAmount(""); setRefundNote(""); } }}
+                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${showRefund ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400' : 'border-border text-muted-foreground hover-elevate'}`}
+                  data-testid="button-toggle-refund"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  환불 처리
+                  {showRefund && <span className="text-xs">(ON)</span>}
+                </button>
+              </div>
+              {showRefund && (
+                <div className="mt-2 p-3 rounded-md border border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-900/20 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium text-red-700 dark:text-red-400 w-20 shrink-0">환불 금액</Label>
+                    <div className="relative flex-1">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="0"
+                        value={refundAmount}
+                        onChange={(e) => setRefundAmount(e.target.value)}
+                        className="pr-7 text-right"
+                        data-testid="input-refund-amount"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">원</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium text-red-700 dark:text-red-400 w-20 shrink-0">환불 사유</Label>
+                    <Input
+                      type="text"
+                      placeholder="환불 사유 (선택)"
+                      value={refundNote}
+                      onChange={(e) => setRefundNote(e.target.value)}
+                      className="flex-1"
+                      data-testid="input-refund-note"
+                    />
+                  </div>
+                  {refundAmount && parseInt(refundAmount) > 0 && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      퇴실 시 {parseInt(refundAmount).toLocaleString()}원이 환불 처리되어 당일 매출에서 차감됩니다.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/10">

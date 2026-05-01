@@ -111,6 +111,9 @@ export default function ClosingPage() {
     totalSales: 0,
   });
 
+  // Refund summary
+  const [refundSummary, setRefundSummary] = useState({ total: 0, count: 0 });
+
   // Expense summary
   const [expenseSummary, setExpenseSummary] = useState({
     cashExpenses: 0,
@@ -348,11 +351,22 @@ export default function ClosingPage() {
     const totalCard = Math.round(entryCard + additionalCard + rentalCard);
     const totalTransfer = Math.round(entryTransfer + additionalTransfer + rentalTransfer);
     
+    // 6) 환불 합계 (매출 차감)
+    const refund = localDb.getRefundSummaryByBusinessDay(businessDay, bdStartHour);
+    setRefundSummary(refund);
+    
+    // 환불 차감된 실제 총 매출
+    const netTotalCash = totalCash;
+    const netTotalCard = totalCard;
+    const netTotalTransfer = totalTransfer;
+    const grossTotal = netTotalCash + netTotalCard + netTotalTransfer;
+    const netTotal = Math.max(0, grossTotal - refund.total);
+    
     setTotalEntrySales({
-      cash: totalCash,
-      card: totalCard,
-      transfer: totalTransfer,
-      total: totalCash + totalCard + totalTransfer
+      cash: netTotalCash,
+      card: netTotalCard,
+      transfer: netTotalTransfer,
+      total: grossTotal  // gross before refund; refund shown separately below
     });
     
     // 렌탈 상세 분석 (기존 데이터와 호환)
@@ -367,7 +381,7 @@ export default function ClosingPage() {
       }
     });
     
-    // 총 매출 요약
+    // 총 매출 요약 (환불 차감 전 원래 매출로 salesSummary 설정 - 하단 UI에서 별도로 환불 표시)
     setSalesSummary({
       cashSales: totalCash,
       cardSales: totalCard,
@@ -384,18 +398,18 @@ export default function ClosingPage() {
       totalExpenses: Number(expenses.total),
     });
 
-    // Calculate expected cash
+    // Calculate expected cash (환불은 현금 지출로 간주)
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + totalCash - Number(expenses.cashTotal);
+    const expected = openingFloatNum + totalCash - Number(expenses.cashTotal) - refund.total;
     setExpectedCash(expected);
   };
 
   useEffect(() => {
-    // Recalculate expected cash when sales/expenses/opening float change
+    // Recalculate expected cash when sales/expenses/opening float change (환불 차감)
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + salesSummary.cashSales - expenseSummary.cashExpenses;
+    const expected = openingFloatNum + salesSummary.cashSales - expenseSummary.cashExpenses - refundSummary.total;
     setExpectedCash(expected);
-  }, [openingFloat, salesSummary, expenseSummary]);
+  }, [openingFloat, salesSummary, expenseSummary, refundSummary]);
 
   const handleSave = () => {
     const openingFloatNum = parseInt(openingFloat);
@@ -1249,6 +1263,31 @@ export default function ClosingPage() {
                   </div>
                 </div>
               </div>
+              {refundSummary.total > 0 && (
+                <div className="pl-4 space-y-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded">
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-400">환불 차감 ({refundSummary.count}건)</p>
+                  <div className="grid grid-cols-4 gap-2 text-sm pl-2">
+                    <div className="col-span-3">
+                      <span className="text-muted-foreground">환불 합계:</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-red-600 dark:text-red-400" data-testid="text-refund-total">
+                        -{formatKoreanCurrency(refundSummary.total)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 text-sm pl-2 border-t border-red-200 dark:border-red-700 pt-1 mt-1">
+                    <div className="col-span-3">
+                      <span className="font-semibold">순 매출:</span>
+                    </div>
+                    <div>
+                      <span className="font-bold text-lg text-primary" data-testid="text-net-sales">
+                        {formatKoreanCurrency(Math.max(0, salesSummary.totalSales - refundSummary.total))}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1316,6 +1355,15 @@ export default function ClosingPage() {
                     - {formatKoreanCurrency(expenseSummary.cashExpenses)}
                   </p>
                 </div>
+
+                {refundSummary.total > 0 && (
+                  <div>
+                    <Label>환불 지출</Label>
+                    <p className="text-2xl font-semibold text-red-600">
+                      - {formatKoreanCurrency(refundSummary.total)}
+                    </p>
+                  </div>
+                )}
 
                 <div className="border-t pt-4">
                   <Label>예상 현금</Label>

@@ -844,7 +844,27 @@ function migrateDatabase() {
     } catch (e) {
       // Column already exists, ignore
     }
-    
+
+    // Step 24: Add refund columns to locker_logs (환불 처리)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN refund_amount INTEGER DEFAULT 0`);
+      console.log('Added refund_amount column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN refund_note TEXT`);
+      console.log('Added refund_note column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN refund_time TEXT`);
+      console.log('Added refund_time column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -885,7 +905,10 @@ function createTables() {
       no_additional_fee INTEGER DEFAULT 0,
       prepaid_additional_fee INTEGER DEFAULT 0,
       is_cash_receipt INTEGER DEFAULT 0,
-      additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer'))
+      additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer')),
+      refund_amount INTEGER DEFAULT 0,
+      refund_note TEXT,
+      refund_time TEXT
     )
   `);
 
@@ -1275,6 +1298,18 @@ export function updateEntry(id: string, updates: any) {
   if (updates.additionalFeePaymentMethod !== undefined) {
     sets.push('additional_fee_payment_method = ?');
     values.push(updates.additionalFeePaymentMethod || null);
+  }
+  if (updates.refundAmount !== undefined) {
+    sets.push('refund_amount = ?');
+    values.push(updates.refundAmount || 0);
+  }
+  if (updates.refundNote !== undefined) {
+    sets.push('refund_note = ?');
+    values.push(updates.refundNote || null);
+  }
+  if (updates.refundTime !== undefined) {
+    sets.push('refund_time = ?');
+    values.push(updates.refundTime || null);
   }
 
   if (sets.length > 0) {
@@ -2371,6 +2406,27 @@ export function getEntriesByEntryTime(businessDay: string, businessDayStartHour:
 }
 
 /**
+ * 영업일 기준 환불 합계 조회 (entry_time 기준, 취소 제외)
+ */
+export function getRefundSummaryByBusinessDay(businessDay: string, businessDayStartHour: number): { total: number; count: number } {
+  if (!db) throw new Error('Database not initialized');
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  const startUnix = Math.floor(start.getTime() / 1000);
+  const endUnix = Math.floor(end.getTime() / 1000);
+  const result = db.exec(
+    `SELECT COALESCE(SUM(refund_amount), 0) as total, COUNT(*) as count
+     FROM locker_logs
+     WHERE cancelled = 0
+       AND refund_amount > 0
+       AND strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?`,
+    [startUnix.toString(), endUnix.toString()]
+  );
+  if (result.length === 0 || result[0].values.length === 0) return { total: 0, count: 0 };
+  const row = result[0].values[0];
+  return { total: (row[0] as number) || 0, count: (row[1] as number) || 0 };
+}
+
+/**
  * 모든 입실 기록 조회 (전체)
  */
 export function getAllEntries() {
@@ -2773,7 +2829,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       }
       
       // Convert boolean fields
-      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee') {
+      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee' || col === 'is_cash_receipt') {
         value = value === 1;
       }
       

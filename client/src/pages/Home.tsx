@@ -1476,7 +1476,9 @@ export default function Home() {
       transfer?: number;
       discount?: number;
     },
-    customerMemo?: string  // 손님 메모
+    customerMemo?: string,
+    refundAmount?: number,
+    refundNote?: string
   ) => {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
@@ -1510,7 +1512,12 @@ export default function Home() {
       localDb.updateEntry(selectedEntry.id, { 
         status: 'checked_out',
         exitTime: now,
-        customerMemo: customerMemo,  // 손님 메모 저장
+        customerMemo: customerMemo,
+        ...(refundAmount && refundAmount > 0 ? {
+          refundAmount,
+          refundNote,
+          refundTime: now.toISOString(),
+        } : {}),
       });
     } else {
       // Same business day checkout
@@ -1533,8 +1540,13 @@ export default function Home() {
         paymentCard: paymentCard,
         paymentTransfer: paymentTransfer,
         finalPrice: updatedFinalPrice,
-        customerMemo: customerMemo,  // 손님 메모 저장
+        customerMemo: customerMemo,
         // additionalFees: removed to prevent duplication with additional_fee_events
+        ...(refundAmount && refundAmount > 0 ? {
+          refundAmount,
+          refundNote,
+          refundTime: now.toISOString(),
+        } : {}),
       });
     }
     
@@ -2351,8 +2363,8 @@ export default function Home() {
                           onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod) => 
                             handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod)
                           }
-                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo) => 
-                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo)
+                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote) => 
+                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote)
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}

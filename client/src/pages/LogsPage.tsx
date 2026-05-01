@@ -20,7 +20,9 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap, MessageSquare } from "lucide-react";
+import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap, MessageSquare, RotateCcw } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -147,6 +149,7 @@ interface RentalTransaction {
 }
 
 export default function LogsPage() {
+  const { toast } = useToast();
   // Get settings for business day calculation
   const settings = localDb.getSettings();
   const businessDayStartHour = settings.businessDayStartHour;
@@ -195,6 +198,11 @@ export default function LogsPage() {
   });
   const [rentalBusinessDayInput, setRentalBusinessDayInput] = useState<string>("");
   const [activeRentalBusinessDays, setActiveRentalBusinessDays] = useState<string[]>([]);
+  // 소급 환불 다이얼로그 state
+  const [retroRefundDialogOpen, setRetroRefundDialogOpen] = useState(false);
+  const [retroRefundLogId, setRetroRefundLogId] = useState<string | null>(null);
+  const [retroRefundAmount, setRetroRefundAmount] = useState<string>("");
+  const [retroRefundNote, setRetroRefundNote] = useState<string>("");
 
   // Load data on mount and when filters change
   useEffect(() => {
@@ -218,6 +226,26 @@ export default function LogsPage() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
+
+  const handleRetroRefund = () => {
+    if (!retroRefundLogId) return;
+    const amount = parseInt(retroRefundAmount) || 0;
+    if (amount <= 0) {
+      toast({ title: "오류", description: "환불 금액을 입력해주세요.", variant: "destructive" });
+      return;
+    }
+    localDb.updateEntry(retroRefundLogId, {
+      refundAmount: amount,
+      refundNote: retroRefundNote || undefined,
+      refundTime: new Date().toISOString(),
+    });
+    setRetroRefundDialogOpen(false);
+    setRetroRefundLogId(null);
+    setRetroRefundAmount("");
+    setRetroRefundNote("");
+    loadLogs();
+    toast({ title: "환불 처리 완료", description: `${amount.toLocaleString()}원이 환불 처리되었습니다.` });
+  };
 
   const loadLogs = () => {
     setIsLoading(true);
@@ -1061,11 +1089,18 @@ export default function LogsPage() {
                       )}
                     </TableCell>
                     <TableCell className={`font-semibold text-base text-right ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}>
-                      <div className="flex items-center justify-end gap-1.5">
-                        <span>{getDisplayPrice(log).toLocaleString()}</span>
-                        {log.deferredPayment && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
-                            후불
+                      <div className="flex flex-col items-end gap-0.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>{getDisplayPrice(log).toLocaleString()}</span>
+                          {log.deferredPayment && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
+                              후불
+                            </span>
+                          )}
+                        </div>
+                        {(log as any).refundAmount > 0 && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 whitespace-nowrap" data-testid={`badge-refund-${log.id}`}>
+                            환불 -{((log as any).refundAmount as number).toLocaleString()}
                           </span>
                         )}
                       </div>
@@ -1081,32 +1116,63 @@ export default function LogsPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {log.customerMemo && log.customerMemo.trim() ? (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button 
-                              className="p-1 rounded hover:bg-yellow-100 dark:hover:bg-yellow-200 transition-colors"
-                              data-testid={`memo-icon-${log.id}`}
+                      <div className="flex items-center gap-1">
+                        {log.customerMemo && log.customerMemo.trim() ? (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button 
+                                className="p-1 rounded hover:bg-yellow-100 dark:hover:bg-yellow-200 transition-colors"
+                                data-testid={`memo-icon-${log.id}`}
+                              >
+                                <MessageSquare className="w-4 h-4 text-yellow-600" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent 
+                              side="left" 
+                              align="center"
+                              sideOffset={8}
+                              className="w-max max-w-[80vw] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
+                              data-testid={`popover-memo-log-${log.id}`}
                             >
-                              <MessageSquare className="w-4 h-4 text-yellow-600" />
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent 
-                            side="left" 
-                            align="center"
-                            sideOffset={8}
-                            className="w-max max-w-[80vw] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
-                            data-testid={`popover-memo-log-${log.id}`}
+                              <div className="flex items-start gap-2">
+                                <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
+                                <p className="whitespace-pre-wrap text-gray-900">{log.customerMemo}</p>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ) : (
+                          !log.cancelled && log.exitTime && !((log as any).refundAmount > 0) ? null : <span>-</span>
+                        )}
+                        {/* 소급 환불 버튼 (퇴실 완료, 취소 아님, 환불 없음) */}
+                        {!log.cancelled && log.exitTime && !((log as any).refundAmount > 0) && (
+                          <button
+                            className="p-1 rounded hover-elevate text-muted-foreground"
+                            title="환불 처리"
+                            data-testid={`button-retro-refund-${log.id}`}
+                            onClick={() => {
+                              setRetroRefundLogId(log.id);
+                              setRetroRefundAmount("");
+                              setRetroRefundNote("");
+                              setRetroRefundDialogOpen(true);
+                            }}
                           >
-                            <div className="flex items-start gap-2">
-                              <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
-                              <p className="whitespace-pre-wrap text-gray-900">{log.customerMemo}</p>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      ) : (
-                        <span>-</span>
-                      )}
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(log as any).refundAmount > 0 && (log as any).refundNote && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button className="p-1 rounded hover-elevate text-red-500" title="환불 사유" data-testid={`button-refund-note-${log.id}`}>
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent side="left" align="center" sideOffset={8} className="w-max max-w-[60vw] p-3 text-sm z-[100]">
+                              <p className="font-semibold text-red-600 mb-1">환불 사유</p>
+                              <p className="whitespace-pre-wrap">{(log as any).refundNote}</p>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                   );
@@ -1540,6 +1606,55 @@ export default function LogsPage() {
           </Collapsible>
         );
       })()}
+
+      {/* 소급 환불 다이얼로그 */}
+      <AlertDialog open={retroRefundDialogOpen} onOpenChange={setRetroRefundDialogOpen}>
+        <AlertDialogContent data-testid="dialog-retro-refund">
+          <AlertDialogHeader>
+            <AlertDialogTitle>환불 처리</AlertDialogTitle>
+            <AlertDialogDescription>
+              이미 퇴실한 기록에 환불을 소급 처리합니다. 처리 후 마감 페이지에서 매출 차감이 반영됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="flex items-center gap-2">
+              <Label className="w-20 shrink-0 text-sm">환불 금액</Label>
+              <div className="relative flex-1">
+                <Input
+                  type="number"
+                  min="0"
+                  step="100"
+                  placeholder="0"
+                  value={retroRefundAmount}
+                  onChange={(e) => setRetroRefundAmount(e.target.value)}
+                  className="pr-7 text-right"
+                  data-testid="input-retro-refund-amount"
+                />
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">원</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="w-20 shrink-0 text-sm">환불 사유</Label>
+              <Input
+                type="text"
+                placeholder="환불 사유 (선택)"
+                value={retroRefundNote}
+                onChange={(e) => setRetroRefundNote(e.target.value)}
+                className="flex-1"
+                data-testid="input-retro-refund-note"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => { setRetroRefundLogId(null); setRetroRefundAmount(""); setRetroRefundNote(""); }}>
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRetroRefund} data-testid="button-confirm-retro-refund">
+              환불 처리
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
