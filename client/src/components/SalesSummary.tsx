@@ -22,6 +22,7 @@ interface SalesSummaryProps {
   date: string;
   totalVisitors: number;
   totalSales: number;
+  totalRefunds?: number;
   cancellations: number;
   foreignerCount: number;
   dayVisitors: number;
@@ -38,6 +39,7 @@ export default function SalesSummary({
   date,
   totalVisitors,
   totalSales,
+  totalRefunds = 0,
   cancellations,
   foreignerCount,
   dayVisitors,
@@ -170,6 +172,11 @@ export default function SalesSummary({
               <p className="text-lg font-medium" data-testid="text-entry-sales">
                 {entrySales.toLocaleString()}원
               </p>
+              {totalRefunds > 0 && (
+                <span className="inline-block text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 whitespace-nowrap" data-testid="badge-today-refunds">
+                  환불 -{totalRefunds.toLocaleString()}원 차감 포함
+                </span>
+              )}
             </div>
             <div className="space-y-1">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 매출</p>

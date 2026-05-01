@@ -112,6 +112,9 @@ interface LogEntry {
   deferredPayment?: boolean; // 후불결제 여부
   customerMemo?: string; // 손님 메모
   businessDay?: string; // 영업일 (YYYY-MM-DD format)
+  refundAmount?: number; // 환불 금액
+  refundNote?: string; // 환불 사유
+  refundTime?: string; // 환불 처리 시각
 }
 
 interface AdditionalFeeEvent {
@@ -502,20 +505,21 @@ export default function LogsPage() {
     }
     
     const isAdditionalFeeOnly = (log as any).additionalFeeOnly === true;
+    const refund = log.refundAmount || 0;
     
     // 추가요금 전용 행: finalPrice 그대로 (이미 추가요금만)
     if (isAdditionalFeeOnly) {
       return log.finalPrice;
     }
     
-    // 퇴실하지 않았으면 finalPrice 그대로
+    // 퇴실하지 않았으면 finalPrice 그대로 (환불 미반영 — 아직 퇴실 전)
     if (!log.exitTime) {
       return log.finalPrice;
     }
     
-    // 추가요금 기록이 없으면 finalPrice 그대로
+    // 추가요금 기록이 없으면 finalPrice - 환불금액
     if (!(log as any).hasAdditionalFeeRecord) {
-      return log.finalPrice;
+      return log.finalPrice - refund;
     }
     
     // 퇴실 시 영업일 계산
@@ -525,13 +529,13 @@ export default function LogsPage() {
     const entryBusinessDay = log.businessDay 
       || getBusinessDay(new Date(log.entryTime), businessDayStartHour);
     
-    // 다른 영업일 퇴실: 추가요금만 표시 (할인으로 0원일 수도 있음)
+    // 다른 영업일 퇴실: 추가요금만 표시 - 환불금액
     if (exitBusinessDay !== entryBusinessDay) {
-      return log.additionalFees || 0;
+      return (log.additionalFees || 0) - refund;
     }
     
-    // 같은 영업일 퇴실: finalPrice 그대로 (base + additional)
-    return log.finalPrice;
+    // 같은 영업일 퇴실: finalPrice - 환불금액
+    return log.finalPrice - refund;
   };
 
   // Calculate total amount for filtered results using display price
@@ -1098,9 +1102,9 @@ export default function LogsPage() {
                             </span>
                           )}
                         </div>
-                        {(log as any).refundAmount > 0 && (
+                        {(log.refundAmount || 0) > 0 && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 whitespace-nowrap" data-testid={`badge-refund-${log.id}`}>
-                            환불 -{((log as any).refundAmount as number).toLocaleString()}
+                            환불 -{(log.refundAmount as number).toLocaleString()}
                           </span>
                         )}
                       </div>
@@ -1141,10 +1145,10 @@ export default function LogsPage() {
                             </PopoverContent>
                           </Popover>
                         ) : (
-                          !log.cancelled && log.exitTime && !((log as any).refundAmount > 0) ? null : <span>-</span>
+                          !log.cancelled && log.exitTime && !((log.refundAmount || 0) > 0) ? null : <span>-</span>
                         )}
                         {/* 소급 환불 버튼 (퇴실 완료, 취소 아님, 환불 없음) */}
-                        {!log.cancelled && log.exitTime && !((log as any).refundAmount > 0) && (
+                        {!log.cancelled && log.exitTime && !((log.refundAmount || 0) > 0) && (
                           <button
                             className="p-1 rounded hover-elevate text-muted-foreground"
                             title="환불 처리"
@@ -1159,7 +1163,7 @@ export default function LogsPage() {
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {(log as any).refundAmount > 0 && (log as any).refundNote && (
+                        {(log.refundAmount || 0) > 0 && log.refundNote && (
                           <Popover>
                             <PopoverTrigger asChild>
                               <button className="p-1 rounded hover-elevate text-red-500" title="환불 사유" data-testid={`button-refund-note-${log.id}`}>
@@ -1168,7 +1172,7 @@ export default function LogsPage() {
                             </PopoverTrigger>
                             <PopoverContent side="left" align="center" sideOffset={8} className="w-max max-w-[60vw] p-3 text-sm z-[100]">
                               <p className="font-semibold text-red-600 mb-1">환불 사유</p>
-                              <p className="whitespace-pre-wrap">{(log as any).refundNote}</p>
+                              <p className="whitespace-pre-wrap">{log.refundNote}</p>
                             </PopoverContent>
                           </Popover>
                         )}

@@ -59,6 +59,7 @@ interface DailySummary {
   foreignerSales: number;
   dayVisitors: number;
   nightVisitors: number;
+  totalRefunds: number;
 }
 
 interface LockerGroup {
@@ -938,12 +939,14 @@ export default function Home() {
       // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
       // 자식 락카(parentLocker가 있는 락카)도 방문인원에서 제외 (한 손님이 여러 락카 사용)
       // 후불결제(deferredPayment = true)는 매출에서 제외 - 결제완료 시점에만 반영
-      const activeSales = entries.filter(e => !e.cancelled && !e.deferredPayment).reduce((sum, e) => sum + (e.finalPrice || 0), 0);
-      const totalVisitors = entries.filter(e => !e.cancelled && !e.parentLocker).length;
+      const activeEntries = entries.filter(e => !e.cancelled && !e.deferredPayment);
+      const totalRefundsToday = activeEntries.reduce((sum, e) => sum + ((e as any).refundAmount || 0), 0);
+      const activeSales = activeEntries.reduce((sum, e) => sum + (e.finalPrice || 0), 0) - totalRefundsToday;
+      const totalVisitors = entries.filter(e => !e.cancelled && !(e as any).parentLocker).length;
       const cancellations = entries.filter(e => e.cancelled).length;
-      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !e.parentLocker).length;
-      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled && !e.parentLocker).length;
-      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled && !e.parentLocker).length;
+      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !(e as any).parentLocker).length;
+      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled && !(e as any).parentLocker).length;
+      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled && !(e as any).parentLocker).length;
       
       // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
       // CRITICAL FIX: 다른 영업일 추가요금만 합산 (같은 영업일은 finalPrice에 포함됨)
@@ -958,13 +961,14 @@ export default function Home() {
       setSummary({
         businessDay,
         totalVisitors,
-        totalSales: activeSales, // 오늘 입실 요금만 (추가요금은 additionalFeeSales로 별도 전달)
+        totalSales: activeSales, // 오늘 입실 요금만 (추가요금은 additionalFeeSales로 별도 전달, 환불 차감 포함)
         cancellations,
         totalDiscount: 0,
         foreignerCount,
         foreignerSales: 0,
         dayVisitors,
-        nightVisitors
+        nightVisitors,
+        totalRefunds: totalRefundsToday,
       });
       setLockerGroups(localDb.getLockerGroups());
       
@@ -1858,6 +1862,7 @@ export default function Home() {
             date={getBusinessDay(currentTime, businessDayStartHour)}
             totalVisitors={summary?.totalVisitors || 0}
             totalSales={summary?.totalSales || 0}
+            totalRefunds={summary?.totalRefunds || 0}
             cancellations={summary?.cancellations || 0}
             foreignerCount={summary?.foreignerCount || 0}
             dayVisitors={summary?.dayVisitors || 0}
@@ -2014,18 +2019,19 @@ export default function Home() {
                       <SalesSummary
                         date={getBusinessDay(currentTime, businessDayStartHour)}
                         totalVisitors={summary?.totalVisitors || 0}
-                      totalSales={summary?.totalSales || 0}
-                      cancellations={summary?.cancellations || 0}
-                      foreignerCount={summary?.foreignerCount || 0}
-                      dayVisitors={summary?.dayVisitors || 0}
-                      nightVisitors={summary?.nightVisitors || 0}
-                      additionalFeeSales={additionalFeeSales}
-                      rentalRevenue={rentalRevenue}
-                      totalExpenses={totalExpenses}
-                      onExpenseAdded={loadData}
-                      isCollapsed={isSalesSummaryCollapsed}
-                      onToggleCollapse={() => setIsSalesSummaryCollapsed(!isSalesSummaryCollapsed)}
-                    />
+                        totalSales={summary?.totalSales || 0}
+                        totalRefunds={summary?.totalRefunds || 0}
+                        cancellations={summary?.cancellations || 0}
+                        foreignerCount={summary?.foreignerCount || 0}
+                        dayVisitors={summary?.dayVisitors || 0}
+                        nightVisitors={summary?.nightVisitors || 0}
+                        additionalFeeSales={additionalFeeSales}
+                        rentalRevenue={rentalRevenue}
+                        totalExpenses={totalExpenses}
+                        onExpenseAdded={loadData}
+                        isCollapsed={isSalesSummaryCollapsed}
+                        onToggleCollapse={() => setIsSalesSummaryCollapsed(!isSalesSummaryCollapsed)}
+                      />
                   </div>
                 )}
 
