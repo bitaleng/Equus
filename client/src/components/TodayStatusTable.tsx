@@ -60,6 +60,7 @@ interface LockerEntry {
   parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우, 방문자 수에서 제외)
   deferredPayment?: boolean; // 후불결제 여부
   id?: string; // 퇴실 취소용 로그 ID
+  refundAmount?: number; // 환불 금액
 }
 
 interface TodayStatusTableProps {
@@ -506,7 +507,16 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                       } : undefined}
                     >
                       {/* 후불결제인 경우 0으로 표시, 결제완료 후 실제 금액 표시 */}
-                      {entry.deferredPayment ? '0' : entry.finalPrice.toLocaleString()}
+                      {entry.deferredPayment ? '0' : (
+                        <span className="inline-flex items-center gap-1">
+                          <span>{(entry.finalPrice - (entry.refundAmount || 0)).toLocaleString()}</span>
+                          {(entry.refundAmount || 0) > 0 && (
+                            <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 px-1 py-0.5 rounded font-medium leading-none">
+                              환불
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell 
                       style={isExpanded ? { 

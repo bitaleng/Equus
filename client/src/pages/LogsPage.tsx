@@ -206,6 +206,7 @@ export default function LogsPage() {
   const [retroRefundLogId, setRetroRefundLogId] = useState<string | null>(null);
   const [retroRefundAmount, setRetroRefundAmount] = useState<string>("");
   const [retroRefundNote, setRetroRefundNote] = useState<string>("");
+  const [retroRefundMethod, setRetroRefundMethod] = useState<'cash' | 'card' | 'transfer'>('cash');
 
   // Load data on mount and when filters change
   useEffect(() => {
@@ -241,11 +242,13 @@ export default function LogsPage() {
       refundAmount: amount,
       refundNote: retroRefundNote || undefined,
       refundTime: new Date().toISOString(),
+      refundMethod: retroRefundMethod,
     });
     setRetroRefundDialogOpen(false);
     setRetroRefundLogId(null);
     setRetroRefundAmount("");
     setRetroRefundNote("");
+    setRetroRefundMethod('cash');
     loadLogs();
     toast({ title: "환불 처리 완료", description: `${amount.toLocaleString()}원이 환불 처리되었습니다.` });
   };
@@ -1157,6 +1160,7 @@ export default function LogsPage() {
                               setRetroRefundLogId(log.id);
                               setRetroRefundAmount("");
                               setRetroRefundNote("");
+                              setRetroRefundMethod((log.paymentMethod as 'cash' | 'card' | 'transfer') || 'cash');
                               setRetroRefundDialogOpen(true);
                             }}
                           >
@@ -1638,6 +1642,22 @@ export default function LogsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Label className="w-20 shrink-0 text-sm">환불 수단</Label>
+              <div className="flex gap-1.5">
+                {(['cash', 'card', 'transfer'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setRetroRefundMethod(m)}
+                    className={`px-2.5 py-1 text-xs rounded-md border font-medium transition-colors ${retroRefundMethod === m ? 'bg-red-600 border-red-600 text-white' : 'border-border text-muted-foreground hover-elevate'}`}
+                    data-testid={`button-retro-refund-method-${m}`}
+                  >
+                    {m === 'cash' ? '현금' : m === 'card' ? '카드' : '이체'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
               <Label className="w-20 shrink-0 text-sm">환불 사유</Label>
               <Input
                 type="text"
@@ -1650,7 +1670,7 @@ export default function LogsPage() {
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setRetroRefundLogId(null); setRetroRefundAmount(""); setRetroRefundNote(""); }}>
+            <AlertDialogCancel onClick={() => { setRetroRefundLogId(null); setRetroRefundAmount(""); setRetroRefundNote(""); setRetroRefundMethod('cash'); }}>
               취소
             </AlertDialogCancel>
             <AlertDialogAction onClick={handleRetroRefund} data-testid="button-confirm-retro-refund">

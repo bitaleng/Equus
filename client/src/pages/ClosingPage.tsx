@@ -112,7 +112,7 @@ export default function ClosingPage() {
   });
 
   // Refund summary
-  const [refundSummary, setRefundSummary] = useState({ total: 0, count: 0 });
+  const [refundSummary, setRefundSummary] = useState({ total: 0, count: 0, cash: 0, card: 0, transfer: 0 });
 
   // Expense summary
   const [expenseSummary, setExpenseSummary] = useState({
@@ -398,16 +398,16 @@ export default function ClosingPage() {
       totalExpenses: Number(expenses.total),
     });
 
-    // Calculate expected cash (환불은 현금 지출로 간주)
+    // Calculate expected cash (현금 환불만 현금 지출로 차감, 카드/이체 환불은 해당 수단에서 차감)
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + totalCash - Number(expenses.cashTotal) - refund.total;
+    const expected = openingFloatNum + totalCash - Number(expenses.cashTotal) - refund.cash;
     setExpectedCash(expected);
   };
 
   useEffect(() => {
-    // Recalculate expected cash when sales/expenses/opening float change (환불 차감)
+    // Recalculate expected cash when sales/expenses/opening float change (현금 환불만 차감)
     const openingFloatNum = parseInt(openingFloat) || 0;
-    const expected = openingFloatNum + salesSummary.cashSales - expenseSummary.cashExpenses - refundSummary.total;
+    const expected = openingFloatNum + salesSummary.cashSales - expenseSummary.cashExpenses - refundSummary.cash;
     setExpectedCash(expected);
   }, [openingFloat, salesSummary, expenseSummary, refundSummary]);
 
@@ -1356,11 +1356,26 @@ export default function ClosingPage() {
                   </p>
                 </div>
 
-                {refundSummary.total > 0 && (
+                {refundSummary.cash > 0 && (
                   <div>
-                    <Label>환불 지출</Label>
+                    <Label>현금 환불 지출</Label>
                     <p className="text-2xl font-semibold text-red-600">
-                      - {formatKoreanCurrency(refundSummary.total)}
+                      - {formatKoreanCurrency(refundSummary.cash)}
+                    </p>
+                    {(refundSummary.card > 0 || refundSummary.transfer > 0) && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {refundSummary.card > 0 && `카드환불 ${formatKoreanCurrency(refundSummary.card)} `}
+                        {refundSummary.transfer > 0 && `이체환불 ${formatKoreanCurrency(refundSummary.transfer)}`}
+                        (현금정산 미포함)
+                      </p>
+                    )}
+                  </div>
+                )}
+                {refundSummary.total > 0 && refundSummary.cash === 0 && (
+                  <div>
+                    <Label className="text-muted-foreground">환불 지출 (비현금)</Label>
+                    <p className="text-sm text-muted-foreground">
+                      카드/이체 환불 {formatKoreanCurrency(refundSummary.total)} — 현금정산 미포함
                     </p>
                   </div>
                 )}

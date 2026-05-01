@@ -865,6 +865,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
 
+    // Step 25: Add refund_method column to locker_logs (환불 결제수단)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN refund_method TEXT DEFAULT 'cash'`);
+      console.log('Added refund_method column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -908,7 +916,8 @@ function createTables() {
       additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer')),
       refund_amount INTEGER DEFAULT 0,
       refund_note TEXT,
-      refund_time TEXT
+      refund_time TEXT,
+      refund_method TEXT DEFAULT 'cash'
     )
   `);
 
@@ -1310,6 +1319,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.refundTime !== undefined) {
     sets.push('refund_time = ?');
     values.push(updates.refundTime || null);
+  }
+  if (updates.refundMethod !== undefined) {
+    sets.push('refund_method = ?');
+    values.push(updates.refundMethod || 'cash');
   }
 
   if (sets.length > 0) {
@@ -2407,23 +2420,35 @@ export function getEntriesByEntryTime(businessDay: string, businessDayStartHour:
 
 /**
  * 영업일 기준 환불 합계 조회 (entry_time 기준, 취소 제외)
+ * 결제수단별 환불 금액 반환 (현금/카드/이체)
  */
-export function getRefundSummaryByBusinessDay(businessDay: string, businessDayStartHour: number): { total: number; count: number } {
+export function getRefundSummaryByBusinessDay(businessDay: string, businessDayStartHour: number): { total: number; count: number; cash: number; card: number; transfer: number } {
   if (!db) throw new Error('Database not initialized');
   const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
   const startUnix = Math.floor(start.getTime() / 1000);
   const endUnix = Math.floor(end.getTime() / 1000);
   const result = db.exec(
-    `SELECT COALESCE(SUM(refund_amount), 0) as total, COUNT(*) as count
+    `SELECT 
+       COALESCE(SUM(refund_amount), 0) as total,
+       COUNT(*) as count,
+       COALESCE(SUM(CASE WHEN COALESCE(refund_method, 'cash') = 'cash' THEN refund_amount ELSE 0 END), 0) as cash,
+       COALESCE(SUM(CASE WHEN refund_method = 'card' THEN refund_amount ELSE 0 END), 0) as card,
+       COALESCE(SUM(CASE WHEN refund_method = 'transfer' THEN refund_amount ELSE 0 END), 0) as transfer
      FROM locker_logs
      WHERE cancelled = 0
        AND refund_amount > 0
        AND strftime('%s', entry_time) >= ? AND strftime('%s', entry_time) <= ?`,
     [startUnix.toString(), endUnix.toString()]
   );
-  if (result.length === 0 || result[0].values.length === 0) return { total: 0, count: 0 };
+  if (result.length === 0 || result[0].values.length === 0) return { total: 0, count: 0, cash: 0, card: 0, transfer: 0 };
   const row = result[0].values[0];
-  return { total: (row[0] as number) || 0, count: (row[1] as number) || 0 };
+  return {
+    total: (row[0] as number) || 0,
+    count: (row[1] as number) || 0,
+    cash: (row[2] as number) || 0,
+    card: (row[3] as number) || 0,
+    transfer: (row[4] as number) || 0,
+  };
 }
 
 /**

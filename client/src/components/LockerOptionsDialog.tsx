@@ -88,7 +88,8 @@ interface LockerOptionsDialogProps {
     },
     customerMemo?: string,
     refundAmount?: number,
-    refundNote?: string
+    refundNote?: string,
+    refundMethod?: 'cash' | 'card' | 'transfer'
   ) => void;
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
@@ -173,6 +174,7 @@ export default function LockerOptionsDialog({
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState<string>("");
   const [refundNote, setRefundNote] = useState<string>("");
+  const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'transfer'>(currentPaymentMethod || 'cash');
   const [showWarningAlert, setShowWarningAlert] = useState(false);
   const [checkoutResolved, setCheckoutResolved] = useState(false);
   
@@ -1710,7 +1712,8 @@ export default function LockerOptionsDialog({
         additionalFeePayment,
         customerMemo,
         parsedRefundAmountClick > 0 ? parsedRefundAmountClick : undefined,
-        finalRefundNoteClick
+        finalRefundNoteClick,
+        parsedRefundAmountClick > 0 ? refundMethod : undefined
       );
     }
   };
@@ -1849,7 +1852,8 @@ export default function LockerOptionsDialog({
       additionalFeePayment,
       customerMemo,
       parsedRefundAmount > 0 ? parsedRefundAmount : undefined,
-      finalRefundNote
+      finalRefundNote,
+      parsedRefundAmount > 0 ? refundMethod : undefined
     );
   };
 
@@ -3384,7 +3388,7 @@ export default function LockerOptionsDialog({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => { setShowRefund(v => !v); if (showRefund) { setRefundAmount(""); setRefundNote(""); } }}
+                  onClick={() => { setShowRefund(v => !v); if (showRefund) { setRefundAmount(""); setRefundNote(""); setRefundMethod(currentPaymentMethod || 'cash'); } }}
                   className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${showRefund ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400' : 'border-border text-muted-foreground hover-elevate'}`}
                   data-testid="button-toggle-refund"
                 >
@@ -3412,6 +3416,22 @@ export default function LockerOptionsDialog({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Label className="text-sm font-medium text-red-700 dark:text-red-400 w-20 shrink-0">환불 수단</Label>
+                    <div className="flex gap-1.5">
+                      {(['cash', 'card', 'transfer'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setRefundMethod(m)}
+                          className={`px-2.5 py-1 text-xs rounded-md border font-medium transition-colors ${refundMethod === m ? 'bg-red-600 border-red-600 text-white' : 'border-border text-muted-foreground hover-elevate'}`}
+                          data-testid={`button-refund-method-${m}`}
+                        >
+                          {m === 'cash' ? '현금' : m === 'card' ? '카드' : '이체'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <Label className="text-sm font-medium text-red-700 dark:text-red-400 w-20 shrink-0">환불 사유</Label>
                     <Input
                       type="text"
@@ -3424,7 +3444,7 @@ export default function LockerOptionsDialog({
                   </div>
                   {refundAmount && parseInt(refundAmount) > 0 && (
                     <p className="text-xs text-red-600 dark:text-red-400">
-                      퇴실 시 {parseInt(refundAmount).toLocaleString()}원이 환불 처리되어 당일 매출에서 차감됩니다.
+                      퇴실 시 {parseInt(refundAmount).toLocaleString()}원이 {refundMethod === 'cash' ? '현금' : refundMethod === 'card' ? '카드' : '이체'}으로 환불 처리되어 당일 매출에서 차감됩니다.
                     </p>
                   )}
                 </div>

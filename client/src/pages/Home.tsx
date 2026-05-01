@@ -1482,7 +1482,8 @@ export default function Home() {
     },
     customerMemo?: string,
     refundAmount?: number,
-    refundNote?: string
+    refundNote?: string,
+    refundMethod?: 'cash' | 'card' | 'transfer'
   ) => {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
@@ -1521,6 +1522,7 @@ export default function Home() {
           refundAmount,
           refundNote,
           refundTime: now.toISOString(),
+          refundMethod: refundMethod || 'cash',
         } : {}),
       });
     } else {
@@ -1550,6 +1552,7 @@ export default function Home() {
           refundAmount,
           refundNote,
           refundTime: now.toISOString(),
+          refundMethod: refundMethod || 'cash',
         } : {}),
       });
     }
@@ -1744,6 +1747,7 @@ export default function Home() {
     hasSameDayFee: (log as any).hasSameDayFee || false,
     parentLocker: log.parentLocker || null,
     deferredPayment: (log as any).deferredPayment || false,
+    refundAmount: (log as any).refundAmount || 0,
   }));
   
   // 퇴실 취소 핸들러
@@ -2369,8 +2373,8 @@ export default function Home() {
                           onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod) => 
                             handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod)
                           }
-                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote) => 
-                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote)
+                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod) => 
+                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod)
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}
