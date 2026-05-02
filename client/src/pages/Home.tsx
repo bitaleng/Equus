@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -250,6 +250,19 @@ export default function Home() {
       setPendingLayoutMode(null);
     }
   };
+
+  // 도킹 위치 (좌/우)
+  const [dockedSide, setDockedSide] = useState<'left' | 'right'>(() => {
+    return (localStorage.getItem('workspaceDockedSide') as 'left' | 'right') || 'right';
+  });
+
+  const toggleDockedSide = useCallback(() => {
+    setDockedSide(prev => {
+      const next = prev === 'right' ? 'left' : 'right';
+      localStorage.setItem('workspaceDockedSide', next);
+      return next;
+    });
+  }, []);
 
   // 플로팅 모드 토글
   const toggleFloatingMode = useCallback(() => {
@@ -2234,7 +2247,9 @@ export default function Home() {
           className={`bg-muted/95 backdrop-blur-sm shadow-2xl z-50 flex flex-col ${
             isFloatingMode 
               ? "fixed rounded-lg border-2 border-primary" 
-              : "fixed right-0 top-0 bottom-0 w-[45%] border-l-4 border-primary"
+              : dockedSide === 'right'
+                ? "fixed right-0 top-0 bottom-0 w-[45%] border-l-4 border-primary"
+                : "fixed left-0 top-0 bottom-0 w-[45%] border-r-4 border-primary"
           }`}
           style={isFloatingMode ? {
             left: floatingPosition.x,
@@ -2259,6 +2274,18 @@ export default function Home() {
               </span>
             </div>
             <div className="flex gap-2">
+              {!isFloatingMode && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleDockedSide}
+                  className="text-primary-foreground hover:bg-primary-foreground/20"
+                  title={dockedSide === 'right' ? '좌측으로 이동' : '우측으로 이동'}
+                  data-testid="button-toggle-docked-side"
+                >
+                  {dockedSide === 'right' ? <PanelLeft className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
+                </Button>
+              )}
               <Button 
                 variant="ghost" 
                 size="icon"
