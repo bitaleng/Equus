@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -53,6 +53,9 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const [unlockedRoute, setUnlockedRoute] = useState<string | null>(null);
   const [showLock, setShowLock] = useState(false);
   const [blockedRoute, setBlockedRoute] = useState('');
+  // 패턴 해제 직후 플래그 — Radix 다이얼로그가 onOpenChange(false)를 자동으로
+  // 발생시켜 navigate('/')로 이동하는 문제를 방지
+  const patternJustSolved = useRef(false);
 
   useEffect(() => {
     if (isRouteLocked(location)) {
@@ -73,7 +76,8 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   }, [location, unlockedRoute]);
 
   const handlePatternCorrect = () => {
-    // 해당 경로만 해제 — 다른 경로로 이동하면 다시 잠김
+    // 패턴 해제 직후임을 표시 — 다이얼로그 닫힐 때 navigate('/') 방지
+    patternJustSolved.current = true;
     setUnlockedRoute(blockedRoute);
     setShowLock(false);
   };
@@ -81,7 +85,13 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const handleDialogClose = (open: boolean) => {
     if (!open) {
       setShowLock(false);
-      navigate('/');
+      if (patternJustSolved.current) {
+        // 패턴을 성공적으로 해제해서 닫힌 경우 → 현재 경로 유지
+        patternJustSolved.current = false;
+      } else {
+        // 사용자가 취소/닫기로 닫은 경우 → 홈으로 이동
+        navigate('/');
+      }
     }
   };
 
