@@ -49,21 +49,24 @@ function Router() {
 
 function RouteGuard({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
-  const [unlockedRoutes, setUnlockedRoutes] = useState<Set<string>>(new Set());
+  // 현재 활성 잠금 해제 경로만 기억 — 다른 경로로 이동하면 자동 초기화
+  const [unlockedRoute, setUnlockedRoute] = useState<string | null>(null);
   const [showLock, setShowLock] = useState(false);
   const [blockedRoute, setBlockedRoute] = useState('');
 
   useEffect(() => {
-    if (isRouteLocked(location) && !unlockedRoutes.has(location)) {
+    if (isRouteLocked(location) && unlockedRoute !== location) {
+      // 잠긴 경로이고, 현재 해제된 경로와 다르면 잠금 표시
       setBlockedRoute(location);
       setShowLock(true);
     } else {
       setShowLock(false);
     }
-  }, [location, unlockedRoutes]);
+  }, [location, unlockedRoute]);
 
   const handlePatternCorrect = () => {
-    setUnlockedRoutes(prev => new Set([...prev, blockedRoute]));
+    // 해당 경로만 해제 — 다른 경로로 이동하면 다시 잠김
+    setUnlockedRoute(blockedRoute);
     setShowLock(false);
   };
 
