@@ -55,11 +55,19 @@ function RouteGuard({ children }: { children: React.ReactNode }) {
   const [blockedRoute, setBlockedRoute] = useState('');
 
   useEffect(() => {
-    if (isRouteLocked(location) && unlockedRoute !== location) {
-      // 잠긴 경로이고, 현재 해제된 경로와 다르면 잠금 표시
-      setBlockedRoute(location);
-      setShowLock(true);
+    if (isRouteLocked(location)) {
+      if (unlockedRoute !== location) {
+        // 잠긴 경로이고 현재 해제된 경로와 다름 → 잠금 표시
+        setBlockedRoute(location);
+        setShowLock(true);
+      } else {
+        // 잠긴 경로이지만 방금 해제한 경로 → 통과
+        setShowLock(false);
+      }
     } else {
+      // 잠금이 없는 경로로 이동하면 반드시 해제 상태 초기화
+      // → 이후 잠긴 경로로 돌아올 때 다시 패턴 요구
+      setUnlockedRoute(null);
       setShowLock(false);
     }
   }, [location, unlockedRoute]);
