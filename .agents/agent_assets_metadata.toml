@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "gGtX0IqL3JPeibYSqiGcI"
+uri = "file://netlify-deploy.zip"
+type = "unspecified"
+title = "Netlify 배포 파일 (dist/public)"
