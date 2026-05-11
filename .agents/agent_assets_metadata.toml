@@ -5,4 +5,4 @@ generated = []
 id = "gGtX0IqL3JPeibYSqiGcI"
 uri = "file://netlify-deploy.zip"
 type = "unspecified"
-title = "Netlify 배포 파일 (dist/public)"
+title = "Netlify 배포 파일 (서비스워커 v7 포함)"
