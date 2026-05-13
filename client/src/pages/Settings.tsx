@@ -43,6 +43,7 @@ import { unregisterDevice, useLicenseInfo } from "@/components/LicenseGate";
 import { isDemoMode } from "@/lib/demoMode";
 import * as localDb from "@/lib/localDb";
 import { getLockedRoutes, setLockedRoutes, MENU_ITEMS } from "@/lib/menuLock";
+import { validateLicenseKey } from "@/lib/licenseValidation";
 
 interface Settings {
   businessDayStartHour: number;
@@ -198,6 +199,10 @@ export default function Settings() {
     return (localStorage.getItem("auth_method_mode") as 'pattern' | 'password' | 'both') || 'both';
   });
   const [lockedMenuRoutes, setLockedMenuRoutesState] = useState<string[]>(() => getLockedRoutes());
+  // 비밀번호 초기화 라이센스 확인 다이얼로그
+  const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
+  const [passwordResetLicenseInput, setPasswordResetLicenseInput] = useState("");
+  const [passwordResetLicenseError, setPasswordResetLicenseError] = useState("");
   
   // Screen wake lock states
   const [isScreenSectionOpen, setIsScreenSectionOpen] = useState(false);
@@ -900,6 +905,28 @@ export default function Settings() {
       : lockedMenuRoutes.filter(r => r !== url);
     setLockedMenuRoutesState(updated);
     setLockedRoutes(updated);
+  };
+
+  // 비밀번호 초기화 (라이센스 키 인증 후)
+  const handlePasswordResetConfirm = () => {
+    setPasswordResetLicenseError("");
+    const result = validateLicenseKey(passwordResetLicenseInput.trim());
+    if (!result) {
+      setPasswordResetLicenseError("유효하지 않은 라이센스 키입니다.");
+      return;
+    }
+    // 만료 여부 무관하게 형식이 유효하면 초기화 허용
+    localStorage.removeItem("staff_password");
+    setShowPasswordResetDialog(false);
+    setPasswordResetLicenseInput("");
+    setPasswordResetLicenseError("");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    toast({
+      title: "비밀번호 초기화",
+      description: "비밀번호가 초기화되었습니다. 기본 비밀번호(12345678)가 적용됩니다.",
+    });
   };
 
   // Auth method mode handler
@@ -2511,10 +2538,24 @@ export default function Settings() {
 
                       {/* 비밀번호 변경 */}
                       <div className="space-y-3 border-t pt-4">
-                        <h4 className="font-medium flex items-center gap-2">
-                          <Lock className="h-4 w-4" />
-                          비밀번호 잠금
-                        </h4>
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium flex items-center gap-2">
+                            <Lock className="h-4 w-4" />
+                            비밀번호 잠금
+                          </h4>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setPasswordResetLicenseInput("");
+                              setPasswordResetLicenseError("");
+                              setShowPasswordResetDialog(true);
+                            }}
+                            data-testid="button-reset-password"
+                          >
+                            초기화
+                          </Button>
+                        </div>
                         <div className="space-y-2">
                           <Input
                             type="password"
@@ -2553,6 +2594,9 @@ export default function Settings() {
                           <Lock className="h-4 w-4 mr-2" />
                           비밀번호 변경
                         </Button>
+                        <p className="text-xs text-muted-foreground">
+                          비밀번호 초기화 시 기본 비밀번호(12345678)가 적용됩니다.
+                        </p>
                       </div>
 
                       {/* 생체인증 설정 */}
@@ -3310,6 +3354,57 @@ export default function Settings() {
         description="데이터 관리 기능을 사용하려면 인증이 필요합니다."
         testId="dialog-data-management-auth"
       />
+
+      {/* 비밀번호 초기화 - 라이센스 키 확인 다이얼로그 */}
+      <Dialog
+        open={showPasswordResetDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowPasswordResetDialog(false);
+            setPasswordResetLicenseInput("");
+            setPasswordResetLicenseError("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>비밀번호 초기화</DialogTitle>
+            <DialogDescription>
+              라이센스 키를 입력하여 본인 확인 후 비밀번호를 초기화합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <Input
+              type="text"
+              placeholder="EQUS-XXXX-XXXX-XXXX"
+              value={passwordResetLicenseInput}
+              onChange={(e) => {
+                setPasswordResetLicenseInput(e.target.value);
+                setPasswordResetLicenseError("");
+              }}
+              data-testid="input-password-reset-license"
+              autoFocus
+            />
+            {passwordResetLicenseError && (
+              <p className="text-sm text-destructive">{passwordResetLicenseError}</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowPasswordResetDialog(false)}
+              >
+                취소
+              </Button>
+              <Button
+                onClick={handlePasswordResetConfirm}
+                data-testid="button-confirm-password-reset"
+              >
+                초기화
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Pattern Change Dialog */}
       {showPatternChangeDialog && (
