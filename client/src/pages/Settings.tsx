@@ -194,6 +194,9 @@ export default function Settings() {
   const [securityEnabled, setSecurityEnabled] = useState(() => {
     return localStorage.getItem("security_enabled") !== "false";
   });
+  const [authMethodMode, setAuthMethodMode] = useState<'pattern' | 'password' | 'both'>(() => {
+    return (localStorage.getItem("auth_method_mode") as 'pattern' | 'password' | 'both') || 'both';
+  });
   const [lockedMenuRoutes, setLockedMenuRoutesState] = useState<string[]>(() => getLockedRoutes());
   
   // Screen wake lock states
@@ -897,6 +900,16 @@ export default function Settings() {
       : lockedMenuRoutes.filter(r => r !== url);
     setLockedMenuRoutesState(updated);
     setLockedRoutes(updated);
+  };
+
+  // Auth method mode handler
+  const handleAuthMethodChange = (mode: 'pattern' | 'password' | 'both') => {
+    setAuthMethodMode(mode);
+    localStorage.setItem("auth_method_mode", mode);
+    toast({
+      title: "인증 방식 변경",
+      description: mode === 'pattern' ? "패턴으로만 보안 해제합니다." : mode === 'password' ? "비밀번호로만 보안 해제합니다." : "패턴 또는 비밀번호로 보안 해제합니다.",
+    });
   };
 
   // Pattern change handlers
@@ -2402,6 +2415,48 @@ export default function Settings() {
 
                   {securityEnabled && (
                     <>
+                      {/* 인증 방식 선택 */}
+                      <div className="space-y-3 border-t pt-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Lock className="h-4 w-4" />
+                          인증 방식
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          보안 잠금 해제 시 사용할 인증 방식을 선택하세요.
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant={authMethodMode === 'pattern' ? 'default' : 'outline'}
+                            className="flex-1"
+                            onClick={() => handleAuthMethodChange('pattern')}
+                            data-testid="button-auth-method-pattern"
+                          >
+                            패턴만
+                          </Button>
+                          <Button
+                            variant={authMethodMode === 'password' ? 'default' : 'outline'}
+                            className="flex-1"
+                            onClick={() => handleAuthMethodChange('password')}
+                            data-testid="button-auth-method-password"
+                          >
+                            비밀번호만
+                          </Button>
+                          <Button
+                            variant={authMethodMode === 'both' ? 'default' : 'outline'}
+                            className="flex-1"
+                            onClick={() => handleAuthMethodChange('both')}
+                            data-testid="button-auth-method-both"
+                          >
+                            둘 다
+                          </Button>
+                        </div>
+                        {authMethodMode === 'password' && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            비밀번호 분실 시 라이센스 키로 잠금을 해제할 수 있습니다.
+                          </p>
+                        )}
+                      </div>
+
                       {/* 메뉴별 잠금 설정 */}
                       <div className="space-y-3 border-t pt-4">
                         <h4 className="font-medium flex items-center gap-2">
