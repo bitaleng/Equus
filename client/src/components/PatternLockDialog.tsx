@@ -203,11 +203,7 @@ export default function PatternLockDialog({
       setLicenseError("유효하지 않은 라이센스 키입니다.");
       return;
     }
-    if (result.isExpired) {
-      setLicenseError("만료된 라이센스 키입니다.");
-      return;
-    }
-    // 유효한 라이센스 → 잠금 해제
+    // 만료 여부와 무관하게 키 형식이 유효하면 접근 허용 (소유자 본인 확인 목적)
     onPatternCorrect();
     onOpenChange(false);
     setLicenseInput("");
