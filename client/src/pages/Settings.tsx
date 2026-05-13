@@ -945,7 +945,7 @@ export default function Settings() {
   const handleConfirmPattern = (pattern: number[]) => {
     if (JSON.stringify(pattern) === JSON.stringify(newPattern)) {
       // Save new pattern
-      localStorage.setItem("security_pattern", JSON.stringify(newPattern));
+      localStorage.setItem("staff_pattern", JSON.stringify(newPattern));
       setShowPatternChangeDialog(false);
       setIsPatternChangeMode(false);
       setNewPattern([]);
@@ -965,7 +965,7 @@ export default function Settings() {
   };
 
   const handlePatternReset = () => {
-    localStorage.removeItem("security_pattern");
+    localStorage.removeItem("staff_pattern");
     toast({
       title: "패턴 초기화",
       description: "패턴이 초기화되었습니다. 기본 패턴(1-2-3-4-5)이 적용됩니다.",
@@ -3288,8 +3288,8 @@ export default function Settings() {
                 onPatternComplete={(pattern) => {
                   if (patternChangeStep === 'verify') {
                     // Verify current pattern
-                    const storedPattern = localStorage.getItem("security_pattern");
-                    const currentPattern = storedPattern ? JSON.parse(storedPattern) : [0, 1, 2, 3, 4];
+                    const storedPattern = localStorage.getItem("staff_pattern");
+                    const currentPattern = storedPattern ? JSON.parse(storedPattern) : [0, 1, 2, 4, 6];
                     if (JSON.stringify(pattern) === JSON.stringify(currentPattern)) {
                       handlePatternChangeVerify(true);
                     } else {

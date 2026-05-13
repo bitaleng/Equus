@@ -147,6 +147,12 @@ export default function PatternLockDialog({
 
   // Get the correct pattern from localStorage
   const getCorrectPattern = (): number[] => {
+    // 마이그레이션: 이전 버그로 security_pattern에 저장된 경우 staff_pattern으로 이전
+    const oldKey = localStorage.getItem("security_pattern");
+    if (oldKey && !localStorage.getItem("staff_pattern")) {
+      localStorage.setItem("staff_pattern", oldKey);
+      localStorage.removeItem("security_pattern");
+    }
     const saved = localStorage.getItem("staff_pattern");
     if (saved) {
       try {
