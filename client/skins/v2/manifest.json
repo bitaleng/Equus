@@ -1,11 +1,11 @@
 {
-  "name": "V2 앱 이름 (여기를 수정하세요)",
-  "short_name": "V2앱",
+  "name": "He's",
+  "short_name": "He's",
   "description": "태블릿 최적화 입실 관리 시스템",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0F172A",
+  "background_color": "#1a1a1a",
+  "theme_color": "#cc44aa",
   "orientation": "landscape",
   "icons": [
     {
