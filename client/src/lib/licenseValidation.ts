@@ -1,6 +1,6 @@
 import CryptoJS from 'crypto-js';
 
-const LICENSE_STORAGE_KEY = "rest_hotel_license";
+const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY || "rest_hotel_license";
 
 export interface LicenseData {
   customerCode: string;
@@ -11,6 +11,19 @@ export interface LicenseData {
 }
 
 function getSecret(): string {
+  const skin = import.meta.env.VITE_SKIN || 'v1';
+  if (skin === 'v2') {
+    // V2 전용 시크릿 (v1 라이센스키와 호환되지 않음)
+    const parts = [
+      String.fromCharCode(82, 101, 83, 111),
+      "2025!",
+      String.fromCharCode(82, 116, 86, 50, 83),
+      "#KyMt@",
+      String.fromCharCode(76, 99, 75, 114, 51, 116)
+    ];
+    return parts.join('');
+  }
+  // V1 시크릿 (기존)
   const parts = [
     String.fromCharCode(69, 113, 85, 115),
     "2025!",

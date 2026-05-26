@@ -171,9 +171,11 @@ export default function LicenseGate({ children }: LicenseGateProps) {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Key className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">라이선스 인증</CardTitle>
+          <CardTitle className="text-2xl">
+            {import.meta.env.VITE_APP_NAME || "라이선스 인증"}
+          </CardTitle>
           <CardDescription>
-            휴게텔 입실관리 시스템을 사용하려면 라이선스 키를 입력해주세요.
+            {import.meta.env.VITE_APP_DESCRIPTION || "라이선스 키를 입력하여 시스템을 활성화하세요."}
           </CardDescription>
         </CardHeader>
         <CardContent>

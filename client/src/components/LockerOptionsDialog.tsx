@@ -229,6 +229,7 @@ export default function LockerOptionsDialog({
   
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
+  const additionalFeePaymentMethodUserChangedRef = useRef(false);
   const previousLockerRef = useRef<number | null>(null);
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -323,7 +324,16 @@ export default function LockerOptionsDialog({
       // 현금영수증 발행 상태를 현재 값으로 초기화
       setIsCashReceipt(currentIsCashReceipt || false);
       // 추가요금 결제방식을 현재 값으로 초기화
-      setAdditionalFeePaymentMethod(currentAdditionalFeePaymentMethod || 'cash');
+      // 락커가 바뀌었거나 사용자가 아직 변경하지 않은 경우에만 리셋
+      // (5초 주기 loadData에 의한 오버라이드 방지)
+      if (previousLockerRef.current !== currentLockerLogId) {
+        // 다른 락커로 전환 시 사용자 변경 플래그 초기화
+        additionalFeePaymentMethodUserChangedRef.current = false;
+        previousLockerRef.current = currentLockerLogId ?? null;
+      }
+      if (!additionalFeePaymentMethodUserChangedRef.current) {
+        setAdditionalFeePaymentMethod(currentAdditionalFeePaymentMethod || 'cash');
+      }
       initialOpenRef.current = true;
     }
   }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod]);
@@ -708,6 +718,7 @@ export default function LockerOptionsDialog({
       setPaymentMethod(null);
       setShowCheckoutConfirm(false);
       setIsDeferredPayment(false); // 후불결제 상태도 초기화
+      additionalFeePaymentMethodUserChangedRef.current = false; // 다이얼로그 닫힐 때 리셋
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
   }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse, currentPaymentCash, currentPaymentCard, currentPaymentTransfer]);
@@ -1502,6 +1513,8 @@ export default function LockerOptionsDialog({
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
+    // 저장 완료 후 ref 리셋 → 이후 loadData()로 DB에서 올바른 값을 다시 읽어올 수 있도록
+    additionalFeePaymentMethodUserChangedRef.current = false;
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
@@ -2950,6 +2963,7 @@ export default function LockerOptionsDialog({
                     <>
                       <Select value={additionalFeePaymentMethod} onValueChange={(value) => {
                         setAdditionalFeePaymentMethod(value as 'card' | 'cash' | 'transfer');
+                        additionalFeePaymentMethodUserChangedRef.current = true;
                         // 결제 방식 변경 시 현금영수증 체크 해제
                         setIsAdditionalFeeCashReceipt(false);
                         if (value === 'card') {
