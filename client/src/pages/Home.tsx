@@ -871,11 +871,12 @@ export default function Home() {
       setActiveLockers(activeData);
       activeLockersRef.current = activeData;
       
-      // 디버깅: 락커 21, 45번 데이터 출력
-      const locker21 = activeData.find(l => l.lockerNumber === 21);
-      const locker45 = activeData.find(l => l.lockerNumber === 45);
-      if (locker21) console.log('락커 21번 데이터:', locker21);
-      if (locker45) console.log('락커 45번 데이터:', locker45);
+      // 디버깅: 외출 중인 락커 데이터 출력
+      const outingLockers = activeData.filter(l => !!(l as any).isOuting);
+      if (outingLockers.length > 0) {
+        console.log('[loadData] 외출 중 락커:', outingLockers.map(l => ({ num: l.lockerNumber, isOuting: (l as any).isOuting })));
+      }
+      console.log('[loadData] 전체 활성 락커 isOuting 상태:', activeData.map(l => ({ num: l.lockerNumber, isOuting: (l as any).isOuting })));
       
       // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
       const allEntriesFromDb = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
