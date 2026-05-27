@@ -71,7 +71,7 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
           <div className="flex items-center justify-center mb-4">
             <Lock className="h-12 w-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl text-center">LOCKER MANAGER</CardTitle>
+          <CardTitle className="text-2xl text-center">{import.meta.env.VITE_APP_NAME || 'LOCKER MANAGER'}</CardTitle>
           <CardDescription className="text-center">
             {demoMode ? (
               demoExpired ? (
