@@ -2411,11 +2411,8 @@ export default function Home() {
                           currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
                           currentAdditionalFeePaymentMethod={(selectedEntry as any)?.additionalFeePaymentMethod}
                           isOuting={lockerOutingStatus[lockerNumber] || false}
-                          onToggleOuting={(newIsOuting, newMemo) => {
-                            if (selectedEntry?.id) {
-                              localDb.updateEntry(selectedEntry.id, { isOuting: newIsOuting });
-                              loadData();
-                            }
+                          onToggleOuting={(_newIsOuting, _newMemo) => {
+                            loadData();
                           }}
                           onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod) => 
                             handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod)

@@ -176,6 +176,8 @@ export default function LockerOptionsDialog({
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
   // 환불 처리 states
   const [showRefund, setShowRefund] = useState(false);
+  const [currentIsOuting, setCurrentIsOuting] = useState(isOuting);
+  useEffect(() => { setCurrentIsOuting(isOuting); }, [isOuting]);
   const [refundAmount, setRefundAmount] = useState<string>("");
   const [refundNote, setRefundNote] = useState<string>("");
   const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'transfer'>(currentPaymentMethod || 'cash');
@@ -1517,8 +1519,6 @@ export default function LockerOptionsDialog({
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
-    // 저장 완료 후 ref 리셋 → 이후 loadData()로 DB에서 올바른 값을 다시 읽어올 수 있도록
-    additionalFeePaymentMethodUserChangedRef.current = false;
     
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
@@ -3414,24 +3414,27 @@ export default function LockerOptionsDialog({
                   환불 처리
                   {showRefund && <span className="text-xs">(ON)</span>}
                 </button>
-                {onToggleOuting && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const now = new Date();
-                      const timeStr = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
-                      const label = isOuting ? `[${timeStr}] 복귀` : `[${timeStr}] 외출`;
-                      const newMemo = customerMemo.trim() ? `${customerMemo}\n${label}` : label;
-                      setCustomerMemo(newMemo);
-                      if (currentLockerLogId) localDb.updateLockerLogMemo(currentLockerLogId, newMemo);
-                      onToggleOuting(!isOuting, newMemo);
-                    }}
-                    className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${isOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'border-border text-muted-foreground hover-elevate'}`}
-                    data-testid="button-toggle-outing"
-                  >
-                    {isOuting ? '복귀' : '외출'}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const now = new Date();
+                    const timeStr = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
+                    const newIsOuting = !currentIsOuting;
+                    const label = newIsOuting ? `[${timeStr}] 외출` : `[${timeStr}] 복귀`;
+                    const newMemo = customerMemo.trim() ? `${customerMemo}\n${label}` : label;
+                    setCustomerMemo(newMemo);
+                    setCurrentIsOuting(newIsOuting);
+                    if (currentLockerLogId) {
+                      localDb.updateLockerLogMemo(currentLockerLogId, newMemo);
+                      localDb.updateEntry(currentLockerLogId, { isOuting: newIsOuting });
+                    }
+                    if (onToggleOuting) onToggleOuting(newIsOuting, newMemo);
+                  }}
+                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${currentIsOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'border-border text-muted-foreground hover-elevate'}`}
+                  data-testid="button-toggle-outing"
+                >
+                  {currentIsOuting ? '복귀' : '외출'}
+                </button>
               </div>
               {showRefund && (
                 <div className="mt-2 p-3 rounded-md border border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-900/20 space-y-2">
