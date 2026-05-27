@@ -2367,8 +2367,8 @@ export function getEntriesByDateTimeRange(startDateTime: string, endDateTime: st
 export function getEntriesByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - 영업일 시작 시각을 기준 시간으로 사용 (T12:00:00 고정값은 영업일이 12시 이후 시작인 경우 오동작)
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(businessDayStartHour).padStart(2, '0') + ':00:00'), businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -2398,8 +2398,8 @@ export function getEntriesByBusinessDayRange(businessDay: string, businessDaySta
 export function getEntriesByEntryTime(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - 영업일 시작 시각을 기준 시간으로 사용 (T12:00:00 고정값은 영업일이 12시 이후 시작인 경우 오동작)
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(businessDayStartHour).padStart(2, '0') + ':00:00'), businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -2424,7 +2424,7 @@ export function getEntriesByEntryTime(businessDay: string, businessDayStartHour:
  */
 export function getRefundSummaryByBusinessDay(businessDay: string, businessDayStartHour: number): { total: number; count: number; cash: number; card: number; transfer: number } {
   if (!db) throw new Error('Database not initialized');
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(businessDayStartHour).padStart(2, '0') + ':00:00'), businessDayStartHour);
   const startUnix = Math.floor(start.getTime() / 1000);
   const endUnix = Math.floor(end.getTime() / 1000);
   const result = db.exec(
@@ -4249,8 +4249,8 @@ export function getAllAdditionalFeeEvents() {
 export function getAdditionalFeeEventsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - 영업일 시작 시각을 기준 시간으로 사용 (T12:00:00 고정값은 영업일이 12시 이후 시작인 경우 오동작)
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(businessDayStartHour).padStart(2, '0') + ':00:00'), businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -4731,8 +4731,8 @@ export function getAllRentalTransactions() {
 export function getRentalTransactionsByBusinessDayRange(businessDay: string, businessDayStartHour: number = 10) {
   if (!db) throw new Error('Database not initialized');
   
-  // 비즈니스 데이 범위 계산 - Add T12:00:00 to avoid timezone parsing issues
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), businessDayStartHour);
+  // 비즈니스 데이 범위 계산 - 영업일 시작 시각을 기준 시간으로 사용 (T12:00:00 고정값은 영업일이 12시 이후 시작인 경우 오동작)
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(businessDayStartHour).padStart(2, '0') + ':00:00'), businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -5199,7 +5199,7 @@ export function getDetailedSalesByBusinessDay(businessDay: string) {
   
   // Get UTC start/end timestamps for the business day range
   const settings = getSettings();
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(settings.businessDayStartHour).padStart(2, '0') + ':00:00'), settings.businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -5294,7 +5294,7 @@ export function getRentalRevenueBreakdownByBusinessDay(businessDay: string) {
   
   // Get UTC start/end timestamps for the business day range
   const settings = getSettings();
-  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T12:00:00'), settings.businessDayStartHour);
+  const { start, end } = getBusinessDayRange(new Date(businessDay + 'T' + String(settings.businessDayStartHour).padStart(2, '0') + ':00:00'), settings.businessDayStartHour);
   
   // Convert to Unix timestamps (seconds) for reliable numeric comparison
   const startUnix = Math.floor(start.getTime() / 1000);
@@ -5476,8 +5476,9 @@ export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, end
   
   // Get UTC start/end timestamps for the business day range
   const settings = getSettings();
-  const startDate = new Date(startBusinessDay + 'T12:00:00');
-  const endDate = new Date(endBusinessDay + 'T12:00:00');
+  const refHour = String(settings.businessDayStartHour).padStart(2, '0');
+  const startDate = new Date(startBusinessDay + 'T' + refHour + ':00:00');
+  const endDate = new Date(endBusinessDay + 'T' + refHour + ':00:00');
   
   const { start: rangeStart } = getBusinessDayRange(startDate, settings.businessDayStartHour);
   const { end: rangeEnd } = getBusinessDayRange(endDate, settings.businessDayStartHour);
