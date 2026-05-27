@@ -1,7 +1,7 @@
 {
-  "name": "LOCKER MANAGER",
-  "short_name": "LOCKER",
-  "description": "태블릿 최적화 휴게텔 입실 관리 시스템",
+  "name": "He's 입실관리매니저",
+  "short_name": "He's",
+  "description": "라이선스 키를 입력하여 시스템을 활성화하세요.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
