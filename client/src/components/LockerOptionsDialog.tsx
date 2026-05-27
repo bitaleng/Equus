@@ -3424,12 +3424,9 @@ export default function LockerOptionsDialog({
                     const newMemo = customerMemo.trim() ? `${customerMemo}\n${label}` : label;
                     setCustomerMemo(newMemo);
                     setCurrentIsOuting(newIsOuting);
-                    console.log('[외출버튼] currentLockerLogId:', currentLockerLogId, 'newIsOuting:', newIsOuting);
                     if (currentLockerLogId) {
                       localDb.updateLockerLogMemo(currentLockerLogId, newMemo);
                       localDb.updateLockerOuting(currentLockerLogId, newIsOuting);
-                    } else {
-                      console.warn('[외출버튼] currentLockerLogId가 없음! DB 업데이트 불가');
                     }
                     if (onToggleOuting) onToggleOuting(newIsOuting, newMemo);
                   }}

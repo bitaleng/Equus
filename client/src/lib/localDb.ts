@@ -925,7 +925,8 @@ function createTables() {
       refund_amount INTEGER DEFAULT 0,
       refund_note TEXT,
       refund_time TEXT,
-      refund_method TEXT DEFAULT 'cash'
+      refund_method TEXT DEFAULT 'cash',
+      is_outing INTEGER DEFAULT 0
     )
   `);
 
@@ -6312,32 +6313,17 @@ export function updateLockerLogMemo(logId: string, memo: string): boolean {
 
 export function updateLockerOuting(logId: string, isOuting: boolean): boolean {
   if (!db) throw new Error('Database not initialized');
-  const val = isOuting ? 1 : 0;
-  console.log('[updateLockerOuting] 시작 - logId:', logId, 'isOuting:', isOuting, '→ val:', val);
   
-  // UPDATE 실행
-  db.run(`UPDATE locker_logs SET is_outing = ? WHERE id = ?`, [val, logId]);
-  const rowsModified = db.getRowsModified();
-  console.log('[updateLockerOuting] 수정된 행 수:', rowsModified);
-  
-  if (rowsModified === 0) {
-    // ID가 없는 경우: 전체 활성 락커 목록 출력
-    console.warn('[updateLockerOuting] 업데이트된 행 없음! ID 확인 필요');
-    const allActive = db.exec(`SELECT id, locker_number, is_outing, status FROM locker_logs WHERE status = 'in_use'`);
-    if (allActive.length > 0) {
-      console.log('[updateLockerOuting] 현재 활성 락커:', allActive[0].values);
-    } else {
-      console.log('[updateLockerOuting] 활성 락커 없음');
-    }
-  } else {
-    // 업데이트 확인: prepare 방식 사용 (sql.js 안전한 파라미터 바인딩)
-    const stmt = db.prepare('SELECT id, is_outing FROM locker_logs WHERE id = ?');
-    stmt.bind([logId]);
-    const row = stmt.step() ? stmt.getAsObject() : null;
-    stmt.free();
-    console.log('[updateLockerOuting] 업데이트 후 DB 값:', row);
+  // is_outing 컬럼이 없으면 자동으로 추가 (마이그레이션 누락 대비)
+  try {
+    db.run(`ALTER TABLE locker_logs ADD COLUMN is_outing INTEGER DEFAULT 0`);
+    console.log('[updateLockerOuting] is_outing 컬럼 자동 추가 완료');
+  } catch (_e) {
+    // 이미 존재하면 무시
   }
   
+  const val = isOuting ? 1 : 0;
+  db.run(`UPDATE locker_logs SET is_outing = ? WHERE id = ?`, [val, logId]);
   saveDatabase();
   return true;
 }
