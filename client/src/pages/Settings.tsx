@@ -1548,7 +1548,9 @@ export default function Settings() {
                   <Switch
                     id="enableForeignerOption"
                     checked={formData.enableForeignerOption}
-                    onCheckedChange={(checked) => setFormData({ ...formData, enableForeignerOption: checked })}
+                    onCheckedChange={(checked) => {
+                      setFormData({ ...formData, enableForeignerOption: checked });
+                    }}
                     data-testid="switch-enable-foreigner"
                   />
                 </div>
@@ -1713,6 +1715,7 @@ export default function Settings() {
                   예: 1시 = 매일 01:00에 내국인 추가요금 발생 (기본값: 1시)
                 </p>
               </div>
+              {formData.enableForeignerOption && (
               <div className="space-y-2">
                 <Label htmlFor="foreignerAdditionalFeePeriod">외국인 추가요금 주기 (시간 단위)</Label>
                 <Input
@@ -1730,6 +1733,7 @@ export default function Settings() {
                   예: 24시간 = 입실 시각 기준 24시간마다 추가요금 발생 (기본값: 24시간)
                 </p>
               </div>
+              )}
             </CardContent>
           </Card>
 
