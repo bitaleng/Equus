@@ -2874,6 +2874,7 @@ export function getSettings() {
     foreignerPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
+    domesticAdditionalFeeMode: 'nextday' as 'nextday' | 'nightstart',
     screenWakeLock: true,
     cardPaymentAppEnabled: false,
     cardPaymentAppPackage: 'com.tossplace.app.release',

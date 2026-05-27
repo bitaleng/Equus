@@ -201,11 +201,17 @@ export function calculateFinalPrice(
 /**
  * 추가요금 계산 함수
  * 
- * 규칙 (내국인):
+ * 규칙 (내국인 - checkpointMode: 'nextday'):
  * 1. 주간 입실: 같은 영업일의 체크포인트(01:00)를 넘기면 추가요금(야간-주간 차액)
  *    - 이후 매 24시간(다음 01:00)마다 야간요금 추가
  * 2. 야간 입실: 다음 영업일의 체크포인트(01:00)를 넘기면 추가요금(야간요금)
  *    - 이후 매 24시간(다음 01:00)마다 야간요금 추가
+ * 
+ * 규칙 (내국인 - checkpointMode: 'nightstart'):
+ * 1. 주간 입실: 당일 야간시작시각(nightStartHour)이 첫 체크포인트 → 차액(야간-주간) 추가
+ *    - 이후 매 24시간(다음날 동일 시각)마다 야간요금 추가
+ * 2. 야간 입실: 다음날 야간시작시각(nightStartHour)이 첫 체크포인트 → 야간요금 추가
+ *    - 이후 매 24시간마다 야간요금 추가
  * 
  * 규칙 (외국인):
  * - 입실 시각 기준 설정된 주기마다 외국인요금(foreignerPrice) 추가
@@ -221,9 +227,11 @@ export function calculateFinalPrice(
  * @param currentTime 현재 시간 (기본값: 현재)
  * @param isForeigner 외국인 여부 (기본값: false)
  * @param foreignerPrice 외국인 요금 (기본값: 25000)
- * @param domesticCheckpointHour 내국인 추가요금 체크포인트 시간 (기본값: 1)
+ * @param domesticCheckpointHour 내국인 추가요금 체크포인트 시간 (기본값: 1, nextday 모드에서만 사용)
  * @param foreignerAdditionalFeePeriod 외국인 추가요금 주기(시간) (기본값: 24)
  * @param isFreeEntry 무료입장 여부 (기본값: false)
+ * @param checkpointMode 체크포인트 방식 'nextday'=다음날 고정시각 | 'nightstart'=당일/다음날 야간시작시각
+ * @param nightStartHour 야간 시작 시 (checkpointMode='nightstart'에서 사용, 기본값: 19)
  * @returns { additionalFee: 추가요금, midnightsPassed: 넘긴 체크포인트 횟수, additionalFeeCount: 추가요금 횟수 }
  */
 export function calculateAdditionalFee(
@@ -236,7 +244,9 @@ export function calculateAdditionalFee(
   foreignerPrice: number = 25000,
   domesticCheckpointHour: number = 1,
   foreignerAdditionalFeePeriod: number = 24,
-  isFreeEntry: boolean = false
+  isFreeEntry: boolean = false,
+  checkpointMode: 'nextday' | 'nightstart' = 'nextday',
+  nightStartHour: number = 19
 ): { additionalFee: number; midnightsPassed: number; additionalFeeCount: number } {
   const entry = typeof entryTime === 'string' ? new Date(entryTime) : entryTime;
   const entrySeoul = toZonedTime(entry, SEOUL_TIMEZONE);
@@ -267,7 +277,58 @@ export function calculateAdditionalFee(
     };
   }
   
-  // 내국인: 체크포인트 계산
+  // 내국인: 'nightstart' 모드 — 야간시작시각을 체크포인트로 사용
+  if (checkpointMode === 'nightstart') {
+    const validNightStartHour = Math.max(0, Math.min(23, nightStartHour));
+    const entryHour = entrySeoul.getHours();
+
+    // 첫 체크포인트: 입실 시각 이후 첫 nightStartHour 발생 시각
+    // - entryHour < nightStartHour  → 당일 nightStartHour (예: 15시 입실 → 당일 17시)
+    // - entryHour >= nightStartHour → 다음날 nightStartHour (예: 18시 입실 → 다음날 17시)
+    const firstCheckpointNS = new Date(entrySeoul);
+    firstCheckpointNS.setHours(validNightStartHour, 0, 0, 0);
+    firstCheckpointNS.setMilliseconds(0);
+    if (entryHour >= validNightStartHour) {
+      firstCheckpointNS.setDate(firstCheckpointNS.getDate() + 1);
+    }
+
+    if (currentSeoul < firstCheckpointNS) {
+      return { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
+    }
+
+    const timeDiffNS = currentSeoul.getTime() - firstCheckpointNS.getTime();
+    const checkpointsPassed = Math.floor(timeDiffNS / (24 * 60 * 60 * 1000)) + 1;
+
+    let additionalFeeNS = 0;
+    let additionalFeeCountNS = 0;
+
+    if (entryTimeType === '주간') {
+      if (isFreeEntry) {
+        // 무료입장: 첫 체크포인트 면제, 두 번째부터 야간요금
+        additionalFeeNS = checkpointsPassed <= 1 ? 0 : (checkpointsPassed - 1) * nightPrice;
+        additionalFeeCountNS = checkpointsPassed <= 1 ? 0 : checkpointsPassed - 1;
+      } else {
+        // 유료 주간: 1차 = (야간-주간 차액), 2차+ = 야간요금
+        additionalFeeNS = nightPrice - dayPrice;
+        additionalFeeCountNS = checkpointsPassed;
+        if (checkpointsPassed > 1) {
+          additionalFeeNS += (checkpointsPassed - 1) * nightPrice;
+        }
+      }
+    } else {
+      // 야간 입실: 모든 체크포인트에 야간요금
+      additionalFeeNS = checkpointsPassed * nightPrice;
+      additionalFeeCountNS = checkpointsPassed;
+    }
+
+    return {
+      additionalFee: additionalFeeNS,
+      midnightsPassed: checkpointsPassed,
+      additionalFeeCount: additionalFeeCountNS
+    };
+  }
+
+  // 내국인: 'nextday' 모드 (기존 로직) — 다음날 고정 시각을 체크포인트로 사용
   // Validate and clamp domesticCheckpointHour (must be 0-23)
   const validCheckpointHour = Math.max(0, Math.min(23, domesticCheckpointHour));
   

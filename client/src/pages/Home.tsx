@@ -187,6 +187,8 @@ export default function Home() {
   const foreignerPrice = settings.foreignerPrice;
   const domesticCheckpointHour = settings.domesticCheckpointHour;
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
+  const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
+  const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
   
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
@@ -1038,7 +1040,10 @@ export default function Home() {
       isForeigner,
       foreignerPrice,
       domesticCheckpointHour,
-      foreignerAdditionalFeePeriod
+      foreignerAdditionalFeePeriod,
+      false,
+      domesticAdditionalFeeMode,
+      nightStartHour
     );
     
     // 추가요금 완납 여부 확인: 현재 추가요금이 (지불된 금액 + 선지급 금액) 이하면 완납
@@ -1516,7 +1521,10 @@ export default function Home() {
       isCurrentlyForeigner,
       foreignerPrice,
       domesticCheckpointHour,
-      foreignerAdditionalFeePeriod
+      foreignerAdditionalFeePeriod,
+      false,
+      domesticAdditionalFeeMode,
+      nightStartHour
     );
     
     // If checking out on a different business day (after settlement time):

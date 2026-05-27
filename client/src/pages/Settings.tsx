@@ -53,6 +53,7 @@ interface Settings {
   foreignerPrice: number;
   domesticCheckpointHour: number;
   foreignerAdditionalFeePeriod: number;
+  domesticAdditionalFeeMode: 'nextday' | 'nightstart';
   dayStartTime: string;     // 주간 시작 시간 (HH:mm)
   nightStartTime: string;   // 야간 시작 시간 (HH:mm)
   enableDiscountOption: boolean;   // 기본할인 옵션 활성화
@@ -109,6 +110,7 @@ export default function Settings() {
     foreignerPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
+    domesticAdditionalFeeMode: 'nextday' as 'nextday' | 'nightstart',
     dayStartTime: '07:00',
     nightStartTime: '19:00',
     enableDiscountOption: true,
@@ -1697,6 +1699,38 @@ export default function Settings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* 추가요금 체크포인트 방식 */}
+              <div className="space-y-3 p-3 border rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-medium">야간전환 체크포인트 방식</Label>
+                    <p className="text-xs text-muted-foreground">
+                      OFF: 다음날 고정 시각(기본값) &nbsp;|&nbsp; ON: 당일/다음날 야간시작시각
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.domesticAdditionalFeeMode === 'nightstart'}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, domesticAdditionalFeeMode: checked ? 'nightstart' : 'nextday' })
+                    }
+                    data-testid="switch-additional-fee-mode"
+                  />
+                </div>
+                {formData.domesticAdditionalFeeMode === 'nightstart' ? (
+                  <p className="text-xs text-muted-foreground pt-1 border-t">
+                    주간 입실 → 당일 야간시작({formData.nightStartTime})에 차액(야간-주간) 추가요금<br />
+                    야간 입실 → 다음날 야간시작({formData.nightStartTime})에 야간요금 추가
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground pt-1 border-t">
+                    주간 입실 → 다음날 {String(formData.domesticCheckpointHour).padStart(2,'0')}:00에 차액 추가요금<br />
+                    야간 입실 → 영업일+2일 {String(formData.domesticCheckpointHour).padStart(2,'0')}:00에 야간요금 추가
+                  </p>
+                )}
+              </div>
+
+              {/* 내국인 체크포인트 시각 (nextday 모드에서만 표시) */}
+              {formData.domesticAdditionalFeeMode !== 'nightstart' && (
               <div className="space-y-2">
                 <Label htmlFor="domesticCheckpointHour">내국인 추가요금 체크포인트 시간 (0-23시)</Label>
                 <Input
@@ -1715,6 +1749,7 @@ export default function Settings() {
                   예: 1시 = 매일 01:00에 내국인 추가요금 발생 (기본값: 1시)
                 </p>
               </div>
+              )}
               {formData.enableForeignerOption && (
               <div className="space-y-2">
                 <Label htmlFor="foreignerAdditionalFeePeriod">외국인 추가요금 주기 (시간 단위)</Label>
