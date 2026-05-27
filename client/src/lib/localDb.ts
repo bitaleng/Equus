@@ -2879,7 +2879,9 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
 
 // Settings operations (using localStorage)
 export function getSettings() {
-  const defaultSettings = {
+  const isV2 = (import.meta as any).env?.VITE_SKIN === 'v2';
+
+  const baseDefaults = {
     businessDayStartHour: 10,
     dayPrice: 10000,
     nightPrice: 15000,
@@ -2891,13 +2893,27 @@ export function getSettings() {
     screenWakeLock: true,
     cardPaymentAppEnabled: false,
     cardPaymentAppPackage: 'com.tossplace.app.release',
-    dayStartTime: '07:00',      // 주간 시작 시간 (HH:mm)
-    nightStartTime: '19:00',    // 야간 시작 시간 (HH:mm)
-    enableDiscountOption: true,   // 기본할인 옵션 활성화
-    enableForeignerOption: true,  // 외국인요금 옵션 활성화
-    enableCashReceiptVat: false,  // 현금영수증 부가세 옵션 (체크시 +10%)
-    enableCardVat: false          // 카드결제 부가세 자동추가 (+10%)
+    dayStartTime: '07:00',
+    nightStartTime: '19:00',
+    enableDiscountOption: true,
+    enableForeignerOption: true,
+    enableCashReceiptVat: false,
+    enableCardVat: false,
   };
+
+  const v2Overrides = {
+    businessDayStartHour: 14,
+    dayPrice: 20000,
+    nightPrice: 25000,
+    nightStartTime: '17:00',
+    enableDiscountOption: false,
+    enableForeignerOption: false,
+    enableCashReceiptVat: true,
+    enableCardVat: true,
+    cardPaymentAppPackage: 'tosspos://main',
+  };
+
+  const defaultSettings = isV2 ? { ...baseDefaults, ...v2Overrides } : baseDefaults;
 
   const saved = localStorage.getItem('settings');
   if (!saved) return defaultSettings;
