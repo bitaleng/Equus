@@ -1008,6 +1008,7 @@ export default function Home() {
   const lockerParents: { [key: number]: number | null } = {};
   const lockerDeferredPayments: { [key: number]: boolean } = {}; // 후불결제 여부
   const lockerCustomerMemos: { [key: number]: string } = {}; // 손님 메모
+  const lockerOutingStatus: { [key: number]: boolean } = {}; // 외출 중 여부
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -1017,6 +1018,7 @@ export default function Home() {
       lockerParents[i] = null;
       lockerDeferredPayments[i] = false;
       lockerCustomerMemos[i] = '';
+      lockerOutingStatus[i] = false;
     }
   });
   
@@ -1026,6 +1028,7 @@ export default function Home() {
     lockerParents[log.lockerNumber] = log.parentLocker || null;
     lockerDeferredPayments[log.lockerNumber] = (log as any).deferredPayment || false; // 후불결제 여부
     lockerCustomerMemos[log.lockerNumber] = (log as any).customerMemo || ''; // 손님 메모
+    lockerOutingStatus[log.lockerNumber] = !!(log as any).isOuting; // 외출 중 여부
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -1838,6 +1841,7 @@ export default function Home() {
                     parentLocker={lockerParents[num] || null}
                     deferredPayment={lockerDeferredPayments[num] || false}
                     customerMemo={lockerCustomerMemos[num] || ''}
+                    isOuting={lockerOutingStatus[num] || false}
                   />
                 ))}
               </div>
@@ -2227,6 +2231,7 @@ export default function Home() {
                         parentLocker={lockerParents[num] || null}
                         deferredPayment={lockerDeferredPayments[num] || false}
                         customerMemo={lockerCustomerMemos[num] || ''}
+                        isOuting={lockerOutingStatus[num] || false}
                       />
                     ))}
                   </div>
@@ -2405,6 +2410,13 @@ export default function Home() {
                           currentPrepaidAdditionalFee={(selectedEntry as any)?.prepaidAdditionalFee || 0}
                           currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
                           currentAdditionalFeePaymentMethod={(selectedEntry as any)?.additionalFeePaymentMethod}
+                          isOuting={lockerOutingStatus[lockerNumber] || false}
+                          onToggleOuting={(newIsOuting, newMemo) => {
+                            if (selectedEntry?.id) {
+                              localDb.updateEntry(selectedEntry.id, { isOuting: newIsOuting });
+                              loadData();
+                            }
+                          }}
                           onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod) => 
                             handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod)
                           }

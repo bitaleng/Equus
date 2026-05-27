@@ -72,6 +72,8 @@ interface LockerOptionsDialogProps {
   currentPrepaidAdditionalFee?: number; // 현재 선지급 추가요금
   currentIsCashReceipt?: boolean; // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod?: 'card' | 'cash' | 'transfer'; // 현재 추가요금 결제방식
+  isOuting?: boolean; // 현재 외출 중 여부
+  onToggleOuting?: (newIsOuting: boolean, newMemo: string) => void; // 외출/복귀 토글 콜백
   onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer') => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
@@ -124,6 +126,8 @@ export default function LockerOptionsDialog({
   currentPrepaidAdditionalFee = 0, // 현재 선지급 추가요금
   currentIsCashReceipt = false, // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod, // 현재 추가요금 결제방식
+  isOuting = false, // 현재 외출 중 여부
+  onToggleOuting,
   onApply,
   onCheckout,
   onCancel,
@@ -3410,6 +3414,24 @@ export default function LockerOptionsDialog({
                   환불 처리
                   {showRefund && <span className="text-xs">(ON)</span>}
                 </button>
+                {onToggleOuting && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const now = new Date();
+                      const timeStr = now.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false });
+                      const label = isOuting ? `[${timeStr}] 복귀` : `[${timeStr}] 외출`;
+                      const newMemo = customerMemo.trim() ? `${customerMemo}\n${label}` : label;
+                      setCustomerMemo(newMemo);
+                      if (currentLockerLogId) localDb.updateLockerLogMemo(currentLockerLogId, newMemo);
+                      onToggleOuting(!isOuting, newMemo);
+                    }}
+                    className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${isOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'border-border text-muted-foreground hover-elevate'}`}
+                    data-testid="button-toggle-outing"
+                  >
+                    {isOuting ? '복귀' : '외출'}
+                  </button>
+                )}
               </div>
               {showRefund && (
                 <div className="mt-2 p-3 rounded-md border border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-900/20 space-y-2">

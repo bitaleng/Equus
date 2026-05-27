@@ -14,9 +14,10 @@ interface LockerButtonProps {
   parentLocker?: number | null; // 부모 락카 번호 (자식 락카인 경우)
   deferredPayment?: boolean; // 후불결제 여부
   customerMemo?: string; // 손님 메모
+  isOuting?: boolean; // 외출 중 여부
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false }: LockerButtonProps) {
   // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과 - blur 없이 색상만)
   const getDeferredPaymentStyles = () => {
     return `
@@ -30,7 +31,11 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
     if (status === 'in-use') {
-      // 0순위: 후불결제 -> 노란색↔퍼플블루 애니메이션 (추가요금보다 우선)
+      // 0순위: 외출중 -> 다크그레이
+      if (isOuting) {
+        return "bg-[#374151] text-white border-2 border-[#1F2937]";
+      }
+      // 1순위: 후불결제 -> 노란색↔퍼플블루 애니메이션 (추가요금보다 우선)
       if (deferredPayment) {
         return getDeferredPaymentStyles();
       }
@@ -69,8 +74,10 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   const getStatusText = () => {
     if (status === 'disabled') return '퇴실완료';
     if (status === 'in-use') {
-      // 자식 락카인 경우 "사용중" 텍스트 숨김
+      // 자식 락카인 경우 텍스트 숨김
       if (parentLocker) return null;
+      // 외출중
+      if (isOuting) return '외출중';
       // 후불결제인 경우 '후불결제' 표시
       if (deferredPayment) return '후불결제';
       // 추가요금이 있으면 횟수만 표시

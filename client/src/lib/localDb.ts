@@ -873,6 +873,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
 
+    // Step 26: Add is_outing column to locker_logs (외출 중 여부)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN is_outing INTEGER DEFAULT 0`);
+      console.log('Added is_outing column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -1323,6 +1331,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.refundMethod !== undefined) {
     sets.push('refund_method = ?');
     values.push(updates.refundMethod || 'cash');
+  }
+  if (updates.isOuting !== undefined) {
+    sets.push('is_outing = ?');
+    values.push(updates.isOuting ? 1 : 0);
   }
 
   if (sets.length > 0) {
