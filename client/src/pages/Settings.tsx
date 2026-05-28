@@ -197,6 +197,9 @@ export default function Settings() {
   const [securityEnabled, setSecurityEnabled] = useState(() => {
     return localStorage.getItem("security_enabled") !== "false";
   });
+  const [securityTodayStatusEnabled, setSecurityTodayStatusEnabled] = useState(() => {
+    return localStorage.getItem("security_today_status_enabled") !== "false";
+  });
   const [authMethodMode, setAuthMethodMode] = useState<'pattern' | 'password' | 'both'>(() => {
     return (localStorage.getItem("auth_method_mode") as 'pattern' | 'password' | 'both') || 'both';
   });
@@ -885,6 +888,18 @@ export default function Settings() {
       description: enabled 
         ? "앱 사용 중 화면이 자동으로 꺼지지 않습니다." 
         : "기기의 기본 화면 잠금 설정이 적용됩니다.",
+    });
+  };
+
+  // Toggle today status security on/off
+  const handleTodayStatusSecurityToggle = (enabled: boolean) => {
+    setSecurityTodayStatusEnabled(enabled);
+    localStorage.setItem("security_today_status_enabled", enabled ? "true" : "false");
+    toast({
+      title: enabled ? "오늘현황 잠금 활성화" : "오늘현황 잠금 해제",
+      description: enabled
+        ? "오늘현황·매출집계 열람 시 인증이 필요합니다."
+        : "오늘현황·매출집계를 인증 없이 바로 열 수 있습니다.",
     });
   };
 
@@ -2521,6 +2536,30 @@ export default function Settings() {
                             비밀번호 분실 시 라이센스 키로 잠금을 해제할 수 있습니다.
                           </p>
                         )}
+                      </div>
+
+                      {/* 오늘현황/매출집계 잠금 설정 */}
+                      <div className="space-y-3 border-t pt-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Lock className="h-4 w-4" />
+                          오늘현황 / 매출집계 잠금
+                        </h4>
+                        <p className="text-xs text-muted-foreground">
+                          OFF 시 임시직원이 비밀번호 없이 오늘현황·매출집계를 바로 열 수 있습니다. 나머지 관리자 메뉴 잠금에는 영향이 없습니다.
+                        </p>
+                        <div className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <span className="text-sm font-medium">오늘현황 · 매출집계</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {securityTodayStatusEnabled ? "열람 시 인증이 필요합니다" : "인증 없이 바로 열람 가능"}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={securityTodayStatusEnabled}
+                            onCheckedChange={handleTodayStatusSecurityToggle}
+                            data-testid="switch-today-status-lock"
+                          />
+                        </div>
                       </div>
 
                       {/* 메뉴별 잠금 설정 */}

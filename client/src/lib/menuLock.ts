@@ -19,6 +19,13 @@ export function isRouteLocked(route: string): boolean {
   return locked.includes(route);
 }
 
+// 오늘현황/매출집계 패널 전용 잠금 여부
+// 전역 보안이 ON이고, security_today_status_enabled 가 "false" 가 아닐 때만 잠금
+export function isTodayStatusLocked(): boolean {
+  if (localStorage.getItem("security_enabled") === "false") return false;
+  return localStorage.getItem("security_today_status_enabled") !== "false";
+}
+
 export const MENU_ITEMS = [
   { url: '/logs',         label: '상세 기록' },
   { url: '/scan-logs',    label: '스캔정보' },

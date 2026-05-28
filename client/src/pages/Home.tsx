@@ -35,6 +35,7 @@ import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getBusinessDayRange, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
+import { isTodayStatusLocked } from "@/lib/menuLock";
 import type { LockerLog as SharedLockerLog } from "@shared/schema";
 
 // Extend shared LockerLog with UI-specific fields
@@ -193,36 +194,26 @@ export default function Home() {
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
     if (isPanelCollapsed) {
-      // Check if security is enabled
-      const securityEnabled = localStorage.getItem("security_enabled") !== "false";
-      if (securityEnabled) {
-        // Expanding panel - require pattern
+      if (isTodayStatusLocked()) {
         setShowPatternDialog(true);
       } else {
-        // Security disabled - open panel directly
         setIsPanelCollapsed(false);
       }
     } else {
-      // Collapsing panel - no pattern required
       setIsPanelCollapsed(true);
     }
   };
 
   // UI Layout Mode 변경 핸들러
   const handleLayoutModeChange = (mode: 'toggle' | 'tab') => {
-    // 현재 모드와 동일하면 무시
     if (mode === uiLayoutMode) return;
-    
-    const securityEnabled = localStorage.getItem("security_enabled") !== "false";
-    
-    // 보안 활성화 시 모드 전환에 인증 필요
-    if (securityEnabled) {
+
+    if (isTodayStatusLocked()) {
       setPendingLayoutMode(mode);
       setShowLayoutModeAuthDialog(true);
       return;
     }
-    
-    // 보안 비활성화 시 바로 전환
+
     applyLayoutModeChange(mode);
   };
   
@@ -352,15 +343,10 @@ export default function Home() {
   // Tab change handler with security check
   const handleTabChange = (newTab: string) => {
     const targetTab = newTab as 'locker' | 'status';
-    
-    // Check if security is enabled
-    const securityEnabled = localStorage.getItem("security_enabled") !== "false";
-    
-    // Only require authentication when switching from 'locker' to 'status' AND security is enabled
-    if (activeTab === 'locker' && targetTab === 'status' && securityEnabled) {
+
+    if (activeTab === 'locker' && targetTab === 'status' && isTodayStatusLocked()) {
       setShowTabAuthDialog(true);
     } else {
-      // No authentication needed - either security is disabled or not switching to status
       setActiveTab(targetTab);
     }
   };
