@@ -1916,11 +1916,19 @@ export default function LockerOptionsDialog({
   const handleSwapSubmit = () => {
     const targetNumber = parseInt(swapTargetLocker);
     
-    // 유효성 검사
-    if (isNaN(targetNumber) || targetNumber < 1 || targetNumber > 200) {
+    // 유효성 검사 - 설정된 락카 그룹 번호만 허용
+    const groups = localDb.getLockerGroups();
+    const configuredNumbers = new Set<number>();
+    groups.forEach((g: any) => {
+      for (let i = g.startNumber; i <= g.endNumber; i++) {
+        configuredNumbers.add(i);
+      }
+    });
+
+    if (isNaN(targetNumber) || !configuredNumbers.has(targetNumber)) {
       toast({
         title: "오류",
-        description: "유효한 락카 번호를 입력해주세요 (1-200)",
+        description: "시스템 설정에 등록된 락카 번호만 입력할 수 있습니다.",
         variant: "destructive",
       });
       return;
@@ -3659,11 +3667,9 @@ export default function LockerOptionsDialog({
                   id="swap-target"
                   type="number"
                   inputMode="numeric"
-                  min="1"
-                  max="200"
                   value={swapTargetLocker}
                   onChange={(e) => setSwapTargetLocker(e.target.value)}
-                  placeholder="락카 번호 입력 (1-200)"
+                  placeholder="설정된 락카 번호 입력"
                   data-testid="input-swap-target"
                   autoFocus
                   onTouchStart={(e) => {
@@ -3757,13 +3763,19 @@ export default function LockerOptionsDialog({
                 const currentChildren = localDb.getChildLockers(lockerNumber);
                 const currentChildNumbers = new Set(currentChildren.map((c: any) => c.lockerNumber));
                 
-                // Get all locker groups to determine total range
+                // Get all locker groups - only show configured locker numbers
                 const groups = localDb.getLockerGroups();
-                const maxLocker = Math.max(...groups.map((g: any) => g.endNumber), 80);
-                
+                const configuredNumbers: number[] = [];
+                groups.forEach((g: any) => {
+                  for (let i = g.startNumber; i <= g.endNumber; i++) {
+                    configuredNumbers.push(i);
+                  }
+                });
+
                 // Generate available locker numbers (vacant OR already linked children)
+                // Only from configured numbers, not a fixed 1-N range
                 const availableLockers: number[] = [];
-                for (let i = 1; i <= maxLocker; i++) {
+                for (const i of configuredNumbers) {
                   if (i !== lockerNumber) {
                     // Include if vacant OR already a child of this parent
                     if (!activeNumbers.has(i) || currentChildNumbers.has(i)) {
