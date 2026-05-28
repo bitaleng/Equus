@@ -190,6 +190,7 @@ export default function Home() {
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
   const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
   const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
+  const outingTimeLimitMinutes: number = (settings as any).outingTimeLimitMinutes || 0;
   
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
@@ -990,6 +991,8 @@ export default function Home() {
   const lockerDeferredPayments: { [key: number]: boolean } = {}; // 후불결제 여부
   const lockerCustomerMemos: { [key: number]: string } = {}; // 손님 메모
   const lockerOutingStatus: { [key: number]: boolean } = {}; // 외출 중 여부
+  const lockerOutingStartedAt: { [key: number]: string | null } = {}; // 외출 시작 시각
+  const lockerOutingExceeded: { [key: number]: boolean } = {}; // 외출 시간 초과 여부
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -1000,6 +1003,8 @@ export default function Home() {
       lockerDeferredPayments[i] = false;
       lockerCustomerMemos[i] = '';
       lockerOutingStatus[i] = false;
+      lockerOutingStartedAt[i] = null;
+      lockerOutingExceeded[i] = false;
     }
   });
   
@@ -1010,6 +1015,15 @@ export default function Home() {
     lockerDeferredPayments[log.lockerNumber] = (log as any).deferredPayment || false; // 후불결제 여부
     lockerCustomerMemos[log.lockerNumber] = (log as any).customerMemo || ''; // 손님 메모
     lockerOutingStatus[log.lockerNumber] = !!(log as any).isOuting; // 외출 중 여부
+    const outingStartedAt = (log as any).outingStartedAt || null;
+    lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
+    // 외출 시간 초과 여부 계산
+    if (!!(log as any).isOuting && outingTimeLimitMinutes > 0 && outingStartedAt) {
+      const outingElapsedMs = currentTime.getTime() - new Date(outingStartedAt).getTime();
+      lockerOutingExceeded[log.lockerNumber] = outingElapsedMs > outingTimeLimitMinutes * 60 * 1000;
+    } else {
+      lockerOutingExceeded[log.lockerNumber] = false;
+    }
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
@@ -1823,6 +1837,7 @@ export default function Home() {
                     deferredPayment={lockerDeferredPayments[num] || false}
                     customerMemo={lockerCustomerMemos[num] || ''}
                     isOuting={lockerOutingStatus[num] || false}
+                    outingExceeded={lockerOutingExceeded[num] || false}
                   />
                 ))}
               </div>
@@ -2213,6 +2228,7 @@ export default function Home() {
                         deferredPayment={lockerDeferredPayments[num] || false}
                         customerMemo={lockerCustomerMemos[num] || ''}
                         isOuting={lockerOutingStatus[num] || false}
+                        outingExceeded={lockerOutingExceeded[num] || false}
                       />
                     ))}
                   </div>

@@ -38,13 +38,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "VITE_SKIN=v2 VITE_APP_NAME=\"He's 입실관리매니저\" VITE_APP_SHORT_NAME=\"He's\" VITE_APP_DESCRIPTION=\"라이선스 키를 입력하여 시스템을 활성화하세요.\" VITE_LICENSE_STORAGE_KEY=rest_hotel_license_v2 npm run dev"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
 
 [agent]
 integrations = ["javascript_mem_db:1.0.0", "javascript_database:1.0.0"]

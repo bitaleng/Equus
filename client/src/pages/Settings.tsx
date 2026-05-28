@@ -60,6 +60,7 @@ interface Settings {
   enableForeignerOption: boolean;  // 외국인요금 옵션 활성화
   enableCashReceiptVat: boolean;   // 현금영수증 부가세 옵션
   enableCardVat: boolean;          // 카드결제 부가세 자동추가
+  outingTimeLimitMinutes: number;  // 1회 외출 시간 제한 (분, 0=비활성)
 }
 
 interface LockerGroup {
@@ -117,6 +118,7 @@ export default function Settings() {
     enableForeignerOption: true,
     enableCashReceiptVat: false,
     enableCardVat: false,
+    outingTimeLimitMinutes: 0,
   });
 
   // Locker group dialog states
@@ -1784,6 +1786,40 @@ export default function Settings() {
                 </p>
               </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* 외출 시간 제한 */}
+          <Card>
+            <CardHeader>
+              <CardTitle>외출 시간 제한</CardTitle>
+              <CardDescription>
+                외출 후 미복귀 시 락카버튼을 점멸로 경보합니다 (0 = 비활성)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="outingTimeLimitMinutes">1회 외출 허용 시간 (분)</Label>
+                <select
+                  id="outingTimeLimitMinutes"
+                  value={formData.outingTimeLimitMinutes}
+                  onChange={(e) => setFormData({ ...formData, outingTimeLimitMinutes: parseInt(e.target.value) })}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  data-testid="select-outing-time-limit"
+                >
+                  <option value={0}>비활성 (무제한)</option>
+                  <option value={10}>10분</option>
+                  <option value={15}>15분</option>
+                  <option value={20}>20분</option>
+                  <option value={30}>30분</option>
+                  <option value={45}>45분</option>
+                  <option value={60}>60분</option>
+                  <option value={90}>90분</option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  외출 버튼 클릭 후 설정된 시간이 초과되면 해당 락카버튼이 다크그레이↔레드로 점멸됩니다
+                </p>
+              </div>
             </CardContent>
           </Card>
 

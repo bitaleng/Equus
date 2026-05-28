@@ -438,6 +438,22 @@
   animation: pulse-deferred 2s ease-in-out infinite;
 }
 
+/* 외출 시간 초과 경보 애니메이션 (다크그레이 ↔ 레드 점멸) */
+@keyframes outing-exceeded {
+  0%, 100% {
+    background-color: #374151;
+    color: white;
+  }
+  50% {
+    background-color: #EF4444;
+    color: white;
+  }
+}
+
+.animate-outing-exceeded {
+  animation: outing-exceeded 0.8s ease-in-out infinite;
+}
+
 /* 메모박스 그라데이션 파도 애니메이션 (그린 + 오렌지, 출렁이는 물결 효과) */
 @keyframes memo-wave-flow {
   0% {

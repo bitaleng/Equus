@@ -2908,6 +2908,7 @@ export function getSettings() {
     enableForeignerOption: true,
     enableCashReceiptVat: false,
     enableCardVat: false,
+    outingTimeLimitMinutes: 0,
   };
 
   const v2Overrides = {
@@ -6347,8 +6348,17 @@ export function updateLockerOuting(logId: string, isOuting: boolean): boolean {
     // 이미 존재하면 무시
   }
   
+  // outing_started_at 컬럼이 없으면 자동으로 추가
+  try {
+    db.run(`ALTER TABLE locker_logs ADD COLUMN outing_started_at TEXT`);
+    console.log('[updateLockerOuting] outing_started_at 컬럼 자동 추가 완료');
+  } catch (_e) {
+    // 이미 존재하면 무시
+  }
+  
   const val = isOuting ? 1 : 0;
-  db.run(`UPDATE locker_logs SET is_outing = ? WHERE id = ?`, [val, logId]);
+  const startedAt = isOuting ? new Date().toISOString() : null;
+  db.run(`UPDATE locker_logs SET is_outing = ?, outing_started_at = ? WHERE id = ?`, [val, startedAt, logId]);
   saveDatabase();
   return true;
 }
