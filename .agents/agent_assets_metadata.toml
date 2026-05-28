@@ -12,3 +12,9 @@ id = "8-_KvqfTQ0XTRBQ6fL4Am"
 uri = "file://netlify-deploy-v2.zip"
 type = "unspecified"
 title = "netlify-deploy-v2.zip (최신 빌드 7.5MB)"
+
+[[outputs]]
+id = "E98OcRrn06OAex5Oi64Ah"
+uri = "file://netlify-deploy-v1.zip"
+type = "unspecified"
+title = "netlify-deploy-v1.zip (V1 LOCKER MANAGER 배포용)"
