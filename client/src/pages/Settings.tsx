@@ -1799,7 +1799,7 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="outingTimeLimitMinutes">1회 외출 허용 시간 (분)</Label>
+                <Label htmlFor="outingTimeLimitMinutes">1회 외출 허용 시간</Label>
                 <select
                   id="outingTimeLimitMinutes"
                   value={formData.outingTimeLimitMinutes}
@@ -1808,13 +1808,9 @@ export default function Settings() {
                   data-testid="select-outing-time-limit"
                 >
                   <option value={0}>비활성 (무제한)</option>
-                  <option value={10}>10분</option>
-                  <option value={15}>15분</option>
-                  <option value={20}>20분</option>
-                  <option value={30}>30분</option>
-                  <option value={45}>45분</option>
-                  <option value={60}>60분</option>
-                  <option value={90}>90분</option>
+                  {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
+                    <option key={h} value={h * 60}>{h}시간</option>
+                  ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
                   외출 버튼 클릭 후 설정된 시간이 초과되면 해당 락카버튼이 다크그레이↔레드로 점멸됩니다
