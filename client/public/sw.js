@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hugaetel-v9';
+const CACHE_NAME = 'hugaetel-v10';
 
 // 설치 단계: index.html을 파싱해서 Vite가 생성한 모든 자산을 자동으로 캐시
 self.addEventListener('install', (event) => {
