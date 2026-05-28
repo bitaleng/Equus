@@ -1564,8 +1564,17 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
     return { success: false, message: '같은 락카 번호입니다.', type: 'error' };
   }
 
-  // 동적 범위 검사 (1-80은 기본값, 실제로는 locker_groups에서 가져와야 하지만 간단히 1-200으로 확장)
-  if (fromLockerNumber < 1 || fromLockerNumber > 200 || toLockerNumber < 1 || toLockerNumber > 200) {
+  // 설정된 락카 그룹 번호만 허용
+  const groupResult = db.exec('SELECT start_number, end_number FROM locker_groups');
+  const configuredNumbers = new Set<number>();
+  if (groupResult.length > 0) {
+    groupResult[0].values.forEach((row: any) => {
+      const start = row[0] as number;
+      const end = row[1] as number;
+      for (let i = start; i <= end; i++) configuredNumbers.add(i);
+    });
+  }
+  if (!configuredNumbers.has(fromLockerNumber) || !configuredNumbers.has(toLockerNumber)) {
     return { success: false, message: '유효하지 않은 락카 번호입니다.', type: 'error' };
   }
 
