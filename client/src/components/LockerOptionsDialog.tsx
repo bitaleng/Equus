@@ -202,6 +202,7 @@ export default function LockerOptionsDialog({
   // Locker swap states
   const [showSwapDialog, setShowSwapDialog] = useState(false);
   const [swapTargetLocker, setSwapTargetLocker] = useState<string>("");
+  const [selectedSwapLocker, setSelectedSwapLocker] = useState<number | null>(null);
   const [showSwapConfirm, setShowSwapConfirm] = useState(false);
   const [swapInfo, setSwapInfo] = useState<{ targetLocker: number; willSwap: boolean } | null>(null);
   
@@ -1910,6 +1911,7 @@ export default function LockerOptionsDialog({
   const handleSwapClick = () => {
     playClickSound();
     setSwapTargetLocker("");
+    setSelectedSwapLocker(null);
     setShowSwapDialog(true);
   };
 
@@ -3654,52 +3656,126 @@ export default function LockerOptionsDialog({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Locker swap input dialog */}
-      <AlertDialog open={showSwapDialog} onOpenChange={setShowSwapDialog}>
-        <AlertDialogContent data-testid="dialog-swap-input">
-          <AlertDialogHeader>
-            <AlertDialogTitle>락카 교체</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>교체할 락카 번호를 입력하세요.</p>
-              <div className="space-y-2">
-                <Label htmlFor="swap-target">교체 대상 락카 번호</Label>
-                <Input
-                  id="swap-target"
-                  type="number"
-                  inputMode="numeric"
-                  value={swapTargetLocker}
-                  onChange={(e) => setSwapTargetLocker(e.target.value)}
-                  placeholder="설정된 락카 번호 입력"
-                  data-testid="input-swap-target"
-                  autoFocus
-                  onTouchStart={(e) => {
-                    const target = e.currentTarget;
-                    requestAnimationFrame(() => target.focus());
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSwapSubmit();
-                    }
-                  }}
-                />
+      {/* Locker swap picker dialog */}
+      <Dialog open={showSwapDialog} onOpenChange={setShowSwapDialog}>
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto" data-testid="dialog-swap-input">
+          <DialogHeader>
+            <DialogTitle>락카 교체 — {lockerNumber}번</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* 안내 */}
+            <div className="text-sm bg-orange-50 dark:bg-orange-950 p-3 rounded-md border border-orange-200 dark:border-orange-800">
+              <p className="text-orange-700 dark:text-orange-300">
+                <span className="font-semibold">빈 락카 선택:</span> 현재 락카 내용이 대상 락카로 이동합니다.<br/>
+                <span className="font-semibold">사용중 락카 선택:</span> 두 락카의 내용이 서로 교환됩니다.
+              </p>
+            </div>
+
+            {/* 범례 */}
+            <div className="flex gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-md bg-white border-2 border-gray-300" />
+                <span>빈 락카</span>
               </div>
-              <div className="text-sm bg-blue-50 dark:bg-blue-950 p-3 rounded-md border border-blue-200 dark:border-blue-800">
-                <p className="text-blue-700 dark:text-blue-300">
-                  • 빈 락카로 교체 시: 현재 락카의 내용이 대상 락카로 이동합니다.<br/>
-                  • 사용중인 락카로 교체 시: 두 락카의 내용이 서로 교환됩니다.
-                </p>
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-md bg-[#FFD700] border-2 border-[#FFC700]" />
+                <span>사용중</span>
               </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-swap-cancel">취소</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSwapSubmit} data-testid="button-swap-submit">
-              다음
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              <div className="flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-md bg-blue-500 border-2 border-blue-600 ring-2 ring-blue-300" />
+                <span>선택됨</span>
+              </div>
+            </div>
+
+            {/* 선택 상태 표시 */}
+            <div className={`text-sm font-semibold text-center py-2 rounded-md transition-all duration-200 ${
+              selectedSwapLocker
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                : 'bg-muted text-muted-foreground'
+            }`}>
+              {selectedSwapLocker
+                ? `✓ ${selectedSwapLocker}번 락카 선택됨 — 교체하기 버튼을 눌러 진행하세요`
+                : '교체할 락카를 터치하여 선택하세요'}
+            </div>
+
+            {/* 버튼 그리드 */}
+            <div className="grid grid-cols-5 gap-2">
+              {(() => {
+                const activeLockersList = localDb.getActiveLockers();
+                const activeNumbers = new Set(activeLockersList.map((l: any) => l.lockerNumber));
+                const groups = localDb.getLockerGroups();
+                const configuredNumbers: number[] = [];
+                groups.forEach((g: any) => {
+                  for (let i = g.startNumber; i <= g.endNumber; i++) {
+                    configuredNumbers.push(i);
+                  }
+                });
+
+                return configuredNumbers.map(num => {
+                  const isCurrent = num === lockerNumber;
+                  const isInUse = activeNumbers.has(num);
+                  const isSelected = selectedSwapLocker === num;
+
+                  let btnClass = '';
+                  let statusLabel = '';
+                  if (isCurrent) {
+                    btnClass = 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 border-2 border-gray-200 dark:border-gray-700 cursor-not-allowed opacity-50';
+                    statusLabel = '현재';
+                  } else if (isSelected) {
+                    btnClass = 'bg-blue-500 text-white border-2 border-blue-600 ring-4 ring-blue-300 dark:ring-blue-700 scale-105 shadow-lg';
+                    statusLabel = isInUse ? '교환' : '이동';
+                  } else if (isInUse) {
+                    btnClass = 'bg-[#FFD700] text-gray-800 border-2 border-[#FFC700] hover-elevate active-elevate-2';
+                    statusLabel = '사용중';
+                  } else {
+                    btnClass = 'bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-2 border-gray-300 dark:border-gray-600 hover-elevate active-elevate-2';
+                  }
+
+                  return (
+                    <button
+                      key={num}
+                      disabled={isCurrent}
+                      data-testid={`button-swap-locker-${num}`}
+                      onClick={() => {
+                        if (isCurrent) return;
+                        const audio = new Audio('data:audio/wav;base64,UklGRhIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQA=');
+                        audio.volume = 0.3;
+                        audio.play().catch(() => {});
+                        setSelectedSwapLocker(num);
+                        setSwapTargetLocker(String(num));
+                      }}
+                      className={`
+                        h-14 rounded-lg font-bold text-sm
+                        flex flex-col items-center justify-center gap-0.5
+                        transition-all duration-150 active:scale-95
+                        ${btnClass}
+                      `}
+                    >
+                      <span className="text-base font-bold leading-none">{num}</span>
+                      {statusLabel && (
+                        <span className="text-[10px] font-normal opacity-85 leading-none">{statusLabel}</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSwapDialog(false)} data-testid="button-swap-cancel">
+              취소
+            </Button>
+            <Button
+              onClick={handleSwapSubmit}
+              disabled={!selectedSwapLocker}
+              className="bg-orange-600 dark:bg-orange-700"
+              data-testid="button-swap-submit"
+            >
+              교체하기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Locker swap confirmation dialog */}
       <AlertDialog open={showSwapConfirm} onOpenChange={setShowSwapConfirm}>
