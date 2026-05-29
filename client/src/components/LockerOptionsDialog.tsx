@@ -771,7 +771,7 @@ export default function LockerOptionsDialog({
       }
       if (discountOption === "custom" && discountInputAmount) {
         const inputAmount = parseInt(discountInputAmount);
-        if (!isNaN(inputAmount)) return Math.max(0, foreignerBase - inputAmount);
+        if (!isNaN(inputAmount)) return Math.max(0, foreignerBase + inputAmount);
       }
       return foreignerBase;
     }
@@ -799,7 +799,7 @@ export default function LockerOptionsDialog({
     // 우선순위 5: 직접입력 (음수면 할인, 양수면 할증)
     if (discountOption === "custom" && discountInputAmount) {
       const inputAmount = parseInt(discountInputAmount);
-      return basePrice - inputAmount; // 음수 입력 시 할증됨
+      return basePrice + inputAmount; // 음수 입력 시 할인, 양수 입력 시 할증
     }
     
     return basePrice;
