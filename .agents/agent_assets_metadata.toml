@@ -23,10 +23,10 @@ title = "V1 배포 패키지 (EQUUS) — 5.2MB"
 id = "n6MeJzU5uSIkm0AO9Zqik"
 uri = "file://v1_deploy.zip"
 type = "unspecified"
-title = "V1 (EQUUS) - 묶기 해제 시 공락카 전환 수정"
+title = "V1 (EQUUS) - 아이콘/타이틀 분리 적용"
 
 [[outputs]]
 id = "H_aipQURvDCmJhuFS40dH"
 uri = "file://v2_deploy.zip"
 type = "unspecified"
-title = "V2 (He's) - build 명령 제거된 netlify.toml 포함"
+title = "V2 (He's) - He's 아이콘/타이틀 적용"
