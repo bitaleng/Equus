@@ -209,6 +209,10 @@ function SalesCalendar() {
   const totalSales = summaries.reduce((sum, s) => sum + (s.totalSales || 0), 0);
   const totalCancelledAmount = cancelledSales.reduce((sum, c) => sum + (c.cancelledAmount || 0), 0);
 
+  const totalCash = paymentBreakdowns.reduce((sum, p) => sum + (p.cash || 0), 0);
+  const totalCard = paymentBreakdowns.reduce((sum, p) => sum + (p.card || 0), 0);
+  const totalTransfer = paymentBreakdowns.reduce((sum, p) => sum + (p.transfer || 0), 0);
+
   const salesValues = summaries.filter(s => s.totalSales > 0).map(s => s.totalSales);
   const maxSales = salesValues.length > 0 ? Math.max(...salesValues) : 0;
   const minSales = salesValues.length > 0 ? Math.min(...salesValues) : 0;
@@ -506,9 +510,18 @@ function SalesCalendar() {
             </Button>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-lg font-bold" data-testid="text-total-sales">
-              총 {viewType === "sales" ? "실매출금액" : "취소금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancelledAmount)}원
-            </span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-lg font-bold" data-testid="text-total-sales">
+                총 {viewType === "sales" ? "실매출금액" : "취소금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancelledAmount)}원
+              </span>
+              {viewType === "sales" && (totalCash > 0 || totalCard > 0 || totalTransfer > 0) && (
+                <div className="flex gap-3 text-sm text-muted-foreground">
+                  {totalCash > 0 && <span>현금 {formatCurrency(totalCash)}원</span>}
+                  {totalCard > 0 && <span>카드 {formatCurrency(totalCard)}원</span>}
+                  {totalTransfer > 0 && <span>이체 {formatCurrency(totalTransfer)}원</span>}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <Button
                 variant={viewType === "sales" ? "default" : "outline"}

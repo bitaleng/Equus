@@ -754,9 +754,26 @@ export default function LockerOptionsDialog({
       return parseInt(directPrice);
     }
     
-    // 우선순위 2: 외국인
+    // 우선순위 2: 외국인 (할인 옵션이 있으면 외국인 요금에 할인 적용)
     if (isForeigner) {
-      return foreignerPrice;
+      const foreignerBase = foreignerPrice;
+      if (discountOption === "discount") {
+        return Math.max(0, foreignerBase - discountAmount);
+      }
+      if (discountOption.startsWith("pricing_")) {
+        const optionId = discountOption.replace("pricing_", "");
+        const option = pricingOptions.find(o => o.id === optionId);
+        if (option) {
+          if (option.optionType === 'discount') return Math.max(0, foreignerBase - option.amount);
+          if (option.optionType === 'surcharge') return foreignerBase + option.amount;
+          if (option.optionType === 'fixed') return option.amount;
+        }
+      }
+      if (discountOption === "custom" && discountInputAmount) {
+        const inputAmount = parseInt(discountInputAmount);
+        if (!isNaN(inputAmount)) return Math.max(0, foreignerBase - inputAmount);
+      }
+      return foreignerBase;
     }
     
     // 우선순위 3: 기본 할인 옵션
@@ -1268,7 +1285,13 @@ export default function LockerOptionsDialog({
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
-      optionType = 'foreigner';
+      if (discountOption !== 'none') {
+        // 외국인 요금에 할인 옵션 적용 시 최종 계산 금액으로 저장
+        optionType = 'direct_price';
+        optionAmount = calculateFinalPrice();
+      } else {
+        optionType = 'foreigner';
+      }
     } else if (discountOption === 'discount') {
       optionType = 'discount';
       optionAmount = discountAmount;
@@ -1524,6 +1547,8 @@ export default function LockerOptionsDialog({
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
       localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
+      // 외출 상태 저장 (수정저장 시에만 반영)
+      localDb.updateLockerOuting(currentLockerLogId, currentIsOuting);
       
       // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
       // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
@@ -2480,7 +2505,7 @@ export default function LockerOptionsDialog({
             )}
 
             {/* 요금 옵션 Select */}
-            {!isDirectPrice && !isForeigner && !isFreeEntry && (
+            {!isDirectPrice && !isFreeEntry && (
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">요금 옵션</Label>
                 <Select value={discountOption} onValueChange={setDiscountOption}>
@@ -3434,11 +3459,6 @@ export default function LockerOptionsDialog({
                     const newMemo = customerMemo.trim() ? `${customerMemo}\n${label}` : label;
                     setCustomerMemo(newMemo);
                     setCurrentIsOuting(newIsOuting);
-                    if (currentLockerLogId) {
-                      localDb.updateLockerLogMemo(currentLockerLogId, newMemo);
-                      localDb.updateLockerOuting(currentLockerLogId, newIsOuting);
-                    }
-                    if (onToggleOuting) onToggleOuting(newIsOuting, newMemo);
                   }}
                   className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${currentIsOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'border-border text-muted-foreground hover-elevate'}`}
                   data-testid="button-toggle-outing"
