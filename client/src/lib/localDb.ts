@@ -1929,11 +1929,12 @@ export function unlinkChildLocker(childLockerNumber: number): { success: boolean
     }
 
     const parentNumber = childData.parentLocker;
+    const checkoutTime = new Date().toISOString();
 
-    // Remove parent_locker link but keep the locker in 'in_use' status
+    // Unlink and check out the child locker so it becomes vacant
     db.run(
-      `UPDATE locker_logs SET parent_locker = NULL WHERE locker_number = ? AND status = 'in_use'`,
-      [childLockerNumber]
+      `UPDATE locker_logs SET parent_locker = NULL, status = 'checked_out', exit_time = ? WHERE locker_number = ? AND status = 'in_use'`,
+      [checkoutTime, childLockerNumber]
     );
 
     const changes = db.exec('SELECT changes() as count')[0]?.values[0]?.[0];
