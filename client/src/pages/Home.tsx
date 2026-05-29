@@ -85,6 +85,7 @@ export default function Home() {
   const [openDialogs, setOpenDialogs] = useState<Map<number, OpenDialog>>(new Map());
   const [childLockerAlertOpen, setChildLockerAlertOpen] = useState(false);
   const [childLockerParent, setChildLockerParent] = useState<number | null>(null);
+  const [childLockerCurrentNumber, setChildLockerCurrentNumber] = useState<number | null>(null);
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
@@ -515,6 +516,7 @@ export default function Home() {
       if (parentLockerNumber) {
         // Child locker: show alert only
         setChildLockerParent(parentLockerNumber);
+        setChildLockerCurrentNumber(lockerNumber);
         setChildLockerAlertOpen(true);
       } else {
         // Parent or independent locker: add to openDialogs
@@ -647,6 +649,7 @@ export default function Home() {
           if (parentLockerNumber) {
             // Child locker: show alert only
             setChildLockerParent(parentLockerNumber);
+            setChildLockerCurrentNumber(lockerNumber);
             setChildLockerAlertOpen(true);
           } else {
             // Parent or independent locker: add to openDialogs
@@ -1092,6 +1095,7 @@ export default function Home() {
       if (parentLockerNumber) {
         // Child locker: show alert only
         setChildLockerParent(parentLockerNumber);
+        setChildLockerCurrentNumber(lockerNumber);
         setChildLockerAlertOpen(true);
       } else {
         // Parent or independent locker: add to openDialogs
@@ -1471,6 +1475,22 @@ export default function Home() {
     }
     
     loadData();
+  };
+
+  const handleUnlinkChildLocker = () => {
+    if (!childLockerCurrentNumber) return;
+    try {
+      const result = localDb.unlinkChildLocker(childLockerCurrentNumber);
+      if (result.success) {
+        toast({ title: "묶기 해제 완료", description: result.message });
+        setChildLockerAlertOpen(false);
+        loadData();
+      } else {
+        toast({ variant: "destructive", title: "묶기 해제 실패", description: result.message });
+      }
+    } catch (error) {
+      toast({ variant: "destructive", title: "오류", description: "묶기 해제 중 오류가 발생했습니다." });
+    }
   };
 
   const handleCheckout = async (
@@ -2501,11 +2521,18 @@ export default function Home() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction 
+            <AlertDialogCancel
               onClick={() => setChildLockerAlertOpen(false)}
-              data-testid="button-child-locker-ok"
+              data-testid="button-child-locker-cancel"
             >
-              확인
+              닫기
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnlinkChildLocker}
+              data-testid="button-child-locker-unlink"
+              className="bg-destructive text-destructive-foreground"
+            >
+              묶기 해제
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

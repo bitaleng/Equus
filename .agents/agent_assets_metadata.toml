@@ -18,3 +18,15 @@ id = "E98OcRrn06OAex5Oi64Ah"
 uri = "file://netlify-deploy-v1.zip"
 type = "unspecified"
 title = "V1 배포 패키지 (EQUUS) — 5.2MB"
+
+[[outputs]]
+id = "n6MeJzU5uSIkm0AO9Zqik"
+uri = "file://v1_deploy.zip"
+type = "unspecified"
+title = "V1 배포 (EQUUS) - 묶기 해제 버튼 수정"
+
+[[outputs]]
+id = "H_aipQURvDCmJhuFS40dH"
+uri = "file://v2_deploy.zip"
+type = "unspecified"
+title = "V2 배포 (He's) - 묶기 해제 버튼 수정"
