@@ -6641,26 +6641,50 @@ export function importDatabase(jsonString: string): {
         console.log(`No data to import for ${tableName}`);
         return;
       }
-      
+
+      // Get actual columns in current DB schema to handle version mismatches
+      let currentColumns: string[] = [];
+      try {
+        const schemaResult = db!.exec(`PRAGMA table_info(${tableName})`);
+        if (schemaResult.length > 0) {
+          currentColumns = schemaResult[0].values.map((row: any) => row[1] as string);
+        }
+      } catch (e) {
+        console.warn(`Could not read schema for ${tableName}:`, e);
+      }
+
       const firstRow = data[0];
-      const columns = Object.keys(firstRow);
+      const backupColumns = Object.keys(firstRow);
+
+      // Only insert columns that exist in both backup AND current schema
+      // This handles forward/backward compatibility across schema migrations
+      const columns = currentColumns.length > 0
+        ? backupColumns.filter(col => currentColumns.includes(col))
+        : backupColumns;
+
+      if (columns.length === 0) {
+        console.warn(`No matching columns for ${tableName}, skipping`);
+        return;
+      }
+
       const placeholders = columns.map(() => '?').join(', ');
       const columnNames = columns.join(', ');
-      
-      const insertQuery = `INSERT INTO ${tableName} (${columnNames}) VALUES (${placeholders})`;
-      
+      const insertQuery = `INSERT OR IGNORE INTO ${tableName} (${columnNames}) VALUES (${placeholders})`;
+
       let imported = 0;
+      let failed = 0;
       data.forEach((row: any) => {
         try {
-          const values = columns.map(col => row[col]);
+          const values = columns.map(col => (row[col] !== undefined ? row[col] : null));
           db!.run(insertQuery, values);
           imported++;
         } catch (error) {
-          console.warn(`Failed to import row in ${tableName}:`, error);
+          console.warn(`Failed to import row in ${tableName}:`, error, row);
+          failed++;
         }
       });
-      
-      console.log(`Imported ${imported}/${data.length} rows for ${tableName}`);
+
+      console.log(`Imported ${imported}/${data.length} rows for ${tableName}` + (failed > 0 ? ` (${failed} failed)` : ''));
     };
     
     // Import tables in order (system_metadata first, then others, user-defined settings included)
