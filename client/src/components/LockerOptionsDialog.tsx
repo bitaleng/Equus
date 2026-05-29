@@ -237,7 +237,7 @@ export default function LockerOptionsDialog({
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
   const additionalFeePaymentMethodUserChangedRef = useRef(false);
-  const previousLockerRef = useRef<number | null>(null);
+  const previousLockerRef = useRef<string | null>(null);
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   
@@ -1544,6 +1544,9 @@ export default function LockerOptionsDialog({
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
     onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
     
+    // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
+    additionalFeePaymentMethodUserChangedRef.current = true;
+    
     // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
     if (isInUse && currentLockerLogId) {
       localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
@@ -2007,15 +2010,6 @@ export default function LockerOptionsDialog({
   };
 
   const handleLinkSubmit = () => {
-    if (selectedChildLockers.size === 0) {
-      toast({
-        variant: "destructive",
-        title: "선택 오류",
-        description: "묶을 락카를 최소 1개 이상 선택해주세요.",
-      });
-      return;
-    }
-
     playClickSound();
     setShowLinkDialog(false);
     setShowLinkConfirm(true);
@@ -2026,16 +2020,21 @@ export default function LockerOptionsDialog({
     
     try {
       const childLockerNumbers = Array.from(selectedChildLockers);
+      // 0개 선택 시 모든 자식 락카 연결 해제
       const result = localDb.setParentChildLinks(lockerNumber, childLockerNumbers);
       
       if (result.success) {
-        // 메모에 자동으로 정보 추가
-        const childList = childLockerNumbers.join(", ");
-        const newMemo = `[락카묶기] ${lockerNumber}번 부모 락카로 ${childList}번과 함께 묶음`;
+        let newMemo: string;
+        if (childLockerNumbers.length === 0) {
+          newMemo = `[락카묶기 해제] ${lockerNumber}번 부모 락카의 모든 묶기 해제`;
+        } else {
+          const childList = childLockerNumbers.join(", ");
+          newMemo = `[락카묶기] ${lockerNumber}번 부모 락카로 ${childList}번과 함께 묶음`;
+        }
         setCustomerMemo(newMemo);
         
         toast({
-          title: "락카묶기 완료",
+          title: childLockerNumbers.length === 0 ? "묶기 해제 완료" : "락카묶기 완료",
           description: result.message,
         });
         setShowLinkConfirm(false);
@@ -2081,6 +2080,13 @@ export default function LockerOptionsDialog({
     setNewParentLocker("");
     setUnlinkMode(false);
     setShowChangeParentDialog(true);
+  };
+
+  // 자식 락카에서 직접 묶기 해제 (확인창 바로 표시)
+  const handleUnlinkFromParent = () => {
+    playClickSound();
+    setUnlinkMode(true);
+    setShowChangeParentConfirm(true);
   };
 
   const handleChangeParentSubmit = () => {
@@ -3536,6 +3542,11 @@ export default function LockerOptionsDialog({
                     락카묶기
                   </Button>
                 )}
+                {parentLockerNumber && (
+                  <Button variant="secondary" onClick={handleUnlinkFromParent} data-testid="button-unlink">
+                    묶기 해제
+                  </Button>
+                )}
                 <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
                   수정저장
                 </Button>
@@ -3905,8 +3916,8 @@ export default function LockerOptionsDialog({
             </div>
 
             {selectedChildLockers.size === 0 && (
-              <div className="text-sm text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950 p-3 rounded-md border border-orange-200 dark:border-orange-800">
-                최소 1개 이상의 락카를 선택해주세요
+              <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 p-3 rounded-md border border-red-200 dark:border-red-800">
+                선택된 락카가 없습니다. 확인 시 현재 연결된 모든 묶기가 해제됩니다.
               </div>
             )}
           </div>
@@ -3925,14 +3936,27 @@ export default function LockerOptionsDialog({
       <AlertDialog open={showLinkConfirm} onOpenChange={setShowLinkConfirm}>
         <AlertDialogContent data-testid="dialog-link-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-blue-600">락카묶기 확인</AlertDialogTitle>
+            <AlertDialogTitle className={selectedChildLockers.size === 0 ? "text-red-600" : "text-blue-600"}>
+              {selectedChildLockers.size === 0 ? "묶기 해제 확인" : "락카묶기 확인"}
+            </AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
-                <p className="text-sm text-blue-600 dark:text-blue-400">
-                  {lockerNumber}번 락카에 {Array.from(selectedChildLockers).join(', ')}번 락카를 묶습니다.
-                  <br/><br/>
-                  • 묶인 락카는 요금 없이 사용됩니다<br/>
-                  • {lockerNumber}번 퇴실 시 자동으로 함께 퇴실됩니다
+              <div className={`p-4 rounded-md border ${selectedChildLockers.size === 0 ? "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800" : "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800"}`}>
+                <p className={`text-sm ${selectedChildLockers.size === 0 ? "text-red-600 dark:text-red-400" : "text-blue-600 dark:text-blue-400"}`}>
+                  {selectedChildLockers.size === 0 ? (
+                    <>
+                      {lockerNumber}번 락카의 모든 자식 락카 묶기를 해제합니다.
+                      <br/><br/>
+                      • 해제된 자식 락카는 독립된 락카로 전환됩니다<br/>
+                      • 기존 입실 정보는 유지됩니다
+                    </>
+                  ) : (
+                    <>
+                      {lockerNumber}번 락카에 {Array.from(selectedChildLockers).join(', ')}번 락카를 묶습니다.
+                      <br/><br/>
+                      • 묶인 락카는 요금 없이 사용됩니다<br/>
+                      • {lockerNumber}번 퇴실 시 자동으로 함께 퇴실됩니다
+                    </>
+                  )}
                 </p>
               </div>
               <p className="font-medium">계속하시겠습니까?</p>
