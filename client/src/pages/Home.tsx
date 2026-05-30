@@ -996,6 +996,7 @@ export default function Home() {
   const lockerOutingStatus: { [key: number]: boolean } = {}; // 외출 중 여부
   const lockerOutingStartedAt: { [key: number]: string | null } = {}; // 외출 시작 시각
   const lockerOutingExceeded: { [key: number]: boolean } = {}; // 외출 시간 초과 여부
+  const lockerStaffStatus: { [key: number]: boolean } = {}; // 직원 사용 여부
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -1008,6 +1009,7 @@ export default function Home() {
       lockerOutingStatus[i] = false;
       lockerOutingStartedAt[i] = null;
       lockerOutingExceeded[i] = false;
+      lockerStaffStatus[i] = false;
     }
   });
   
@@ -1018,6 +1020,7 @@ export default function Home() {
     lockerDeferredPayments[log.lockerNumber] = (log as any).deferredPayment || false; // 후불결제 여부
     lockerCustomerMemos[log.lockerNumber] = (log as any).customerMemo || ''; // 손님 메모
     lockerOutingStatus[log.lockerNumber] = !!(log as any).isOuting; // 외출 중 여부
+    lockerStaffStatus[log.lockerNumber] = !!(log as any).isStaff; // 직원 사용 여부
     const outingStartedAt = (log as any).outingStartedAt || null;
     lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
     // 외출 시간 초과 여부 계산
@@ -1140,7 +1143,8 @@ export default function Home() {
     noAdditionalFee?: boolean, // 추가요금없음 (VIP 등)
     prepaidAdditionalFee?: number, // 추가요금 선지급 금액
     isCashReceipt?: boolean, // 현금영수증 발행 여부
-    additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer' // 추가요금 결제방식
+    additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer', // 추가요금 결제방식
+    isStaff?: boolean // 직원 입실 여부
   ) => {
     // Use ref to get the latest openDialogs state (prevents stale closure issue)
     const currentOpenDialogs = openDialogsRef.current;
@@ -1222,6 +1226,7 @@ export default function Home() {
         prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급
         isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부
         additionalFeePaymentMethod: additionalFeePaymentMethod,  // 추가요금 결제방식
+        isStaff: isStaff || false,  // 직원 입실 여부
       });
 
       // Mark the scan log as processed (if there was a scan)
@@ -1858,6 +1863,7 @@ export default function Home() {
                     customerMemo={lockerCustomerMemos[num] || ''}
                     isOuting={lockerOutingStatus[num] || false}
                     outingExceeded={lockerOutingExceeded[num] || false}
+                    isStaff={lockerStaffStatus[num] || false}
                   />
                 ))}
               </div>
@@ -2202,6 +2208,10 @@ export default function Home() {
                 <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
                 <span className="text-xs">추가요금</span>
               </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-4 h-4 rounded bg-[#FF69B4] border-2 border-[#FF1493]"></div>
+                <span className="text-xs">직원</span>
+              </div>
             </div>
           </div>
         </div>
@@ -2249,6 +2259,7 @@ export default function Home() {
                         customerMemo={lockerCustomerMemos[num] || ''}
                         isOuting={lockerOutingStatus[num] || false}
                         outingExceeded={lockerOutingExceeded[num] || false}
+                        isStaff={lockerStaffStatus[num] || false}
                       />
                     ))}
                   </div>
@@ -2427,12 +2438,13 @@ export default function Home() {
                           currentPrepaidAdditionalFee={(selectedEntry as any)?.prepaidAdditionalFee || 0}
                           currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
                           currentAdditionalFeePaymentMethod={(selectedEntry as any)?.additionalFeePaymentMethod}
+                          currentIsStaff={!!(selectedEntry as any)?.isStaff}
                           isOuting={lockerOutingStatus[lockerNumber] || false}
                           onToggleOuting={(_newIsOuting, _newMemo) => {
                             loadData();
                           }}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod)
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff) => 
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod) => 
                             handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod)

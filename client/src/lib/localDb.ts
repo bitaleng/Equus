@@ -881,6 +881,14 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
 
+    // Step 27: Add is_staff column to locker_logs (직원 입실 여부)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN is_staff INTEGER DEFAULT 0`);
+      console.log('Added is_staff column to locker_logs');
+    } catch (e) {
+      // Column already exists, ignore
+    }
+
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
@@ -926,7 +934,8 @@ function createTables() {
       refund_note TEXT,
       refund_time TEXT,
       refund_method TEXT DEFAULT 'cash',
-      is_outing INTEGER DEFAULT 0
+      is_outing INTEGER DEFAULT 0,
+      is_staff INTEGER DEFAULT 0
     )
   `);
 
@@ -1184,6 +1193,7 @@ export function createEntry(entry: {
   prepaidAdditionalFee?: number;  // 추가요금 선지급 금액
   isCashReceipt?: boolean;  // 현금영수증 발행 여부
   additionalFeePaymentMethod?: string;  // 추가요금 결제방식
+  isStaff?: boolean;  // 직원 입실 여부
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1198,8 +1208,8 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method, is_staff)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1221,7 +1231,8 @@ export function createEntry(entry: {
       entry.noAdditionalFee ? 1 : 0,
       entry.prepaidAdditionalFee || 0,
       entry.isCashReceipt ? 1 : 0,
-      entry.additionalFeePaymentMethod || null
+      entry.additionalFeePaymentMethod || null,
+      entry.isStaff ? 1 : 0
     ]
   );
 
@@ -1316,6 +1327,10 @@ export function updateEntry(id: string, updates: any) {
   if (updates.additionalFeePaymentMethod !== undefined) {
     sets.push('additional_fee_payment_method = ?');
     values.push(updates.additionalFeePaymentMethod || null);
+  }
+  if (updates.isStaff !== undefined) {
+    sets.push('is_staff = ?');
+    values.push(updates.isStaff ? 1 : 0);
   }
   if (updates.refundAmount !== undefined) {
     sets.push('refund_amount = ?');
@@ -2877,7 +2892,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       }
       
       // Convert boolean fields
-      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee' || col === 'is_cash_receipt') {
+      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee' || col === 'is_cash_receipt' || col === 'is_outing' || col === 'is_staff') {
         value = value === 1;
       }
       

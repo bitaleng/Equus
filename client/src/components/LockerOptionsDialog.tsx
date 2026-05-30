@@ -73,8 +73,9 @@ interface LockerOptionsDialogProps {
   currentIsCashReceipt?: boolean; // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod?: 'card' | 'cash' | 'transfer'; // 현재 추가요금 결제방식
   isOuting?: boolean; // 현재 외출 중 여부
+  currentIsStaff?: boolean; // 현재 직원 입실 여부
   onToggleOuting?: (newIsOuting: boolean, newMemo: string) => void; // 외출/복귀 토글 콜백
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer') => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer', isStaff?: boolean) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -149,6 +150,7 @@ export default function LockerOptionsDialog({
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
   const [isFreeEntry, setIsFreeEntry] = useState(false);
+  const [isStaff, setIsStaff] = useState(false);
   const [noAdditionalFee, setNoAdditionalFee] = useState(false); // 추가요금없음 (VIP 등)
   const [hasPrepaidAdditionalFee, setHasPrepaidAdditionalFee] = useState(false); // 추가요금 선지급 체크박스
   const [prepaidAdditionalFeeAmount, setPrepaidAdditionalFeeAmount] = useState<string>(""); // 추가요금 선지급 금액
@@ -750,8 +752,8 @@ export default function LockerOptionsDialog({
   }, [open, isInUse, currentPrepaidAdditionalFee]);
 
   const calculateFinalPrice = () => {
-    // 우선순위 0: 무료입장
-    if (isFreeEntry) {
+    // 우선순위 0: 직원 또는 무료입장
+    if (isStaff || isFreeEntry) {
       return 0;
     }
     
@@ -1140,7 +1142,7 @@ export default function LockerOptionsDialog({
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let optionAmount: number | undefined;
 
-    if (isFreeEntry) {
+    if (isStaff || isFreeEntry) {
       optionType = 'free';
       optionAmount = 0;
     } else if (isDirectPrice && directPrice) {
@@ -1179,13 +1181,13 @@ export default function LockerOptionsDialog({
       }
     }
     
-    // 무료입장일 경우 결제방식 없이 바로 처리
-    if (isFreeEntry) {
-      console.log('[handleProcessEntry] Free entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee });
+    // 무료입장 또는 직원일 경우 결제방식 없이 바로 처리
+    if (isFreeEntry || isStaff) {
+      console.log('[handleProcessEntry] Free/Staff entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee, isStaff });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1228,7 +1230,7 @@ export default function LockerOptionsDialog({
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff);
       setDialogOpen(false);
       return;
     }
@@ -1274,7 +1276,7 @@ export default function LockerOptionsDialog({
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff);
     setDialogOpen(false);
   };
 
@@ -1284,7 +1286,7 @@ export default function LockerOptionsDialog({
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let optionAmount: number | undefined;
 
-    if (isFreeEntry) {
+    if (isStaff || isFreeEntry) {
       optionType = 'free';
       optionAmount = 0;
     } else if (isDirectPrice && directPrice) {
@@ -1548,7 +1550,7 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, currentIsStaff);
     
     // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
     additionalFeePaymentMethodUserChangedRef.current = true;
@@ -2317,7 +2319,8 @@ export default function LockerOptionsDialog({
               )}
             </div>
 
-            {/* 요금직접입력 체크박스 */}
+            {/* 요금직접입력 체크박스 - 직원일 때는 숨김 */}
+            {!isStaff && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Checkbox 
@@ -2340,9 +2343,10 @@ export default function LockerOptionsDialog({
                 />
               )}
             </div>
+            )}
 
             {/* 외국인 체크박스 - 설정에서 활성화된 경우에만 표시 */}
-            {enableForeignerOption && !isDirectPrice && !isFreeEntry && (
+            {enableForeignerOption && !isDirectPrice && !isFreeEntry && !isStaff && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="foreigner" 
@@ -2356,8 +2360,29 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
+            {/* 직원 체크박스 - 신규 입실에서만 표시 */}
+            {!isInUse && !isDirectPrice && !isForeigner && !isFreeEntry && (
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="is-staff" 
+                  checked={isStaff}
+                  onCheckedChange={(checked) => {
+                    setIsStaff(checked as boolean);
+                    if (checked) {
+                      setDiscountOption("none");
+                      setDiscountInputAmount("");
+                    }
+                  }}
+                  data-testid="checkbox-is-staff"
+                />
+                <Label htmlFor="is-staff" className="text-sm font-semibold cursor-pointer text-pink-600 dark:text-pink-400">
+                  직원 (0원)
+                </Label>
+              </div>
+            )}
+
             {/* 무료입장 체크박스 - 신규 입실에서만 표시 */}
-            {!isInUse && !isDirectPrice && !isForeigner && (
+            {!isInUse && !isDirectPrice && !isForeigner && !isStaff && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="free-entry" 
@@ -2395,8 +2420,8 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 추가요금 선지급 체크박스 - 무료입장/추가요금없음이 아닌 경우에만 표시 */}
-            {!isFreeEntry && !noAdditionalFee && (
+            {/* 추가요금 선지급 체크박스 - 무료입장/직원/추가요금없음이 아닌 경우에만 표시 */}
+            {!isFreeEntry && !isStaff && !noAdditionalFee && (
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -2519,7 +2544,7 @@ export default function LockerOptionsDialog({
             )}
 
             {/* 요금 옵션 Select */}
-            {!isDirectPrice && !isFreeEntry && (
+            {!isDirectPrice && !isFreeEntry && !isStaff && (
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">요금 옵션</Label>
                 <Select value={discountOption} onValueChange={setDiscountOption}>
@@ -2569,8 +2594,8 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 지불방식 - 무료입장일 때는 숨김 */}
-            {!isFreeEntry && (
+            {/* 지불방식 - 무료입장/직원일 때는 숨김 */}
+            {!isFreeEntry && !isStaff && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">지불방식</Label>

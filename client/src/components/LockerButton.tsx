@@ -16,9 +16,10 @@ interface LockerButtonProps {
   customerMemo?: string; // 손님 메모
   isOuting?: boolean; // 외출 중 여부
   outingExceeded?: boolean; // 외출 시간 초과 여부
+  isStaff?: boolean; // 직원 사용 여부
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false, isStaff = false }: LockerButtonProps) {
   // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과 - blur 없이 색상만)
   const getDeferredPaymentStyles = () => {
     return `
@@ -64,7 +65,12 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         }
       }
       
-      // 3순위: 추가요금 없음 -> 주간/야간 구분
+      // 3순위: 직원 사용중 -> 핑크색
+      if (isStaff) {
+        return "bg-[#FF69B4] text-white border-2 border-[#FF1493]";
+      }
+      
+      // 4순위: 추가요금 없음 -> 주간/야간 구분
       if (timeType === 'day') {
         // 주간: 노란색
         return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700]";
@@ -88,6 +94,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       if (deferredPayment) return '후불결제';
       // 추가요금이 있으면 횟수만 표시
       if (additionalFeeCount > 0) return `추가 ${additionalFeeCount}회`;
+      if (isStaff) return '직원';
       return '사용중';
     }
     return '비어있음';
