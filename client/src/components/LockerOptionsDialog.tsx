@@ -1129,8 +1129,8 @@ export default function LockerOptionsDialog({
   const handleProcessEntry = () => {
     playClickSound();
     
-    // 후불결제가 아닌 경우에만 지불방식 검증 (무료입장은 검증 스킵)
-    if (!isDeferredPayment && !isFreeEntry && !useSplitPayment && !paymentMethod) {
+    // 후불결제가 아닌 경우에만 지불방식 검증 (무료입장/직원은 검증 스킵)
+    if (!isDeferredPayment && !isFreeEntry && !isStaff && !useSplitPayment && !paymentMethod) {
       toast({
         title: "지불방식 미선택",
         description: "현금, 카드, 이체 중 하나를 선택해주세요.",
