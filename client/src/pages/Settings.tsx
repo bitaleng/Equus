@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -240,6 +240,10 @@ export default function Settings() {
   
   // Database regeneration confirmation dialog
   const [isRegenerateDialogOpen, setIsRegenerateDialogOpen] = useState(false);
+
+  // 락카사용설정 states
+  const [isLockerUsageDialogOpen, setIsLockerUsageDialogOpen] = useState(false);
+  const [tempDisabledLockers, setTempDisabledLockers] = useState<Set<number>>(new Set());
 
   // Data management section collapsible states
   const [isDataManagementOpen, setIsDataManagementOpen] = useState(false);
@@ -1963,6 +1967,150 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+
+          {/* 락카사용설정 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Ban className="h-5 w-5" />
+                    락카사용설정
+                  </CardTitle>
+                  <CardDescription>
+                    고장·청소 등으로 사용할 수 없는 락카를 지정합니다 (회색으로 표시되고 클릭 불가)
+                  </CardDescription>
+                </div>
+                <Button
+                  onClick={() => {
+                    try {
+                      const saved = localStorage.getItem('out_of_service_lockers');
+                      setTempDisabledLockers(saved ? new Set<number>(JSON.parse(saved)) : new Set<number>());
+                    } catch {
+                      setTempDisabledLockers(new Set<number>());
+                    }
+                    setIsLockerUsageDialogOpen(true);
+                  }}
+                  size="sm"
+                  data-testid="button-open-locker-usage"
+                >
+                  사용불가 설정
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                try {
+                  const saved = localStorage.getItem('out_of_service_lockers');
+                  const disabled: number[] = saved ? JSON.parse(saved) : [];
+                  if (disabled.length === 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground">현재 사용불가로 지정된 락카가 없습니다.</p>
+                    );
+                  }
+                  return (
+                    <div className="flex flex-wrap gap-2">
+                      {disabled.sort((a, b) => a - b).map(num => (
+                        <span key={num} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-200 text-gray-500 text-sm dark:bg-gray-700 dark:text-gray-400">
+                          <Ban className="w-3 h-3" />
+                          {num}번
+                        </span>
+                      ))}
+                    </div>
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* 락카사용설정 다이얼로그 */}
+          <Dialog open={isLockerUsageDialogOpen} onOpenChange={setIsLockerUsageDialogOpen}>
+            <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Ban className="h-5 w-5" />
+                  락카 사용불가 설정
+                </DialogTitle>
+                <DialogDescription>
+                  사용불가로 지정할 락카를 클릭하세요. 다시 클릭하면 해제됩니다.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 py-2">
+                {lockerGroups.length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">락커 그룹이 설정되지 않았습니다.</p>
+                ) : (
+                  lockerGroups.map((group) => (
+                    <div key={group.id}>
+                      <h4 className="text-sm font-semibold mb-3 text-muted-foreground">{group.name}</h4>
+                      <div className="grid grid-cols-10 gap-2">
+                        {Array.from(
+                          { length: group.endNumber - group.startNumber + 1 },
+                          (_, i) => group.startNumber + i
+                        ).map((num) => {
+                          const isDisabled = tempDisabledLockers.has(num);
+                          return (
+                            <button
+                              key={num}
+                              onClick={() => {
+                                setTempDisabledLockers(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(num)) {
+                                    next.delete(num);
+                                  } else {
+                                    next.add(num);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className={`
+                                aspect-square rounded-lg font-semibold text-sm border-2 transition-all duration-100
+                                flex flex-col items-center justify-center gap-0.5
+                                ${isDisabled
+                                  ? 'bg-gray-300 text-gray-500 border-gray-400 dark:bg-gray-700 dark:text-gray-400 dark:border-gray-600'
+                                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-700'
+                                }
+                              `}
+                              data-testid={`locker-usage-${num}`}
+                            >
+                              <span className="text-base font-bold">{num}</span>
+                              {isDisabled && <span className="text-[9px] font-normal">사용불가</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsLockerUsageDialogOpen(false)}
+                  data-testid="button-locker-usage-cancel"
+                >
+                  취소
+                </Button>
+                <Button
+                  onClick={() => {
+                    const arr = Array.from(tempDisabledLockers);
+                    localStorage.setItem('out_of_service_lockers', JSON.stringify(arr));
+                    window.dispatchEvent(new StorageEvent('storage', {
+                      key: 'out_of_service_lockers',
+                      newValue: JSON.stringify(arr),
+                    }));
+                    setIsLockerUsageDialogOpen(false);
+                    toast({ title: "저장 완료", description: `사용불가 락카 ${arr.length}개가 설정되었습니다.` });
+                  }}
+                  data-testid="button-locker-usage-save"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  저장
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* 바코드 관리 */}
           <Card>

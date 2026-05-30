@@ -17,9 +17,10 @@ interface LockerButtonProps {
   isOuting?: boolean; // 외출 중 여부
   outingExceeded?: boolean; // 외출 시간 초과 여부
   isStaff?: boolean; // 직원 사용 여부
+  outOfService?: boolean; // 사용불가 (관리자 설정)
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false, isStaff = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false, isStaff = false, outOfService = false }: LockerButtonProps) {
   // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과 - blur 없이 색상만)
   const getDeferredPaymentStyles = () => {
     return `
@@ -29,6 +30,9 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   };
   
   const getButtonStyles = () => {
+    if (outOfService) {
+      return "bg-gray-200 text-gray-400 cursor-not-allowed border-2 border-gray-300 dark:bg-gray-700 dark:text-gray-500 dark:border-gray-600";
+    }
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted";
     }
@@ -84,6 +88,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   };
 
   const getStatusText = () => {
+    if (outOfService) return '사용불가';
     if (status === 'disabled') return '퇴실완료';
     if (status === 'in-use') {
       // 자식 락카인 경우 텍스트 숨김
@@ -101,7 +106,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   };
 
   const handleClick = () => {
-    if (status !== 'disabled') {
+    if (status !== 'disabled' && !outOfService) {
       const audio = new Audio('data:audio/wav;base64,UklGRhIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQA=');
       audio.volume = 0.3;
       audio.play().catch(() => {});
@@ -112,7 +117,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   const buttonContent = (
     <Button
       onClick={handleClick}
-      disabled={status === 'disabled'}
+      disabled={status === 'disabled' || outOfService}
       className={`
         aspect-square w-full rounded-lg font-semibold
         transition-all duration-100

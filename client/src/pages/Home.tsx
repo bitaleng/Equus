@@ -136,6 +136,16 @@ export default function Home() {
   // Popup workspace visibility toggle
   const [popupsVisible, setPopupsVisible] = useState(true);
   
+  // 사용불가 락카 목록 (localStorage)
+  const [disabledLockers, setDisabledLockers] = useState<Set<number>>(() => {
+    try {
+      const saved = localStorage.getItem('out_of_service_lockers');
+      return saved ? new Set<number>(JSON.parse(saved)) : new Set<number>();
+    } catch {
+      return new Set<number>();
+    }
+  });
+
   // Floating mode for workspace panel
   const [isFloatingMode, setIsFloatingMode] = useState(() => {
     const saved = localStorage.getItem('workspaceFloatingMode');
@@ -841,6 +851,22 @@ export default function Home() {
   useEffect(() => {
     openDialogsRef.current = openDialogs;
   }, [openDialogs]);
+
+  // Settings에서 사용불가 락카 변경 시 동기화
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'out_of_service_lockers') {
+        try {
+          const saved = e.newValue;
+          setDisabledLockers(saved ? new Set<number>(JSON.parse(saved)) : new Set<number>());
+        } catch {
+          setDisabledLockers(new Set<number>());
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // Load data on mount and set up refresh interval
   useEffect(() => {
@@ -1776,7 +1802,7 @@ export default function Home() {
             log.optionType === 'discount' ? '할인' :
             log.optionType === 'custom' ? `할인직접` :
             log.optionType === 'direct_price' ? '요금직접' :
-            (log.optionType as string) === 'free' ? '무료입장' :
+            (log.optionType as string) === 'free' ? ((log as any).isStaff ? '직원' : '무료입장') :
             '외국인',
     optionType: log.optionType as 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free', // 필터용
     finalPrice: log.finalPrice,
@@ -1864,6 +1890,7 @@ export default function Home() {
                     isOuting={lockerOutingStatus[num] || false}
                     outingExceeded={lockerOutingExceeded[num] || false}
                     isStaff={lockerStaffStatus[num] || false}
+                    outOfService={disabledLockers.has(num)}
                   />
                 ))}
               </div>
@@ -2012,6 +2039,12 @@ export default function Home() {
                   <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
                   <span className="text-xs">추가요금</span>
                 </div>
+                {disabledLockers.size > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-4 rounded bg-gray-200 border-2 border-gray-300"></div>
+                    <span className="text-xs">사용불가</span>
+                  </div>
+                )}
               </div>
             </div>
             {renderLockerGrid(true)}
@@ -2260,6 +2293,7 @@ export default function Home() {
                         isOuting={lockerOutingStatus[num] || false}
                         outingExceeded={lockerOutingExceeded[num] || false}
                         isStaff={lockerStaffStatus[num] || false}
+                        outOfService={disabledLockers.has(num)}
                       />
                     ))}
                   </div>
