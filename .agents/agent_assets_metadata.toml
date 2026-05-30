@@ -23,10 +23,10 @@ title = "V1 배포 패키지 (EQUUS) — 5.2MB"
 id = "n6MeJzU5uSIkm0AO9Zqik"
 uri = "file://v1_deploy.zip"
 type = "unspecified"
-title = "V1 (EQUUS) - build 명령 제거된 netlify.toml 포함"
+title = "V1 배포 ZIP (EQUUS)"
 
 [[outputs]]
 id = "H_aipQURvDCmJhuFS40dH"
 uri = "file://v2_deploy.zip"
 type = "unspecified"
-title = "V2 (He's) - 데이터 가져오기 버그 수정"
+title = "V2 배포 ZIP (He's)"

@@ -139,6 +139,8 @@ export default function LockerOptionsDialog({
   const settings = localDb.getSettings();
   const domesticCheckpointHour = settings.domesticCheckpointHour;
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
+  const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
+  const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
   const enableDiscountOption = settings.enableDiscountOption !== false; // 기본값 true
   const enableForeignerOption = settings.enableForeignerOption !== false; // 기본값 true
   const enableCashReceiptVat = settings.enableCashReceiptVat === true; // 기본값 false
@@ -277,7 +279,9 @@ export default function LockerOptionsDialog({
             foreignerPrice,
             domesticCheckpointHour,
             foreignerAdditionalFeePeriod,
-            isFreeEntry
+            isFreeEntry,
+            domesticAdditionalFeeMode,
+            nightStartHour
           );
           rawCurrentFee = currentFeeInfo.additionalFee;
         }
@@ -470,7 +474,9 @@ export default function LockerOptionsDialog({
               foreignerPrice,
               domesticCheckpointHour,
               foreignerAdditionalFeePeriod,
-              isFreeEntry
+              isFreeEntry,
+              domesticAdditionalFeeMode,
+              nightStartHour
             );
             // 추가요금이 (지불된 금액 + 선지급 금액) 보다 클 때만 미지불 상태
             hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > totalPaidAmount;
@@ -1572,7 +1578,9 @@ export default function LockerOptionsDialog({
             foreignerPrice,
             domesticCheckpointHour,
             foreignerAdditionalFeePeriod,
-            isFreeEntry
+            isFreeEntry,
+            domesticAdditionalFeeMode,
+            nightStartHour
           );
           currentFee = feeInfo.additionalFee;
         }
@@ -2191,7 +2199,7 @@ export default function LockerOptionsDialog({
   const rawAdditionalFeeInfo = entryTime && isInUse
     ? (currentNoAdditionalFee 
         ? { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 }
-        : calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry))
+        : calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry, domesticAdditionalFeeMode, nightStartHour))
     : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
   
   // 선지급 금액 차감 적용 - 다이얼로그에서 입력 중인 값 우선 사용 (미리보기)
