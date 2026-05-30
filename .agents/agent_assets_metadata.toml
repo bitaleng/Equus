@@ -23,10 +23,10 @@ title = "V1 배포 패키지 (EQUUS) — 5.2MB"
 id = "n6MeJzU5uSIkm0AO9Zqik"
 uri = "file://v1_deploy.zip"
 type = "unspecified"
-title = "V1 배포 파일 (EQUUS 스킨)"
+title = "V1 (EQUUS) Netlify 배포 파일 — 7.9MB"
 
 [[outputs]]
 id = "H_aipQURvDCmJhuFS40dH"
 uri = "file://v2_deploy.zip"
 type = "unspecified"
-title = "V2 배포 파일 (He's 스킨)"
+title = "V2 (He's) Netlify 배포 파일 — 9.5MB"
