@@ -115,6 +115,7 @@ interface LogEntry {
   refundAmount?: number; // 환불 금액
   refundNote?: string; // 환불 사유
   refundTime?: string; // 환불 처리 시각
+  isStaff?: boolean; // 직원 입실 여부
 }
 
 interface AdditionalFeeEvent {
@@ -444,7 +445,9 @@ export default function LogsPage() {
   } else if (cancelledFilter === "active") {
     displayedLogs = displayedLogs.filter(log => !log.cancelled);
   } else if (cancelledFilter === "free") {
-    displayedLogs = displayedLogs.filter(log => log.optionType === 'free');
+    displayedLogs = displayedLogs.filter(log => log.optionType === 'free' && !log.isStaff);
+  } else if (cancelledFilter === "staff") {
+    displayedLogs = displayedLogs.filter(log => log.isStaff === true);
   } else if (cancelledFilter === "refunded") {
     displayedLogs = displayedLogs.filter(log => (log as any).refundAmount && (log as any).refundAmount > 0);
   }
@@ -495,7 +498,7 @@ export default function LogsPage() {
     if (log.optionType === 'discount') return '할인';
     if (log.optionType === 'custom') return '할인직접입력';
     if (log.optionType === 'direct_price') return '요금직접입력';
-    if (log.optionType === 'free') return '무료입장';
+    if (log.optionType === 'free') return log.isStaff ? '직원' : '무료입장';
     return '-';
   };
   
@@ -879,6 +882,7 @@ export default function LogsPage() {
                   <SelectItem value="active">정상건</SelectItem>
                   <SelectItem value="cancelled">취소건</SelectItem>
                   <SelectItem value="free">무료입장</SelectItem>
+                  <SelectItem value="staff">직원</SelectItem>
                   <SelectItem value="refunded">환불</SelectItem>
                 </SelectContent>
               </Select>
@@ -945,7 +949,7 @@ export default function LogsPage() {
                 {cancelledFilter !== "all" && (
                   <div className="flex items-center gap-2" data-testid="text-cancelled-filter-count">
                     <span className="text-muted-foreground">
-                      {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : cancelledFilter === "refunded" ? "환불" : "정상건"}:
+                      {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : cancelledFilter === "staff" ? "직원" : cancelledFilter === "refunded" ? "환불" : "정상건"}:
                     </span>
                     <span className="font-semibold">{displayedLogs.length}건</span>
                     <span className="text-muted-foreground">|</span>
