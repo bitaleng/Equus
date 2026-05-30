@@ -941,14 +941,19 @@ export default function LockerOptionsDialog({
 
   // Generate notes from rental items
   const generateNotes = () => {
-    const items: string[] = [];
+    const parts: string[] = [];
+    if (isStaff) {
+      parts.push('직원');
+    } else if (isFreeEntry) {
+      parts.push('무료입장');
+    }
     selectedRentalItems.forEach(itemId => {
       const item = availableRentalItems.find(i => i.id === itemId);
       if (item) {
-        items.push(item.name);
+        parts.push(item.name);
       }
     });
-    return items.length > 0 ? items.join(', ') : '';
+    return parts.length > 0 ? parts.join(', ') : '';
   };
 
   // Generate rental item info for checkout
