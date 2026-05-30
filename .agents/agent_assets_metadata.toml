@@ -23,7 +23,7 @@ title = "V1 배포 패키지 (EQUUS) — 5.2MB"
 id = "n6MeJzU5uSIkm0AO9Zqik"
 uri = "file://v1_deploy.zip"
 type = "unspecified"
-title = "V1 배포 ZIP (EQUUS)"
+title = "V1 배포 파일 (EQUUS 스킨)"
 
 [[outputs]]
 id = "H_aipQURvDCmJhuFS40dH"
