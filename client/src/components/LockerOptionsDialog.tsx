@@ -1188,6 +1188,13 @@ export default function LockerOptionsDialog({
     
     // 무료입장 또는 직원일 경우 결제방식 없이 바로 처리
     if (isFreeEntry || isStaff) {
+      // 비고(customerMemo)에 자동 메모 추가 (중복 방지)
+      const autoLabel = isStaff ? '직원' : '무료입장';
+      if (!finalCustomerMemo.includes(autoLabel)) {
+        finalCustomerMemo = finalCustomerMemo.trim()
+          ? `${autoLabel}\n${finalCustomerMemo}`
+          : autoLabel;
+      }
       console.log('[handleProcessEntry] Free/Staff entry - calling onApply with:', { optionType, isInUse, lockerNumber, noAdditionalFee, isStaff });
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
