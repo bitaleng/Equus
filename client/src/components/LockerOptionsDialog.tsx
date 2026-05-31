@@ -1660,7 +1660,7 @@ export default function LockerOptionsDialog({
 
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
-      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, currentIsStaff);
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff);
       
       // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
       additionalFeePaymentMethodUserChangedRef.current = true;
