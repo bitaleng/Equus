@@ -30,3 +30,15 @@ id = "H_aipQURvDCmJhuFS40dH"
 uri = "file://v2_deploy.zip"
 type = "unspecified"
 title = "V2 (He's) Netlify 배포 파일 — 9.5MB"
+
+[[outputs]]
+id = "5ZXm2FrqZ0MxBiepFGnkm"
+uri = "file://dist/v1-deploy.zip"
+type = "unspecified"
+title = "V1 (휴게텔 입실관리매니저) - Netlify 배포용"
+
+[[outputs]]
+id = "77imHZFdWT-MgMr3xvnyw"
+uri = "file://dist/v2-deploy.zip"
+type = "unspecified"
+title = "V2 (He's 입실관리매니저) - Netlify 배포용"
