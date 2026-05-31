@@ -1327,6 +1327,7 @@ export default function LockerOptionsDialog({
 
   const handleSaveChanges = () => {
     playClickSound();
+    console.log('[handleSaveChanges] called', { useSplitPayment, hasExistingSplitPayment: isInUse && [currentPaymentCash && currentPaymentCash > 0, currentPaymentCard && currentPaymentCard > 0, currentPaymentTransfer && currentPaymentTransfer > 0].filter(Boolean).length > 1, paymentCash, paymentCard, paymentTransfer, hasPrepaidAdditionalFee, prepaidAdditionalFeeAmount, prepaidAdditionalFeePaymentMethod });
     
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
     let optionAmount: number | undefined;
@@ -1526,8 +1527,8 @@ export default function LockerOptionsDialog({
           }
         }
       } else if (hasExistingSinglePayment && paymentModifiedByRefund) {
-        // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
-        // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
+        // 환불로 인해 결제금액이 수정된 경우, 또는 단순히 paymentCard/Transfer 초기값이 "0"이어서
+        // paymentModifiedByRefund가 true로 평가된 경우 모두 이 분기에서 처리
         let cashBase = parseInt(paymentCash) || 0;
         let cardBase = parseInt(paymentCard) || 0;
         let transferBase = parseInt(paymentTransfer) || 0;
@@ -1563,6 +1564,21 @@ export default function LockerOptionsDialog({
           cardVal = Math.round(cardBase * 1.1);
         } else {
           cardVal = cardBase > 0 ? cardBase : undefined;
+        }
+
+        // 선지급금이 다른 결제방식으로 추가된 경우 해당 버킷에 금액 추가
+        // paymentCard="0"/paymentTransfer="0" 로 인해 이 분기로 왔을 때도 처리
+        const savePrepaidMethodR = prepaidAdditionalFeePaymentMethod || paymentMethod;
+        const isNewPrepaidDiffR =
+          hasPrepaidAdditionalFee &&
+          prepaidAmount > 0 &&
+          prepaidAmount !== currentPrepaidAdditionalFee &&
+          savePrepaidMethodR !== paymentMethod;
+        if (isNewPrepaidDiffR) {
+          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
+          if (savePrepaidMethodR === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodR === 'card') cardVal = (cardVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodR === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
         }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
         // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
@@ -1630,64 +1646,70 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, currentIsStaff);
-    
-    // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
-    additionalFeePaymentMethodUserChangedRef.current = true;
-    
-    // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
-    if (isInUse && currentLockerLogId) {
-      localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
-      // 외출 상태 저장 (수정저장 시에만 반영)
-      localDb.updateLockerOuting(currentLockerLogId, currentIsOuting);
+
+    // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
+    try {
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, currentIsStaff);
       
-      // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
-      // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
-      if (checkoutResolved || additionalFeeResolved) {
-        // 추가요금 직접 계산 (additionalFeeInfo가 아직 정의되지 않았을 수 있음)
-        // noAdditionalFee가 true이면 추가요금 0
-        let currentFee = 0;
-        if (!currentNoAdditionalFee) {
-          const isForeigner = currentOptionType === 'foreigner';
-          const isFreeEntry = currentOptionType === 'free';
-          const feeInfo = calculateAdditionalFee(
-            entryTime || '',
-            timeType,
-            dayPrice,
-            nightPrice,
-            new Date(),
-            isForeigner,
-            foreignerPrice,
-            domesticCheckpointHour,
-            foreignerAdditionalFeePeriod,
-            isFreeEntry,
-            domesticAdditionalFeeMode,
-            nightStartHour
-          );
-          currentFee = feeInfo.additionalFee;
+      // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
+      additionalFeePaymentMethodUserChangedRef.current = true;
+      
+      // CRITICAL: For existing entries (isInUse), save the customer memo directly to DB
+      if (isInUse && currentLockerLogId) {
+        localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
+        // 외출 상태 저장 (수정저장 시에만 반영)
+        localDb.updateLockerOuting(currentLockerLogId, currentIsOuting);
+        
+        // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
+        // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
+        if (checkoutResolved || additionalFeeResolved) {
+          // 추가요금 직접 계산 (additionalFeeInfo가 아직 정의되지 않았을 수 있음)
+          // noAdditionalFee가 true이면 추가요금 0
+          let currentFee = 0;
+          if (!currentNoAdditionalFee) {
+            const isForeigner = currentOptionType === 'foreigner';
+            const isFreeEntry = currentOptionType === 'free';
+            const feeInfo = calculateAdditionalFee(
+              entryTime || '',
+              timeType,
+              dayPrice,
+              nightPrice,
+              new Date(),
+              isForeigner,
+              foreignerPrice,
+              domesticCheckpointHour,
+              foreignerAdditionalFeePeriod,
+              isFreeEntry,
+              domesticAdditionalFeeMode,
+              nightStartHour
+            );
+            currentFee = feeInfo.additionalFee;
+          }
+          console.log('[DEBUG] 수정저장: 추가요금 완납 저장', { logId: currentLockerLogId, currentFee, checkoutResolved, additionalFeeResolved });
+          localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
         }
-        console.log('[DEBUG] 수정저장: 추가요금 완납 저장', { logId: currentLockerLogId, currentFee, checkoutResolved, additionalFeeResolved });
-        localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
       }
+      
+      // Save return_completed status for rental items
+      returnCompletedItems.forEach(itemId => {
+        const txn = currentRentalTransactions.find(t => t.itemId === itemId);
+        if (txn) {
+          localDb.updateRentalTransaction(txn.id, {
+            returnCompleted: true,
+            depositStatus: depositStatuses.get(itemId) || txn.depositStatus,
+            paymentMethod: rentalPaymentMethods.get(itemId) || txn.paymentMethod,
+            returnTime: new Date(),
+          });
+        }
+      });
+      
+      // Mark as resolved to prevent warning on next open
+      setCheckoutResolved(true);
+    } catch (err) {
+      console.error('[handleSaveChanges] 저장 중 오류 발생 (dialog는 닫힙니다):', err);
     }
-    
-    // Save return_completed status for rental items
-    returnCompletedItems.forEach(itemId => {
-      const txn = currentRentalTransactions.find(t => t.itemId === itemId);
-      if (txn) {
-        localDb.updateRentalTransaction(txn.id, {
-          returnCompleted: true,
-          depositStatus: depositStatuses.get(itemId) || txn.depositStatus,
-          paymentMethod: rentalPaymentMethods.get(itemId) || txn.paymentMethod,
-          returnTime: new Date(),
-        });
-      }
-    });
-    
-    // Mark as resolved to prevent warning on next open
-    setCheckoutResolved(true);
-    
-    // Auto-close dialog after save
+
+    // 항상 dialog 닫기 (예외 발생 여부와 무관)
     playCloseSound();
     setTimeout(() => setDialogOpen(false), 100);
   };
