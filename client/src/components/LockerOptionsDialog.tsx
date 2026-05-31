@@ -1566,15 +1566,15 @@ export default function LockerOptionsDialog({
           cardVal = cardBase > 0 ? cardBase : undefined;
         }
 
-        // 선지급금이 다른 결제방식으로 추가된 경우 해당 버킷에 금액 추가
-        // paymentCard="0"/paymentTransfer="0" 로 인해 이 분기로 왔을 때도 처리
-        const savePrepaidMethodR = prepaidAdditionalFeePaymentMethod || paymentMethod;
-        const isNewPrepaidDiffR =
+        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 추가
+        // (동일 결제방식이든 다른 결제방식이든 모두 처리)
+        // paymentCard="0"/paymentTransfer="0" 초기값으로 인해 이 분기로 오는 경우 포함
+        const savePrepaidMethodR = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
+        const isNewPrepaidR =
           hasPrepaidAdditionalFee &&
           prepaidAmount > 0 &&
-          prepaidAmount !== currentPrepaidAdditionalFee &&
-          savePrepaidMethodR !== paymentMethod;
-        if (isNewPrepaidDiffR) {
+          prepaidAmount !== currentPrepaidAdditionalFee;
+        if (isNewPrepaidR) {
           const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
           if (savePrepaidMethodR === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
           else if (savePrepaidMethodR === 'card') cardVal = (cardVal || 0) + addedPrepaid;
@@ -1582,15 +1582,14 @@ export default function LockerOptionsDialog({
         }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
         // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
-        // 단, 새 선지급금이 다른 결제방식으로 추가된 경우 해당 버킷에 금액 추가
-        const savePrepaidMethod = prepaidAdditionalFeePaymentMethod || paymentMethod;
-        const isNewPrepaidWithDiffMethod =
+        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 추가 (동일/다른 결제방식 모두 처리)
+        const savePrepaidMethod = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
+        const isNewPrepaidAdded =
           hasPrepaidAdditionalFee &&
           prepaidAmount > 0 &&
-          prepaidAmount !== currentPrepaidAdditionalFee &&
-          savePrepaidMethod !== paymentMethod;
+          prepaidAmount !== currentPrepaidAdditionalFee;
 
-        if (isNewPrepaidWithDiffMethod) {
+        if (isNewPrepaidAdded) {
           const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
           cashVal = currentPaymentCash || undefined;
           cardVal = currentPaymentCard || undefined;
