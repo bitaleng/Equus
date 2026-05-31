@@ -25,6 +25,7 @@ import PatternLockDialog from "@/components/PatternLockDialog";
 import { useWakeLock } from "@/hooks/useWakeLock";
 import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
 import { isRouteLocked } from "@/lib/menuLock";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 function isAdminRoute(path: string): boolean {
   return path.startsWith("/admin");
@@ -233,6 +234,7 @@ function App() {
       <TooltipProvider>
         <AppContent />
         <Toaster />
+        <UpdateBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );
