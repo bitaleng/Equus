@@ -1328,9 +1328,7 @@ export default function Home() {
     }
 
     // Handle existing entry update - find by lockerNumber in activeLockers
-    console.log('[handleApplyOption] 호출됨:', { lockerNumber, paymentCash: paymentCash, paymentCard, paymentTransfer, prepaidAdditionalFee, customerMemo });
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
-    console.log('[handleApplyOption] selectedEntry 검색 결과:', selectedEntry ? `ID=${selectedEntry.id}, lockerNumber=${selectedEntry.lockerNumber}` : 'NOT FOUND (activeLockers count=' + activeLockers.length + ')');
     if (!selectedEntry) return;
 
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';

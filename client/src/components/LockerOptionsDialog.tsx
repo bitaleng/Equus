@@ -1441,6 +1441,19 @@ export default function LockerOptionsDialog({
         } else {
           cardVal = cardBase > 0 ? cardBase : undefined;
         }
+
+        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
+        const savePrepaidMethodSplitR = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
+        const isNewPrepaidAddedSplitR =
+          hasPrepaidAdditionalFee &&
+          prepaidAmount > 0 &&
+          prepaidAmount !== currentPrepaidAdditionalFee;
+        if (isNewPrepaidAddedSplitR) {
+          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
+          if (savePrepaidMethodSplitR === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodSplitR === 'card') cardVal = (cardVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodSplitR === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
+        }
       } else if (hasExistingSplitPayment && !paymentModifiedByRefund) {
         // 기존 분리결제가 있고 환불 수정이 없으면 기존 값 사용
         // 단, 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
@@ -1645,18 +1658,6 @@ export default function LockerOptionsDialog({
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-
-    console.log('[handleSaveChanges] onApply 직전 값:', {
-      cashVal, cardVal, transferVal,
-      prepaidFee, prepaidAmount,
-      currentPrepaidAdditionalFee,
-      hasPrepaidAdditionalFee,
-      prepaidAdditionalFeeAmount,
-      paymentMethod,
-      paymentModifiedByRefund: paymentCash !== "" && paymentCard !== "" && paymentTransfer !== "",
-      hasExistingSinglePayment: isInUse && ((currentPaymentCash && currentPaymentCash > 0) || (currentPaymentCard && currentPaymentCard > 0) || (currentPaymentTransfer && currentPaymentTransfer > 0)),
-      useSplitPayment,
-    });
 
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
