@@ -1733,15 +1733,18 @@ export default function LockerOptionsDialog({
     // Redundant check was causing infinite loop when user clicked checkout after warning close
     
     // 기본요금과 추가요금을 독립적으로 처리
-    const computedFinalPrice = calculateFinalPrice();
+    const baseFinalPrice = calculateFinalPrice();
+    // 선지급금이 이미 분리결제 필드에 합산되어 있으므로, 검증 시 선지급금 포함해야 함
+    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    const computedFinalPrice = baseFinalPrice + prepaidAmount;
     
-    // 기본요금 결제 검증 및 할당 (기본요금만)
+    // 기본요금 결제 검증 및 할당 (선지급금 포함)
     let cashVal: number | undefined;
     let cardVal: number | undefined;
     let transferVal: number | undefined;
     
     if (useSplitPayment) {
-      // Validate mixed payment amounts for split payment (기본요금만)
+      // Validate mixed payment amounts for split payment (선지급금 포함 전체 금액 검증)
       if (!validateMixedPayment(computedFinalPrice)) {
         return;
       }
