@@ -1646,6 +1646,18 @@ export default function LockerOptionsDialog({
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
 
+    console.log('[handleSaveChanges] onApply 직전 값:', {
+      cashVal, cardVal, transferVal,
+      prepaidFee, prepaidAmount,
+      currentPrepaidAdditionalFee,
+      hasPrepaidAdditionalFee,
+      prepaidAdditionalFeeAmount,
+      paymentMethod,
+      paymentModifiedByRefund: paymentCash !== "" && paymentCard !== "" && paymentTransfer !== "",
+      hasExistingSinglePayment: isInUse && ((currentPaymentCash && currentPaymentCash > 0) || (currentPaymentCard && currentPaymentCard > 0) || (currentPaymentTransfer && currentPaymentTransfer > 0)),
+      useSplitPayment,
+    });
+
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
       onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, currentIsStaff);
