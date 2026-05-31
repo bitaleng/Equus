@@ -1219,13 +1219,27 @@ export default function LockerOptionsDialog({
     const isPrepaidAutoSplit = !useSplitPayment && prepaidAmount > 0 && effectivePrepaidMethod !== paymentMethod;
 
     if (useSplitPayment) {
-      // Validate mixed payment amounts for split payment (선지급금 포함)
-      if (!validateMixedPayment(computedFinalPrice)) {
-        return;
+      if (prepaidAdditionalFeePaymentMethod !== null && prepaidAmount > 0) {
+        // 분리결제 + 선지급 별도 결제방식: 기본요금 합계만 검증하고 선지급은 자동 추가
+        if (!validateMixedPayment(baseFinalPrice)) {
+          return;
+        }
+        cashVal = parseInt(paymentCash) || undefined;
+        cardVal = parseInt(paymentCard) || undefined;
+        transferVal = parseInt(paymentTransfer) || undefined;
+        // 선지급 금액을 지정된 결제 버킷에 자동 합산
+        if (effectivePrepaidMethod === 'cash') cashVal = (cashVal || 0) + prepaidAmount;
+        else if (effectivePrepaidMethod === 'card') cardVal = (cardVal || 0) + prepaidAmount;
+        else if (effectivePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + prepaidAmount;
+      } else {
+        // 기존 분리결제: 선지급 포함 전체 금액 검증
+        if (!validateMixedPayment(computedFinalPrice)) {
+          return;
+        }
+        cashVal = parseInt(paymentCash) || undefined;
+        cardVal = parseInt(paymentCard) || undefined;
+        transferVal = parseInt(paymentTransfer) || undefined;
       }
-      cashVal = parseInt(paymentCash) || undefined;
-      cardVal = parseInt(paymentCard) || undefined;
-      transferVal = parseInt(paymentTransfer) || undefined;
     } else if (isPrepaidAutoSplit) {
       // 선지급 결제방식이 달라 자동 분리: 기본요금 → 주결제방식, 선지급 → prepaidMethod
       cashVal = paymentMethod === 'cash' ? baseFinalPrice
@@ -1428,9 +1442,26 @@ export default function LockerOptionsDialog({
         }
       } else if (hasExistingSplitPayment && !paymentModifiedByRefund) {
         // 기존 분리결제가 있고 환불 수정이 없으면 기존 값 사용
-        cashVal = currentPaymentCash;
-        cardVal = currentPaymentCard;
-        transferVal = currentPaymentTransfer;
+        // 단, 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
+        const savePrepaidMethodSplit = prepaidAdditionalFeePaymentMethod || paymentMethod;
+        const isNewPrepaidAddedToSplit =
+          hasPrepaidAdditionalFee &&
+          prepaidAmount > 0 &&
+          prepaidAmount !== currentPrepaidAdditionalFee;
+
+        if (isNewPrepaidAddedToSplit) {
+          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
+          cashVal = currentPaymentCash || undefined;
+          cardVal = currentPaymentCard || undefined;
+          transferVal = currentPaymentTransfer || undefined;
+          if (savePrepaidMethodSplit === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodSplit === 'card') cardVal = (cardVal || 0) + addedPrepaid;
+          else if (savePrepaidMethodSplit === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
+        } else {
+          cashVal = currentPaymentCash;
+          cardVal = currentPaymentCard;
+          transferVal = currentPaymentTransfer;
+        }
       } else {
         // 신규 분리결제: 검증 수행
         if (!validateMixedPayment(computedFinalPrice)) {
