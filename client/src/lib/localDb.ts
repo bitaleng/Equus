@@ -1,4 +1,5 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import LZString from 'lz-string';
 import { getTimeType, getBusinessDayRange, getBusinessDay, calculateAdditionalFee } from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
@@ -20,7 +21,15 @@ export async function initDatabase(): Promise<Database> {
   // Try to load existing database from localStorage
   const savedDb = localStorage.getItem(DB_NAME);
   if (savedDb) {
-    const buf = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
+    // Support both compressed (lz-string) and legacy uncompressed (base64) formats
+    let base64: string;
+    try {
+      const decompressed = LZString.decompressFromUTF16(savedDb);
+      base64 = decompressed || savedDb; // fallback to raw if decompression returns null
+    } catch {
+      base64 = savedDb; // legacy uncompressed base64
+    }
+    const buf = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
     db = new SQL.Database(buf);
     
     // Run migrations for existing databases
@@ -33,7 +42,7 @@ export async function initDatabase(): Promise<Database> {
   return db;
 }
 
-// Save database to localStorage
+// Save database to localStorage (with LZ-string compression to stay within quota)
 export function saveDatabase() {
   if (!db) return;
   
@@ -48,7 +57,18 @@ export function saveDatabase() {
   }
   
   const base64 = btoa(binary);
-  localStorage.setItem(DB_NAME, base64);
+  // Compress before storing to stay well within the ~5MB localStorage quota
+  const compressed = LZString.compressToUTF16(base64);
+  try {
+    localStorage.setItem(DB_NAME, compressed);
+  } catch (e) {
+    // If compressed still exceeds quota, try storing uncompressed as last resort
+    try {
+      localStorage.setItem(DB_NAME, base64);
+    } catch (e2) {
+      console.error('localStorage quota exceeded even after compression. Data not saved to localStorage.', e2);
+    }
+  }
 }
 
 // Migrate existing database schema

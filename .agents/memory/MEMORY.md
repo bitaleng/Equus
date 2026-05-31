@@ -1,0 +1,2 @@
+- [localStorage quota fix](localstorage-quota.md) — SQLite DB must be LZ-string compressed before storing; use compressToUTF16/decompressFromUTF16 with legacy fallback
+- [handleSaveChanges isStaff](handlesavechanges-variables.md) — handleSaveChanges uses `isStaff` (local state), NOT `currentIsStaff` (doesn't exist); wrong name causes silent ReferenceError
