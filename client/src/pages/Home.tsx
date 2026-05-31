@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import LockerButton from "@/components/LockerButton";
 import LockerOptionsDialog from "@/components/LockerOptionsDialog";
@@ -37,6 +37,7 @@ import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
 import { isTodayStatusLocked } from "@/lib/menuLock";
 import type { LockerLog as SharedLockerLog } from "@shared/schema";
+import { LiveClock } from "@/components/LiveClock";
 
 // Extend shared LockerLog with UI-specific fields
 interface LockerLog extends Omit<SharedLockerLog, 'entryTime' | 'exitTime' | 'createdAt' | 'updatedAt' | 'notes' | 'paymentMethod' | 'optionAmount'> {
@@ -87,7 +88,9 @@ export default function Home() {
   const [childLockerParent, setChildLockerParent] = useState<number | null>(null);
   const [childLockerCurrentNumber, setChildLockerCurrentNumber] = useState<number | null>(null);
   const [settlementReminderOpen, setSettlementReminderOpen] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const currentTimeRef = useRef(new Date());
+  // 30초마다 락카 상태 재계산용 (외출초과, 추가요금 등) — 매초 재렌더 방지
+  const [lockerTickTime, setLockerTickTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
   const [todayAllEntries, setTodayAllEntries] = useState<(LockerLog & { additionalFeeOnly?: boolean })[]>([]);
   const [summary, setSummary] = useState<DailySummary | null>(null);
@@ -460,8 +463,13 @@ export default function Home() {
 
   // Update current time every second
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
+    // 매초 ref만 갱신 (re-render 없음) — 클릭 핸들러용
+    const timer = setInterval(() => {
+      currentTimeRef.current = new Date();
+    }, 1000);
+    // 30초마다 락카 계산 state 갱신 (외출초과·추가요금 표시)
+    const slowTick = setInterval(() => setLockerTickTime(new Date()), 30000);
+    return () => { clearInterval(timer); clearInterval(slowTick); };
   }, []);
 
   // Check NFC support
@@ -502,7 +510,7 @@ export default function Home() {
     
     if (!isInUse) {
       // Empty locker: add to openDialogs for multi-popup display
-      const timeType = localDb.getTimeTypeWithSettings(currentTime);
+      const timeType = localDb.getTimeTypeWithSettings(new Date());
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
       setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
@@ -548,7 +556,7 @@ export default function Home() {
     }
     
     return true;
-  }, [toast, currentTime, dayPrice, nightPrice]);
+  }, [toast, dayPrice, nightPrice]);
 
   // Handle NFC scan toggle
   const handleNfcScan = useCallback(async () => {
@@ -714,7 +722,7 @@ export default function Home() {
         });
       }
     }
-  }, [isNfcScanning, toast, currentTime, dayPrice, nightPrice]);
+  }, [isNfcScanning, toast, dayPrice, nightPrice]);
 
   // Cleanup NFC listener on unmount
   useEffect(() => {
@@ -845,7 +853,7 @@ export default function Home() {
         localStorage.setItem('last_settlement_reminder_date', today);
       }
     }
-  }, [currentTime, businessDayStartHour]);
+  }, [lockerTickTime, businessDayStartHour]);
 
   // Sync openDialogsRef with openDialogs state
   useEffect(() => {
@@ -872,9 +880,14 @@ export default function Home() {
   useEffect(() => {
     loadData();
     
-    const interval = setInterval(() => {
-      loadData();
-    }, 5000); // Refresh every 5 seconds
+    const scheduleLoad = () => {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(() => loadData(), { timeout: 4000 });
+      } else {
+        setTimeout(loadData, 0);
+      }
+    };
+    const interval = setInterval(scheduleLoad, 5000);
 
     return () => clearInterval(interval);
   }, []);
@@ -1051,7 +1064,7 @@ export default function Home() {
     lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
     // 외출 시간 초과 여부 계산
     if (!!(log as any).isOuting && outingTimeLimitMinutes > 0 && outingStartedAt) {
-      const outingElapsedMs = currentTime.getTime() - new Date(outingStartedAt).getTime();
+      const outingElapsedMs = lockerTickTime.getTime() - new Date(outingStartedAt).getTime();
       lockerOutingExceeded[log.lockerNumber] = outingElapsedMs > outingTimeLimitMinutes * 60 * 1000;
     } else {
       lockerOutingExceeded[log.lockerNumber] = false;
@@ -1066,7 +1079,7 @@ export default function Home() {
       log.timeType,
       dayPrice,
       nightPrice,
-      currentTime,
+      lockerTickTime,
       isForeigner,
       foreignerPrice,
       domesticCheckpointHour,
@@ -1097,7 +1110,7 @@ export default function Home() {
     const state = lockerStates[lockerNumber];
     
     if (state === 'empty') {
-      const timeType = localDb.getTimeTypeWithSettings(currentTime);
+      const timeType = localDb.getTimeTypeWithSettings(new Date());
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
       // Log the locker click (for scan tracking)
@@ -1937,7 +1950,7 @@ export default function Home() {
       <ResizablePanel defaultSize={40} minSize={20} maxSize={70}>
         <div className="h-full p-6 overflow-auto">
           <SalesSummary
-            date={getBusinessDay(currentTime, businessDayStartHour)}
+            date={getBusinessDay(new Date(), businessDayStartHour)}
             totalVisitors={summary?.totalVisitors || 0}
             totalSales={summary?.totalSales || 0}
             totalRefunds={summary?.totalRefunds || 0}
@@ -1969,10 +1982,7 @@ export default function Home() {
                 <TabsTrigger value="locker" data-testid="tab-locker">입실 관리</TabsTrigger>
                 <TabsTrigger value="status" data-testid="tab-status">오늘현황</TabsTrigger>
               </TabsList>
-              <p className="tabular-nums">
-                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-              </p>
+              <LiveClock />
             </div>
             <div className="flex items-center gap-2">
               {activeTab === 'locker' && (
@@ -2101,7 +2111,7 @@ export default function Home() {
                   {!isSalesSummaryCollapsed && (
                     <div className="flex-[2] p-6 overflow-auto">
                       <SalesSummary
-                        date={getBusinessDay(currentTime, businessDayStartHour)}
+                        date={getBusinessDay(new Date(), businessDayStartHour)}
                         totalVisitors={summary?.totalVisitors || 0}
                         totalSales={summary?.totalSales || 0}
                         totalRefunds={summary?.totalRefunds || 0}
@@ -2156,10 +2166,7 @@ export default function Home() {
               >
                 {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </Button>
-              <p className="tabular-nums">
-                <span className="text-base font-bold text-muted-foreground">{currentTime.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                <span className="text-[27px] font-semibold text-blue-600 dark:text-blue-400 ml-2">{currentTime.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}</span>
-              </p>
+              <LiveClock />
             </div>
             <div className="flex items-center gap-2">
               {nfcSupported && (
