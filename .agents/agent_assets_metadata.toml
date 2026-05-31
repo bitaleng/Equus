@@ -35,10 +35,10 @@ title = "V2 (He's) Netlify 배포 파일 — 9.5MB"
 id = "5ZXm2FrqZ0MxBiepFGnkm"
 uri = "file://dist/v1-deploy.zip"
 type = "unspecified"
-title = "V1 (휴게텔) - 성능 개선 빌드"
+title = "v1 배포 파일 (v1-deploy.zip, 4.6MB)"
 
 [[outputs]]
 id = "77imHZFdWT-MgMr3xvnyw"
 uri = "file://dist/v2-deploy.zip"
 type = "unspecified"
-title = "V2 (He's) - 성능 개선 빌드"
+title = "v2 배포 파일 (v2-deploy.zip, 6.1MB)"
