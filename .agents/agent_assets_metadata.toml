@@ -42,3 +42,15 @@ id = "77imHZFdWT-MgMr3xvnyw"
 uri = "file://dist/v2-deploy.zip"
 type = "unspecified"
 title = "v2 배포 파일 (v2-deploy.zip, 6.1MB)"
+
+[[outputs]]
+id = "By4b8wAKfMOcdIt5Tn73i"
+uri = "file://v1-deploy.zip"
+type = "unspecified"
+title = "V1 배포 파일 (기본 버전) — 4.6MB"
+
+[[outputs]]
+id = "Bn0ucroclgO6SbZtDjpqJ"
+uri = "file://v2-deploy.zip"
+type = "unspecified"
+title = "V2 배포 파일 (He's 버전) — 6.1MB"
