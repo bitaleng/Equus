@@ -928,6 +928,36 @@ function migrateDatabase() {
       // Column already exists, ignore
     }
 
+    // Step 28: Create performance indexes (IF NOT EXISTS → 기존 DB에도 안전하게 적용)
+    // 쿼리 속도 최적화: 기존 DB에 인덱스가 없으면 매 쿼리마다 전체 테이블 스캔 발생
+    try {
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_status ON locker_logs(status)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_business_day ON locker_logs(business_day)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_entry_time ON locker_logs(entry_time)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_locker_number ON locker_logs(locker_number)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_business_day ON scan_logs(business_day)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_scan_time ON scan_logs(scan_time)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_additional_fee_events_business_day ON additional_fee_events(business_day)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_rental_transactions_business_day ON rental_transactions(business_day)`);
+      console.log('Created performance indexes (Step 28)');
+    } catch (e) {
+      // Ignore errors (table may not exist yet)
+    }
+
+    // Step 28 후처리: VACUUM으로 DB 크기 축소 후 즉시 저장
+    // 최초 1회만 실행 (매 시작마다 VACUUM 방지 → localStorage 플래그 사용)
+    const vacuumDone = localStorage.getItem('db_vacuum_step28');
+    if (!vacuumDone) {
+      try {
+        db.run('VACUUM');
+        localStorage.setItem('db_vacuum_step28', '1');
+        console.log('VACUUM completed after Step 28 migration (one-time)');
+      } catch (e) {
+        // VACUUM 실패해도 계속 진행
+      }
+    }
+    saveDatabase();
+
   } catch (error) {
     console.error('Migration error:', error);
     throw error;
