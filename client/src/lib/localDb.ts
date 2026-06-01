@@ -1289,7 +1289,7 @@ export function createEntry(entry: {
 
   // Update daily summary
   updateDailySummary(entry.businessDay);
-  saveDatabase();
+  saveDatabaseDebounced();
   
   return id;
 }
@@ -1418,7 +1418,7 @@ export function updateEntry(id: string, updates: any) {
       updateDailySummary(businessDay);
     }
 
-    saveDatabase();
+    saveDatabaseDebounced();
   }
 }
 
@@ -1534,7 +1534,7 @@ export function reverseCheckout(logId: string): { success: boolean; message: str
       updateDailySummary(additionalFeeBusinessDay);
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
     
     return { 
       success: true, 
@@ -1609,7 +1609,7 @@ export function completeDeferredPayment(logId: string, paymentInfo?: {
     // 4. 일일 요약 업데이트
     const businessDay = logData.business_day;
     updateDailySummary(businessDay);
-    saveDatabase();
+    saveDatabaseDebounced();
     
     return { 
       success: true, 
@@ -1728,7 +1728,7 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         updateDailySummary(fromData.business_day);
       }
 
-      saveDatabase();
+      saveDatabaseDebounced();
       return { 
         success: true, 
         message: `${fromLockerNumber}번 락카의 내용이 ${toLockerNumber}번 락카로 이동되었습니다.`, 
@@ -1861,7 +1861,7 @@ export function swapLockers(fromLockerNumber: number, toLockerNumber: number): {
         updateDailySummary(toData.business_day);
       }
 
-      saveDatabase();
+      saveDatabaseDebounced();
       return { 
         success: true, 
         message: `${fromLockerNumber}번과 ${toLockerNumber}번 락카의 내용이 서로 교환되었습니다.`, 
@@ -1949,7 +1949,7 @@ export function linkLockers(parentLockerNumber: number, childLockerNumbers: numb
 
     db.run('COMMIT');
     transactionStarted = false;
-    saveDatabase();
+    saveDatabaseDebounced();
 
     return { 
       success: true, 
@@ -2010,7 +2010,7 @@ export function unlinkChildLocker(childLockerNumber: number): { success: boolean
     }
 
     db.run('COMMIT');
-    saveDatabase();
+    saveDatabaseDebounced();
 
     return { 
       success: true, 
@@ -2093,7 +2093,7 @@ export function changeChildParent(childLockerNumber: number, newParentLockerNumb
     }
 
     db.run('COMMIT');
-    saveDatabase();
+    saveDatabaseDebounced();
 
     return { 
       success: true, 
@@ -2139,7 +2139,7 @@ export function unlinkChildLockers(parentLockerNumber: number, exitTime?: string
     [checkoutTime, parentLockerNumber]
   );
 
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Cancel child lockers when parent is cancelled
@@ -2156,7 +2156,7 @@ export function cancelChildLockers(parentLockerNumber: number) {
     [parentLockerNumber]
   );
 
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Atomically update parent-child locker relationships
@@ -2332,7 +2332,7 @@ export function setParentChildLinks(
 
     db.run('COMMIT');
     transactionStarted = false;
-    saveDatabase();
+    saveDatabaseDebounced();
 
     if (toAdd.length > 0 && toRemove.length > 0) {
       return { 
@@ -2876,7 +2876,7 @@ export function createLockerGroup(group: {
     [id, group.name, group.startNumber, group.endNumber, sortOrder]
   );
 
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -2914,7 +2914,7 @@ export function updateLockerGroup(id: string, updates: {
       `UPDATE locker_groups SET ${sets.join(', ')} WHERE id = ?`,
       values
     );
-    saveDatabase();
+    saveDatabaseDebounced();
   }
 }
 
@@ -2922,7 +2922,7 @@ export function deleteLockerGroup(id: string) {
   if (!db) throw new Error('Database not initialized');
 
   db.run('DELETE FROM locker_groups WHERE id = ?', [id]);
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Helper function to convert SQL result rows to objects
@@ -3575,7 +3575,7 @@ export function createTestData() {
     console.log(`  ${rentalCount}개 락커에 렌탈 아이템 추가`);
   }
   
-  saveDatabase();
+  saveDatabaseDebounced();
   
   console.log(`\n테스트 데이터 생성 완료: 총 ${totalGenerated}건 (과거 7일치, 락커 #1~80)`);
   console.log(`- 추가요금 1회: ${additionalFee1Count}건 (오렌지)`);
@@ -4087,7 +4087,7 @@ export async function createAdditionalFeeTestData() {
         console.log(`  ${pastDays === 0 ? '오늘' : pastDays + '일 전'}: ${pastEntries}건 생성`);
       }
       
-      saveDatabase();
+      saveDatabaseDebounced();
       
       // Verify additional fee pending lockers (in_use with expected fees)
       const pendingStmt = db!.prepare(`
@@ -4198,7 +4198,7 @@ export function createAdditionalFeeEvent(event: {
      event.paymentCash || null, event.paymentCard || null, event.paymentTransfer || null, createdAt]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -4442,7 +4442,7 @@ export function createAdditionalRevenueItem(item: {
     [id, item.name, item.rentalFee, item.depositAmount, billingType, sortOrder, now, now]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -4490,14 +4490,14 @@ export function updateAdditionalRevenueItem(id: string, updates: {
     values
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 export function deleteAdditionalRevenueItem(id: string) {
   if (!db) throw new Error('Database not initialized');
   
   db.run('DELETE FROM additional_revenue_items WHERE id = ? AND is_default = 0', [id]);
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Rental Transactions operations
@@ -4554,7 +4554,7 @@ export function createRentalTransaction(rental: {
     ]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -4710,7 +4710,7 @@ export function updateRentalTransaction(id: string, updates: {
     );
   }
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 export function getRentalTransactionsByLockerLog(lockerLogId: string) {
@@ -4919,7 +4919,7 @@ export function createExpense(data: {
     ]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -5078,14 +5078,14 @@ export function updateExpense(id: string, updates: {
     values
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 export function deleteExpense(id: string) {
   if (!db) throw new Error('Database not initialized');
   
   db.run('DELETE FROM expenses WHERE id = ?', [id]);
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // ============================================
@@ -5133,7 +5133,7 @@ export function createClosingDay(data: {
     ]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -5284,7 +5284,7 @@ export function updateClosingDay(businessDay: string, updates: {
     values
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 export function confirmClosingDay(businessDay: string) {
@@ -5299,7 +5299,7 @@ export function confirmClosingDay(businessDay: string) {
     [now, now, businessDay]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Get detailed sales breakdown by business day (using business day RANGE for accurate aggregation)
@@ -5742,7 +5742,7 @@ function ensureExpenseCategoriesTable() {
       `, [id, category.name, category.sortOrder, now]);
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
   }
 }
 
@@ -5762,7 +5762,7 @@ export function createExpenseCategory(category: {
     [id, category.name, sortOrder, now]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -5771,7 +5771,7 @@ export function deleteExpenseCategory(id: string) {
   
   // Only allow deletion of non-default categories
   db.run('DELETE FROM expense_categories WHERE id = ? AND is_default = 0', [id]);
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 export function updateExpenseCategory(id: string, updates: {
@@ -5801,7 +5801,7 @@ export function updateExpenseCategory(id: string, updates: {
     values
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
 }
 
 // Recalculate business_day for all existing records
@@ -5880,7 +5880,7 @@ export function recalculateAllBusinessDays() {
     updateDailySummary(businessDay);
   });
   
-  saveDatabase();
+  saveDatabaseDebounced();
   
   return updatedCount;
 }
@@ -5924,7 +5924,7 @@ export function saveBarcodeMapping(barcode: string, lockerNumber: number): boole
       );
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error saving barcode mapping:', error);
@@ -6008,7 +6008,7 @@ export function deleteBarcodeMapping(barcode: string): boolean {
   
   try {
     db.run('DELETE FROM barcode_mappings WHERE barcode = ?', [barcode]);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error deleting barcode mapping:', error);
@@ -6021,7 +6021,7 @@ export function deleteBarcodeMappingById(id: string): boolean {
   
   try {
     db.run('DELETE FROM barcode_mappings WHERE id = ?', [id]);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error deleting barcode mapping by id:', error);
@@ -6068,7 +6068,7 @@ export function saveRfidMapping(rfidUid: string, lockerNumber: number): boolean 
       );
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error saving RFID mapping:', error);
@@ -6152,7 +6152,7 @@ export function deleteRfidMapping(rfidUid: string): boolean {
   
   try {
     db.run('DELETE FROM rfid_mappings WHERE rfid_uid = ?', [rfidUid]);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error deleting RFID mapping:', error);
@@ -6165,7 +6165,7 @@ export function deleteRfidMappingById(id: string): boolean {
   
   try {
     db.run('DELETE FROM rfid_mappings WHERE id = ?', [id]);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error deleting RFID mapping by id:', error);
@@ -6256,7 +6256,7 @@ export function markScanAsProcessed(scanId: string): boolean {
       'UPDATE scan_logs SET processed = 1 WHERE id = ?',
       [scanId]
     );
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error marking scan as processed:', error);
@@ -6386,7 +6386,7 @@ export function markLatestScanAsProcessedByLocker(lockerNumber: number): boolean
       'UPDATE scan_logs SET processed = 1 WHERE id = ?',
       [scanId]
     );
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error marking latest scan as processed:', error);
@@ -6403,7 +6403,7 @@ export function updateLockerLogMemo(logId: string, memo: string): boolean {
     [memo || null, logId]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return true;
 }
 
@@ -6429,7 +6429,7 @@ export function updateLockerOuting(logId: string, isOuting: boolean): boolean {
   const val = isOuting ? 1 : 0;
   const startedAt = isOuting ? new Date().toISOString() : null;
   db.run(`UPDATE locker_logs SET is_outing = ?, outing_started_at = ? WHERE id = ?`, [val, startedAt, logId]);
-  saveDatabase();
+  saveDatabaseDebounced();
   return true;
 }
 
@@ -6449,7 +6449,7 @@ export function updateLockerLogAdditionalFeePaid(logId: string, paid: boolean, p
     );
   }
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return true;
 }
 
@@ -6510,7 +6510,7 @@ export function updateLockerLogPrepaidAdditionalFee(logId: string, amount: numbe
     [amount, logId]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return true;
 }
 
@@ -6813,7 +6813,7 @@ export function importDatabase(jsonString: string): {
     console.log('[Import] Running VACUUM to reclaim freed pages...');
     db!.run('VACUUM');
     
-    // Save database to localStorage
+    // Save database to localStorage (immediately after VACUUM - must persist)
     saveDatabase();
     
     const totalRows = Object.values(importData.tables).reduce(
@@ -6926,7 +6926,7 @@ export function importRfidMappings(jsonData: string): {
       importedCount++;
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
     
     return {
       success: true,
@@ -7025,7 +7025,7 @@ export function importBarcodeMappings(jsonData: string): {
       importedCount++;
     }
     
-    saveDatabase();
+    saveDatabaseDebounced();
     
     return {
       success: true,
@@ -7102,7 +7102,7 @@ export function createPricingOption(option: {
     [id, option.name, option.optionType, option.amount, sortOrder, now, now]
   );
   
-  saveDatabase();
+  saveDatabaseDebounced();
   return id;
 }
 
@@ -7147,7 +7147,7 @@ export function updatePricingOption(id: string, updates: {
   
   try {
     db.run(`UPDATE pricing_options SET ${sets.join(', ')} WHERE id = ?`, values);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error updating pricing option:', error);
@@ -7160,7 +7160,7 @@ export function deletePricingOption(id: string): boolean {
   
   try {
     db.run('DELETE FROM pricing_options WHERE id = ?', [id]);
-    saveDatabase();
+    saveDatabaseDebounced();
     return true;
   } catch (error) {
     console.error('Error deleting pricing option:', error);
