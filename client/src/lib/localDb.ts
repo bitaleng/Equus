@@ -7,42 +7,109 @@ let db: Database | null = null;
 
 const DB_NAME = 'rest_hotel_db';
 
-// Initialize SQL.js and load database from localStorage
+// ── IndexedDB 설정 (메인 저장소: 비동기, 압축 불필요, UI 블로킹 없음) ──
+const IDB_NAME = 'hotel_idb';
+const IDB_VERSION = 1;
+const IDB_STORE = 'database';
+const IDB_KEY = 'main';
+
+function _openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = (e) => {
+      (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function _saveToIDB(data: Uint8Array): Promise<void> {
+  const idb = await _openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = idb.transaction(IDB_STORE, 'readwrite');
+    // slice(0): ArrayBuffer를 복사하여 Transferable로 전달
+    tx.objectStore(IDB_STORE).put(data.buffer.slice(0), IDB_KEY);
+    tx.oncomplete = () => { idb.close(); resolve(); };
+    tx.onerror = () => { idb.close(); reject(tx.error); };
+  });
+}
+
+async function _loadFromIDB(): Promise<Uint8Array | null> {
+  try {
+    const idb = await _openIDB();
+    return new Promise((resolve) => {
+      const tx = idb.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      req.onsuccess = () => {
+        idb.close();
+        resolve(req.result ? new Uint8Array(req.result as ArrayBuffer) : null);
+      };
+      req.onerror = () => { idb.close(); resolve(null); };
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ── localStorage 동기 저장 (beforeunload 안전망 전용) ──
+function _saveDatabaseToLocalStorage(data: Uint8Array) {
+  const chunkSize = 65535;
+  let binary = '';
+  for (let i = 0; i < data.length; i += chunkSize) {
+    const chunk = data.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+  const base64 = btoa(binary);
+  const compressed = LZString.compressToUTF16(base64);
+  try {
+    localStorage.setItem(DB_NAME, compressed);
+  } catch {
+    try { localStorage.setItem(DB_NAME, base64); } catch {}
+  }
+}
+
+// Initialize SQL.js and load database
 export async function initDatabase(): Promise<Database> {
   if (db) return db;
 
-  // Load SQL.js WASM from local file
   if (!SQL) {
     SQL = await initSqlJs({
       locateFile: (file: string) => `/${file}`
     });
   }
 
-  // Try to load existing database from localStorage
+  // 1순위: IndexedDB (비동기 저장소, 기존 데이터가 있으면 우선 사용)
+  const idbData = await _loadFromIDB();
+  if (idbData && idbData.length > 0) {
+    db = new SQL.Database(idbData);
+    migrateDatabase();
+    return db;
+  }
+
+  // 2순위: localStorage (기존 사용자 자동 마이그레이션)
   const savedDb = localStorage.getItem(DB_NAME);
   if (savedDb) {
-    // Support both compressed (lz-string) and legacy uncompressed (base64) formats
     let base64: string;
     try {
       const decompressed = LZString.decompressFromUTF16(savedDb);
-      base64 = decompressed || savedDb; // fallback to raw if decompression returns null
+      base64 = decompressed || savedDb;
     } catch {
-      base64 = savedDb; // legacy uncompressed base64
+      base64 = savedDb;
     }
     const buf = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
     db = new SQL.Database(buf);
-    
-    // Run migrations for existing databases
-    migrateDatabase();
-  } else {
-    db = new SQL.Database();
-    createTables();
+    migrateDatabase(); // 마이그레이션 끝에 saveDatabase() 호출 → IndexedDB에 저장됨
+    return db;
   }
 
+  // 신규 DB
+  db = new SQL.Database();
+  createTables();
   return db;
 }
 
-// Debounced save: scan_log 같은 고빈도 쓰기용 (500ms 내 여러 번 호출돼도 한 번만 저장)
+// ── Debounced save (고빈도 쓰기 코일레센스) ──
 let _saveDebouncedTimer: ReturnType<typeof setTimeout> | null = null;
 function saveDatabaseDebounced() {
   if (_saveDebouncedTimer) clearTimeout(_saveDebouncedTimer);
@@ -51,43 +118,30 @@ function saveDatabaseDebounced() {
     _saveDebouncedTimer = null;
   }, 500);
 }
-// 페이지 닫힐 때 pending 저장 즉시 flush
+
+// 페이지 닫힐 때: pending 저장을 동기 localStorage로 즉시 flush (안전망)
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     if (_saveDebouncedTimer) {
       clearTimeout(_saveDebouncedTimer);
-      saveDatabase();
+      _saveDebouncedTimer = null;
+    }
+    // IndexedDB는 비동기라 beforeunload에서 완료 보장 불가 → localStorage 동기 저장
+    if (db) {
+      _saveDatabaseToLocalStorage(db.export());
     }
   });
 }
 
-// Save database to localStorage (with LZ-string compression to stay within quota)
+// ── saveDatabase: IndexedDB에 비동기 저장 (메인 스레드 블로킹 없음) ──
 export function saveDatabase() {
   if (!db) return;
-  
   const data = db.export();
-  
-  // Convert to binary string in chunks to avoid "Maximum call stack size exceeded"
-  const chunkSize = 65535; // Safe chunk size for String.fromCharCode
-  let binary = '';
-  for (let i = 0; i < data.length; i += chunkSize) {
-    const chunk = data.subarray(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  
-  const base64 = btoa(binary);
-  // Compress before storing to stay well within the ~5MB localStorage quota
-  const compressed = LZString.compressToUTF16(base64);
-  try {
-    localStorage.setItem(DB_NAME, compressed);
-  } catch (e) {
-    // If compressed still exceeds quota, try storing uncompressed as last resort
-    try {
-      localStorage.setItem(DB_NAME, base64);
-    } catch (e2) {
-      console.error('localStorage quota exceeded even after compression. Data not saved to localStorage.', e2);
-    }
-  }
+  _saveToIDB(data).catch(err => {
+    // IndexedDB 실패 시(사생활 보호 모드 등) localStorage로 폴백
+    console.warn('[DB] IndexedDB save failed, falling back to localStorage:', err);
+    _saveDatabaseToLocalStorage(data);
+  });
 }
 
 // Migrate existing database schema

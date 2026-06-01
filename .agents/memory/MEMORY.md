@@ -1,2 +1,3 @@
 - [localStorage quota fix](localstorage-quota.md) — SQLite DB must be LZ-string compressed before storing; use compressToUTF16/decompressFromUTF16 with legacy fallback
 - [handleSaveChanges isStaff](handlesavechanges-variables.md) — handleSaveChanges uses `isStaff` (local state), NOT `currentIsStaff` (doesn't exist); wrong name causes silent ReferenceError
+- [IndexedDB storage migration](indexeddb-migration.md) — saveDatabase() 비동기화: LZString+localStorage → IndexedDB로 전환, UI 블로킹 완전 해소
