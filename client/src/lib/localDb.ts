@@ -42,6 +42,25 @@ export async function initDatabase(): Promise<Database> {
   return db;
 }
 
+// Debounced save: scan_log 같은 고빈도 쓰기용 (500ms 내 여러 번 호출돼도 한 번만 저장)
+let _saveDebouncedTimer: ReturnType<typeof setTimeout> | null = null;
+function saveDatabaseDebounced() {
+  if (_saveDebouncedTimer) clearTimeout(_saveDebouncedTimer);
+  _saveDebouncedTimer = setTimeout(() => {
+    saveDatabase();
+    _saveDebouncedTimer = null;
+  }, 500);
+}
+// 페이지 닫힐 때 pending 저장 즉시 flush
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (_saveDebouncedTimer) {
+      clearTimeout(_saveDebouncedTimer);
+      saveDatabase();
+    }
+  });
+}
+
 // Save database to localStorage (with LZ-string compression to stay within quota)
 export function saveDatabase() {
   if (!db) return;
@@ -1139,6 +1158,16 @@ function createTables() {
     )
   `);
 
+  // 성능 인덱스: 자주 사용되는 쿼리 최적화
+  db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_status ON locker_logs(status)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_business_day ON locker_logs(business_day)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_entry_time ON locker_logs(entry_time)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_locker_logs_locker_number ON locker_logs(locker_number)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_business_day ON scan_logs(business_day)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_scan_time ON scan_logs(scan_time)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_additional_fee_events_business_day ON additional_fee_events(business_day)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_rental_transactions_business_day ON rental_transactions(business_day)`);
+
   saveDatabase();
 }
 
@@ -1172,6 +1201,8 @@ export function forceRegenerateDatabase() {
     
     // No default rental items - user will add their own items in settings
     
+    // VACUUM: 삭제된 페이지 공간 회수 → saveDatabase() 크기/속도 정상화
+    db!.run('VACUUM');
     console.log('[Force Regenerate] Database regeneration completed successfully');
     saveDatabase();
     return true;
@@ -2996,6 +3027,8 @@ export function clearAllData() {
   db.run('DELETE FROM expenses');
   db.run('DELETE FROM closing_days');
   
+  // VACUUM: 삭제된 페이지 공간 회수 → saveDatabase() 크기/속도 정상화
+  db.run('VACUUM');
   saveDatabase();
 }
 
@@ -6165,7 +6198,8 @@ export function addScanLog(lockerNumber: number): string {
        VALUES (?, ?, ?, ?, 0)`,
       [id, lockerNumber, scanTime, businessDay]
     );
-    saveDatabase();
+    // scan_log는 고빈도 쓰기이므로 debounce 저장 (바코드 연속 스캔 시 중복 저장 방지)
+    saveDatabaseDebounced();
     return id;
   } catch (error) {
     console.error('Error adding scan log:', error);
@@ -6740,9 +6774,23 @@ export function importDatabase(jsonString: string): {
       'pricing_options'  // 추가 요금옵션 (사용자 정의)
     ];
     
+    // scan_logs: 최근 90일치만 가져오기 (누적 과다로 인한 DB 비대화 방지)
+    const scanLogCutoff = new Date();
+    scanLogCutoff.setDate(scanLogCutoff.getDate() - 90);
+    const scanLogCutoffStr = scanLogCutoff.toISOString().slice(0, 10); // YYYY-MM-DD
+
     importOrder.forEach(tableName => {
       if (importData.tables[tableName]) {
-        importTable(tableName, importData.tables[tableName]);
+        if (tableName === 'scan_logs') {
+          const filtered = importData.tables[tableName].filter((row: any) => {
+            const scanDay = (row.business_day || row.scan_time || '').slice(0, 10);
+            return scanDay >= scanLogCutoffStr;
+          });
+          console.log(`[Import] scan_logs: ${importData.tables[tableName].length}건 중 최근 90일 ${filtered.length}건만 가져오기`);
+          importTable(tableName, filtered);
+        } else {
+          importTable(tableName, importData.tables[tableName]);
+        }
       }
     });
     
@@ -6759,6 +6807,11 @@ export function importDatabase(jsonString: string): {
         }
       });
     }
+    
+    // VACUUM: 이전 데이터 삭제 후 남은 빈 페이지 공간 회수
+    // → db.export() 크기 최소화 → saveDatabase() 속도 정상화 (3-7초 → 수십ms)
+    console.log('[Import] Running VACUUM to reclaim freed pages...');
+    db!.run('VACUUM');
     
     // Save database to localStorage
     saveDatabase();
