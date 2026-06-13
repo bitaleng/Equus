@@ -1234,16 +1234,23 @@ export default function Home() {
       const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
       const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
       const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
-      
-      // 선지급금은 다이얼로그에서 이미 결제금액에 포함되어 전달됨
-      // (단일결제: computedFinalPrice에 포함, 분리결제: 사용자가 직접 입력)
-      const prepaidAmount = prepaidAdditionalFee || 0;
 
-      // 결제 금액 합계로 finalPrice 계산 (부가세 포함)
-      // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
-      const actualFinalPrice = deferredPayment || optionType === 'free' 
+      // 선지급금은 다이얼로그에서 기본요금과 별도로 전달됨 → 결제수단별 금액과 finalPrice에 직접 합산
+      const prepaidAmount = prepaidAdditionalFee || 0;
+      const prepaidMethod = additionalFeePaymentMethod || 'cash';
+      const prepaidCash = (!deferredPayment && prepaidMethod === 'cash') ? prepaidAmount : 0;
+      const prepaidCard = (!deferredPayment && prepaidMethod === 'card') ? prepaidAmount : 0;
+      const prepaidTransfer = (!deferredPayment && prepaidMethod === 'transfer') ? prepaidAmount : 0;
+
+      const totalPaymentCash = actualPaymentCash + prepaidCash;
+      const totalPaymentCard = actualPaymentCard + prepaidCard;
+      const totalPaymentTransfer = actualPaymentTransfer + prepaidTransfer;
+
+      // 결제 금액 합계로 finalPrice 계산 (부가세 + 선지급금 포함)
+      const paymentSum = totalPaymentCash + totalPaymentCard + totalPaymentTransfer;
+      const actualFinalPrice = deferredPayment || optionType === 'free'
         ? finalPrice + prepaidAmount
-        : (actualPaymentCash + actualPaymentCard + actualPaymentTransfer) || (finalPrice + prepaidAmount);
+        : paymentSum || (finalPrice + prepaidAmount);
 
       const lockerLogId = localDb.createEntry({
         lockerNumber: newLockerInfo.lockerNumber,
@@ -1255,9 +1262,9 @@ export default function Home() {
         optionAmount,
         notes,
         paymentMethod,
-        paymentCash: actualPaymentCash,
-        paymentCard: actualPaymentCard,
-        paymentTransfer: actualPaymentTransfer,
+        paymentCash: totalPaymentCash,
+        paymentCard: totalPaymentCard,
+        paymentTransfer: totalPaymentTransfer,
         entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
         deferredPayment: deferredPayment || false,  // 후불결제 여부
         customerMemo: customerMemo || undefined,  // 손님 메모
@@ -1374,16 +1381,24 @@ export default function Home() {
     const actualPaymentCash = deferredPayment ? 0 : (paymentCash || 0);
     const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
     const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
-    
-    // 선지급금 포함
-    const prepaidAmount = prepaidAdditionalFee || 0;
 
-    // 결제 금액 합계로 actualFinalPrice 계산 (부가세 포함)
-    // 후불결제나 무료입실이 아닌 경우, 실제 결제 금액이 최종 요금
+    // 선지급금은 다이얼로그에서 기본요금과 별도로 전달됨 → 결제수단별 금액과 finalPrice에 직접 합산
+    const prepaidAmount = prepaidAdditionalFee || 0;
+    const prepaidMethod = additionalFeePaymentMethod || 'cash';
+    const prepaidCash = (!deferredPayment && prepaidMethod === 'cash') ? prepaidAmount : 0;
+    const prepaidCard = (!deferredPayment && prepaidMethod === 'card') ? prepaidAmount : 0;
+    const prepaidTransfer = (!deferredPayment && prepaidMethod === 'transfer') ? prepaidAmount : 0;
+
+    const totalPaymentCash = actualPaymentCash + prepaidCash;
+    const totalPaymentCard = actualPaymentCard + prepaidCard;
+    const totalPaymentTransfer = actualPaymentTransfer + prepaidTransfer;
+
+    // 결제 금액 합계로 actualFinalPrice 계산 (부가세 + 선지급금 포함)
     // 이렇게 해야 선지급 취소 후에도 VAT가 올바르게 반영됨
-    const actualFinalPrice = deferredPayment || optionType === 'free' 
+    const paymentSumUpdate = totalPaymentCash + totalPaymentCard + totalPaymentTransfer;
+    const actualFinalPrice = deferredPayment || optionType === 'free'
       ? finalPrice + prepaidAmount
-      : (actualPaymentCash + actualPaymentCard + actualPaymentTransfer) || (finalPrice + prepaidAmount);
+      : paymentSumUpdate || (finalPrice + prepaidAmount);
 
     localDb.updateEntry(selectedEntry.id, { 
       optionType, 
@@ -1391,9 +1406,9 @@ export default function Home() {
       finalPrice: actualFinalPrice,  // 결제금액 합계(VAT 포함)를 최종요금으로 저장
       notes, 
       paymentMethod,
-      paymentCash: actualPaymentCash,
-      paymentCard: actualPaymentCard,
-      paymentTransfer: actualPaymentTransfer,
+      paymentCash: totalPaymentCash,
+      paymentCard: totalPaymentCard,
+      paymentTransfer: totalPaymentTransfer,
       deferredPayment: deferredPayment || false,
       customerMemo: customerMemo || undefined,  // 손님 메모
       noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 상태 유지
