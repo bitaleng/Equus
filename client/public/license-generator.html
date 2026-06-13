@@ -290,12 +290,15 @@
       return Math.abs(hash).toString(36).toUpperCase().padStart(4,'0').substring(0,4);
     }
 
+    const LICENSE_PREFIXES = { v1: 'EQUS', v2: 'HIZZ' };
+
     function generateLicenseKey(customerCode, expiryDate, version) {
       const encodedCustomer = encodeCustomerCode(customerCode);
       const encodedDate = encodeDate(expiryDate);
       const dataPayload = encodedCustomer + encodedDate;
       const signature = generateSignature(dataPayload, version);
-      return "EQUS-" + encodedCustomer + "-" + encodedDate + "-" + signature.substring(0, 4);
+      const prefix = LICENSE_PREFIXES[version] || 'EQUS';
+      return prefix + "-" + encodedCustomer + "-" + encodedDate + "-" + signature.substring(0, 4);
     }
 
     function getHistory() {

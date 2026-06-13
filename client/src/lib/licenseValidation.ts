@@ -1,6 +1,8 @@
 import CryptoJS from 'crypto-js';
 
-const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY || "rest_hotel_license";
+const skin = import.meta.env.VITE_SKIN || 'v1';
+const LICENSE_PREFIX = skin === 'v2' ? 'HIZZ' : 'EQUS';
+const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY || (skin === 'v2' ? 'rest_hotel_license_v2' : 'rest_hotel_license');
 
 export interface LicenseData {
   customerCode: string;
@@ -11,7 +13,6 @@ export interface LicenseData {
 }
 
 function getSecret(): string {
-  const skin = import.meta.env.VITE_SKIN || 'v1';
   if (skin === 'v2') {
     // V2 전용 시크릿 (v1 라이센스키와 호환되지 않음)
     const parts = [
@@ -82,7 +83,7 @@ export function generateLicenseKey(customerCode: string, expiryDate: Date): stri
   const dataPayload = `${encodedCustomer}${encodedDate}`;
   const signature = generateSignature(dataPayload);
   
-  return `EQUS-${encodedCustomer}-${encodedDate}-${signature.substring(0, 4)}`;
+  return `${LICENSE_PREFIX}-${encodedCustomer}-${encodedDate}-${signature.substring(0, 4)}`;
 }
 
 export function validateLicenseKey(licenseKey: string): LicenseData | null {
@@ -93,7 +94,7 @@ export function validateLicenseKey(licenseKey: string): LicenseData | null {
       return null;
     }
     
-    if (!cleaned.startsWith('EQUS')) {
+    if (!cleaned.startsWith(LICENSE_PREFIX)) {
       return null;
     }
     

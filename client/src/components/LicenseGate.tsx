@@ -18,7 +18,8 @@ interface LicenseGateProps {
   children: React.ReactNode;
 }
 
-const LICENSE_STORAGE_KEY = "rest_hotel_license";
+const IS_V2 = (import.meta.env.VITE_SKIN || 'v1') === 'v2';
+const LICENSE_PLACEHOLDER = IS_V2 ? "HIZZ-XXXX-XXXX-XXXX" : "EQUS-XXXX-XXXX-XXXX";
 
 export default function LicenseGate({ children }: LicenseGateProps) {
   const [isLoading, setIsLoading] = useState(true);
@@ -190,7 +191,7 @@ export default function LicenseGate({ children }: LicenseGateProps) {
             <div className="space-y-2">
               <Input
                 type="text"
-                placeholder="EQUS-XXXX-XXXX-XXXX"
+                placeholder={LICENSE_PLACEHOLDER}
                 value={inputKey}
                 onChange={handleInputChange}
                 className="text-center text-lg font-mono tracking-wider"
