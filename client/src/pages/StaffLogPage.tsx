@@ -54,6 +54,11 @@ function calcWorkMinutes(start: string, end: string, breakMin: number): number {
   return Math.max(0, endTotal - startTotal - (breakMin || 0));
 }
 
+function roundUpTo10Min(minutes: number): number {
+  if (minutes <= 0) return 0;
+  return Math.ceil(minutes / 10) * 10;
+}
+
 function calcDailyPay(workMinutes: number, hourlyPay: number): number {
   return Math.floor((workMinutes / 60) * hourlyPay);
 }
@@ -130,7 +135,7 @@ export default function StaffLogPage() {
   const startTime = todayLog?.startTime || "";
   const endTime = todayLog?.endTime || "";
 
-  const todayWorkMinutes = calcWorkMinutes(startTime, endTime, todayLog?.breakMinutes || 0);
+  const todayWorkMinutes = roundUpTo10Min(calcWorkMinutes(startTime, endTime, todayLog?.breakMinutes || 0));
   const todayPay = selectedStaff ? calcDailyPay(todayWorkMinutes, selectedStaff.hourlyPay) : 0;
 
   const { weekMinutes, weekPay, monthMinutes, monthPay } = useMemo(() => {
@@ -171,7 +176,7 @@ export default function StaffLogPage() {
   const handleClockOut = () => {
     if (!selectedStaffId || !todayLog || !startTime) return;
     const nowStr = format(getKstNow(), "HH:mm");
-    const workMinutes = calcWorkMinutes(startTime, nowStr, breakMinutes);
+    const workMinutes = roundUpTo10Min(calcWorkMinutes(startTime, nowStr, breakMinutes));
     const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
     localDb.updateWorkLog(todayLog.id, { endTime: nowStr, workMinutes, dailyPay });
     reloadStaffData(selectedStaffId);
@@ -180,7 +185,7 @@ export default function StaffLogPage() {
 
   const handleSaveDetails = () => {
     if (!selectedStaffId || !todayLog) return;
-    const workMinutes = calcWorkMinutes(startTime, endTime, breakMinutes);
+    const workMinutes = roundUpTo10Min(calcWorkMinutes(startTime, endTime, breakMinutes));
     const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
     localDb.updateWorkLog(todayLog.id, { breakMinutes, workMinutes, dailyPay, notes: todayNotes });
     reloadStaffData(selectedStaffId);
@@ -202,7 +207,7 @@ export default function StaffLogPage() {
 
   const handleSaveEditLog = () => {
     if (!editingLog) return;
-    const workMinutes = calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes);
+    const workMinutes = roundUpTo10Min(calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes));
     const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
     localDb.updateWorkLog(editingLog.id, { ...editForm, workMinutes, dailyPay });
     reloadStaffData(selectedStaffId);
@@ -225,7 +230,7 @@ export default function StaffLogPage() {
     toast({ title: "평가가 삭제되었습니다." });
   };
 
-  const editWorkMinutes = calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes);
+  const editWorkMinutes = roundUpTo10Min(calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes));
   const editDailyPay = selectedStaff ? calcDailyPay(editWorkMinutes, selectedStaff.hourlyPay) : 0;
 
   const hasClockedIn = !!startTime;
