@@ -1595,12 +1595,16 @@ export default function LockerOptionsDialog({
         }
       } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
         // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
-        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 추가 (동일/다른 결제방식 모두 처리)
+        // 단, 요금이 변경된 경우(직접입력 등)에는 새 금액으로 결제 재계산
         const savePrepaidMethod = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
         const isNewPrepaidAdded =
           hasPrepaidAdditionalFee &&
           prepaidAmount > 0 &&
           prepaidAmount !== currentPrepaidAdditionalFee;
+
+        // 기존 결제 합계와 새 계산 요금 비교 → 요금이 바뀐 경우 결제액도 재계산
+        const existingPaymentSum = (currentPaymentCash || 0) + (currentPaymentCard || 0) + (currentPaymentTransfer || 0);
+        const priceChangedFromExisting = computedFinalPrice !== existingPaymentSum;
 
         if (isNewPrepaidAdded) {
           const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
@@ -1610,6 +1614,19 @@ export default function LockerOptionsDialog({
           if (savePrepaidMethod === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
           else if (savePrepaidMethod === 'card') cardVal = (cardVal || 0) + addedPrepaid;
           else if (savePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
+        } else if (priceChangedFromExisting) {
+          // 요금이 변경됨 → 새 금액으로 결제 재할당 (부가세 포함)
+          if (paymentMethod === 'cash') { cashVal = computedFinalPrice; cardVal = undefined; transferVal = undefined; }
+          else if (paymentMethod === 'card') { cashVal = undefined; cardVal = computedFinalPrice; transferVal = undefined; }
+          else if (paymentMethod === 'transfer') { cashVal = undefined; cardVal = undefined; transferVal = computedFinalPrice; }
+          const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
+          if (vatApplied) {
+            const priceWithVat = Math.round(computedFinalPrice * 1.1);
+            if (paymentMethod === 'cash') cashVal = priceWithVat;
+            else if (paymentMethod === 'card') cardVal = priceWithVat;
+            else if (paymentMethod === 'transfer') transferVal = priceWithVat;
+            if (optionType === 'direct_price') optionAmount = priceWithVat;
+          }
         } else {
           cashVal = currentPaymentCash;
           cardVal = currentPaymentCard;

@@ -1396,9 +1396,12 @@ export default function Home() {
     // 결제 금액 합계로 actualFinalPrice 계산 (부가세 + 선지급금 포함)
     // 이렇게 해야 선지급 취소 후에도 VAT가 올바르게 반영됨
     const paymentSumUpdate = totalPaymentCash + totalPaymentCard + totalPaymentTransfer;
+    // direct_price: 입력한 금액이 항상 최종요금 (dialog에서 VAT 포함 optionAmount로 전달됨)
     const actualFinalPrice = deferredPayment || optionType === 'free'
       ? finalPrice + prepaidAmount
-      : paymentSumUpdate || (finalPrice + prepaidAmount);
+      : optionType === 'direct_price'
+        ? finalPrice + prepaidAmount
+        : paymentSumUpdate || (finalPrice + prepaidAmount);
 
     localDb.updateEntry(selectedEntry.id, { 
       optionType, 
