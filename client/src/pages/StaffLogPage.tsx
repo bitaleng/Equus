@@ -50,7 +50,7 @@ function calcWorkMinutes(start: string, end: string, breakMin: number): number {
   const [eh, em] = end.split(":").map(Number);
   const startTotal = sh * 60 + sm;
   let endTotal = eh * 60 + em;
-  if (endTotal <= startTotal) endTotal += 24 * 60;
+  if (endTotal < startTotal) endTotal += 24 * 60;
   return Math.max(0, endTotal - startTotal - (breakMin || 0));
 }
 
