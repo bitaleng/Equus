@@ -80,6 +80,41 @@ interface OpenDialog {
   newLockerInfo?: { lockerNumber: number, timeType: '주간' | '야간', basePrice: number } | null;
 }
 
+// 금·토·일 및 한국 공휴일 판정
+function isWeekendOrHoliday(date: Date): boolean {
+  const day = date.getDay(); // 0=일, 5=금, 6=토
+  if (day === 0 || day === 5 || day === 6) return true;
+
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const y = date.getFullYear();
+
+  // 양력 고정 공휴일
+  const fixed: [number, number][] = [
+    [1, 1],   // 신정
+    [3, 1],   // 삼일절
+    [5, 5],   // 어린이날
+    [6, 6],   // 현충일
+    [8, 15],  // 광복절
+    [10, 3],  // 개천절
+    [10, 9],  // 한글날
+    [12, 25], // 크리스마스
+  ];
+  if (fixed.some(([hm, hd]) => hm === m && hd === d)) return true;
+
+  // 음력 기반 공휴일 (연도별 사전계산)
+  const lunar: Record<number, [number, number][]> = {
+    2024: [[2,9],[2,10],[2,11],[2,12],[5,15],[9,16],[9,17],[9,18]],
+    2025: [[1,28],[1,29],[1,30],[5,6],[10,5],[10,6],[10,7],[10,8]],
+    2026: [[2,16],[2,17],[2,18],[2,19],[5,24],[10,1],[10,2],[10,3]],
+    2027: [[2,6],[2,7],[2,8],[2,9],[5,13],[9,20],[9,21],[9,22],[9,23]],
+  };
+  const yearDates = lunar[y];
+  if (yearDates && yearDates.some(([hm, hd]) => hm === m && hd === d)) return true;
+
+  return false;
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -205,6 +240,7 @@ export default function Home() {
   const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
   const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
   const outingTimeLimitMinutes: number = (settings as any).outingTimeLimitMinutes || 0;
+  const outingTimeLimitWeekendMinutes: number = (settings as any).outingTimeLimitWeekendMinutes || 0;
   
   // Toggle left panel (Today Status + Sales Summary) visibility
   const handleTogglePanel = () => {
@@ -1062,10 +1098,17 @@ export default function Home() {
     lockerStaffStatus[log.lockerNumber] = !!(log as any).isStaff; // 직원 사용 여부
     const outingStartedAt = (log as any).outingStartedAt || null;
     lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
-    // 외출 시간 초과 여부 계산
-    if (!!(log as any).isOuting && outingTimeLimitMinutes > 0 && outingStartedAt) {
-      const outingElapsedMs = lockerTickTime.getTime() - new Date(outingStartedAt).getTime();
-      lockerOutingExceeded[log.lockerNumber] = outingElapsedMs > outingTimeLimitMinutes * 60 * 1000;
+    // 외출 시간 초과 여부 계산 (평일/휴일 분리 적용)
+    if (!!(log as any).isOuting && outingStartedAt) {
+      const effectiveLimit = isWeekendOrHoliday(lockerTickTime)
+        ? outingTimeLimitWeekendMinutes
+        : outingTimeLimitMinutes;
+      if (effectiveLimit > 0) {
+        const outingElapsedMs = lockerTickTime.getTime() - new Date(outingStartedAt).getTime();
+        lockerOutingExceeded[log.lockerNumber] = outingElapsedMs > effectiveLimit * 60 * 1000;
+      } else {
+        lockerOutingExceeded[log.lockerNumber] = false;
+      }
     } else {
       lockerOutingExceeded[log.lockerNumber] = false;
     }

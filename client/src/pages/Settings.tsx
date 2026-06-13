@@ -60,7 +60,8 @@ interface Settings {
   enableForeignerOption: boolean;  // 외국인요금 옵션 활성화
   enableCashReceiptVat: boolean;   // 현금영수증 부가세 옵션
   enableCardVat: boolean;          // 카드결제 부가세 자동추가
-  outingTimeLimitMinutes: number;  // 1회 외출 시간 제한 (분, 0=비활성)
+  outingTimeLimitMinutes: number;         // 1회 외출 시간 제한 - 평일 (분, 0=비활성)
+  outingTimeLimitWeekendMinutes: number;  // 1회 외출 시간 제한 - 휴일(금/토/일/공휴일) (분, 0=비활성)
 }
 
 interface LockerGroup {
@@ -119,6 +120,7 @@ export default function Settings() {
     enableCashReceiptVat: false,
     enableCardVat: false,
     outingTimeLimitMinutes: 0,
+    outingTimeLimitWeekendMinutes: 0,
   });
 
   // Locker group dialog states
@@ -1842,28 +1844,47 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>외출 시간 제한</CardTitle>
               <CardDescription>
-                외출 후 미복귀 시 락카버튼을 점멸로 경보합니다 (0 = 비활성)
+                외출 후 미복귀 시 락카버튼을 점멸로 경보합니다 (0 = 비활성) · 금·토·일·공휴일은 별도 설정 가능
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="outingTimeLimitMinutes">1회 외출 허용 시간</Label>
-                <select
-                  id="outingTimeLimitMinutes"
-                  value={formData.outingTimeLimitMinutes}
-                  onChange={(e) => setFormData({ ...formData, outingTimeLimitMinutes: parseInt(e.target.value) })}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  data-testid="select-outing-time-limit"
-                >
-                  <option value={0}>비활성 (무제한)</option>
-                  {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
-                    <option key={h} value={h * 60}>{h}시간</option>
-                  ))}
-                </select>
-                <p className="text-xs text-muted-foreground">
-                  외출 버튼 클릭 후 설정된 시간이 초과되면 해당 락카버튼이 다크그레이↔레드로 점멸됩니다
-                </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="outingTimeLimitMinutes">평일 외출 허용 시간</Label>
+                  <select
+                    id="outingTimeLimitMinutes"
+                    value={formData.outingTimeLimitMinutes}
+                    onChange={(e) => setFormData({ ...formData, outingTimeLimitMinutes: parseInt(e.target.value) })}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    data-testid="select-outing-time-limit"
+                  >
+                    <option value={0}>비활성 (무제한)</option>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
+                      <option key={h} value={h * 60}>{h}시간</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">월~목 적용</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="outingTimeLimitWeekendMinutes">휴일 외출 허용 시간</Label>
+                  <select
+                    id="outingTimeLimitWeekendMinutes"
+                    value={formData.outingTimeLimitWeekendMinutes}
+                    onChange={(e) => setFormData({ ...formData, outingTimeLimitWeekendMinutes: parseInt(e.target.value) })}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    data-testid="select-outing-time-limit-weekend"
+                  >
+                    <option value={0}>비활성 (무제한)</option>
+                    {Array.from({ length: 24 }, (_, i) => i + 1).map(h => (
+                      <option key={h} value={h * 60}>{h}시간</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">금·토·일·공휴일 적용</p>
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground">
+                외출 버튼 클릭 후 설정된 시간이 초과되면 해당 락카버튼이 다크그레이↔레드로 점멸됩니다
+              </p>
             </CardContent>
           </Card>
 

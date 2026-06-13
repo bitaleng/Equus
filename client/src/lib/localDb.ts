@@ -3138,6 +3138,7 @@ export function getSettings() {
     enableCashReceiptVat: false,
     enableCardVat: false,
     outingTimeLimitMinutes: 0,
+    outingTimeLimitWeekendMinutes: 0,
   };
 
   const v2Overrides = {
