@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil } from "lucide-react";
+import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,15 @@ function calcDailyPay(workMinutes: number, hourlyPay: number): number {
   return Math.floor((workMinutes / 60) * hourlyPay);
 }
 
+function useCurrentTime() {
+  const [now, setNow] = useState(getKstNow());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(getKstNow()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
 const RATING_CONFIG: Record<StaffRatingValue, { color: string; icon: React.ElementType }> = {
   "훌륭": { color: "border-blue-500/40 text-blue-700 dark:text-blue-400 bg-blue-500/10", icon: Star },
   "좋음":  { color: "border-green-500/40 text-green-700 dark:text-green-400 bg-green-500/10", icon: CheckCircle },
@@ -51,6 +60,7 @@ const RATING_CONFIG: Record<StaffRatingValue, { color: string; icon: React.Eleme
 export default function StaffLogPage() {
   const { toast } = useToast();
   const today = getTodayStr();
+  const currentTime = useCurrentTime();
 
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
@@ -58,8 +68,6 @@ export default function StaffLogPage() {
   const [ratings, setRatings] = useState<StaffRating[]>([]);
   const [todayLog, setTodayLog] = useState<StaffWorkLog | null>(null);
 
-  const [startTime, setStartTime] = useState("");
-  const [endTime, setEndTime] = useState("");
   const [breakMinutes, setBreakMinutes] = useState(0);
   const [todayNotes, setTodayNotes] = useState("");
 
@@ -86,12 +94,11 @@ export default function StaffLogPage() {
     const todLog = localDb.getTodayWorkLog(staffId, today);
     setTodayLog(todLog);
     if (todLog) {
-      setStartTime(todLog.startTime || "");
-      setEndTime(todLog.endTime || "");
       setBreakMinutes(todLog.breakMinutes || 0);
       setTodayNotes(todLog.notes || "");
     } else {
-      setStartTime(""); setEndTime(""); setBreakMinutes(0); setTodayNotes("");
+      setBreakMinutes(0);
+      setTodayNotes("");
     }
     setRatings(localDb.getStaffRatings(staffId));
   };
@@ -101,7 +108,10 @@ export default function StaffLogPage() {
     reloadStaffData(selectedStaffId);
   }, [selectedStaffId]);
 
-  const todayWorkMinutes = calcWorkMinutes(startTime, endTime, breakMinutes);
+  const startTime = todayLog?.startTime || "";
+  const endTime = todayLog?.endTime || "";
+
+  const todayWorkMinutes = calcWorkMinutes(startTime, endTime, todayLog?.breakMinutes || 0);
   const todayPay = selectedStaff ? calcDailyPay(todayWorkMinutes, selectedStaff.hourlyPay) : 0;
 
   const { weekMinutes, weekPay, monthMinutes, monthPay } = useMemo(() => {
@@ -118,20 +128,44 @@ export default function StaffLogPage() {
     return { weekMinutes: wMin, weekPay: wPay, monthMinutes: mMin, monthPay: mPay };
   }, [workLogs]);
 
-  const handleSaveToday = () => {
+  const handleClockIn = () => {
     if (!selectedStaffId) return;
-    if (!startTime) { toast({ title: "출근 시간을 입력해주세요.", variant: "destructive" }); return; }
-    const workMinutes = calcWorkMinutes(startTime, endTime, breakMinutes);
-    const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
+    const nowStr = format(getKstNow(), "HH:mm");
     if (todayLog) {
-      localDb.updateWorkLog(todayLog.id, { startTime, endTime, breakMinutes, workMinutes, dailyPay, notes: todayNotes });
-      toast({ title: "오늘 근무 기록이 수정되었습니다." });
+      localDb.updateWorkLog(todayLog.id, { startTime: nowStr });
     } else {
-      const id = localDb.createWorkLog({ staffId: selectedStaffId, workDate: today, startTime, endTime, breakMinutes, workMinutes, dailyPay, notes: todayNotes });
-      if (!id) { toast({ title: "저장 실패", variant: "destructive" }); return; }
-      toast({ title: "오늘 근무 기록이 저장되었습니다." });
+      localDb.createWorkLog({
+        staffId: selectedStaffId,
+        workDate: today,
+        startTime: nowStr,
+        endTime: "",
+        breakMinutes: 0,
+        workMinutes: 0,
+        dailyPay: 0,
+        notes: "",
+      });
     }
     reloadStaffData(selectedStaffId);
+    toast({ title: `출근 기록 완료`, description: `${nowStr} 기록되었습니다.` });
+  };
+
+  const handleClockOut = () => {
+    if (!selectedStaffId || !todayLog || !startTime) return;
+    const nowStr = format(getKstNow(), "HH:mm");
+    const workMinutes = calcWorkMinutes(startTime, nowStr, breakMinutes);
+    const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
+    localDb.updateWorkLog(todayLog.id, { endTime: nowStr, workMinutes, dailyPay });
+    reloadStaffData(selectedStaffId);
+    toast({ title: `퇴근 기록 완료`, description: `${nowStr} 기록되었습니다.` });
+  };
+
+  const handleSaveDetails = () => {
+    if (!selectedStaffId || !todayLog) return;
+    const workMinutes = calcWorkMinutes(startTime, endTime, breakMinutes);
+    const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
+    localDb.updateWorkLog(todayLog.id, { breakMinutes, workMinutes, dailyPay, notes: todayNotes });
+    reloadStaffData(selectedStaffId);
+    toast({ title: "근무 정보가 저장되었습니다." });
   };
 
   const handleDeleteLog = (id: string) => {
@@ -175,6 +209,9 @@ export default function StaffLogPage() {
   const editWorkMinutes = calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes);
   const editDailyPay = selectedStaff ? calcDailyPay(editWorkMinutes, selectedStaff.hourlyPay) : 0;
 
+  const hasClockedIn = !!startTime;
+  const hasClockedOut = !!endTime;
+
   if (staffList.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
@@ -211,78 +248,133 @@ export default function StaffLogPage() {
 
       <div className="flex-1 overflow-auto p-4">
         <div className="max-w-3xl mx-auto space-y-4">
+
+          {/* 오늘 근무 — 타임카드 */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2 flex-wrap">
-                <Clock className="h-4 w-4" />
-                오늘 근무 — {selectedStaff?.name}
-                {todayLog && (
-                  <Badge variant="outline" className="text-xs font-normal">저장됨</Badge>
-                )}
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  오늘 근무 — {selectedStaff?.name}
+                </div>
+                <span className="font-mono text-lg tabular-nums text-muted-foreground">
+                  {format(currentTime, "HH:mm:ss")}
+                </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-5">
+
+              {/* 출근 / 퇴근 버튼 영역 */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="start-time">출근 시간</Label>
-                  <Input
-                    id="start-time"
-                    type="time"
-                    value={startTime}
-                    onChange={e => setStartTime(e.target.value)}
-                    data-testid="input-start-time"
-                  />
+                {/* 출근 */}
+                <div className="flex flex-col items-center gap-2">
+                  {hasClockedIn ? (
+                    <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
+                      <CheckCircle className="h-7 w-7 text-green-600 dark:text-green-400" />
+                      <span className="text-xs text-muted-foreground">출근</span>
+                      <span className="text-2xl font-bold tabular-nums text-green-700 dark:text-green-400">
+                        {startTime}
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleClockIn}
+                      data-testid="button-clock-in"
+                      className="w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white transition-colors cursor-pointer"
+                    >
+                      <LogIn className="h-8 w-8" />
+                      <span className="text-lg font-bold">출근</span>
+                      <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
+                    </button>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="end-time">퇴근 시간</Label>
-                  <Input
-                    id="end-time"
-                    type="time"
-                    value={endTime}
-                    onChange={e => setEndTime(e.target.value)}
-                    data-testid="input-end-time"
-                  />
+
+                {/* 퇴근 */}
+                <div className="flex flex-col items-center gap-2">
+                  {hasClockedOut ? (
+                    <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
+                      <CheckCircle className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+                      <span className="text-xs text-muted-foreground">퇴근</span>
+                      <span className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-400">
+                        {endTime}
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleClockOut}
+                      disabled={!hasClockedIn}
+                      data-testid="button-clock-out"
+                      className={`w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 transition-colors ${
+                        hasClockedIn
+                          ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer"
+                          : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
+                      }`}
+                    >
+                      <LogOut className="h-8 w-8" />
+                      <span className="text-lg font-bold">퇴근</span>
+                      <span className="text-xs opacity-80">
+                        {hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label htmlFor="break-minutes">휴식 (분)</Label>
-                  <Input
-                    id="break-minutes"
-                    type="text"
-                    value={breakMinutes || ""}
-                    onChange={e => setBreakMinutes(parseInt(e.target.value) || 0)}
-                    placeholder="0"
-                    data-testid="input-break-minutes"
-                  />
+
+              {/* 근무 정보 요약 */}
+              {hasClockedIn && (
+                <div className="flex items-center justify-center gap-3 py-3 bg-muted/30 rounded-lg text-sm">
+                  <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                  {hasClockedOut ? (
+                    <>
+                      <span className="font-semibold">{formatMinutes(todayWorkMinutes)}</span>
+                      <span className="text-muted-foreground">|</span>
+                      <span className="font-bold text-primary">₩{todayPay.toLocaleString()}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">퇴근 후 근무시간이 계산됩니다</span>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <Label>계산 결과</Label>
-                  <div className="flex items-center gap-2 h-9 text-sm">
-                    <span className="text-muted-foreground">근무</span>
-                    <span className="font-medium">{formatMinutes(todayWorkMinutes)}</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="font-semibold text-primary">₩{todayPay.toLocaleString()}</span>
+              )}
+
+              {/* 휴식·비고 (출근 이후에만 표시) */}
+              {hasClockedIn && (
+                <div className="space-y-3 pt-1 border-t">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="break-minutes" className="flex items-center gap-1.5 text-sm">
+                        <Coffee className="h-3.5 w-3.5" />
+                        휴식 시간 (분)
+                      </Label>
+                      <Input
+                        id="break-minutes"
+                        type="text"
+                        value={breakMinutes || ""}
+                        onChange={e => setBreakMinutes(parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                        data-testid="input-break-minutes"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="today-notes" className="text-sm">비고</Label>
+                      <Input
+                        id="today-notes"
+                        type="text"
+                        value={todayNotes}
+                        onChange={e => setTodayNotes(e.target.value)}
+                        placeholder="특이사항 입력"
+                        data-testid="input-today-notes"
+                      />
+                    </div>
                   </div>
+                  <Button size="sm" variant="outline" onClick={handleSaveDetails} data-testid="button-save-details">
+                    휴식·비고 저장
+                  </Button>
                 </div>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="today-notes">비고</Label>
-                <Input
-                  id="today-notes"
-                  type="text"
-                  value={todayNotes}
-                  onChange={e => setTodayNotes(e.target.value)}
-                  placeholder="특이사항 입력"
-                  data-testid="input-today-notes"
-                />
-              </div>
-              <Button onClick={handleSaveToday} data-testid="button-save-today">
-                {todayLog ? "오늘 근무 수정" : "오늘 근무 저장"}
-              </Button>
+              )}
             </CardContent>
           </Card>
 
+          {/* 주간 / 월간 통계 */}
           <div className="grid grid-cols-2 gap-4">
             <Card>
               <CardContent className="pt-4 pb-4">
@@ -300,6 +392,7 @@ export default function StaffLogPage() {
             </Card>
           </div>
 
+          {/* 근무 기록 / 성실도 평가 탭 */}
           <Tabs defaultValue="logs">
             <TabsList>
               <TabsTrigger value="logs">근무 기록</TabsTrigger>
@@ -385,12 +478,16 @@ export default function StaffLogPage() {
         </div>
       </div>
 
+      {/* 관리자용 근무 기록 수정 다이얼로그 (시간 직접 입력 가능) */}
       <Dialog open={isEditLogOpen} onOpenChange={setIsEditLogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>근무 기록 수정 — {editingLog?.workDate}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-md text-xs text-orange-700 dark:text-orange-400">
+              관리자 전용 — 시간을 직접 수정할 수 있습니다.
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>출근 시간</Label>
