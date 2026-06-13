@@ -11,13 +11,13 @@ title = "netlify-deploy.zip (v9 — 오프라인 완전 지원)"
 id = "8-_KvqfTQ0XTRBQ6fL4Am"
 uri = "file://netlify-deploy-v2.zip"
 type = "unspecified"
-title = "V2 배포 패키지 (He's) — 5.2MB"
+title = "V2 히즈 — netlify-deploy-v2.zip (6.1MB)"
 
 [[outputs]]
 id = "E98OcRrn06OAex5Oi64Ah"
 uri = "file://netlify-deploy-v1.zip"
 type = "unspecified"
-title = "V1 배포 패키지 (EQUUS) — 5.2MB"
+title = "V1 에쿠스 — netlify-deploy-v1.zip (4.5MB)"
 
 [[outputs]]
 id = "n6MeJzU5uSIkm0AO9Zqik"
