@@ -31,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { calculateAdditionalFee, getBusinessDay } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 
 interface RentalItemInfo {
   itemId: string;
@@ -238,6 +238,7 @@ export default function LockerOptionsDialog({
   const [rentalCashReceiptStatuses, setRentalCashReceiptStatuses] = useState<Map<string, boolean>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
+  const [cancellingRentalItem, setCancellingRentalItem] = useState<{txnId: string; itemId: string; itemName: string} | null>(null);
   
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
@@ -3419,7 +3420,7 @@ export default function LockerOptionsDialog({
                     
                     return (
                       <div key={itemId} className="space-y-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center space-x-2">
                             <Checkbox 
                               id={`rental-${itemId}`}
@@ -3478,6 +3479,25 @@ export default function LockerOptionsDialog({
                               }
                             </Label>
                           </div>
+                          {/* 대여 취소 버튼 - 이미 대여 중이고 반납완료 안 된 항목만 */}
+                          {isAlreadyRented && !returnCompletedItems.has(itemId) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive shrink-0"
+                              onClick={() => {
+                                const txn = currentRentalTransactions.find(t => t.itemId === itemId);
+                                if (txn) {
+                                  setCancellingRentalItem({ txnId: txn.id, itemId: itemId, itemName: item.name });
+                                }
+                              }}
+                              data-testid={`button-cancel-rental-${itemId}`}
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              대여 취소
+                            </Button>
+                          )}
                         </div>
                         
                         {/* 대여 물품 옵션 - 체크박스 선택된 경우에만 표시 */}
@@ -3884,6 +3904,52 @@ export default function LockerOptionsDialog({
             <AlertDialogCancel onClick={handleWarningClose} data-testid="button-warning-close">
               닫기
             </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 대여 취소 확인 다이얼로그 */}
+      <AlertDialog open={!!cancellingRentalItem} onOpenChange={(open) => { if (!open) setCancellingRentalItem(null); }}>
+        <AlertDialogContent data-testid="dialog-cancel-rental-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>대여 취소</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                <strong>{cancellingRentalItem?.itemName}</strong> 대여를 취소하시겠습니까?
+              </p>
+              <p className="text-sm text-muted-foreground">
+                대여 기록이 삭제되며 대여금·보증금이 청구되지 않습니다.<br/>
+                이미 받은 보증금이 있다면 직접 환불해 주세요.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-rental-close">닫기</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-cancel-rental-confirm"
+              onClick={() => {
+                if (!cancellingRentalItem) return;
+                localDb.deleteRentalTransaction(cancellingRentalItem.txnId);
+                setCurrentRentalTransactions(prev => prev.filter(t => t.id !== cancellingRentalItem.txnId));
+                const { itemId } = cancellingRentalItem;
+                const newSelected = new Set(selectedRentalItems);
+                newSelected.delete(itemId);
+                setSelectedRentalItems(newSelected);
+                const newStatuses = new Map(depositStatuses);
+                newStatuses.delete(itemId);
+                setDepositStatuses(newStatuses);
+                const newMethods = new Map(rentalPaymentMethods);
+                newMethods.delete(itemId);
+                setRentalPaymentMethods(newMethods);
+                const newReturn = new Set(returnCompletedItems);
+                newReturn.delete(itemId);
+                setReturnCompletedItems(newReturn);
+                setCancellingRentalItem(null);
+              }}
+            >
+              대여 취소 확인
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

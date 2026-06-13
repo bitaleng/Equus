@@ -4875,6 +4875,12 @@ export function updateRentalTransaction(id: string, updates: {
   saveDatabaseDebounced();
 }
 
+export function deleteRentalTransaction(id: string): void {
+  if (!db) throw new Error('Database not initialized');
+  db.run('DELETE FROM rental_transactions WHERE id = ?', [id]);
+  saveDatabaseDebounced();
+}
+
 export function getRentalTransactionsByLockerLog(lockerLogId: string) {
   if (!db) throw new Error('Database not initialized');
   
