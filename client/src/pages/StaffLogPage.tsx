@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee } from "lucide-react";
+import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee, ChevronLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,23 @@ import type { Staff, StaffWorkLog, StaffRating, StaffRatingValue } from "@/lib/l
 const TZ = "Asia/Seoul";
 const getKstNow = () => toZonedTime(new Date(), TZ);
 const getTodayStr = () => format(getKstNow(), "yyyy-MM-dd");
+
+const STAFF_COLORS = [
+  "#3B82F6",
+  "#EF4444",
+  "#10B981",
+  "#F59E0B",
+  "#8B5CF6",
+  "#06B6D4",
+  "#EC4899",
+  "#F97316",
+  "#6366F1",
+  "#14B8A6",
+];
+
+function getStaffColor(index: number): string {
+  return STAFF_COLORS[index % STAFF_COLORS.length];
+}
 
 function formatMinutes(minutes: number): string {
   if (!minutes) return "0시간";
@@ -64,6 +81,7 @@ export default function StaffLogPage() {
 
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [workLogs, setWorkLogs] = useState<StaffWorkLog[]>([]);
   const [ratings, setRatings] = useState<StaffRating[]>([]);
   const [todayLog, setTodayLog] = useState<StaffWorkLog | null>(null);
@@ -81,11 +99,12 @@ export default function StaffLogPage() {
   });
 
   const selectedStaff = staffList.find(s => s.id === selectedStaffId) ?? null;
+  const selectedStaffIndex = staffList.findIndex(s => s.id === selectedStaffId);
+  const selectedColor = selectedStaffIndex >= 0 ? getStaffColor(selectedStaffIndex) : "#3B82F6";
 
   useEffect(() => {
     const list = localDb.getAllStaff(true);
     setStaffList(list);
-    if (list.length > 0) setSelectedStaffId(list[0].id);
   }, []);
 
   const reloadStaffData = (staffId: string) => {
@@ -212,6 +231,9 @@ export default function StaffLogPage() {
   const hasClockedIn = !!startTime;
   const hasClockedOut = !!endTime;
 
+  // ──────────────────────────────────────────────
+  // 직원 없음
+  // ──────────────────────────────────────────────
   if (staffList.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
@@ -222,40 +244,125 @@ export default function StaffLogPage() {
     );
   }
 
+  // ──────────────────────────────────────────────
+  // 직원 선택 화면
+  // ──────────────────────────────────────────────
+  if (!selectedStaffId) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="border-b p-4">
+          <div className="flex items-center gap-3">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            <h1 className="text-xl font-semibold">직원근무일지</h1>
+            <span className="text-sm text-muted-foreground">
+              {format(getKstNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-8">
+          <p className="text-muted-foreground text-sm mb-8 tracking-wide">근무일지를 기록할 직원을 선택하세요</p>
+          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 w-full max-w-2xl">
+            {staffList.map((s, idx) => {
+              const color = getStaffColor(idx);
+              const isHovered = hoveredId === s.id;
+              const initial = s.name.charAt(0);
+              return (
+                <button
+                  key={s.id}
+                  data-testid={`button-staff-${s.id}`}
+                  onMouseEnter={() => setHoveredId(s.id)}
+                  onMouseLeave={() => setHoveredId(null)}
+                  onClick={() => setSelectedStaffId(s.id)}
+                  style={{
+                    backgroundColor: isHovered ? color : undefined,
+                    borderColor: isHovered ? color : undefined,
+                    transform: isHovered ? "scale(1.07)" : "scale(1)",
+                    transition: "background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease",
+                  }}
+                  className="flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-xl border-2 border-border bg-card cursor-pointer focus:outline-none"
+                >
+                  <div
+                    style={{
+                      backgroundColor: isHovered ? "rgba(255,255,255,0.25)" : color + "20",
+                      color: isHovered ? "white" : color,
+                      transition: "background-color 0.18s ease, color 0.18s ease",
+                    }}
+                    className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold"
+                  >
+                    {initial}
+                  </div>
+                  <div className="flex flex-col items-center gap-0.5">
+                    <span
+                      style={{
+                        color: isHovered ? "white" : undefined,
+                        transition: "color 0.18s ease",
+                      }}
+                      className="text-base font-semibold text-foreground"
+                    >
+                      {s.name}
+                    </span>
+                    {s.position && (
+                      <span
+                        style={{
+                          color: isHovered ? "rgba(255,255,255,0.75)" : undefined,
+                          transition: "color 0.18s ease",
+                        }}
+                        className="text-xs text-muted-foreground"
+                      >
+                        {s.position}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────
+  // 직원 상세 — 근무일지
+  // ──────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col">
-      <div className="border-b p-4 flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <Users className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-xl font-semibold">직원근무일지</h1>
-          <span className="text-sm text-muted-foreground">
-            {format(getKstNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
-          </span>
+      {/* 헤더 */}
+      <div className="border-b p-4 flex items-center gap-3 flex-wrap">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setSelectedStaffId("")}
+          data-testid="button-back-to-picker"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+          style={{ backgroundColor: selectedColor }}
+        >
+          {selectedStaff?.name.charAt(0)}
         </div>
-        <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
-          <SelectTrigger className="w-40" data-testid="select-staff">
-            <SelectValue placeholder="직원 선택" />
-          </SelectTrigger>
-          <SelectContent>
-            {staffList.map(s => (
-              <SelectItem key={s.id} value={s.id} data-testid={`staff-item-${s.id}`}>
-                {s.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <h1 className="text-xl font-semibold">{selectedStaff?.name}</h1>
+        {selectedStaff?.position && (
+          <span className="text-sm text-muted-foreground">{selectedStaff.position}</span>
+        )}
+        <span className="text-sm text-muted-foreground ml-auto">
+          {format(getKstNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
+        </span>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
         <div className="max-w-3xl mx-auto space-y-4">
 
-          {/* 오늘 근무 — 타임카드 */}
+          {/* 타임카드 */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4" />
-                  오늘 근무 — {selectedStaff?.name}
+                  오늘 근무
                 </div>
                 <span className="font-mono text-lg tabular-nums text-muted-foreground">
                   {format(currentTime, "HH:mm:ss")}
@@ -264,10 +371,9 @@ export default function StaffLogPage() {
             </CardHeader>
             <CardContent className="space-y-5">
 
-              {/* 출근 / 퇴근 버튼 영역 */}
               <div className="grid grid-cols-2 gap-4">
                 {/* 출근 */}
-                <div className="flex flex-col items-center gap-2">
+                <div>
                   {hasClockedIn ? (
                     <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
                       <CheckCircle className="h-7 w-7 text-green-600 dark:text-green-400" />
@@ -280,7 +386,7 @@ export default function StaffLogPage() {
                     <button
                       onClick={handleClockIn}
                       data-testid="button-clock-in"
-                      className="w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white transition-colors cursor-pointer"
+                      className="w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer"
                     >
                       <LogIn className="h-8 w-8" />
                       <span className="text-lg font-bold">출근</span>
@@ -290,7 +396,7 @@ export default function StaffLogPage() {
                 </div>
 
                 {/* 퇴근 */}
-                <div className="flex flex-col items-center gap-2">
+                <div>
                   {hasClockedOut ? (
                     <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
                       <CheckCircle className="h-7 w-7 text-blue-600 dark:text-blue-400" />
@@ -304,7 +410,7 @@ export default function StaffLogPage() {
                       onClick={handleClockOut}
                       disabled={!hasClockedIn}
                       data-testid="button-clock-out"
-                      className={`w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 transition-colors ${
+                      className={`w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 ${
                         hasClockedIn
                           ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer"
                           : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
@@ -320,7 +426,6 @@ export default function StaffLogPage() {
                 </div>
               </div>
 
-              {/* 근무 정보 요약 */}
               {hasClockedIn && (
                 <div className="flex items-center justify-center gap-3 py-3 bg-muted/30 rounded-lg text-sm">
                   <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -336,7 +441,6 @@ export default function StaffLogPage() {
                 </div>
               )}
 
-              {/* 휴식·비고 (출근 이후에만 표시) */}
               {hasClockedIn && (
                 <div className="space-y-3 pt-1 border-t">
                   <div className="grid grid-cols-2 gap-3">
@@ -374,7 +478,7 @@ export default function StaffLogPage() {
             </CardContent>
           </Card>
 
-          {/* 주간 / 월간 통계 */}
+          {/* 주간 / 월간 */}
           <div className="grid grid-cols-2 gap-4">
             <Card>
               <CardContent className="pt-4 pb-4">
@@ -392,7 +496,7 @@ export default function StaffLogPage() {
             </Card>
           </div>
 
-          {/* 근무 기록 / 성실도 평가 탭 */}
+          {/* 근무 기록 / 성실도 탭 */}
           <Tabs defaultValue="logs">
             <TabsList>
               <TabsTrigger value="logs">근무 기록</TabsTrigger>
@@ -478,7 +582,7 @@ export default function StaffLogPage() {
         </div>
       </div>
 
-      {/* 관리자용 근무 기록 수정 다이얼로그 (시간 직접 입력 가능) */}
+      {/* 관리자용 수정 다이얼로그 */}
       <Dialog open={isEditLogOpen} onOpenChange={setIsEditLogOpen}>
         <DialogContent>
           <DialogHeader>
