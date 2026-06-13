@@ -204,7 +204,7 @@ export default function ScanLogsPage() {
                 <Label htmlFor="locker-filter">락카번호</Label>
                 <Input
                   id="locker-filter"
-                  type="number"
+                  type="text"
                   placeholder="락카번호 입력"
                   value={lockerNumberFilter}
                   onChange={(e) => setLockerNumberFilter(e.target.value)}

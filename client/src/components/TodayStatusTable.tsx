@@ -208,7 +208,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
         {/* 세 번째 줄: 입력란과 버튼들 */}
         <div className="flex items-center gap-2 flex-wrap">
           <Input
-            type="number"
+            type="text"
             placeholder="락커번호"
             value={lockerNumberInput}
             onChange={(e) => setLockerNumberInput(e.target.value)}

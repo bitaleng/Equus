@@ -2754,7 +2754,7 @@ export default function Home() {
               <Label htmlFor="expense-amount">금액 (원)</Label>
               <Input
                 id="expense-amount"
-                type="number"
+                type="text"
                 value={expenseAmount}
                 onChange={(e) => setExpenseAmount(e.target.value)}
                 placeholder="금액 입력"

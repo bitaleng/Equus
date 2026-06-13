@@ -1434,7 +1434,7 @@ export default function Settings() {
                 <Label htmlFor="businessDayStartHour">영업일 시작 시간 (0-23)</Label>
                 <Input
                   id="businessDayStartHour"
-                  type="number"
+                  type="text"
                   min="0"
                   max="23"
                   value={formData.businessDayStartHour}
@@ -1504,7 +1504,7 @@ export default function Settings() {
                 <Label htmlFor="dayPrice">주간 요금 ({formData.dayStartTime} - {formData.nightStartTime})</Label>
                 <Input
                   id="dayPrice"
-                  type="number"
+                  type="text"
                   value={formData.dayPrice}
                   onChange={(e) => setFormData({ ...formData, dayPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-day-price"
@@ -1514,7 +1514,7 @@ export default function Settings() {
                 <Label htmlFor="nightPrice">야간 요금 ({formData.nightStartTime} - {formData.dayStartTime})</Label>
                 <Input
                   id="nightPrice"
-                  type="number"
+                  type="text"
                   value={formData.nightPrice}
                   onChange={(e) => setFormData({ ...formData, nightPrice: parseInt(e.target.value) || 0 })}
                   data-testid="input-night-price"
@@ -1551,7 +1551,7 @@ export default function Settings() {
                     <Label htmlFor="discountAmount">할인 금액</Label>
                     <Input
                       id="discountAmount"
-                      type="number"
+                      type="text"
                       value={formData.discountAmount}
                       onChange={(e) => setFormData({ ...formData, discountAmount: parseInt(e.target.value) || 0 })}
                       data-testid="input-discount"
@@ -1582,7 +1582,7 @@ export default function Settings() {
                     <Label htmlFor="foreignerPrice">외국인 요금</Label>
                     <Input
                       id="foreignerPrice"
-                      type="number"
+                      type="text"
                       value={formData.foreignerPrice}
                       onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
                       data-testid="input-foreigner-price"
@@ -1756,7 +1756,7 @@ export default function Settings() {
                 <Label htmlFor="domesticCheckpointHour">내국인 추가요금 체크포인트 시간 (0-23시)</Label>
                 <Input
                   id="domesticCheckpointHour"
-                  type="number"
+                  type="text"
                   min="0"
                   max="23"
                   value={formData.domesticCheckpointHour}
@@ -1776,7 +1776,7 @@ export default function Settings() {
                 <Label htmlFor="foreignerAdditionalFeePeriod">외국인 추가요금 주기 (시간 단위)</Label>
                 <Input
                   id="foreignerAdditionalFeePeriod"
-                  type="number"
+                  type="text"
                   min="1"
                   value={formData.foreignerAdditionalFeePeriod}
                   onChange={(e) => {
@@ -3263,7 +3263,7 @@ export default function Settings() {
                 <Label htmlFor="start-number">시작 번호</Label>
                 <Input
                   id="start-number"
-                  type="number"
+                  type="text"
                   value={groupFormData.startNumber}
                   onChange={(e) => setGroupFormData({ ...groupFormData, startNumber: parseInt(e.target.value) || 1 })}
                   data-testid="input-start-number"
@@ -3273,7 +3273,7 @@ export default function Settings() {
                 <Label htmlFor="end-number">종료 번호</Label>
                 <Input
                   id="end-number"
-                  type="number"
+                  type="text"
                   value={groupFormData.endNumber}
                   onChange={(e) => setGroupFormData({ ...groupFormData, endNumber: parseInt(e.target.value) || 1 })}
                   data-testid="input-end-number"
@@ -3368,7 +3368,7 @@ export default function Settings() {
                   <Label htmlFor="rental-fee">대여비 (원)</Label>
                   <Input
                     id="rental-fee"
-                    type="number"
+                    type="text"
                     value={revenueItemFormData.rentalFee}
                     onChange={(e) => setRevenueItemFormData({ 
                       ...revenueItemFormData, 
@@ -3382,7 +3382,7 @@ export default function Settings() {
                   <Label htmlFor="deposit-amount">보증금 (원)</Label>
                   <Input
                     id="deposit-amount"
-                    type="number"
+                    type="text"
                     value={revenueItemFormData.depositAmount}
                     onChange={(e) => setRevenueItemFormData({ 
                       ...revenueItemFormData, 
@@ -3401,7 +3401,7 @@ export default function Settings() {
                 <Label htmlFor="simple-price">판매가격 (원)</Label>
                 <Input
                   id="simple-price"
-                  type="number"
+                  type="text"
                   value={revenueItemFormData.rentalFee}
                   onChange={(e) => setRevenueItemFormData({ 
                     ...revenueItemFormData, 
@@ -3467,7 +3467,7 @@ export default function Settings() {
               <Label htmlFor="pricingOptionAmount">금액 (원)</Label>
               <Input
                 id="pricingOptionAmount"
-                type="number"
+                type="text"
                 placeholder="예: 2000"
                 value={pricingOptionFormData.amount}
                 onChange={(e) => setPricingOptionFormData({ ...pricingOptionFormData, amount: e.target.value })}

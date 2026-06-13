@@ -248,7 +248,7 @@ export default function SalesSummary({
               <Label htmlFor="quick-amount">금액 (원)</Label>
               <Input
                 id="quick-amount"
-                type="number"
+                type="text"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="금액 입력"

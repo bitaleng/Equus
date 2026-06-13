@@ -917,7 +917,7 @@ export default function ClosingPage() {
                 <Label htmlFor="openingFloat">시재금</Label>
                 <Input
                   id="openingFloat"
-                  type="number"
+                  type="text"
                   value={openingFloat}
                   onChange={(e) => setOpeningFloat(e.target.value)}
                   disabled={isConfirmed}
@@ -930,7 +930,7 @@ export default function ClosingPage() {
                 <Label htmlFor="targetFloat">목표 시재금</Label>
                 <Input
                   id="targetFloat"
-                  type="number"
+                  type="text"
                   value={targetFloat}
                   onChange={(e) => setTargetFloat(e.target.value)}
                   disabled={isConfirmed}
@@ -1393,7 +1393,7 @@ export default function ClosingPage() {
                   <Label htmlFor="actualCash">실제 현금</Label>
                   <Input
                     id="actualCash"
-                    type="number"
+                    type="text"
                     value={actualCash}
                     onChange={(e) => setActualCash(e.target.value)}
                     disabled={isConfirmed}
@@ -1421,7 +1421,7 @@ export default function ClosingPage() {
                   <Label htmlFor="bankDeposit">은행 입금액</Label>
                   <Input
                     id="bankDeposit"
-                    type="number"
+                    type="text"
                     value={bankDeposit}
                     onChange={(e) => setBankDeposit(e.target.value)}
                     disabled={isConfirmed}

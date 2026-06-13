@@ -1451,7 +1451,7 @@ export default function LogsPage() {
                       <Label htmlFor="rental-locker-number" className="text-sm whitespace-nowrap">락커번호</Label>
                       <Input
                         id="rental-locker-number"
-                        type="number"
+                        type="text"
                         min="1"
                         max="999"
                         value={rentalLockerNumberFilter}
@@ -1636,7 +1636,7 @@ export default function LogsPage() {
               <Label className="w-20 shrink-0 text-sm">환불 금액</Label>
               <div className="relative flex-1">
                 <Input
-                  type="number"
+                  type="text"
                   min="0"
                   step="100"
                   placeholder="0"

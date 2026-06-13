@@ -343,7 +343,7 @@ export default function ExpensesPage() {
                 <Label htmlFor="amount">금액</Label>
                 <Input
                   id="amount"
-                  type="number"
+                  type="text"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="10000"
@@ -515,7 +515,7 @@ export default function ExpensesPage() {
               <Label htmlFor="editAmount">금액</Label>
               <Input
                 id="editAmount"
-                type="number"
+                type="text"
                 value={editAmount}
                 onChange={(e) => setEditAmount(e.target.value)}
                 data-testid="input-edit-amount"

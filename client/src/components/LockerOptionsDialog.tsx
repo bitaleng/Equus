@@ -2452,7 +2452,7 @@ export default function LockerOptionsDialog({
               </div>
               {isDirectPrice && (
                 <Input
-                  type="number"
+                  type="text"
                   placeholder="최종 요금 입력"
                   value={directPrice}
                   onChange={(e) => setDirectPrice(e.target.value)}
@@ -2645,7 +2645,7 @@ export default function LockerOptionsDialog({
                 {hasPrepaidAdditionalFee && (
                   <div className="ml-6 space-y-2">
                     <Input
-                      type="number"
+                      type="text"
                       placeholder="선지급 금액 입력 (예: 5000)"
                       value={prepaidAdditionalFeeAmount}
                       onChange={(e) => setPrepaidAdditionalFeeAmount(e.target.value)}
@@ -2739,7 +2739,7 @@ export default function LockerOptionsDialog({
                 </Select>
                 {discountOption === "custom" && (
                   <Input
-                    type="number"
+                    type="text"
                     placeholder="할인/할증 금액 입력 (음수=할인)"
                     value={discountInputAmount}
                     onChange={(e) => setDiscountInputAmount(e.target.value)}
@@ -2837,7 +2837,7 @@ export default function LockerOptionsDialog({
                       <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">현금</Label>
                       <Input
                         id="payment-cash"
-                        type="number"
+                        type="text"
                         placeholder="0"
                         value={paymentCash}
                         onChange={(e) => {
@@ -2867,7 +2867,7 @@ export default function LockerOptionsDialog({
                       <Label htmlFor="payment-card" className="text-xs text-muted-foreground">카드</Label>
                       <Input
                         id="payment-card"
-                        type="number"
+                        type="text"
                         placeholder="0"
                         value={paymentCard}
                         onChange={(e) => {
@@ -2896,7 +2896,7 @@ export default function LockerOptionsDialog({
                       <Label htmlFor="payment-transfer" className="text-xs text-muted-foreground">이체</Label>
                       <Input
                         id="payment-transfer"
-                        type="number"
+                        type="text"
                         placeholder="0"
                         value={paymentTransfer}
                         onChange={(e) => setPaymentTransfer(e.target.value)}
@@ -3095,7 +3095,7 @@ export default function LockerOptionsDialog({
                           <Label htmlFor="additional-fee-payment-cash" className="text-xs text-muted-foreground">현금</Label>
                           <Input
                             id="additional-fee-payment-cash"
-                            type="number"
+                            type="text"
                             placeholder="0"
                             value={additionalFeePaymentCash}
                             onChange={(e) => {
@@ -3121,7 +3121,7 @@ export default function LockerOptionsDialog({
                           <Label htmlFor="additional-fee-payment-card" className="text-xs text-muted-foreground">카드</Label>
                           <Input
                             id="additional-fee-payment-card"
-                            type="number"
+                            type="text"
                             placeholder="0"
                             value={additionalFeePaymentCard}
                             onChange={(e) => {
@@ -3146,7 +3146,7 @@ export default function LockerOptionsDialog({
                           <Label htmlFor="additional-fee-payment-transfer" className="text-xs text-muted-foreground">이체</Label>
                           <Input
                             id="additional-fee-payment-transfer"
-                            type="number"
+                            type="text"
                             placeholder="0"
                             value={additionalFeePaymentTransfer}
                             onChange={(e) => setAdditionalFeePaymentTransfer(e.target.value)}
@@ -3308,7 +3308,7 @@ export default function LockerOptionsDialog({
                   {additionalFeePartialDiscount && (
                     <div className="flex items-center gap-2">
                       <Input
-                        type="number"
+                        type="text"
                         placeholder="할인 금액 입력"
                         value={additionalFeeDiscount}
                         onChange={(e) => {
@@ -3682,7 +3682,7 @@ export default function LockerOptionsDialog({
                     <Label className="text-sm font-medium text-red-700 dark:text-red-400 w-20 shrink-0">환불 금액</Label>
                     <div className="relative flex-1">
                       <Input
-                        type="number"
+                        type="text"
                         min="0"
                         step="100"
                         placeholder="0"
@@ -4201,7 +4201,7 @@ export default function LockerOptionsDialog({
               <Label htmlFor="new-parent-locker">새 부모 락카 번호 (빈 칸 = 연결 해제)</Label>
               <Input
                 id="new-parent-locker"
-                type="number"
+                type="text"
                 value={newParentLocker}
                 onChange={(e) => setNewParentLocker(e.target.value)}
                 placeholder="빈 칸으로 두면 연결 해제"
@@ -4473,7 +4473,7 @@ export default function LockerOptionsDialog({
                                   {cashHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
                                 </Label>
                                 <Input
-                                  type="number"
+                                  type="text"
                                   placeholder="0"
                                   value={splitRefundCash}
                                   onChange={(e) => setSplitRefundCash(e.target.value)}
@@ -4494,7 +4494,7 @@ export default function LockerOptionsDialog({
                                   {cardHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
                                 </Label>
                                 <Input
-                                  type="number"
+                                  type="text"
                                   placeholder="0"
                                   value={splitRefundCard}
                                   onChange={(e) => setSplitRefundCard(e.target.value)}
@@ -4515,7 +4515,7 @@ export default function LockerOptionsDialog({
                                   {transferHadVat && <span className="text-blue-500 ml-1">+VAT</span>}
                                 </Label>
                                 <Input
-                                  type="number"
+                                  type="text"
                                   placeholder="0"
                                   value={splitRefundTransfer}
                                   onChange={(e) => setSplitRefundTransfer(e.target.value)}

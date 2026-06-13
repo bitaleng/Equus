@@ -57,7 +57,7 @@ export default function CashRegisterPage() {
                 <div className="flex items-center gap-2">
                   <Input
                     id={key}
-                    type="number"
+                    type="text"
                     min="0"
                     value={cashRegister[key]}
                     onChange={(e) => setCashRegister({ ...cashRegister, [key]: parseInt(e.target.value) || 0 })}
