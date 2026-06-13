@@ -16,6 +16,7 @@ import ExpensesPage from "@/pages/ExpensesPage";
 import ClosingPage from "@/pages/ClosingPage";
 import SalesReportPage from "@/pages/SalesReportPage";
 import CashRegisterPage from "@/pages/CashRegisterPage";
+import StaffLogPage from "@/pages/StaffLogPage";
 import AdminLicenses from "@/pages/AdminLicenses";
 import NotFound from "@/pages/not-found";
 import { initDatabase, getSettings } from "@/lib/localDb";
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/closing" component={ClosingPage} />
       <Route path="/sales-report" component={SalesReportPage} />
       <Route path="/cash-register" component={CashRegisterPage} />
+      <Route path="/staff-logs" component={StaffLogPage} />
       <Route path="/admin/licenses" component={AdminLicenses} />
       <Route component={NotFound} />
     </Switch>

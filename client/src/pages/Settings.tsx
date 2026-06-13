@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -264,6 +264,14 @@ export default function Settings() {
   const rfidFileInputRef = useRef<HTMLInputElement>(null);
   const barcodeFileInputRef = useRef<HTMLInputElement>(null);
 
+  // 직원관리 states
+  const [staffList, setStaffList] = useState<localDb.Staff[]>([]);
+  const [isStaffDialogOpen, setIsStaffDialogOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<localDb.Staff | null>(null);
+  const [staffFormData, setStaffFormData] = useState({
+    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true,
+  });
+
   // Load settings and locker groups on mount
   useEffect(() => {
     const settings = localDb.getSettings();
@@ -273,6 +281,7 @@ export default function Settings() {
     loadPricingOptions();
     loadBarcodeMappings();
     loadRfidMappings();
+    setStaffList(localDb.getAllStaff());
     
     // Check NFC support
     if ('NDEFReader' in window) {
@@ -1078,6 +1087,41 @@ export default function Settings() {
         variant: "destructive",
       });
     }
+  };
+
+  // 직원관리 핸들러
+  const handleAddStaff = () => {
+    setEditingStaff(null);
+    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true });
+    setIsStaffDialogOpen(true);
+  };
+
+  const handleEditStaff = (staff: localDb.Staff) => {
+    setEditingStaff(staff);
+    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive });
+    setIsStaffDialogOpen(true);
+  };
+
+  const handleDeleteStaff = (id: string, name: string) => {
+    if (!confirm(`"${name}" 직원을 삭제하시겠습니까?\n모든 근무 기록과 성실도 평가도 함께 삭제됩니다.`)) return;
+    localDb.deleteStaff(id);
+    setStaffList(localDb.getAllStaff());
+    toast({ title: "직원이 삭제되었습니다." });
+  };
+
+  const handleSaveStaff = () => {
+    if (!staffFormData.name.trim()) {
+      toast({ title: "이름을 입력해주세요.", variant: "destructive" }); return;
+    }
+    if (editingStaff) {
+      localDb.updateStaff(editingStaff.id, { ...staffFormData });
+      toast({ title: "직원 정보가 수정되었습니다." });
+    } else {
+      localDb.createStaff({ ...staffFormData });
+      toast({ title: "직원이 등록되었습니다." });
+    }
+    setStaffList(localDb.getAllStaff());
+    setIsStaffDialogOpen(false);
   };
 
   const handleRecalculateBusinessDays = () => {
@@ -3224,6 +3268,60 @@ export default function Settings() {
           {/* Smart Locker Hardware Management */}
           <DeviceManagement />
 
+          {/* 직원관리 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle>직원관리</CardTitle>
+                    <CardDescription className="mt-0.5">근무 직원을 등록하고 관리합니다</CardDescription>
+                  </div>
+                </div>
+                <Button size="sm" onClick={handleAddStaff} data-testid="button-add-staff">
+                  <Plus className="h-4 w-4 mr-1" />
+                  직원 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {staffList.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">등록된 직원이 없습니다.</p>
+              ) : (
+                <div className="space-y-2">
+                  {staffList.map(staff => (
+                    <div key={staff.id} className="flex items-center justify-between gap-2 p-3 border rounded-md">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{staff.name}</span>
+                            {!staff.isActive && (
+                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">비활성</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            시급 ₩{staff.hourlyPay.toLocaleString()}
+                            {staff.phone && ` · ${staff.phone}`}
+                            {staff.hireDate && ` · 입사 ${staff.hireDate}`}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" onClick={() => handleEditStaff(staff)} data-testid={`button-edit-staff-${staff.id}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleDeleteStaff(staff.id, staff.name)} data-testid={`button-delete-staff-${staff.id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Save Button */}
           <div className="flex justify-end">
             <Button onClick={handleSave} size="lg" data-testid="button-save-settings">
@@ -3714,6 +3812,116 @@ export default function Settings() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* 직원 추가/수정 Dialog */}
+      <Dialog open={isStaffDialogOpen} onOpenChange={setIsStaffDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingStaff ? "직원 정보 수정" : "직원 추가"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="staff-name">이름 *</Label>
+                <Input
+                  id="staff-name"
+                  value={staffFormData.name}
+                  onChange={e => setStaffFormData(f => ({ ...f, name: e.target.value }))}
+                  placeholder="직원 이름"
+                  data-testid="input-staff-name"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="staff-phone">전화번호</Label>
+                <Input
+                  id="staff-phone"
+                  type="text"
+                  value={staffFormData.phone}
+                  onChange={e => setStaffFormData(f => ({ ...f, phone: e.target.value }))}
+                  placeholder="010-0000-0000"
+                  data-testid="input-staff-phone"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="staff-hire-date">입사일</Label>
+                <Input
+                  id="staff-hire-date"
+                  type="date"
+                  value={staffFormData.hireDate}
+                  onChange={e => setStaffFormData(f => ({ ...f, hireDate: e.target.value }))}
+                  data-testid="input-staff-hire-date"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="staff-hourly-pay">시급 (원)</Label>
+                <Input
+                  id="staff-hourly-pay"
+                  type="text"
+                  value={staffFormData.hourlyPay || ""}
+                  onChange={e => setStaffFormData(f => ({ ...f, hourlyPay: parseInt(e.target.value.replace(/,/g, "")) || 0 }))}
+                  placeholder="10030"
+                  data-testid="input-staff-hourly-pay"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="staff-address">주소</Label>
+              <Input
+                id="staff-address"
+                type="text"
+                value={staffFormData.address}
+                onChange={e => setStaffFormData(f => ({ ...f, address: e.target.value }))}
+                placeholder="주소 입력"
+                data-testid="input-staff-address"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="staff-pin">PIN (4자리)</Label>
+                <Input
+                  id="staff-pin"
+                  type="text"
+                  maxLength={4}
+                  value={staffFormData.pin}
+                  onChange={e => setStaffFormData(f => ({ ...f, pin: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  placeholder="0000"
+                  data-testid="input-staff-pin"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>재직 상태</Label>
+                <div className="flex items-center gap-2 h-9">
+                  <Switch
+                    checked={staffFormData.isActive}
+                    onCheckedChange={v => setStaffFormData(f => ({ ...f, isActive: v }))}
+                    data-testid="switch-staff-active"
+                  />
+                  <span className="text-sm text-muted-foreground">{staffFormData.isActive ? "재직 중" : "퇴사"}</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="staff-notes">메모</Label>
+              <Input
+                id="staff-notes"
+                type="text"
+                value={staffFormData.notes}
+                onChange={e => setStaffFormData(f => ({ ...f, notes: e.target.value }))}
+                placeholder="특이사항 입력"
+                data-testid="input-staff-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsStaffDialogOpen(false)}>취소</Button>
+            <Button onClick={handleSaveStaff} data-testid="button-save-staff">
+              {editingStaff ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

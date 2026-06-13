@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft, Users } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -2014,6 +2014,17 @@ export default function Home() {
                   지출입력
                 </Button>
               )}
+              {activeTab === 'locker' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLocation('/staff-logs')}
+                  data-testid="button-staff-logs-tab"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  직원근무
+                </Button>
+              )}
               {nfcSupported && activeTab === 'locker' && (
                 <Button
                   variant={isNfcScanning ? "default" : "outline"}
@@ -2228,6 +2239,15 @@ export default function Home() {
               >
                 <Receipt className="h-4 w-4 mr-2" />
                 지출입력
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation('/staff-logs')}
+                data-testid="button-staff-logs-header"
+              >
+                <Users className="h-4 w-4 mr-2" />
+                직원근무
               </Button>
               <h1 
                 className="text-xl font-semibold cursor-pointer select-none" 
