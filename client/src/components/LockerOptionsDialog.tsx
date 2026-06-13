@@ -683,7 +683,12 @@ export default function LockerOptionsDialog({
       } else if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
         setIsFreeEntry(false);
         setIsDirectPrice(true);
-        setDirectPrice(currentFinalPrice.toString());
+        // option_amount = 사용자가 입력한 직접요금 (prepaid 미포함)
+        // final_price = option_amount + prepaid → 재오픈 시 이걸 쓰면 prepaid가 누적됨
+        const directPriceValue = (currentOptionAmount !== undefined && currentOptionAmount > 0)
+          ? currentOptionAmount
+          : currentFinalPrice;
+        setDirectPrice(directPriceValue.toString());
         setIsForeigner(false);
         setDiscountOption("none");
         setDiscountInputAmount("");
