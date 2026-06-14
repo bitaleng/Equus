@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee, ChevronLeft } from "lucide-react";
+import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee, ChevronLeft, Briefcase } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -94,9 +94,16 @@ export default function StaffLogPage() {
   const [breakMinutes, setBreakMinutes] = useState(0);
   const [todayNotes, setTodayNotes] = useState("");
 
+  // 합의 근무시간 (급여 계산용) — 실제 출퇴근과 별개
+  const [agreedStart, setAgreedStart] = useState("");
+  const [agreedEnd, setAgreedEnd] = useState("");
+
   const [isEditLogOpen, setIsEditLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<StaffWorkLog | null>(null);
-  const [editForm, setEditForm] = useState({ startTime: "", endTime: "", breakMinutes: 0, notes: "" });
+  const [editForm, setEditForm] = useState({
+    startTime: "", endTime: "", breakMinutes: 0, notes: "",
+    agreedStartTime: "", agreedEndTime: "",
+  });
 
   const [isRatingOpen, setIsRatingOpen] = useState(false);
   const [ratingForm, setRatingForm] = useState<{ rating: StaffRatingValue; date: string; note: string }>({
@@ -120,9 +127,13 @@ export default function StaffLogPage() {
     if (todLog) {
       setBreakMinutes(todLog.breakMinutes || 0);
       setTodayNotes(todLog.notes || "");
+      setAgreedStart(todLog.agreedStartTime || "");
+      setAgreedEnd(todLog.agreedEndTime || "");
     } else {
       setBreakMinutes(0);
       setTodayNotes("");
+      setAgreedStart("");
+      setAgreedEnd("");
     }
     setRatings(localDb.getStaffRatings(staffId));
   };
@@ -135,7 +146,9 @@ export default function StaffLogPage() {
   const startTime = todayLog?.startTime || "";
   const endTime = todayLog?.endTime || "";
 
-  const todayWorkMinutes = roundUpTo10Min(calcWorkMinutes(startTime, endTime, todayLog?.breakMinutes || 0));
+  // 급여 계산은 합의 근무시간 기준 (실제 출퇴근 아님)
+  const agreedWorkMinutes = roundUpTo10Min(calcWorkMinutes(agreedStart, agreedEnd, breakMinutes));
+  const todayWorkMinutes = agreedWorkMinutes;
   const todayPay = selectedStaff ? calcDailyPay(todayWorkMinutes, selectedStaff.hourlyPay) : 0;
 
   const { weekMinutes, weekPay, monthMinutes, monthPay } = useMemo(() => {
@@ -167,29 +180,57 @@ export default function StaffLogPage() {
         workMinutes: 0,
         dailyPay: 0,
         notes: "",
+        agreedStartTime: "",
+        agreedEndTime: "",
       });
     }
     reloadStaffData(selectedStaffId);
-    toast({ title: `출근 기록 완료`, description: `${nowStr} 기록되었습니다.` });
+    toast({ title: `출근 기록 완료`, description: `${nowStr} 기록되었습니다. (근태기록용)` });
   };
 
   const handleClockOut = () => {
     if (!selectedStaffId || !todayLog || !startTime) return;
     const nowStr = format(getKstNow(), "HH:mm");
-    const workMinutes = roundUpTo10Min(calcWorkMinutes(startTime, nowStr, breakMinutes));
-    const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
-    localDb.updateWorkLog(todayLog.id, { endTime: nowStr, workMinutes, dailyPay });
+    // 실제 퇴근 시간만 기록 — 급여는 합의 근무시간에서 계산
+    localDb.updateWorkLog(todayLog.id, { endTime: nowStr });
     reloadStaffData(selectedStaffId);
-    toast({ title: `퇴근 기록 완료`, description: `${nowStr} 기록되었습니다.` });
+    toast({ title: `퇴근 기록 완료`, description: `${nowStr} 기록되었습니다. (근태기록용)` });
   };
 
-  const handleSaveDetails = () => {
-    if (!selectedStaffId || !todayLog) return;
-    const workMinutes = roundUpTo10Min(calcWorkMinutes(startTime, endTime, breakMinutes));
+  const handleSaveAgreed = () => {
+    if (!selectedStaffId) return;
+    if (!agreedStart || !agreedEnd) {
+      toast({ title: "시작 시간과 종료 시간을 모두 입력해주세요.", variant: "destructive" });
+      return;
+    }
+    const workMinutes = roundUpTo10Min(calcWorkMinutes(agreedStart, agreedEnd, breakMinutes));
     const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
-    localDb.updateWorkLog(todayLog.id, { breakMinutes, workMinutes, dailyPay, notes: todayNotes });
+
+    if (todayLog) {
+      localDb.updateWorkLog(todayLog.id, {
+        agreedStartTime: agreedStart,
+        agreedEndTime: agreedEnd,
+        breakMinutes,
+        workMinutes,
+        dailyPay,
+        notes: todayNotes,
+      });
+    } else {
+      localDb.createWorkLog({
+        staffId: selectedStaffId,
+        workDate: today,
+        startTime: "",
+        endTime: "",
+        breakMinutes,
+        workMinutes,
+        dailyPay,
+        notes: todayNotes,
+        agreedStartTime: agreedStart,
+        agreedEndTime: agreedEnd,
+      });
+    }
     reloadStaffData(selectedStaffId);
-    toast({ title: "근무 정보가 저장되었습니다." });
+    toast({ title: "근무시간이 저장되었습니다.", description: `${agreedStart}~${agreedEnd} (${formatMinutes(workMinutes)}) · ₩${dailyPay.toLocaleString()}` });
   };
 
   const handleDeleteLog = (id: string) => {
@@ -201,15 +242,32 @@ export default function StaffLogPage() {
 
   const handleOpenEditLog = (log: StaffWorkLog) => {
     setEditingLog(log);
-    setEditForm({ startTime: log.startTime, endTime: log.endTime, breakMinutes: log.breakMinutes, notes: log.notes });
+    setEditForm({
+      startTime: log.startTime,
+      endTime: log.endTime,
+      breakMinutes: log.breakMinutes,
+      notes: log.notes,
+      agreedStartTime: log.agreedStartTime || "",
+      agreedEndTime: log.agreedEndTime || "",
+    });
     setIsEditLogOpen(true);
   };
 
   const handleSaveEditLog = () => {
     if (!editingLog) return;
-    const workMinutes = roundUpTo10Min(calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes));
+    // 급여는 합의 근무시간으로 계산
+    const workMinutes = roundUpTo10Min(calcWorkMinutes(editForm.agreedStartTime, editForm.agreedEndTime, editForm.breakMinutes));
     const dailyPay = selectedStaff ? calcDailyPay(workMinutes, selectedStaff.hourlyPay) : 0;
-    localDb.updateWorkLog(editingLog.id, { ...editForm, workMinutes, dailyPay });
+    localDb.updateWorkLog(editingLog.id, {
+      startTime: editForm.startTime,
+      endTime: editForm.endTime,
+      breakMinutes: editForm.breakMinutes,
+      notes: editForm.notes,
+      agreedStartTime: editForm.agreedStartTime,
+      agreedEndTime: editForm.agreedEndTime,
+      workMinutes,
+      dailyPay,
+    });
     reloadStaffData(selectedStaffId);
     setIsEditLogOpen(false);
     toast({ title: "근무 기록이 수정되었습니다." });
@@ -230,7 +288,8 @@ export default function StaffLogPage() {
     toast({ title: "평가가 삭제되었습니다." });
   };
 
-  const editWorkMinutes = roundUpTo10Min(calcWorkMinutes(editForm.startTime, editForm.endTime, editForm.breakMinutes));
+  // 수정 다이얼로그에서도 합의 근무시간으로 계산
+  const editWorkMinutes = roundUpTo10Min(calcWorkMinutes(editForm.agreedStartTime, editForm.agreedEndTime, editForm.breakMinutes));
   const editDailyPay = selectedStaff ? calcDailyPay(editWorkMinutes, selectedStaff.hourlyPay) : 0;
 
   const hasClockedIn = !!startTime;
@@ -287,16 +346,25 @@ export default function StaffLogPage() {
                   }}
                   className="flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-xl border-2 border-border bg-card cursor-pointer focus:outline-none"
                 >
-                  <div
-                    style={{
-                      backgroundColor: isHovered ? "rgba(255,255,255,0.25)" : color + "20",
-                      color: isHovered ? "white" : color,
-                      transition: "background-color 0.18s ease, color 0.18s ease",
-                    }}
-                    className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold"
-                  >
-                    {initial}
-                  </div>
+                  {s.photo ? (
+                    <img
+                      src={s.photo}
+                      alt={s.name}
+                      className="w-14 h-14 rounded-full object-cover border-2"
+                      style={{ borderColor: isHovered ? "rgba(255,255,255,0.4)" : color + "40" }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        backgroundColor: isHovered ? "rgba(255,255,255,0.25)" : color + "20",
+                        color: isHovered ? "white" : color,
+                        transition: "background-color 0.18s ease, color 0.18s ease",
+                      }}
+                      className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold"
+                    >
+                      {initial}
+                    </div>
+                  )}
                   <div className="flex flex-col items-center gap-0.5">
                     <span
                       style={{
@@ -343,12 +411,20 @@ export default function StaffLogPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-          style={{ backgroundColor: selectedColor }}
-        >
-          {selectedStaff?.name.charAt(0)}
-        </div>
+        {selectedStaff?.photo ? (
+          <img
+            src={selectedStaff.photo}
+            alt={selectedStaff.name}
+            className="w-8 h-8 rounded-full object-cover shrink-0"
+          />
+        ) : (
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+            style={{ backgroundColor: selectedColor }}
+          >
+            {selectedStaff?.name.charAt(0)}
+          </div>
+        )}
         <h1 className="text-xl font-semibold">{selectedStaff?.name}</h1>
         {selectedStaff?.position && (
           <span className="text-sm text-muted-foreground">{selectedStaff.position}</span>
@@ -374,112 +450,149 @@ export default function StaffLogPage() {
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
+            <CardContent className="space-y-4">
 
-              <div className="grid grid-cols-2 gap-4">
-                {/* 출근 */}
-                <div>
-                  {hasClockedIn ? (
-                    <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
-                      <CheckCircle className="h-7 w-7 text-green-600 dark:text-green-400" />
-                      <span className="text-xs text-muted-foreground">출근</span>
-                      <span className="text-2xl font-bold tabular-nums text-green-700 dark:text-green-400">
-                        {startTime}
-                      </span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleClockIn}
-                      data-testid="button-clock-in"
-                      className="w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer"
-                    >
-                      <LogIn className="h-8 w-8" />
-                      <span className="text-lg font-bold">출근</span>
-                      <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
-                    </button>
-                  )}
-                </div>
+              {/* 근태기록 (출퇴근 버튼) */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">근태기록</p>
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 출근 */}
+                  <div>
+                    {hasClockedIn ? (
+                      <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
+                        <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                        <span className="text-xs text-muted-foreground">실제 출근</span>
+                        <span className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">
+                          {startTime}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleClockIn}
+                        data-testid="button-clock-in"
+                        className="w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer"
+                      >
+                        <LogIn className="h-7 w-7" />
+                        <span className="text-base font-bold">출근</span>
+                        <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
+                      </button>
+                    )}
+                  </div>
 
-                {/* 퇴근 */}
-                <div>
-                  {hasClockedOut ? (
-                    <div className="w-full flex flex-col items-center gap-1 py-5 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
-                      <CheckCircle className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-                      <span className="text-xs text-muted-foreground">퇴근</span>
-                      <span className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-400">
-                        {endTime}
-                      </span>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleClockOut}
-                      disabled={!hasClockedIn}
-                      data-testid="button-clock-out"
-                      className={`w-full flex flex-col items-center gap-2 py-6 rounded-lg border-2 ${
-                        hasClockedIn
-                          ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer"
-                          : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
-                      }`}
-                    >
-                      <LogOut className="h-8 w-8" />
-                      <span className="text-lg font-bold">퇴근</span>
-                      <span className="text-xs opacity-80">
-                        {hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}
-                      </span>
-                    </button>
-                  )}
+                  {/* 퇴근 */}
+                  <div>
+                    {hasClockedOut ? (
+                      <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
+                        <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                        <span className="text-xs text-muted-foreground">실제 퇴근</span>
+                        <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-400">
+                          {endTime}
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={handleClockOut}
+                        disabled={!hasClockedIn}
+                        data-testid="button-clock-out"
+                        className={`w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 ${
+                          hasClockedIn
+                            ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer"
+                            : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"
+                        }`}
+                      >
+                        <LogOut className="h-7 w-7" />
+                        <span className="text-base font-bold">퇴근</span>
+                        <span className="text-xs opacity-80">
+                          {hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground mt-1.5 text-center">
+                  근태기록 전용 — 급여 계산에 영향 없음
+                </p>
               </div>
 
-              {hasClockedIn && (
-                <div className="flex items-center justify-center gap-3 py-3 bg-muted/30 rounded-lg text-sm">
-                  <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                  {hasClockedOut ? (
-                    <>
-                      <span className="font-semibold">{formatMinutes(todayWorkMinutes)}</span>
-                      <span className="text-muted-foreground">|</span>
-                      <span className="font-bold text-primary">₩{todayPay.toLocaleString()}</span>
-                    </>
-                  ) : (
-                    <span className="text-muted-foreground">퇴근 후 근무시간이 계산됩니다</span>
-                  )}
-                </div>
-              )}
+              {/* 구분선 */}
+              <div className="border-t" />
 
-              {hasClockedIn && (
-                <div className="space-y-3 pt-1 border-t">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label htmlFor="break-minutes" className="flex items-center gap-1.5 text-sm">
-                        <Coffee className="h-3.5 w-3.5" />
-                        휴식 시간 (분)
-                      </Label>
-                      <Input
-                        id="break-minutes"
-                        type="text"
-                        value={breakMinutes || ""}
-                        onChange={e => setBreakMinutes(parseInt(e.target.value) || 0)}
-                        placeholder="0"
-                        data-testid="input-break-minutes"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="today-notes" className="text-sm">비고</Label>
-                      <Input
-                        id="today-notes"
-                        type="text"
-                        value={todayNotes}
-                        onChange={e => setTodayNotes(e.target.value)}
-                        placeholder="특이사항 입력"
-                        data-testid="input-today-notes"
-                      />
-                    </div>
-                  </div>
-                  <Button size="sm" variant="outline" onClick={handleSaveDetails} data-testid="button-save-details">
-                    휴식·비고 저장
-                  </Button>
+              {/* 급여 적용 근무시간 (합의) */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Briefcase className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold">급여 적용 근무시간</span>
+                  <span className="text-xs text-muted-foreground">(업주·직원 합의)</span>
                 </div>
-              )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="agreed-start" className="text-sm">시작 시간</Label>
+                    <Input
+                      id="agreed-start"
+                      type="time"
+                      value={agreedStart}
+                      onChange={e => setAgreedStart(e.target.value)}
+                      data-testid="input-agreed-start"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="agreed-end" className="text-sm">종료 시간</Label>
+                    <Input
+                      id="agreed-end"
+                      type="time"
+                      value={agreedEnd}
+                      onChange={e => setAgreedEnd(e.target.value)}
+                      data-testid="input-agreed-end"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="break-minutes" className="flex items-center gap-1.5 text-sm">
+                      <Coffee className="h-3.5 w-3.5" />
+                      휴식 시간 (분)
+                    </Label>
+                    <Input
+                      id="break-minutes"
+                      type="text"
+                      value={breakMinutes || ""}
+                      onChange={e => setBreakMinutes(parseInt(e.target.value) || 0)}
+                      placeholder="0"
+                      data-testid="input-break-minutes"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="today-notes" className="text-sm">비고</Label>
+                    <Input
+                      id="today-notes"
+                      type="text"
+                      value={todayNotes}
+                      onChange={e => setTodayNotes(e.target.value)}
+                      placeholder="특이사항 입력"
+                      data-testid="input-today-notes"
+                    />
+                  </div>
+                </div>
+
+                {agreedStart && agreedEnd && (
+                  <div className="flex items-center gap-3 py-2.5 px-3 bg-primary/5 border border-primary/20 rounded-md text-sm">
+                    <Clock className="h-4 w-4 text-primary shrink-0" />
+                    <span>
+                      <span className="font-semibold">{agreedStart} ~ {agreedEnd}</span>
+                      <span className="text-muted-foreground mx-2">|</span>
+                      <span className="font-semibold">{formatMinutes(agreedWorkMinutes)}</span>
+                      <span className="text-muted-foreground mx-2">|</span>
+                      <span className="font-bold text-primary">₩{todayPay.toLocaleString()}</span>
+                    </span>
+                  </div>
+                )}
+
+                <Button size="sm" onClick={handleSaveAgreed} data-testid="button-save-agreed">
+                  근무시간 저장
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -517,8 +630,9 @@ export default function StaffLogPage() {
                     <thead className="bg-muted/50">
                       <tr>
                         <th className="text-left px-3 py-2 font-medium whitespace-nowrap">날짜</th>
-                        <th className="text-left px-3 py-2 font-medium whitespace-nowrap">출근</th>
-                        <th className="text-left px-3 py-2 font-medium whitespace-nowrap">퇴근</th>
+                        <th className="text-left px-3 py-2 font-medium whitespace-nowrap">실제출근</th>
+                        <th className="text-left px-3 py-2 font-medium whitespace-nowrap">실제퇴근</th>
+                        <th className="text-left px-3 py-2 font-medium whitespace-nowrap">급여적용</th>
                         <th className="text-left px-3 py-2 font-medium whitespace-nowrap">근무</th>
                         <th className="text-right px-3 py-2 font-medium whitespace-nowrap">일급</th>
                         <th className="text-left px-3 py-2 font-medium">비고</th>
@@ -529,8 +643,14 @@ export default function StaffLogPage() {
                       {workLogs.map((log, i) => (
                         <tr key={log.id} className={i % 2 === 1 ? "bg-muted/20" : ""}>
                           <td className="px-3 py-2 tabular-nums whitespace-nowrap">{log.workDate}</td>
-                          <td className="px-3 py-2 tabular-nums">{log.startTime || "—"}</td>
-                          <td className="px-3 py-2 tabular-nums">{log.endTime || "—"}</td>
+                          <td className="px-3 py-2 tabular-nums text-muted-foreground">{log.startTime || "—"}</td>
+                          <td className="px-3 py-2 tabular-nums text-muted-foreground">{log.endTime || "—"}</td>
+                          <td className="px-3 py-2 tabular-nums whitespace-nowrap">
+                            {log.agreedStartTime && log.agreedEndTime
+                              ? <span className="font-medium">{log.agreedStartTime}~{log.agreedEndTime}</span>
+                              : <span className="text-muted-foreground">—</span>
+                            }
+                          </td>
                           <td className="px-3 py-2 whitespace-nowrap">{formatMinutes(log.workMinutes)}</td>
                           <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">₩{log.dailyPay.toLocaleString()}</td>
                           <td className="px-3 py-2 text-muted-foreground max-w-28 truncate">{log.notes}</td>
@@ -597,26 +717,55 @@ export default function StaffLogPage() {
             <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-md text-xs text-orange-700 dark:text-orange-400">
               관리자 전용 — 시간을 직접 수정할 수 있습니다.
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>출근 시간</Label>
-                <Input
-                  type="time"
-                  value={editForm.startTime}
-                  onChange={e => setEditForm(f => ({ ...f, startTime: e.target.value }))}
-                  data-testid="input-edit-start"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>퇴근 시간</Label>
-                <Input
-                  type="time"
-                  value={editForm.endTime}
-                  onChange={e => setEditForm(f => ({ ...f, endTime: e.target.value }))}
-                  data-testid="input-edit-end"
-                />
+
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">근태기록 (참고용)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>실제 출근 시간</Label>
+                  <Input
+                    type="time"
+                    value={editForm.startTime}
+                    onChange={e => setEditForm(f => ({ ...f, startTime: e.target.value }))}
+                    data-testid="input-edit-start"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>실제 퇴근 시간</Label>
+                  <Input
+                    type="time"
+                    value={editForm.endTime}
+                    onChange={e => setEditForm(f => ({ ...f, endTime: e.target.value }))}
+                    data-testid="input-edit-end"
+                  />
+                </div>
               </div>
             </div>
+
+            <div className="border-t pt-3">
+              <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">급여 적용 근무시간 (합의)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>시작 시간</Label>
+                  <Input
+                    type="time"
+                    value={editForm.agreedStartTime}
+                    onChange={e => setEditForm(f => ({ ...f, agreedStartTime: e.target.value }))}
+                    data-testid="input-edit-agreed-start"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>종료 시간</Label>
+                  <Input
+                    type="time"
+                    value={editForm.agreedEndTime}
+                    onChange={e => setEditForm(f => ({ ...f, agreedEndTime: e.target.value }))}
+                    data-testid="input-edit-agreed-end"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-1">
               <Label>휴식 시간 (분)</Label>
               <Input
@@ -626,8 +775,8 @@ export default function StaffLogPage() {
                 data-testid="input-edit-break"
               />
             </div>
-            <div className="text-sm text-muted-foreground">
-              근무: {formatMinutes(editWorkMinutes)} | 일급: ₩{editDailyPay.toLocaleString()}
+            <div className="text-sm text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
+              급여 적용: {formatMinutes(editWorkMinutes)} | 일급: ₩{editDailyPay.toLocaleString()}
             </div>
             <div className="space-y-1">
               <Label>비고</Label>

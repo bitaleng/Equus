@@ -1052,6 +1052,21 @@ function migrateDatabase() {
     } catch (e) {
       // 이미 존재하면 무시
     }
+
+    // Step 30: 직원 사진 및 합의 근무시간 컬럼 추가
+    try {
+      db.run(`ALTER TABLE staff ADD COLUMN photo TEXT DEFAULT ''`);
+      console.log('Added photo column to staff (Step 30)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE staff_work_logs ADD COLUMN agreed_start_time TEXT DEFAULT ''`);
+      console.log('Added agreed_start_time column to staff_work_logs (Step 30)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE staff_work_logs ADD COLUMN agreed_end_time TEXT DEFAULT ''`);
+      console.log('Added agreed_end_time column to staff_work_logs (Step 30)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -1296,7 +1311,8 @@ function createTables() {
     pin TEXT DEFAULT '',
     is_active INTEGER DEFAULT 1,
     notes TEXT DEFAULT '',
-    created_at TEXT DEFAULT ''
+    created_at TEXT DEFAULT '',
+    photo TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS staff_work_logs (
     id TEXT PRIMARY KEY,
@@ -1309,7 +1325,9 @@ function createTables() {
     daily_pay INTEGER DEFAULT 0,
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT '',
-    updated_at TEXT DEFAULT ''
+    updated_at TEXT DEFAULT '',
+    agreed_start_time TEXT DEFAULT '',
+    agreed_end_time TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS staff_ratings (
     id TEXT PRIMARY KEY,
@@ -7366,6 +7384,7 @@ export interface Staff {
   isActive: boolean;
   notes: string;
   createdAt: string;
+  photo: string;
 }
 
 export interface StaffWorkLog {
@@ -7380,6 +7399,8 @@ export interface StaffWorkLog {
   notes: string;
   createdAt: string;
   updatedAt: string;
+  agreedStartTime: string;
+  agreedEndTime: string;
 }
 
 export type StaffRatingValue = '훌륭' | '좋음' | '태만' | '경고';
@@ -7398,6 +7419,7 @@ function rowToStaff(r: any[]): Staff {
     id: r[0], name: r[1], phone: r[2] || '', address: r[3] || '',
     hireDate: r[4] || '', hourlyPay: r[5] || 0, partTimeHours: r[6] || 0,
     pin: r[7] || '', isActive: r[8] === 1, notes: r[9] || '', createdAt: r[10] || '',
+    photo: r[11] || '',
   };
 }
 
@@ -7406,6 +7428,7 @@ function rowToWorkLog(r: any[]): StaffWorkLog {
     id: r[0], staffId: r[1], workDate: r[2], startTime: r[3] || '',
     endTime: r[4] || '', breakMinutes: r[5] || 0, workMinutes: r[6] || 0,
     dailyPay: r[7] || 0, notes: r[8] || '', createdAt: r[9] || '', updatedAt: r[10] || '',
+    agreedStartTime: r[11] || '', agreedEndTime: r[12] || '',
   };
 }
 
@@ -7414,11 +7437,11 @@ export function createStaff(data: Omit<Staff, 'id' | 'createdAt'>): string {
   const id = `staff_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff (id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO staff (id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, data.name, data.phone || '', data.address || '', data.hireDate || '',
      data.hourlyPay || 0, data.partTimeHours || 0, data.pin || '',
-     data.isActive ? 1 : 0, data.notes || '', now]
+     data.isActive ? 1 : 0, data.notes || '', now, data.photo || '']
   );
   saveDatabaseDebounced();
   return id;
@@ -7427,14 +7450,14 @@ export function createStaff(data: Omit<Staff, 'id' | 'createdAt'>): string {
 export function getAllStaff(activeOnly = false): Staff[] {
   if (!db) return [];
   const where = activeOnly ? 'WHERE is_active = 1' : '';
-  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at FROM staff ${where} ORDER BY name ASC`);
+  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo FROM staff ${where} ORDER BY name ASC`);
   if (!rows.length) return [];
   return rows[0].values.map(rowToStaff);
 }
 
 export function getStaffById(id: string): Staff | null {
   if (!db) return null;
-  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at FROM staff WHERE id = ? LIMIT 1`, [id]);
+  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo FROM staff WHERE id = ? LIMIT 1`, [id]);
   if (!rows.length || !rows[0].values.length) return null;
   return rowToStaff(rows[0].values[0]);
 }
@@ -7452,6 +7475,7 @@ export function updateStaff(id: string, data: Partial<Omit<Staff, 'id' | 'create
   if (data.pin !== undefined) { sets.push('pin = ?'); values.push(data.pin); }
   if (data.isActive !== undefined) { sets.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
   if (data.notes !== undefined) { sets.push('notes = ?'); values.push(data.notes); }
+  if (data.photo !== undefined) { sets.push('photo = ?'); values.push(data.photo); }
   if (!sets.length) return false;
   values.push(id);
   db.run(`UPDATE staff SET ${sets.join(', ')} WHERE id = ?`, values);
@@ -7473,10 +7497,11 @@ export function createWorkLog(data: Omit<StaffWorkLog, 'id' | 'createdAt' | 'upd
   const id = `wlog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, data.staffId, data.workDate, data.startTime || '', data.endTime || '',
-     data.breakMinutes || 0, data.workMinutes || 0, data.dailyPay || 0, data.notes || '', now, now]
+     data.breakMinutes || 0, data.workMinutes || 0, data.dailyPay || 0, data.notes || '', now, now,
+     data.agreedStartTime || '', data.agreedEndTime || '']
   );
   saveDatabaseDebounced();
   return id;
@@ -7491,7 +7516,7 @@ export function getWorkLogs(staffId?: string, from?: string, to?: string): Staff
   if (to) { conditions.push('work_date <= ?'); params.push(to); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db.exec(
-    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at FROM staff_work_logs ${where} ORDER BY work_date DESC, created_at DESC`,
+    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time FROM staff_work_logs ${where} ORDER BY work_date DESC, created_at DESC`,
     params
   );
   if (!rows.length) return [];
@@ -7501,14 +7526,14 @@ export function getWorkLogs(staffId?: string, from?: string, to?: string): Staff
 export function getTodayWorkLog(staffId: string, date: string): StaffWorkLog | null {
   if (!db) return null;
   const rows = db.exec(
-    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at FROM staff_work_logs WHERE staff_id = ? AND work_date = ? LIMIT 1`,
+    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time FROM staff_work_logs WHERE staff_id = ? AND work_date = ? LIMIT 1`,
     [staffId, date]
   );
   if (!rows.length || !rows[0].values.length) return null;
   return rowToWorkLog(rows[0].values[0]);
 }
 
-export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes'>>): boolean {
+export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes' | 'agreedStartTime' | 'agreedEndTime'>>): boolean {
   if (!db) return false;
   const sets: string[] = [];
   const values: any[] = [];
@@ -7518,6 +7543,8 @@ export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'star
   if (data.workMinutes !== undefined) { sets.push('work_minutes = ?'); values.push(data.workMinutes); }
   if (data.dailyPay !== undefined) { sets.push('daily_pay = ?'); values.push(data.dailyPay); }
   if (data.notes !== undefined) { sets.push('notes = ?'); values.push(data.notes); }
+  if (data.agreedStartTime !== undefined) { sets.push('agreed_start_time = ?'); values.push(data.agreedStartTime); }
+  if (data.agreedEndTime !== undefined) { sets.push('agreed_end_time = ?'); values.push(data.agreedEndTime); }
   sets.push('updated_at = ?');
   values.push(new Date().toISOString());
   values.push(id);

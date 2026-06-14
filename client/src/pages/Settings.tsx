@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -271,8 +271,11 @@ export default function Settings() {
   const [isStaffDialogOpen, setIsStaffDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<localDb.Staff | null>(null);
   const [staffFormData, setStaffFormData] = useState({
-    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true,
+    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "",
   });
+  const [staffPhotoPreview, setStaffPhotoPreview] = useState<string>("");
+  const staffFileInputRef = useRef<HTMLInputElement>(null);
+  const staffCameraInputRef = useRef<HTMLInputElement>(null);
 
   // Load settings and locker groups on mount
   useEffect(() => {
@@ -1094,13 +1097,15 @@ export default function Settings() {
   // 직원관리 핸들러
   const handleAddStaff = () => {
     setEditingStaff(null);
-    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true });
+    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "" });
+    setStaffPhotoPreview("");
     setIsStaffDialogOpen(true);
   };
 
   const handleEditStaff = (staff: localDb.Staff) => {
     setEditingStaff(staff);
-    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive });
+    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive, photo: staff.photo || "" });
+    setStaffPhotoPreview(staff.photo || "");
     setIsStaffDialogOpen(true);
   };
 
@@ -1115,15 +1120,43 @@ export default function Settings() {
     if (!staffFormData.name.trim()) {
       toast({ title: "이름을 입력해주세요.", variant: "destructive" }); return;
     }
+    const dataToSave = { ...staffFormData, photo: staffPhotoPreview };
     if (editingStaff) {
-      localDb.updateStaff(editingStaff.id, { ...staffFormData });
+      localDb.updateStaff(editingStaff.id, dataToSave);
       toast({ title: "직원 정보가 수정되었습니다." });
     } else {
-      localDb.createStaff({ ...staffFormData });
+      localDb.createStaff({ ...dataToSave, partTimeHours: 0 });
       toast({ title: "직원이 등록되었습니다." });
     }
     setStaffList(localDb.getAllStaff());
     setIsStaffDialogOpen(false);
+  };
+
+  const handleStaffPhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 300;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
+        else { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
+          setStaffPhotoPreview(dataUrl);
+        }
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const handleRecalculateBusinessDays = () => {
@@ -3836,11 +3869,85 @@ export default function Settings() {
 
       {/* 직원 추가/수정 Dialog */}
       <Dialog open={isStaffDialogOpen} onOpenChange={setIsStaffDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingStaff ? "직원 정보 수정" : "직원 추가"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+
+            {/* 직원 사진 */}
+            <div className="space-y-2">
+              <Label>직원 사진</Label>
+              <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                  {staffPhotoPreview ? (
+                    <div className="relative">
+                      <img
+                        src={staffPhotoPreview}
+                        alt="직원 사진"
+                        className="w-20 h-20 rounded-full object-cover border-2 border-border"
+                        data-testid="img-staff-photo-preview"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setStaffPhotoPreview("")}
+                        className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                        data-testid="button-remove-staff-photo"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-muted border-2 border-dashed border-border flex items-center justify-center">
+                      <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => staffFileInputRef.current?.click()}
+                    data-testid="button-upload-staff-photo"
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    파일 선택
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => staffCameraInputRef.current?.click()}
+                    data-testid="button-camera-staff-photo"
+                  >
+                    <Camera className="h-3.5 w-3.5 mr-1.5" />
+                    카메라 촬영
+                  </Button>
+                  <p className="text-xs text-muted-foreground">최대 300×300px로 자동 조정</p>
+                </div>
+              </div>
+              <input
+                ref={staffFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleStaffPhotoFile}
+                data-testid="input-staff-photo-file"
+              />
+              <input
+                ref={staffCameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleStaffPhotoFile}
+                data-testid="input-staff-photo-camera"
+              />
+            </div>
+
+            <div className="border-t pt-3" />
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label htmlFor="staff-name">이름 *</Label>
