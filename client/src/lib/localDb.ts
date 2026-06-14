@@ -1077,6 +1077,12 @@ function migrateDatabase() {
       console.log('Added segment_pay column to staff_work_logs (Step 31)');
     } catch (e) { /* 이미 존재하면 무시 */ }
 
+    // Step 32: 시간당 페이 컬럼 추가 (총액 역산 없이 원래 입력값 보존)
+    try {
+      db.run(`ALTER TABLE staff_work_logs ADD COLUMN hourly_rate INTEGER DEFAULT 0`);
+      console.log('Added hourly_rate column to staff_work_logs (Step 32)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -7415,6 +7421,7 @@ export interface StaffWorkLog {
   agreedEndTime: string;
   payType: PayType;
   segmentPay: number;
+  hourlyRate: number;
 }
 
 export type StaffRatingValue = '훌륭' | '좋음' | '태만' | '경고';
@@ -7443,7 +7450,7 @@ function rowToWorkLog(r: any[]): StaffWorkLog {
     endTime: r[4] || '', breakMinutes: r[5] || 0, workMinutes: r[6] || 0,
     dailyPay: r[7] || 0, notes: r[8] || '', createdAt: r[9] || '', updatedAt: r[10] || '',
     agreedStartTime: r[11] || '', agreedEndTime: r[12] || '',
-    payType: (r[13] as PayType) || '주간', segmentPay: r[14] || 0,
+    payType: (r[13] as PayType) || '주간', segmentPay: r[14] || 0, hourlyRate: r[15] || 0,
   };
 }
 
@@ -7507,19 +7514,19 @@ export function deleteStaff(id: string): boolean {
   return true;
 }
 
-const WORK_LOG_SELECT = `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay FROM staff_work_logs`;
+const WORK_LOG_SELECT = `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay, hourly_rate FROM staff_work_logs`;
 
 export function createWorkLog(data: Omit<StaffWorkLog, 'id' | 'createdAt' | 'updatedAt'>): string {
   if (!db) return '';
   const id = `wlog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay, hourly_rate)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, data.staffId, data.workDate, data.startTime || '', data.endTime || '',
      data.breakMinutes || 0, data.workMinutes || 0, data.dailyPay || 0, data.notes || '', now, now,
      data.agreedStartTime || '', data.agreedEndTime || '',
-     data.payType || '주간', data.segmentPay || 0]
+     data.payType || '주간', data.segmentPay || 0, data.hourlyRate || 0]
   );
   saveDatabaseDebounced();
   return id;
@@ -7566,6 +7573,7 @@ export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'star
   if (data.agreedEndTime !== undefined) { sets.push('agreed_end_time = ?'); values.push(data.agreedEndTime); }
   if (data.payType !== undefined) { sets.push('pay_type = ?'); values.push(data.payType); }
   if (data.segmentPay !== undefined) { sets.push('segment_pay = ?'); values.push(data.segmentPay); }
+  if (data.hourlyRate !== undefined) { sets.push('hourly_rate = ?'); values.push(data.hourlyRate); }
   sets.push('updated_at = ?');
   values.push(new Date().toISOString());
   values.push(id);

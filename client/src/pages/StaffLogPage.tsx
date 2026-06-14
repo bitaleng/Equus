@@ -175,14 +175,14 @@ export default function StaffLogPage() {
 
   // 새 구간 입력 폼
   const [newSeg, setNewSeg] = useState<{
-    start: string; end: string; payType: PayType; pay: string; notes: string;
-  }>({ start: "", end: "", payType: "주간", pay: "", notes: "" });
+    start: string; end: string; payType: PayType; hourlyRate: string; notes: string;
+  }>({ start: "", end: "", payType: "주간", hourlyRate: "", notes: "" });
 
   // 수정 다이얼로그
   const [editingLog, setEditingLog] = useState<StaffWorkLog | null>(null);
   const [editForm, setEditForm] = useState<{
-    startTime: string; endTime: string; payType: PayType; segmentPay: string; notes: string;
-  }>({ startTime: "", endTime: "", payType: "주간", segmentPay: "", notes: "" });
+    startTime: string; endTime: string; payType: PayType; hourlyRate: string; notes: string;
+  }>({ startTime: "", endTime: "", payType: "주간", hourlyRate: "", notes: "" });
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   // 성실도
@@ -235,7 +235,8 @@ export default function StaffLogPage() {
 
   // 새 구간 계산 미리보기
   const newSegMinutes = calcWorkMinutes(newSeg.start, newSeg.end);
-  const newSegPay = parseInt(newSeg.pay.replace(/,/g, "")) || 0;
+  const newSegHourlyRate = parseInt(newSeg.hourlyRate.replace(/,/g, "")) || 0;
+  const newSegPay = newSegHourlyRate > 0 ? Math.floor((newSegMinutes / 60) * newSegHourlyRate) : 0;
 
   // 출퇴근 핸들러
   const handleClockIn = () => {
@@ -272,10 +273,6 @@ export default function StaffLogPage() {
       toast({ title: "시작 시간과 종료 시간을 입력해주세요.", variant: "destructive" });
       return;
     }
-    if (newSegPay <= 0) {
-      toast({ title: "페이 금액을 입력해주세요.", variant: "destructive" });
-      return;
-    }
     const workMinutes = newSegMinutes;
     localDb.createWorkLog({
       staffId: selectedStaffId, workDate: today,
@@ -283,11 +280,14 @@ export default function StaffLogPage() {
       breakMinutes: 0, workMinutes,
       dailyPay: newSegPay, notes: newSeg.notes,
       agreedStartTime: newSeg.start, agreedEndTime: newSeg.end,
-      payType: newSeg.payType, segmentPay: newSegPay,
+      payType: newSeg.payType, segmentPay: newSegPay, hourlyRate: newSegHourlyRate,
     });
-    setNewSeg({ start: "", end: "", payType: "주간", pay: "", notes: "" });
+    setNewSeg({ start: "", end: "", payType: "주간", hourlyRate: "", notes: "" });
     reloadStaffData(selectedStaffId);
-    toast({ title: "근무 구간 추가됨", description: `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · ₩${newSegPay.toLocaleString()}` });
+    const desc = newSegPay > 0
+      ? `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · ₩${newSegPay.toLocaleString()}`
+      : `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · 근태전용`;
+    toast({ title: "근무 구간 추가됨", description: desc });
   };
 
   // 구간 삭제
@@ -305,7 +305,7 @@ export default function StaffLogPage() {
       startTime: log.agreedStartTime || log.startTime || "",
       endTime: log.agreedEndTime || log.endTime || "",
       payType: log.payType || "주간",
-      segmentPay: log.segmentPay ? log.segmentPay.toLocaleString() : "",
+      hourlyRate: log.hourlyRate ? log.hourlyRate.toString() : "",
       notes: log.notes || "",
     });
     setIsEditOpen(true);
@@ -313,13 +313,15 @@ export default function StaffLogPage() {
 
   const handleSaveEdit = () => {
     if (!editingLog) return;
-    const pay = parseInt(editForm.segmentPay.replace(/,/g, "")) || 0;
+    const rate = parseInt(editForm.hourlyRate.replace(/,/g, "")) || 0;
     const workMinutes = calcWorkMinutes(editForm.startTime, editForm.endTime);
+    const pay = rate > 0 ? Math.floor((workMinutes / 60) * rate) : 0;
     localDb.updateWorkLog(editingLog.id, {
       agreedStartTime: editForm.startTime,
       agreedEndTime: editForm.endTime,
       payType: editForm.payType,
       segmentPay: pay,
+      hourlyRate: rate,
       workMinutes,
       dailyPay: pay,
       notes: editForm.notes,
@@ -495,10 +497,16 @@ export default function StaffLogPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <Plus className="h-4 w-4 text-primary" />
-                오늘 근무 구간 (급여 계산)
+                오늘 근무 구간
+                <span className="text-xs font-normal text-muted-foreground">(파트타임·시급제)</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* 정직원 안내 */}
+              <div className="text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
+                정직원(월급제)은 아래 구간 추가 없이 위 출퇴근 버튼만 사용하시면 됩니다.
+              </div>
+
               {/* 기존 구간 목록 */}
               {todayLogs.length > 0 && (
                 <div className="space-y-2">
@@ -509,14 +517,21 @@ export default function StaffLogPage() {
                         ? `${seg.startTime} ~ ${seg.endTime}`
                         : "시간 미입력";
                     return (
-                      <div key={seg.id} className="flex items-center gap-3 p-3 border rounded-md bg-muted/20">
+                      <div key={seg.id} className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 flex-wrap">
                         <span className="text-xs text-muted-foreground w-5 shrink-0">#{i + 1}</span>
                         <Badge variant="outline" className={`shrink-0 text-xs ${PAY_TYPE_COLORS[seg.payType || "주간"]}`}>
                           {seg.payType || "주간"}
                         </Badge>
-                        <span className="font-mono text-sm tabular-nums flex-1 text-center">{timeRange}</span>
-                        <span className="text-sm font-semibold tabular-nums shrink-0">{formatMinutes(seg.workMinutes)}</span>
-                        <span className="text-sm font-bold text-primary tabular-nums shrink-0">₩{seg.segmentPay.toLocaleString()}</span>
+                        <span className="font-mono text-sm tabular-nums">{timeRange}</span>
+                        <span className="text-sm tabular-nums text-muted-foreground">{formatMinutes(seg.workMinutes)}</span>
+                        {seg.hourlyRate > 0 && (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            시간당 ₩{seg.hourlyRate.toLocaleString()}
+                          </span>
+                        )}
+                        <span className="text-sm font-bold text-primary tabular-nums ml-auto">
+                          {seg.segmentPay > 0 ? `₩${seg.segmentPay.toLocaleString()}` : "—"}
+                        </span>
                         <div className="flex gap-1 shrink-0">
                           <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(seg)} data-testid={`button-edit-seg-${seg.id}`}>
                             <Pencil className="h-3.5 w-3.5" />
@@ -529,18 +544,20 @@ export default function StaffLogPage() {
                     );
                   })}
                   {/* 합계 */}
-                  <div className="flex items-center justify-end gap-4 px-3 py-2 bg-primary/5 border border-primary/20 rounded-md text-sm">
-                    <span className="text-muted-foreground">오늘 합계</span>
-                    <span className="font-semibold">{formatMinutes(todayTotalMinutes)}</span>
-                    <span className="font-bold text-primary">₩{todayTotalPay.toLocaleString()}</span>
-                  </div>
+                  {todayTotalPay > 0 && (
+                    <div className="flex items-center justify-end gap-4 px-3 py-2 bg-primary/5 border border-primary/20 rounded-md text-sm">
+                      <span className="text-muted-foreground">오늘 합계</span>
+                      <span className="font-semibold">{formatMinutes(todayTotalMinutes)}</span>
+                      <span className="font-bold text-primary">₩{todayTotalPay.toLocaleString()}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 새 구간 입력 */}
               <div className="border rounded-md p-3 space-y-3 bg-muted/10">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {todayLogs.length > 0 ? "구간 추가" : "첫 번째 구간 입력"}
+                  {todayLogs.length > 0 ? "구간 추가" : "구간 입력"}
                 </p>
 
                 {/* 시간 + 페이타입 */}
@@ -556,9 +573,7 @@ export default function StaffLogPage() {
                   <div className="space-y-1">
                     <Label className="text-xs">근무 유형</Label>
                     <Select value={newSeg.payType} onValueChange={v => setNewSeg(s => ({ ...s, payType: v as PayType }))}>
-                      <SelectTrigger data-testid="select-new-pay-type">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger data-testid="select-new-pay-type"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {PAY_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
                       </SelectContent>
@@ -566,17 +581,17 @@ export default function StaffLogPage() {
                   </div>
                 </div>
 
-                {/* 금액 + 비고 */}
+                {/* 시간당 페이 + 비고 */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">페이 금액 (원)</Label>
+                    <Label className="text-xs">시간당 페이 (원, 선택)</Label>
                     <Input
                       type="text"
                       inputMode="numeric"
-                      value={newSeg.pay}
-                      onChange={e => setNewSeg(s => ({ ...s, pay: e.target.value.replace(/[^0-9]/g, "") }))}
-                      placeholder="예: 80000"
-                      data-testid="input-new-seg-pay"
+                      value={newSeg.hourlyRate}
+                      onChange={e => setNewSeg(s => ({ ...s, hourlyRate: e.target.value.replace(/[^0-9]/g, "") }))}
+                      placeholder="예: 12000"
+                      data-testid="input-new-seg-hourly"
                     />
                   </div>
                   <div className="space-y-1">
@@ -591,19 +606,27 @@ export default function StaffLogPage() {
                   </div>
                 </div>
 
-                {/* 미리보기 + 추가 버튼 */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  {newSeg.start && newSeg.end && (
-                    <span className="text-sm text-muted-foreground">
-                      {newSeg.start} ~ {newSeg.end} · {formatMinutes(newSegMinutes)}
-                      {newSegPay > 0 && <span className="text-primary font-semibold ml-2">₩{newSegPay.toLocaleString()}</span>}
-                    </span>
-                  )}
-                  <Button className="ml-auto" onClick={handleAddSegment} data-testid="button-add-segment">
-                    <Plus className="h-4 w-4 mr-1" />
-                    구간 추가
-                  </Button>
-                </div>
+                {/* 자동계산 미리보기 */}
+                {newSeg.start && newSeg.end && newSegMinutes > 0 && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-md text-sm flex-wrap">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <span className="tabular-nums text-muted-foreground">{newSeg.start} ~ {newSeg.end}</span>
+                    <span className="font-semibold tabular-nums">{formatMinutes(newSegMinutes)}</span>
+                    {newSegHourlyRate > 0 && (
+                      <>
+                        <span className="text-muted-foreground">×</span>
+                        <span className="tabular-nums text-muted-foreground">₩{newSegHourlyRate.toLocaleString()}/h</span>
+                        <span className="text-muted-foreground">=</span>
+                        <span className="font-bold text-primary tabular-nums">₩{newSegPay.toLocaleString()}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <Button className="w-full" onClick={handleAddSegment} data-testid="button-add-segment">
+                  <Plus className="h-4 w-4 mr-1" />
+                  구간 추가
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -743,22 +766,35 @@ export default function StaffLogPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>페이 금액 (원)</Label>
+              <Label>시간당 페이 (원, 선택)</Label>
               <Input
                 type="text"
                 inputMode="numeric"
-                value={editForm.segmentPay}
-                onChange={e => setEditForm(f => ({ ...f, segmentPay: e.target.value.replace(/[^0-9]/g, "") }))}
-                placeholder="예: 80000"
-                data-testid="input-edit-seg-pay"
+                value={editForm.hourlyRate}
+                onChange={e => setEditForm(f => ({ ...f, hourlyRate: e.target.value.replace(/[^0-9]/g, "") }))}
+                placeholder="예: 12000"
+                data-testid="input-edit-seg-hourly"
               />
             </div>
-            {editForm.startTime && editForm.endTime && (
-              <div className="text-sm text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
-                {editForm.startTime} ~ {editForm.endTime} · {formatMinutes(calcWorkMinutes(editForm.startTime, editForm.endTime))}
-                {parseInt(editForm.segmentPay) > 0 && <span className="text-primary font-semibold ml-2">₩{parseInt(editForm.segmentPay).toLocaleString()}</span>}
-              </div>
-            )}
+            {editForm.startTime && editForm.endTime && (() => {
+              const mins = calcWorkMinutes(editForm.startTime, editForm.endTime);
+              const rate = parseInt(editForm.hourlyRate) || 0;
+              const total = rate > 0 ? Math.floor((mins / 60) * rate) : 0;
+              return (
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-md text-sm flex-wrap">
+                  <span className="tabular-nums text-muted-foreground">{editForm.startTime} ~ {editForm.endTime}</span>
+                  <span className="font-semibold tabular-nums">{formatMinutes(mins)}</span>
+                  {rate > 0 && (
+                    <>
+                      <span className="text-muted-foreground">×</span>
+                      <span className="tabular-nums text-muted-foreground">₩{rate.toLocaleString()}/h</span>
+                      <span className="text-muted-foreground">=</span>
+                      <span className="font-bold text-primary tabular-nums">₩{total.toLocaleString()}</span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             <div className="space-y-1">
               <Label>비고</Label>
               <Input type="text" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} data-testid="input-edit-seg-notes" />
