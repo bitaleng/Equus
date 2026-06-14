@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>라이센스 생성기 - 관리자용</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #e0e0e0;
+    }
+    .container {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { font-size: 24px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+    .header p { color: #a0a0a0; font-size: 14px; }
+    .warning {
+      background: rgba(255,193,7,0.1);
+      border: 1px solid rgba(255,193,7,0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #ffc107;
+    }
+
+    /* 버전 탭 */
+    .version-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 4px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: transparent;
+      color: #808080;
+    }
+    .tab-btn.active {
+      background: rgba(74,158,255,0.2);
+      color: #4a9eff;
+      border: 1px solid rgba(74,158,255,0.3);
+    }
+    .version-badge {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .badge-v1 { background: rgba(74,222,128,0.15); color: #4ade80; }
+    .badge-v2 { background: rgba(251,146,60,0.15); color: #fb923c; }
+
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; color: #c0c0c0; }
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 16px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: #4a9eff;
+      box-shadow: 0 0 0 3px rgba(74,158,255,0.2);
+    }
+    .form-group input::placeholder { color: #707070; }
+
+    .btn {
+      width: 100%;
+      padding: 14px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: linear-gradient(135deg, #4a9eff 0%, #3b82f6 100%); color: #fff; }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(74,158,255,0.4); }
+    .btn-primary:active { transform: translateY(0); }
+
+    .result-section { margin-top: 30px; display: none; }
+    .result-section.show { display: block; }
+    .result-section h3 { font-size: 16px; margin-bottom: 12px; color: #4ade80; }
+    .license-key {
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 20px;
+      text-align: center;
+      letter-spacing: 2px;
+      color: #4ade80;
+      margin-bottom: 12px;
+    }
+    .license-info {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #a0a0a0;
+    }
+    .license-info div { margin-bottom: 4px; }
+    .license-info div:last-child { margin-bottom: 0; }
+
+    .btn-copy {
+      margin-top: 12px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .btn-copy:hover { background: rgba(255,255,255,0.2); }
+    .btn-copy.copied { background: rgba(74,222,128,0.2); border-color: rgba(74,222,128,0.4); color: #4ade80; }
+
+    .history-section {
+      margin-top: 40px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 30px;
+    }
+    .history-section h3 { font-size: 16px; margin-bottom: 16px; color: #c0c0c0; }
+    .history-list { max-height: 200px; overflow-y: auto; }
+    .history-item {
+      background: rgba(255,255,255,0.05);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-item .key { font-family: 'Monaco','Menlo',monospace; color: #4a9eff; }
+    .history-item .info { color: #808080; font-size: 11px; }
+    .empty-history { color: #606060; text-align: center; padding: 20px; font-size: 14px; }
+    .btn-clear {
+      background: transparent;
+      border: 1px solid rgba(239,68,68,0.5);
+      color: #ef4444;
+      font-size: 12px;
+      padding: 6px 12px;
+      margin-top: 12px;
+    }
+    .btn-clear:hover { background: rgba(239,68,68,0.1); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>라이센스 생성기</h1>
+      <p>입실관리 시스템 관리자 전용</p>
+    </div>
+
+    <div class="warning">
+      이 파일은 관리자 전용입니다. 고객에게 절대 공유하지 마세요.
+      안전한 장소에 보관하고 필요할 때만 사용하세요.
+    </div>
+
+    <!-- 버전 선택 탭 -->
+    <div class="version-tabs">
+      <button class="tab-btn active" onclick="selectVersion('v1')">
+        V1 키 생성 <span class="version-badge badge-v1">기존</span>
+      </button>
+      <button class="tab-btn" onclick="selectVersion('v2')">
+        V2 키 생성 <span class="version-badge badge-v2">신규</span>
+      </button>
+    </div>
+
+    <form id="licenseForm">
+      <div class="form-group">
+        <label for="customerCode">고객 코드 (업체명 또는 고유번호)</label>
+        <input type="text" id="customerCode" placeholder="예: 강남1호점, CUST001" required />
+      </div>
+      <div class="form-group">
+        <label for="expiryDate">만료일</label>
+        <input type="date" id="expiryDate" required />
+      </div>
+      <button type="submit" class="btn btn-primary" id="generateBtn">
+        V1 라이센스 생성
+      </button>
+    </form>
+
+    <div class="result-section" id="resultSection">
+      <h3>생성된 라이센스</h3>
+      <div class="license-key" id="licenseKey"></div>
+      <div class="license-info" id="licenseInfo"></div>
+      <button class="btn btn-copy" id="copyBtn" onclick="copyLicense()">클립보드에 복사</button>
+    </div>
+
+    <div class="history-section">
+      <h3>생성 기록</h3>
+      <div class="history-list" id="historyList">
+        <div class="empty-history">아직 생성된 라이센스가 없습니다</div>
+      </div>
+      <button class="btn btn-clear" id="clearHistoryBtn" style="display:none;" onclick="clearHistory()">기록 삭제</button>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+  <script>
+    // ── 버전별 시크릿 ──────────────────────────────────────
+    const SECRETS = {
+      v1: (function() {
+        const p = [
+          String.fromCharCode(69,113,85,115),
+          "2025!",
+          String.fromCharCode(72,111,84,51,76),
+          "#MnGt@",
+          String.fromCharCode(83,101,99,82,51,116)
+        ];
+        return p.join('');
+      })(),
+      v2: (function() {
+        const p = [
+          String.fromCharCode(82,101,83,111),
+          "2025!",
+          String.fromCharCode(82,116,86,50,83),
+          "#KyMt@",
+          String.fromCharCode(76,99,75,114,51,116)
+        ];
+        return p.join('');
+      })()
+    };
+
+    let currentVersion = 'v1';
+    const HISTORY_KEY = 'license_generator_history';
+
+    function selectVersion(ver) {
+      currentVersion = ver;
+      document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', (i === 0 && ver === 'v1') || (i === 1 && ver === 'v2'));
+      });
+      document.getElementById('generateBtn').textContent =
+        ver === 'v1' ? 'V1 라이센스 생성' : 'V2 라이센스 생성';
+      document.getElementById('resultSection').classList.remove('show');
+      renderHistory();
+    }
+
+    function generateSignature(data, version) {
+      const secret = SECRETS[version];
+      const hash = CryptoJS.HmacSHA256(data, secret);
+      return hash.toString(CryptoJS.enc.Hex).substring(0, 8).toUpperCase();
+    }
+
+    function encodeDate(date) {
+      const year = date.getFullYear() - 2020;
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
+      const encoded = (year * 10000) + (month * 100) + day;
+      return encoded.toString(36).toUpperCase().padStart(4, '0');
+    }
+
+    function encodeCustomerCode(code) {
+      let hash = 0;
+      for (let i = 0; i < code.length; i++) {
+        const char = code.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36).toUpperCase().padStart(4,'0').substring(0,4);
+    }
+
+    const LICENSE_PREFIXES = { v1: 'EQUS', v2: 'HIZZ' };
+
+    function generateLicenseKey(customerCode, expiryDate, version) {
+      const encodedCustomer = encodeCustomerCode(customerCode);
+      const encodedDate = encodeDate(expiryDate);
+      const dataPayload = encodedCustomer + encodedDate;
+      const signature = generateSignature(dataPayload, version);
+      const prefix = LICENSE_PREFIXES[version] || 'EQUS';
+      return prefix + "-" + encodedCustomer + "-" + encodedDate + "-" + signature.substring(0, 4);
+    }
+
+    function getHistory() {
+      const stored = localStorage.getItem(HISTORY_KEY);
+      return stored ? JSON.parse(stored) : [];
+    }
+
+    function saveHistory(entry) {
+      const history = getHistory();
+      history.unshift(entry);
+      if (history.length > 50) history.pop();
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+      renderHistory();
+    }
+
+    function clearHistory() {
+      localStorage.removeItem(HISTORY_KEY);
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const history = getHistory().filter(item => item.version === currentVersion);
+      const container = document.getElementById('historyList');
+      const clearBtn = document.getElementById('clearHistoryBtn');
+      if (history.length === 0) {
+        container.innerHTML = '<div class="empty-history">아직 생성된 라이센스가 없습니다</div>';
+        clearBtn.style.display = 'none';
+        return;
+      }
+      clearBtn.style.display = 'block';
+      container.innerHTML = history.map(item => `
+        <div class="history-item">
+          <div>
+            <div class="key">${item.key}</div>
+            <div class="info">${item.customer} / 만료: ${item.expiry}</div>
+          </div>
+          <div class="info">${item.date}</div>
+        </div>
+      `).join('');
+    }
+
+    function copyLicense() {
+      const key = document.getElementById('licenseKey').textContent;
+      navigator.clipboard.writeText(key).then(() => {
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = '복사됨!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '클립보드에 복사';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    document.getElementById('licenseForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const customerCode = document.getElementById('customerCode').value.trim();
+      const expiryDateStr = document.getElementById('expiryDate').value;
+      if (!customerCode || !expiryDateStr) { alert('모든 필드를 입력해주세요.'); return; }
+      const expiryDate = new Date(expiryDateStr);
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      if (expiryDate < today) { alert('만료일은 오늘 이후로 설정해주세요.'); return; }
+
+      const licenseKey = generateLicenseKey(customerCode, expiryDate, currentVersion);
+      document.getElementById('licenseKey').textContent = licenseKey;
+      document.getElementById('licenseInfo').innerHTML = `
+        <div><strong>버전:</strong> ${currentVersion.toUpperCase()}</div>
+        <div><strong>고객:</strong> ${customerCode}</div>
+        <div><strong>만료일:</strong> ${expiryDate.toLocaleDateString('ko-KR')}</div>
+        <div><strong>생성일:</strong> ${new Date().toLocaleDateString('ko-KR')}</div>
+      `;
+      document.getElementById('resultSection').classList.add('show');
+      saveHistory({
+        key: licenseKey,
+        customer: customerCode,
+        expiry: expiryDate.toLocaleDateString('ko-KR'),
+        date: new Date().toLocaleDateString('ko-KR'),
+        version: currentVersion
+      });
+    });
+
+    const today = new Date();
+    const nextYear = new Date(today.getFullYear() + 1, today.getMonth(), today.getDate());
+    document.getElementById('expiryDate').value = nextYear.toISOString().split('T')[0];
+    document.getElementById('expiryDate').min = today.toISOString().split('T')[0];
+    renderHistory();
+  </script>
+</body>
+</html>

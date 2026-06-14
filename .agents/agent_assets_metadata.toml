@@ -54,3 +54,15 @@ id = "Bn0ucroclgO6SbZtDjpqJ"
 uri = "file://v2-deploy.zip"
 type = "unspecified"
 title = "V2 배포 파일 (He's 버전) — 6.1MB"
+
+[[outputs]]
+id = "ZTb8v9hhUudUbPVJcxLTA"
+uri = "file://equus-v1-deploy.zip"
+type = "unspecified"
+title = "에쿠스 v1 — Netlify 배포 파일 (4.6MB)"
+
+[[outputs]]
+id = "PenlOrXZMzHu2oMV0ym9m"
+uri = "file://hes-v2-deploy.zip"
+type = "unspecified"
+title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
