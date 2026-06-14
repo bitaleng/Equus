@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Fingerprint } from "lucide-react";
+import { Fingerprint, ChevronDown } from "lucide-react";
 import PatternLock from "@/components/PatternLock";
 import { validateLicenseKey } from "@/lib/licenseValidation";
 
@@ -115,6 +115,9 @@ async function registerBiometricCredential(): Promise<boolean> {
   }
 }
 
+// 화면 종류
+type Screen = 'biometric' | 'pattern' | 'password' | 'license';
+
 export default function PatternLockDialog({
   open,
   onOpenChange,
@@ -123,17 +126,14 @@ export default function PatternLockDialog({
   description = "패턴을 그려서 잠금을 해제하세요.",
   testId = "dialog-pattern-lock",
 }: PatternLockDialogProps) {
+  const [screen, setScreen] = useState<Screen>('pattern');
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [usePassword, setUsePassword] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-  // 인증 방식 모드: 'pattern' | 'password' | 'both'
   const [authMode, setAuthMode] = useState<'pattern' | 'password' | 'both'>('both');
-  // 라이센스 키 폴백 (비밀번호만 모드에서 비밀번호 분실 시)
-  const [showLicenseFallback, setShowLicenseFallback] = useState(false);
   const [licenseInput, setLicenseInput] = useState("");
   const [licenseError, setLicenseError] = useState("");
 
@@ -147,9 +147,7 @@ export default function PatternLockDialog({
     checkBiometric();
   }, []);
 
-  // Get the correct pattern from localStorage
   const getCorrectPattern = (): number[] => {
-    // 마이그레이션: 이전 버그로 security_pattern에 저장된 경우 staff_pattern으로 이전
     const oldKey = localStorage.getItem("security_pattern");
     if (oldKey && !localStorage.getItem("staff_pattern")) {
       localStorage.setItem("staff_pattern", oldKey);
@@ -157,21 +155,19 @@ export default function PatternLockDialog({
     }
     const saved = localStorage.getItem("staff_pattern");
     if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return [0, 1, 2, 4, 6];
-      }
+      try { return JSON.parse(saved); } catch { return [0, 1, 2, 4, 6]; }
     }
     return [0, 1, 2, 4, 6];
   };
 
+  const handleSuccess = () => {
+    onPatternCorrect();
+    onOpenChange(false);
+  };
+
   const handlePatternComplete = (pattern: number[]) => {
-    const correctPattern = getCorrectPattern();
-    
-    if (JSON.stringify(pattern) === JSON.stringify(correctPattern)) {
-      onPatternCorrect();
-      onOpenChange(false);
+    if (JSON.stringify(pattern) === JSON.stringify(getCorrectPattern())) {
+      handleSuccess();
       setErrorMessage("");
       setShowError(false);
     } else {
@@ -184,12 +180,9 @@ export default function PatternLockDialog({
   const handlePasswordSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     const savedPassword = localStorage.getItem("staff_password") || "12345678";
-    
     if (passwordInput === savedPassword) {
-      onPatternCorrect();
-      onOpenChange(false);
       setPasswordInput("");
-      setErrorMessage("");
+      handleSuccess();
     } else {
       setErrorMessage("비밀번호가 올바르지 않습니다.");
     }
@@ -199,16 +192,10 @@ export default function PatternLockDialog({
     e?.preventDefault();
     setLicenseError("");
     const result = validateLicenseKey(licenseInput.trim());
-    if (!result) {
-      setLicenseError("유효하지 않은 라이센스 키입니다.");
-      return;
-    }
-    // 만료 여부와 무관하게 키 형식이 유효하면 접근 허용 (소유자 본인 확인 목적)
-    onPatternCorrect();
-    onOpenChange(false);
+    if (!result) { setLicenseError("유효하지 않은 라이센스 키입니다."); return; }
+    handleSuccess();
     setLicenseInput("");
     setLicenseError("");
-    setShowLicenseFallback(false);
   };
 
   const handleBiometricAuth = async () => {
@@ -217,10 +204,9 @@ export default function PatternLockDialog({
     try {
       const success = await authenticateWithBiometric();
       if (success) {
-        onPatternCorrect();
-        onOpenChange(false);
+        handleSuccess();
       } else {
-        setErrorMessage("생체인증에 실패했습니다. 다른 방법을 사용하세요.");
+        setErrorMessage("인증에 실패했습니다. 다시 시도하거나 다른 방법을 사용하세요.");
       }
     } catch {
       setErrorMessage("생체인증을 사용할 수 없습니다.");
@@ -229,68 +215,147 @@ export default function PatternLockDialog({
     }
   };
 
-  useEffect(() => {
-    if (open && biometricEnabled && biometricAvailable) {
-      const timer = setTimeout(() => {
-        handleBiometricAuth();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [open, biometricEnabled, biometricAvailable]);
-
-  // 다이얼로그 열릴 때 상태 초기화 + 인증 방식 모드 읽기
+  // 다이얼로그 열릴 때 초기 화면 결정
   useEffect(() => {
     if (open) {
       const mode = (localStorage.getItem("auth_method_mode") as 'pattern' | 'password' | 'both') || 'both';
       setAuthMode(mode);
-      // 비밀번호만 모드이면 비밀번호 폼으로 바로 시작
-      setUsePassword(mode === 'password');
       setErrorMessage("");
       setShowError(false);
       setPasswordInput("");
-      setShowLicenseFallback(false);
       setLicenseInput("");
       setLicenseError("");
+
+      // 지문인식이 등록+지원되면 → 지문 전용 화면으로 시작
+      if (biometricEnabled && biometricAvailable) {
+        setScreen('biometric');
+      } else if (mode === 'password') {
+        setScreen('password');
+      } else {
+        setScreen('pattern');
+      }
     }
-  }, [open]);
+  }, [open, biometricEnabled, biometricAvailable]);
+
+  // 지문 화면 열리면 자동 인증 시도
+  useEffect(() => {
+    if (open && screen === 'biometric') {
+      const timer = setTimeout(() => { handleBiometricAuth(); }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [open, screen]);
+
+  // 다른 방법으로 전환 (지문 화면에서)
+  const handleFallback = () => {
+    setErrorMessage("");
+    if (authMode === 'password') {
+      setScreen('password');
+    } else {
+      setScreen('pattern');
+    }
+  };
+
+  const dialogDescription = screen === 'license'
+    ? "라이센스 키를 입력하여 잠금을 해제하세요."
+    : screen === 'password'
+    ? "비밀번호를 입력하세요."
+    : screen === 'biometric'
+    ? "지문 또는 생체인증으로 잠금을 해제하세요."
+    : description;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md" data-testid={testId}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {showLicenseFallback
-              ? "라이센스 키를 입력하여 잠금을 해제하세요."
-              : usePassword
-              ? "비밀번호를 입력하세요."
-              : description}
-          </DialogDescription>
+          <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
-        {/* 라이센스 키 폴백 화면 */}
-        {showLicenseFallback ? (
+        {/* ── 지문인식 전용 화면 ── */}
+        {screen === 'biometric' && (
+          <div className="flex flex-col items-center gap-5 py-6">
+            <button
+              type="button"
+              onClick={handleBiometricAuth}
+              disabled={isAuthenticating}
+              className="flex flex-col items-center gap-3 group"
+              data-testid="button-biometric-auth"
+            >
+              <div className={`w-24 h-24 rounded-full flex items-center justify-center border-2 transition-colors ${
+                isAuthenticating
+                  ? "border-primary bg-primary/10 animate-pulse"
+                  : "border-border bg-muted hover-elevate"
+              }`}>
+                <Fingerprint className={`h-12 w-12 transition-colors ${
+                  isAuthenticating ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
+                }`} />
+              </div>
+              <span className="text-sm font-medium text-muted-foreground">
+                {isAuthenticating ? "인증 중..." : "터치하여 인증"}
+              </span>
+            </button>
+
+            {errorMessage && (
+              <p className="text-sm text-destructive text-center" data-testid="text-biometric-error">
+                {errorMessage}
+              </p>
+            )}
+
+            {errorMessage && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleBiometricAuth}
+                disabled={isAuthenticating}
+                data-testid="button-biometric-retry"
+              >
+                다시 시도
+              </Button>
+            )}
+
+            <div className="flex items-center justify-between w-full mt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                data-testid="button-cancel-biometric"
+              >
+                취소
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleFallback}
+                className="text-muted-foreground"
+                data-testid="button-biometric-fallback"
+              >
+                <ChevronDown className="h-3.5 w-3.5 mr-1" />
+                다른 방법으로
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ── 라이센스 키 화면 ── */}
+        {screen === 'license' && (
           <form onSubmit={handleLicenseSubmit} className="space-y-4">
             <Input
               type="text"
               placeholder="EQUS-XXXX-XXXX-XXXX"
               value={licenseInput}
-              onChange={(e) => {
-                setLicenseInput(e.target.value);
-                setLicenseError("");
-              }}
+              onChange={(e) => { setLicenseInput(e.target.value); setLicenseError(""); }}
               data-testid="input-license-fallback"
               autoFocus
             />
-            {licenseError && (
-              <p className="text-sm text-destructive">{licenseError}</p>
-            )}
+            {licenseError && <p className="text-sm text-destructive">{licenseError}</p>}
             <div className="flex gap-2 justify-between">
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => { setShowLicenseFallback(false); setLicenseInput(""); setLicenseError(""); }}
+                onClick={() => { setScreen('password'); setLicenseInput(""); setLicenseError(""); }}
                 data-testid="button-back-to-password"
               >
                 비밀번호로 돌아가기
@@ -301,47 +366,53 @@ export default function PatternLockDialog({
               </div>
             </div>
           </form>
+        )}
 
-        /* 비밀번호 화면 */
-        ) : usePassword ? (
+        {/* ── 비밀번호 화면 ── */}
+        {screen === 'password' && (
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
             <Input
               type="password"
               placeholder="비밀번호 입력"
               value={passwordInput}
-              onChange={(e) => {
-                setPasswordInput(e.target.value);
-                setErrorMessage("");
-              }}
+              onChange={(e) => { setPasswordInput(e.target.value); setErrorMessage(""); }}
               data-testid="input-password"
               autoFocus
             />
             {errorMessage && (
-              <p className="text-sm text-destructive" data-testid="text-password-error">
-                {errorMessage}
-              </p>
+              <p className="text-sm text-destructive" data-testid="text-password-error">{errorMessage}</p>
             )}
             <div className="flex gap-2 justify-between flex-wrap">
-              <div className="flex gap-2">
-                {/* 패턴으로 전환 버튼: 'both' 모드일 때만 표시 */}
+              <div className="flex gap-2 flex-wrap">
+                {biometricEnabled && biometricAvailable && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setErrorMessage(""); setScreen('biometric'); }}
+                    data-testid="button-use-biometric"
+                  >
+                    <Fingerprint className="h-3.5 w-3.5 mr-1" />
+                    지문인식
+                  </Button>
+                )}
                 {authMode === 'both' && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setUsePassword(false)}
+                    onClick={() => { setErrorMessage(""); setScreen('pattern'); }}
                     data-testid="button-use-pattern"
                   >
                     패턴으로 전환
                   </Button>
                 )}
-                {/* 비밀번호만 모드: 라이센스 키 폴백 버튼 */}
                 {authMode === 'password' && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowLicenseFallback(true)}
+                    onClick={() => setScreen('license')}
                     data-testid="button-license-fallback"
                   >
                     비밀번호 분실?
@@ -352,33 +423,16 @@ export default function PatternLockDialog({
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-pattern">
                   취소
                 </Button>
-                <Button type="submit" data-testid="button-submit-password">
-                  확인
-                </Button>
+                <Button type="submit" data-testid="button-submit-password">확인</Button>
               </div>
             </div>
           </form>
+        )}
 
-        /* 패턴 화면 */
-        ) : (
+        {/* ── 패턴 화면 ── */}
+        {screen === 'pattern' && (
           <>
             <div className="flex flex-col items-center gap-4 py-4">
-              {biometricAvailable && (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-full h-16 text-lg gap-3"
-                  onClick={handleBiometricAuth}
-                  disabled={isAuthenticating}
-                  data-testid="button-biometric-auth"
-                >
-                  <Fingerprint className="h-6 w-6" />
-                  {isAuthenticating ? "인증 중..." : "생체인증으로 잠금해제"}
-                </Button>
-              )}
-              {biometricAvailable && (
-                <div className="text-xs text-muted-foreground">또는</div>
-              )}
               <PatternLock
                 onPatternComplete={handlePatternComplete}
                 correctPattern={getCorrectPattern()}
@@ -386,29 +440,38 @@ export default function PatternLockDialog({
                 className="my-4"
               />
               {errorMessage && (
-                <p className="text-sm text-destructive" data-testid="text-pattern-error">
-                  {errorMessage}
-                </p>
+                <p className="text-sm text-destructive" data-testid="text-pattern-error">{errorMessage}</p>
               )}
               <div className="text-xs text-muted-foreground text-center">
                 기본 패턴: Z 모양 (좌상단 → 우상단 → 좌하단)
               </div>
             </div>
-            <div className="flex justify-between gap-2">
-              {/* 비밀번호로 전환: 'both' 모드일 때만 표시 */}
-              {authMode === 'both' ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setUsePassword(true)}
-                  data-testid="button-use-password"
-                >
-                  비밀번호로 전환
-                </Button>
-              ) : (
-                <span />
-              )}
+            <div className="flex justify-between gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
+                {biometricEnabled && biometricAvailable && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setErrorMessage(""); setScreen('biometric'); }}
+                    data-testid="button-use-biometric"
+                  >
+                    <Fingerprint className="h-3.5 w-3.5 mr-1" />
+                    지문인식
+                  </Button>
+                )}
+                {authMode === 'both' && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setErrorMessage(""); setScreen('password'); }}
+                    data-testid="button-use-password"
+                  >
+                    비밀번호로 전환
+                  </Button>
+                )}
+              </div>
               <Button
                 type="button"
                 variant="outline"
