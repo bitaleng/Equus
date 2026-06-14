@@ -649,10 +649,11 @@ export default function StaffLogPage() {
             </Card>
           </div>
 
-          {/* ── 근무기록 / 성실도 탭 ── */}
+          {/* ── 근무기록 / 출퇴근 / 성실도 탭 ── */}
           <Tabs defaultValue="logs">
             <TabsList>
               <TabsTrigger value="logs">근무 기록</TabsTrigger>
+              <TabsTrigger value="attendance" data-testid="tab-attendance">출퇴근 기록</TabsTrigger>
               <TabsTrigger value="ratings">성실도 평가</TabsTrigger>
             </TabsList>
 
@@ -769,6 +770,60 @@ export default function StaffLogPage() {
                   })}
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="attendance" className="mt-3">
+              {(() => {
+                // 출퇴근 버튼으로 기록된 근태 레코드만 추출 (segmentPay=0, workMinutes=0)
+                const attLogs = workLogs
+                  .filter(l => l.segmentPay === 0 && l.workMinutes === 0 && (l.startTime || l.endTime))
+                  .sort((a, b) => b.workDate.localeCompare(a.workDate));
+                if (attLogs.length === 0) {
+                  return (
+                    <div className="text-center py-12 space-y-2">
+                      <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                      <p className="text-muted-foreground text-sm">출퇴근 기록이 없습니다.</p>
+                      <p className="text-xs text-muted-foreground">위의 출근/퇴근 버튼을 눌러 기록하세요.</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="border rounded-md overflow-hidden">
+                    {/* 헤더 */}
+                    <div className="grid grid-cols-4 gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold text-muted-foreground">
+                      <span>날짜</span>
+                      <span className="text-green-700 dark:text-green-400">출근</span>
+                      <span className="text-blue-700 dark:text-blue-400">퇴근</span>
+                      <span>근무시간</span>
+                    </div>
+                    {attLogs.map((log, i) => {
+                      const mins = calcWorkMinutes(log.startTime || "", log.endTime || "");
+                      const isToday = log.workDate === today;
+                      return (
+                        <div
+                          key={log.id}
+                          data-testid={`row-attendance-${log.id}`}
+                          className={`grid grid-cols-4 gap-2 px-4 py-3 text-sm items-center ${i % 2 === 1 ? "bg-muted/10" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                        >
+                          <span className={`tabular-nums font-medium ${isToday ? "text-primary" : ""}`}>
+                            {log.workDate}
+                            {isToday && <span className="ml-1 text-xs text-primary font-normal">(오늘)</span>}
+                          </span>
+                          <span className={`tabular-nums font-mono ${log.startTime ? "text-green-700 dark:text-green-400 font-semibold" : "text-muted-foreground"}`}>
+                            {log.startTime || "—"}
+                          </span>
+                          <span className={`tabular-nums font-mono ${log.endTime ? "text-blue-700 dark:text-blue-400 font-semibold" : "text-amber-600 dark:text-amber-400 text-xs"}`}>
+                            {log.endTime || "미퇴근"}
+                          </span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {mins > 0 ? formatMinutes(mins) : "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </TabsContent>
 
             <TabsContent value="ratings" className="mt-3">
