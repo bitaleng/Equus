@@ -1067,6 +1067,16 @@ function migrateDatabase() {
       console.log('Added agreed_end_time column to staff_work_logs (Step 30)');
     } catch (e) { /* 이미 존재하면 무시 */ }
 
+    // Step 31: 근무구간 페이타입 및 직접입력 금액 컬럼 추가
+    try {
+      db.run(`ALTER TABLE staff_work_logs ADD COLUMN pay_type TEXT DEFAULT '주간'`);
+      console.log('Added pay_type column to staff_work_logs (Step 31)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE staff_work_logs ADD COLUMN segment_pay INTEGER DEFAULT 0`);
+      console.log('Added segment_pay column to staff_work_logs (Step 31)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -7387,6 +7397,8 @@ export interface Staff {
   photo: string;
 }
 
+export type PayType = '주간' | '야간' | '주말' | '공휴일';
+
 export interface StaffWorkLog {
   id: string;
   staffId: string;
@@ -7401,6 +7413,8 @@ export interface StaffWorkLog {
   updatedAt: string;
   agreedStartTime: string;
   agreedEndTime: string;
+  payType: PayType;
+  segmentPay: number;
 }
 
 export type StaffRatingValue = '훌륭' | '좋음' | '태만' | '경고';
@@ -7429,6 +7443,7 @@ function rowToWorkLog(r: any[]): StaffWorkLog {
     endTime: r[4] || '', breakMinutes: r[5] || 0, workMinutes: r[6] || 0,
     dailyPay: r[7] || 0, notes: r[8] || '', createdAt: r[9] || '', updatedAt: r[10] || '',
     agreedStartTime: r[11] || '', agreedEndTime: r[12] || '',
+    payType: (r[13] as PayType) || '주간', segmentPay: r[14] || 0,
   };
 }
 
@@ -7492,16 +7507,19 @@ export function deleteStaff(id: string): boolean {
   return true;
 }
 
+const WORK_LOG_SELECT = `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay FROM staff_work_logs`;
+
 export function createWorkLog(data: Omit<StaffWorkLog, 'id' | 'createdAt' | 'updatedAt'>): string {
   if (!db) return '';
   const id = `wlog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO staff_work_logs (id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time, pay_type, segment_pay)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, data.staffId, data.workDate, data.startTime || '', data.endTime || '',
      data.breakMinutes || 0, data.workMinutes || 0, data.dailyPay || 0, data.notes || '', now, now,
-     data.agreedStartTime || '', data.agreedEndTime || '']
+     data.agreedStartTime || '', data.agreedEndTime || '',
+     data.payType || '주간', data.segmentPay || 0]
   );
   saveDatabaseDebounced();
   return id;
@@ -7515,25 +7533,26 @@ export function getWorkLogs(staffId?: string, from?: string, to?: string): Staff
   if (from) { conditions.push('work_date >= ?'); params.push(from); }
   if (to) { conditions.push('work_date <= ?'); params.push(to); }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const rows = db.exec(
-    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time FROM staff_work_logs ${where} ORDER BY work_date DESC, created_at DESC`,
-    params
-  );
+  const rows = db.exec(`${WORK_LOG_SELECT} ${where} ORDER BY work_date DESC, created_at ASC`, params);
   if (!rows.length) return [];
   return rows[0].values.map(rowToWorkLog);
 }
 
 export function getTodayWorkLog(staffId: string, date: string): StaffWorkLog | null {
   if (!db) return null;
-  const rows = db.exec(
-    `SELECT id, staff_id, work_date, start_time, end_time, break_minutes, work_minutes, daily_pay, notes, created_at, updated_at, agreed_start_time, agreed_end_time FROM staff_work_logs WHERE staff_id = ? AND work_date = ? LIMIT 1`,
-    [staffId, date]
-  );
+  const rows = db.exec(`${WORK_LOG_SELECT} WHERE staff_id = ? AND work_date = ? ORDER BY created_at ASC LIMIT 1`, [staffId, date]);
   if (!rows.length || !rows[0].values.length) return null;
   return rowToWorkLog(rows[0].values[0]);
 }
 
-export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes' | 'agreedStartTime' | 'agreedEndTime'>>): boolean {
+export function getTodayWorkLogs(staffId: string, date: string): StaffWorkLog[] {
+  if (!db) return [];
+  const rows = db.exec(`${WORK_LOG_SELECT} WHERE staff_id = ? AND work_date = ? ORDER BY created_at ASC`, [staffId, date]);
+  if (!rows.length) return [];
+  return rows[0].values.map(rowToWorkLog);
+}
+
+export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes' | 'agreedStartTime' | 'agreedEndTime' | 'payType' | 'segmentPay'>>): boolean {
   if (!db) return false;
   const sets: string[] = [];
   const values: any[] = [];
@@ -7545,6 +7564,8 @@ export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'star
   if (data.notes !== undefined) { sets.push('notes = ?'); values.push(data.notes); }
   if (data.agreedStartTime !== undefined) { sets.push('agreed_start_time = ?'); values.push(data.agreedStartTime); }
   if (data.agreedEndTime !== undefined) { sets.push('agreed_end_time = ?'); values.push(data.agreedEndTime); }
+  if (data.payType !== undefined) { sets.push('pay_type = ?'); values.push(data.payType); }
+  if (data.segmentPay !== undefined) { sets.push('segment_pay = ?'); values.push(data.segmentPay); }
   sets.push('updated_at = ?');
   values.push(new Date().toISOString());
   values.push(id);

@@ -271,7 +271,7 @@ export default function Settings() {
   const [isStaffDialogOpen, setIsStaffDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<localDb.Staff | null>(null);
   const [staffFormData, setStaffFormData] = useState({
-    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "",
+    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0,
   });
   const [staffPhotoPreview, setStaffPhotoPreview] = useState<string>("");
   const staffFileInputRef = useRef<HTMLInputElement>(null);
@@ -1097,14 +1097,14 @@ export default function Settings() {
   // 직원관리 핸들러
   const handleAddStaff = () => {
     setEditingStaff(null);
-    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "" });
+    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0 });
     setStaffPhotoPreview("");
     setIsStaffDialogOpen(true);
   };
 
   const handleEditStaff = (staff: localDb.Staff) => {
     setEditingStaff(staff);
-    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive, photo: staff.photo || "" });
+    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive, photo: staff.photo || "", partTimeHours: staff.partTimeHours || 0 });
     setStaffPhotoPreview(staff.photo || "");
     setIsStaffDialogOpen(true);
   };
@@ -3355,9 +3355,9 @@ export default function Settings() {
                             )}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            시급 ₩{staff.hourlyPay.toLocaleString()}
-                            {staff.phone && ` · ${staff.phone}`}
-                            {staff.hireDate && ` · 입사 ${staff.hireDate}`}
+                            {staff.phone && `${staff.phone}`}
+                            {staff.phone && staff.hireDate && ` · `}
+                            {staff.hireDate && `입사 ${staff.hireDate}`}
                           </div>
                         </div>
                       </div>
@@ -3980,17 +3980,6 @@ export default function Settings() {
                   value={staffFormData.hireDate}
                   onChange={e => setStaffFormData(f => ({ ...f, hireDate: e.target.value }))}
                   data-testid="input-staff-hire-date"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="staff-hourly-pay">시급 (원)</Label>
-                <Input
-                  id="staff-hourly-pay"
-                  type="text"
-                  value={staffFormData.hourlyPay || ""}
-                  onChange={e => setStaffFormData(f => ({ ...f, hourlyPay: parseInt(e.target.value.replace(/,/g, "")) || 0 }))}
-                  placeholder="10030"
-                  data-testid="input-staff-hourly-pay"
                 />
               </div>
             </div>
