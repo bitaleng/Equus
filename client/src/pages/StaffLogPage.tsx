@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee, ChevronLeft, Briefcase } from "lucide-react";
+import { Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle, CheckCircle, TrendingDown, Pencil, Coffee, ChevronLeft, Briefcase, ChevronUp, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +78,105 @@ const RATING_CONFIG: Record<StaffRatingValue, { color: string; icon: React.Eleme
   "태만": { color: "border-orange-500/40 text-orange-700 dark:text-orange-400 bg-orange-500/10", icon: TrendingDown },
   "경고": { color: "border-red-500/40 text-red-700 dark:text-red-400 bg-red-500/10", icon: AlertTriangle },
 };
+
+// ── 커스텀 시간 선택기 ──────────────────────────────────────────
+interface TimePickerButtonProps {
+  value: string;
+  onChange: (v: string) => void;
+  label?: string;
+  testId?: string;
+}
+
+function TimePickerButton({ value, onChange, label, testId }: TimePickerButtonProps) {
+  const [open, setOpen] = useState(false);
+  const [tempH, setTempH] = useState(0);
+  const [tempM, setTempM] = useState(0);
+
+  const openPicker = () => {
+    if (value) {
+      const [h, m] = value.split(":").map(Number);
+      setTempH(h);
+      setTempM(m);
+    } else {
+      const now = toZonedTime(new Date(), "Asia/Seoul");
+      setTempH(now.getHours());
+      setTempM(Math.round(now.getMinutes() / 5) * 5 % 60);
+    }
+    setOpen(true);
+  };
+
+  const adjH = (d: number) => setTempH(h => (h + d + 24) % 24);
+  const adjM = (d: number) => setTempM(m => (m + d + 60) % 60);
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full justify-center font-mono text-base"
+        onClick={openPicker}
+        data-testid={testId}
+      >
+        <Clock className="h-4 w-4 mr-2 shrink-0" />
+        {value || "시간 선택"}
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle>{label || "시간 선택"}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex items-center justify-center gap-6 py-4">
+            {/* 시 */}
+            <div className="flex flex-col items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={() => adjH(1)} data-testid="btn-hour-up">
+                <ChevronUp className="h-5 w-5" />
+              </Button>
+              <div className="w-16 h-16 flex items-center justify-center text-4xl font-bold select-none">
+                {String(tempH).padStart(2, "0")}
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => adjH(-1)} data-testid="btn-hour-down">
+                <ChevronDown className="h-5 w-5" />
+              </Button>
+              <span className="text-xs text-muted-foreground mt-1">시</span>
+            </div>
+
+            <span className="text-4xl font-bold pb-6">:</span>
+
+            {/* 분 (5분 단위) */}
+            <div className="flex flex-col items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={() => adjM(5)} data-testid="btn-min-up">
+                <ChevronUp className="h-5 w-5" />
+              </Button>
+              <div className="w-16 h-16 flex items-center justify-center text-4xl font-bold select-none">
+                {String(tempM).padStart(2, "0")}
+              </div>
+              <Button size="icon" variant="ghost" onClick={() => adjM(-5)} data-testid="btn-min-down">
+                <ChevronDown className="h-5 w-5" />
+              </Button>
+              <span className="text-xs text-muted-foreground mt-1">분</span>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>취소</Button>
+            <Button
+              onClick={() => {
+                onChange(`${String(tempH).padStart(2, "0")}:${String(tempM).padStart(2, "0")}`);
+                setOpen(false);
+              }}
+              data-testid="btn-timepicker-set"
+            >
+              설정
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+// ────────────────────────────────────────────────────────────────
 
 export default function StaffLogPage() {
   const { toast } = useToast();
@@ -527,23 +626,21 @@ export default function StaffLogPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label htmlFor="agreed-start" className="text-sm">시작 시간</Label>
-                    <Input
-                      id="agreed-start"
-                      type="time"
+                    <Label className="text-sm">시작 시간</Label>
+                    <TimePickerButton
                       value={agreedStart}
-                      onChange={e => setAgreedStart(e.target.value)}
-                      data-testid="input-agreed-start"
+                      onChange={setAgreedStart}
+                      label="시작 시간 설정"
+                      testId="input-agreed-start"
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="agreed-end" className="text-sm">종료 시간</Label>
-                    <Input
-                      id="agreed-end"
-                      type="time"
+                    <Label className="text-sm">종료 시간</Label>
+                    <TimePickerButton
                       value={agreedEnd}
-                      onChange={e => setAgreedEnd(e.target.value)}
-                      data-testid="input-agreed-end"
+                      onChange={setAgreedEnd}
+                      label="종료 시간 설정"
+                      testId="input-agreed-end"
                     />
                   </div>
                 </div>
@@ -723,20 +820,20 @@ export default function StaffLogPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>실제 출근 시간</Label>
-                  <Input
-                    type="time"
+                  <TimePickerButton
                     value={editForm.startTime}
-                    onChange={e => setEditForm(f => ({ ...f, startTime: e.target.value }))}
-                    data-testid="input-edit-start"
+                    onChange={v => setEditForm(f => ({ ...f, startTime: v }))}
+                    label="실제 출근 시간"
+                    testId="input-edit-start"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label>실제 퇴근 시간</Label>
-                  <Input
-                    type="time"
+                  <TimePickerButton
                     value={editForm.endTime}
-                    onChange={e => setEditForm(f => ({ ...f, endTime: e.target.value }))}
-                    data-testid="input-edit-end"
+                    onChange={v => setEditForm(f => ({ ...f, endTime: v }))}
+                    label="실제 퇴근 시간"
+                    testId="input-edit-end"
                   />
                 </div>
               </div>
@@ -747,20 +844,20 @@ export default function StaffLogPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label>시작 시간</Label>
-                  <Input
-                    type="time"
+                  <TimePickerButton
                     value={editForm.agreedStartTime}
-                    onChange={e => setEditForm(f => ({ ...f, agreedStartTime: e.target.value }))}
-                    data-testid="input-edit-agreed-start"
+                    onChange={v => setEditForm(f => ({ ...f, agreedStartTime: v }))}
+                    label="급여 시작 시간"
+                    testId="input-edit-agreed-start"
                   />
                 </div>
                 <div className="space-y-1">
                   <Label>종료 시간</Label>
-                  <Input
-                    type="time"
+                  <TimePickerButton
                     value={editForm.agreedEndTime}
-                    onChange={e => setEditForm(f => ({ ...f, agreedEndTime: e.target.value }))}
-                    data-testid="input-edit-agreed-end"
+                    onChange={v => setEditForm(f => ({ ...f, agreedEndTime: v }))}
+                    label="급여 종료 시간"
+                    testId="input-edit-agreed-end"
                   />
                 </div>
               </div>
