@@ -260,7 +260,7 @@ export default function PatternLockDialog({
     : screen === 'password'
     ? "비밀번호를 입력하세요."
     : screen === 'biometric'
-    ? "지문 또는 생체인증으로 잠금을 해제하세요."
+    ? "지문 또는 얼굴인식 등 생체인증으로 잠금을 해제하세요."
     : description;
 
   return (
@@ -393,7 +393,7 @@ export default function PatternLockDialog({
                     data-testid="button-use-biometric"
                   >
                     <Fingerprint className="h-3.5 w-3.5 mr-1" />
-                    지문인식
+                    생체인식
                   </Button>
                 )}
                 {authMode === 'both' && (
@@ -457,7 +457,7 @@ export default function PatternLockDialog({
                     data-testid="button-use-biometric"
                   >
                     <Fingerprint className="h-3.5 w-3.5 mr-1" />
-                    지문인식
+                    생체인식
                   </Button>
                 )}
                 {authMode === 'both' && (
