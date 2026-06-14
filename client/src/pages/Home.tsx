@@ -1278,16 +1278,11 @@ export default function Home() {
       const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
       const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
 
-      // 선지급금은 다이얼로그에서 기본요금과 별도로 전달됨 → 결제수단별 금액과 finalPrice에 직접 합산
+      // 선지급금은 다이얼로그에서 이미 결제 버킷에 포함하여 전달됨 (중복 합산 방지)
       const prepaidAmount = prepaidAdditionalFee || 0;
-      const prepaidMethod = additionalFeePaymentMethod || 'cash';
-      const prepaidCash = (!deferredPayment && prepaidMethod === 'cash') ? prepaidAmount : 0;
-      const prepaidCard = (!deferredPayment && prepaidMethod === 'card') ? prepaidAmount : 0;
-      const prepaidTransfer = (!deferredPayment && prepaidMethod === 'transfer') ? prepaidAmount : 0;
-
-      const totalPaymentCash = actualPaymentCash + prepaidCash;
-      const totalPaymentCard = actualPaymentCard + prepaidCard;
-      const totalPaymentTransfer = actualPaymentTransfer + prepaidTransfer;
+      const totalPaymentCash = actualPaymentCash;
+      const totalPaymentCard = actualPaymentCard;
+      const totalPaymentTransfer = actualPaymentTransfer;
 
       // 결제 금액 합계로 finalPrice 계산 (부가세 + 선지급금 포함)
       const paymentSum = totalPaymentCash + totalPaymentCard + totalPaymentTransfer;
@@ -1425,16 +1420,11 @@ export default function Home() {
     const actualPaymentCard = deferredPayment ? 0 : (paymentCard || 0);
     const actualPaymentTransfer = deferredPayment ? 0 : (paymentTransfer || 0);
 
-    // 선지급금은 다이얼로그에서 기본요금과 별도로 전달됨 → 결제수단별 금액과 finalPrice에 직접 합산
+    // 선지급금은 다이얼로그에서 이미 결제 버킷에 포함하여 전달됨 (중복 합산 방지)
     const prepaidAmount = prepaidAdditionalFee || 0;
-    const prepaidMethod = additionalFeePaymentMethod || 'cash';
-    const prepaidCash = (!deferredPayment && prepaidMethod === 'cash') ? prepaidAmount : 0;
-    const prepaidCard = (!deferredPayment && prepaidMethod === 'card') ? prepaidAmount : 0;
-    const prepaidTransfer = (!deferredPayment && prepaidMethod === 'transfer') ? prepaidAmount : 0;
-
-    const totalPaymentCash = actualPaymentCash + prepaidCash;
-    const totalPaymentCard = actualPaymentCard + prepaidCard;
-    const totalPaymentTransfer = actualPaymentTransfer + prepaidTransfer;
+    const totalPaymentCash = actualPaymentCash;
+    const totalPaymentCard = actualPaymentCard;
+    const totalPaymentTransfer = actualPaymentTransfer;
 
     // 결제 금액 합계로 actualFinalPrice 계산 (부가세 + 선지급금 포함)
     // 이렇게 해야 선지급 취소 후에도 VAT가 올바르게 반영됨

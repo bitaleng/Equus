@@ -1368,6 +1368,8 @@ export default function LockerOptionsDialog({
     
     // 선지급금 정보를 메모에 자동 기록 (새로 선지급금을 추가하는 경우에만)
     const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    // 결제 버킷 할당 시 선지급금 포함 총액 (optionAmount는 기본요금만 사용)
+    const totalPriceForPayment = computedFinalPrice + prepaidAmount;
     let finalCustomerMemo = customerMemo;
     if (prepaidAmount > 0 && prepaidAmount !== currentPrepaidAdditionalFee) {
       // 새로운 선지급금이 추가되거나 금액이 변경된 경우에만 메모 추가
@@ -1483,8 +1485,8 @@ export default function LockerOptionsDialog({
           transferVal = currentPaymentTransfer;
         }
       } else {
-        // 신규 분리결제: 검증 수행
-        if (!validateMixedPayment(computedFinalPrice)) {
+        // 신규 분리결제: 검증 수행 (선지급금 포함 총액으로 검증)
+        if (!validateMixedPayment(totalPriceForPayment)) {
           return;
         }
         cashVal = parseInt(paymentCash) || undefined;
@@ -1513,26 +1515,26 @@ export default function LockerOptionsDialog({
       // 결제방식 변경 여부 확인 (핵심!)
       const paymentMethodChanged = paymentMethod !== currentPaymentMethod;
       
-      // 결제방식이 변경된 경우: 새로운 결제방식으로 금액 재할당 (우선순위 최상위)
+      // 결제방식이 변경된 경우: 새로운 결제방식으로 금액 재할당 (우선순위 최상위, 선지급금 포함 총액)
       if (paymentMethodChanged) {
         if (paymentMethod === 'cash') {
-          cashVal = computedFinalPrice;
+          cashVal = totalPriceForPayment;
           cardVal = undefined;
           transferVal = undefined;
         } else if (paymentMethod === 'card') {
           cashVal = undefined;
-          cardVal = computedFinalPrice;
+          cardVal = totalPriceForPayment;
           transferVal = undefined;
         } else if (paymentMethod === 'transfer') {
           cashVal = undefined;
           cardVal = undefined;
-          transferVal = computedFinalPrice;
+          transferVal = totalPriceForPayment;
         }
         
         // 단일 결제 시 부가세 적용
         const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
         if (vatApplied) {
-          const priceWithVat = Math.round(computedFinalPrice * 1.1);
+          const priceWithVat = Math.round(totalPriceForPayment * 1.1);
           if (paymentMethod === 'cash') {
             cashVal = priceWithVat;
           } else if (paymentMethod === 'card') {
@@ -1540,7 +1542,7 @@ export default function LockerOptionsDialog({
           } else if (paymentMethod === 'transfer') {
             transferVal = priceWithVat;
           }
-          // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+          // optionAmount는 기본요금만 (direct_price인 경우)
           if (optionType === 'direct_price') {
             optionAmount = Math.round(computedFinalPrice * 1.1);
           }
@@ -1608,9 +1610,9 @@ export default function LockerOptionsDialog({
           prepaidAmount > 0 &&
           prepaidAmount !== currentPrepaidAdditionalFee;
 
-        // 기존 결제 합계와 새 계산 요금 비교 → 요금이 바뀐 경우 결제액도 재계산
+        // 기존 결제 합계와 새 계산 요금 비교 → 요금이 바뀐 경우 결제액도 재계산 (선지급금 포함 총액 비교)
         const existingPaymentSum = (currentPaymentCash || 0) + (currentPaymentCard || 0) + (currentPaymentTransfer || 0);
-        const priceChangedFromExisting = computedFinalPrice !== existingPaymentSum;
+        const priceChangedFromExisting = totalPriceForPayment !== existingPaymentSum;
 
         if (isNewPrepaidAdded) {
           const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
@@ -1621,17 +1623,17 @@ export default function LockerOptionsDialog({
           else if (savePrepaidMethod === 'card') cardVal = (cardVal || 0) + addedPrepaid;
           else if (savePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
         } else if (priceChangedFromExisting) {
-          // 요금이 변경됨 → 새 금액으로 결제 재할당 (부가세 포함)
-          if (paymentMethod === 'cash') { cashVal = computedFinalPrice; cardVal = undefined; transferVal = undefined; }
-          else if (paymentMethod === 'card') { cashVal = undefined; cardVal = computedFinalPrice; transferVal = undefined; }
-          else if (paymentMethod === 'transfer') { cashVal = undefined; cardVal = undefined; transferVal = computedFinalPrice; }
+          // 요금이 변경됨 → 새 금액으로 결제 재할당 (부가세 포함, 선지급금 포함 총액 사용)
+          if (paymentMethod === 'cash') { cashVal = totalPriceForPayment; cardVal = undefined; transferVal = undefined; }
+          else if (paymentMethod === 'card') { cashVal = undefined; cardVal = totalPriceForPayment; transferVal = undefined; }
+          else if (paymentMethod === 'transfer') { cashVal = undefined; cardVal = undefined; transferVal = totalPriceForPayment; }
           const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
           if (vatApplied) {
-            const priceWithVat = Math.round(computedFinalPrice * 1.1);
+            const priceWithVat = Math.round(totalPriceForPayment * 1.1);
             if (paymentMethod === 'cash') cashVal = priceWithVat;
             else if (paymentMethod === 'card') cardVal = priceWithVat;
             else if (paymentMethod === 'transfer') transferVal = priceWithVat;
-            if (optionType === 'direct_price') optionAmount = priceWithVat;
+            if (optionType === 'direct_price') optionAmount = Math.round(computedFinalPrice * 1.1);
           }
         } else {
           cashVal = currentPaymentCash;
@@ -1639,25 +1641,25 @@ export default function LockerOptionsDialog({
           transferVal = currentPaymentTransfer;
         }
       } else {
-        // 신규 단일결제: 금액 할당 및 부가세 적용
+        // 신규 단일결제: 금액 할당 및 부가세 적용 (선지급금 포함 총액 사용)
         if (paymentMethod === 'cash') {
-          cashVal = computedFinalPrice;
+          cashVal = totalPriceForPayment;
           cardVal = undefined;
           transferVal = undefined;
         } else if (paymentMethod === 'card') {
           cashVal = undefined;
-          cardVal = computedFinalPrice;
+          cardVal = totalPriceForPayment;
           transferVal = undefined;
         } else if (paymentMethod === 'transfer') {
           cashVal = undefined;
           cardVal = undefined;
-          transferVal = computedFinalPrice;
+          transferVal = totalPriceForPayment;
         }
         
         // 단일 결제 시 부가세 적용
         const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
         if (vatApplied) {
-          const priceWithVat = Math.round(computedFinalPrice * 1.1);
+          const priceWithVat = Math.round(totalPriceForPayment * 1.1);
           if (paymentMethod === 'cash') {
             cashVal = priceWithVat;
           } else if (paymentMethod === 'card') {
@@ -1665,9 +1667,9 @@ export default function LockerOptionsDialog({
           } else if (paymentMethod === 'transfer') {
             transferVal = priceWithVat;
           }
-          // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
+          // optionAmount는 기본요금만 (direct_price인 경우)
           if (optionType === 'direct_price') {
-            optionAmount = priceWithVat;
+            optionAmount = Math.round(computedFinalPrice * 1.1);
           }
         }
       }
