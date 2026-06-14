@@ -169,7 +169,8 @@ export default function LockerOptionsDialog({
   const [isAdditionalFeeCashReceipt, setIsAdditionalFeeCashReceipt] = useState(false); // 추가요금 현금영수증
   
   // Additional fee payment states
-  const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentAdditionalFeePaymentMethod || 'cash');
+  // Default to main payment method when no specific additional fee payment method is saved
+  const [additionalFeePaymentMethod, setAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer'>(currentAdditionalFeePaymentMethod || currentPaymentMethod || 'cash');
   const [additionalFeePaymentCash, setAdditionalFeePaymentCash] = useState<string>("");
   const [additionalFeePaymentCard, setAdditionalFeePaymentCard] = useState<string>("");
   const [additionalFeePaymentTransfer, setAdditionalFeePaymentTransfer] = useState<string>("");
@@ -348,11 +349,12 @@ export default function LockerOptionsDialog({
         previousLockerRef.current = currentLockerLogId ?? null;
       }
       if (!additionalFeePaymentMethodUserChangedRef.current) {
-        setAdditionalFeePaymentMethod(currentAdditionalFeePaymentMethod || 'cash');
+        // Default to main payment method when no specific additional fee payment method is saved
+        setAdditionalFeePaymentMethod(currentAdditionalFeePaymentMethod || currentPaymentMethod || 'cash');
       }
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod, currentPaymentMethod]);
   
     
   // Initialize payment fields when dialog opens
@@ -1163,7 +1165,13 @@ export default function LockerOptionsDialog({
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
-      optionType = 'foreigner';
+      if (discountOption !== 'none') {
+        // 외국인 요금에 할인 옵션 적용 시 최종 계산 금액으로 저장 (handleSaveChanges와 동일)
+        optionType = 'direct_price';
+        optionAmount = calculateFinalPrice();
+      } else {
+        optionType = 'foreigner';
+      }
     } else if (discountOption === 'discount') {
       optionType = 'discount';
       optionAmount = discountAmount;
