@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
@@ -200,12 +200,23 @@ export default function StaffLogPage() {
   }, []);
 
   const reloadStaffData = (staffId: string) => {
+    const currentToday = getTodayStr();
     const logs = localDb.getWorkLogs(staffId);
     setWorkLogs(logs);
-    const todSegs = localDb.getTodayWorkLogs(staffId, today);
+    const todSegs = localDb.getTodayWorkLogs(staffId, currentToday);
     setTodayLogs(todSegs);
-    // 근태기록은 오늘 첫 구간에 저장 (출근만 기록된 구간 또는 첫 구간)
-    setClockLog(todSegs[0] ?? null);
+
+    // 근태기록: 오늘 첫 구간 우선
+    // 없으면 전날 미퇴근 근태전용 레코드 확인 (야간 출근 → 자정 넘어 퇴근 케이스)
+    let foundClockLog = todSegs.find(s => s.segmentPay === 0 && s.workMinutes === 0 && s.startTime) ?? todSegs[0] ?? null;
+    if (!foundClockLog) {
+      const yesterday = format(subDays(getKstNow(), 1), "yyyy-MM-dd");
+      const ySegs = localDb.getTodayWorkLogs(staffId, yesterday);
+      // 전날 출근(startTime 있음)했으나 퇴근(endTime) 없는 근태전용 레코드
+      const nightLog = ySegs.find(s => s.startTime && !s.endTime && s.segmentPay === 0 && s.workMinutes === 0);
+      foundClockLog = nightLog ?? null;
+    }
+    setClockLog(foundClockLog);
     setRatings(localDb.getStaffRatings(staffId));
   };
 
@@ -349,6 +360,8 @@ export default function StaffLogPage() {
 
   const hasClockedIn = !!clockLog?.startTime;
   const hasClockedOut = !!clockLog?.endTime;
+  // 전날 출근 기록이 이어지는 야간 근무 여부
+  const isNightShift = !!clockLog && clockLog.workDate !== getTodayStr();
 
   const dayGroups = useMemo(() => groupByDate(workLogs), [workLogs]);
 
@@ -442,9 +455,14 @@ export default function StaffLogPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Clock className="h-4 w-4" />
                   오늘 근태기록
+                  {isNightShift && (
+                    <Badge variant="outline" className="text-xs border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                      야간 근무 중 ({clockLog!.workDate} 출근)
+                    </Badge>
+                  )}
                 </div>
                 <span className="font-mono text-lg tabular-nums text-muted-foreground">
                   {format(currentTime, "HH:mm:ss")}
