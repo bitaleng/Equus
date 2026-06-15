@@ -1335,11 +1335,7 @@ export default function LockerOptionsDialog({
         } else if (paymentMethod === 'transfer') {
           transferVal = priceWithVat;
         }
-        // optionAmount도 부가세 포함 금액으로 업데이트 (direct_price인 경우)
-        if (optionType === 'direct_price') {
-          optionAmount = priceWithVat;
         }
-      }
     }
     
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
@@ -1560,10 +1556,6 @@ export default function LockerOptionsDialog({
           } else if (paymentMethod === 'transfer') {
             transferVal = priceWithVat;
           }
-          // optionAmount는 기본요금만 (direct_price인 경우)
-          if (optionType === 'direct_price') {
-            optionAmount = Math.round(computedFinalPrice * 1.1);
-          }
         }
       } else if (hasExistingSinglePayment && paymentModifiedByRefund) {
         // 환불로 인해 결제금액이 수정된 경우, 또는 단순히 paymentCard/Transfer 초기값이 "0"이어서
@@ -1651,7 +1643,6 @@ export default function LockerOptionsDialog({
             if (paymentMethod === 'cash') cashVal = priceWithVat;
             else if (paymentMethod === 'card') cardVal = priceWithVat;
             else if (paymentMethod === 'transfer') transferVal = priceWithVat;
-            if (optionType === 'direct_price') optionAmount = Math.round(computedFinalPrice * 1.1);
           }
         } else {
           cashVal = currentPaymentCash;
@@ -1684,10 +1675,6 @@ export default function LockerOptionsDialog({
             cardVal = priceWithVat;
           } else if (paymentMethod === 'transfer') {
             transferVal = priceWithVat;
-          }
-          // optionAmount는 기본요금만 (direct_price인 경우)
-          if (optionType === 'direct_price') {
-            optionAmount = Math.round(computedFinalPrice * 1.1);
           }
         }
       }
