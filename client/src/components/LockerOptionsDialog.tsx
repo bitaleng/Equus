@@ -917,7 +917,11 @@ export default function LockerOptionsDialog({
         ? Math.round((cashAmt + transferAmt) * 0.1) : 0;
       const cardVat = (enableCardVat && cardAmt > 0)
         ? Math.round(cardAmt * 0.1) : 0;
-      return total + cashTransferVat + cardVat + prepaidWithVat;
+      // 기존 입실 재오픈 시 선지급금은 이미 결제 버킷에 포함됨 → 중복 합산 방지
+      // 신규 입실(isInUse=false) 또는 새로 추가된 선지급금(금액 변경)만 추가
+      const prepaidAlreadyInBuckets = isInUse && prepaidAmount === currentPrepaidAdditionalFee;
+      const extraPrepaid = prepaidAlreadyInBuckets ? 0 : prepaidWithVat;
+      return total + cashTransferVat + cardVat + extraPrepaid;
     }
 
     // 부가세 적용 여부 확인 (주결제방식 기준)
