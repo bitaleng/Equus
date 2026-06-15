@@ -6767,7 +6767,10 @@ export function exportDatabase(): {
       'barcode_mappings',
       'rfid_mappings',
       'scan_logs',
-      'pricing_options'  // 추가 요금옵션 (사용자 정의)
+      'pricing_options',  // 추가 요금옵션 (사용자 정의)
+      'staff',            // 직원 정보
+      'staff_work_logs',  // 직원 근무·근태 기록
+      'staff_ratings'     // 직원 평가 기록
     ];
     
     tables.forEach(tableName => {
@@ -6848,6 +6851,9 @@ export function importDatabase(jsonString: string): {
     
     // Clear existing data from all tables (including user-defined settings)
     const tables = [
+      'staff_ratings',    // 직원 평가 기록 (staff_work_logs 보다 먼저)
+      'staff_work_logs',  // 직원 근무·근태 기록 (staff 보다 먼저)
+      'staff',            // 직원 정보
       'pricing_options',  // 추가 요금옵션 (사용자 정의)
       'scan_logs',
       'rfid_mappings',
@@ -6974,7 +6980,10 @@ export function importDatabase(jsonString: string): {
       'barcode_mappings',
       'rfid_mappings',
       'scan_logs',
-      'pricing_options'  // 추가 요금옵션 (사용자 정의)
+      'pricing_options',  // 추가 요금옵션 (사용자 정의)
+      'staff',            // 직원 정보 (staff_work_logs 보다 먼저)
+      'staff_work_logs',  // 직원 근무·근태 기록
+      'staff_ratings'     // 직원 평가 기록
     ];
     
     // scan_logs: 최근 90일치만 가져오기 (누적 과다로 인한 DB 비대화 방지)
