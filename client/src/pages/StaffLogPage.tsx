@@ -87,11 +87,12 @@ function TimePickerButton({ value, onChange, label, testId }: TimePickerButtonPr
   const openPicker = () => {
     if (value) {
       const [h, m] = value.split(":").map(Number);
-      setTempH(h); setTempM(m);
+      setTempH(h);
+      setTempM(Math.round(m / 10) * 10 % 60);  // 10분 단위 반올림
     } else {
       const now = toZonedTime(new Date(), TZ);
       setTempH(now.getHours());
-      setTempM(Math.round(now.getMinutes() / 5) * 5 % 60);
+      setTempM(Math.round(now.getMinutes() / 10) * 10 % 60);  // 10분 단위 반올림
     }
     setOpen(true);
   };
@@ -114,9 +115,9 @@ function TimePickerButton({ value, onChange, label, testId }: TimePickerButtonPr
             </div>
             <span className="text-4xl font-bold pb-6">:</span>
             <div className="flex flex-col items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 5) % 60)}><ChevronUp className="h-5 w-5" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 10) % 60)}><ChevronUp className="h-5 w-5" /></Button>
               <div className="w-16 h-16 flex items-center justify-center text-4xl font-bold select-none">{String(tempM).padStart(2, "0")}</div>
-              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 55) % 60)}><ChevronDown className="h-5 w-5" /></Button>
+              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 50) % 60)}><ChevronDown className="h-5 w-5" /></Button>
               <span className="text-xs text-muted-foreground mt-1">분</span>
             </div>
           </div>
