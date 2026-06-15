@@ -5,7 +5,7 @@ generated = []
 id = "gGtX0IqL3JPeibYSqiGcI"
 uri = "file://netlify-deploy.zip"
 type = "unspecified"
-title = "netlify-deploy.zip (v9 — 오프라인 완전 지원)"
+title = "netlify-deploy.zip (He's V2 — 오늘 빌드)"
 
 [[outputs]]
 id = "8-_KvqfTQ0XTRBQ6fL4Am"
