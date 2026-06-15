@@ -895,49 +895,59 @@ export default function LockerOptionsDialog({
    * - 선지급금(prepaidAdditionalFee)도 최종 요금에 포함 (부가세도 함께 적용)
    */
   const calculateDisplayTotal = () => {
-    // 선지급금 계산 (입실 처리 시)
+    // 선지급금 (입실 처리 시)
     let prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
-    
-    // 분리결제 시에는 부가세 미포함 금액 표시
-    if (useSplitPayment) {
-      return calculateTotalPriceWithAdditionalFee() + prepaidAmount;
+
+    // 선지급금 부가세: 선지급 결제방식 기준으로 주결제와 독립적으로 계산
+    let prepaidWithVat = prepaidAmount;
+    if (prepaidAmount > 0) {
+      const effectivePrepaidMethod = prepaidAdditionalFeePaymentMethod || paymentMethod;
+      if (shouldApplyVat(effectivePrepaidMethod, false)) {
+        prepaidWithVat = Math.round(prepaidAmount * 1.1);
+      }
     }
-    
-    // 부가세 적용 여부 확인
+
+    // 분리결제 시: 합계 라인과 동일한 로직으로 버킷별 VAT 적용
+    if (useSplitPayment) {
+      const cashAmt = parseInt(paymentCash) || 0;
+      const cardAmt = parseInt(paymentCard) || 0;
+      const transferAmt = parseInt(paymentTransfer) || 0;
+      const total = cashAmt + cardAmt + transferAmt;
+      const cashTransferVat = (enableCashReceiptVat && isCashReceipt && (cashAmt + transferAmt) > 0)
+        ? Math.round((cashAmt + transferAmt) * 0.1) : 0;
+      const cardVat = (enableCardVat && cardAmt > 0)
+        ? Math.round(cardAmt * 0.1) : 0;
+      return total + cashTransferVat + cardVat + prepaidWithVat;
+    }
+
+    // 부가세 적용 여부 확인 (주결제방식 기준)
     const baseVatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-    
-    // 기본요금 (부가세 적용 여부 확인)
+
+    // 기본요금 (부가세 적용)
     let baseFinalPrice = calculateFinalPrice();
     if (baseVatApplied) {
       baseFinalPrice = Math.round(baseFinalPrice * 1.1);
     }
-    
-    // 선지급금에도 부가세 적용 (단일결제 시)
-    if (baseVatApplied && prepaidAmount > 0) {
-      prepaidAmount = Math.round(prepaidAmount * 1.1);
-    }
-    
+
     // 추가요금이 없으면 기본요금 + 선지급금 반환
     if (!isInUse || additionalFeeInfo.additionalFee === 0) {
-      return baseFinalPrice + prepaidAmount;
+      return baseFinalPrice + prepaidWithVat;
     }
-    
+
     // 입실시간과 현재시간의 영업일 비교
     let includeBasePrice = true;
     if (entryTime) {
       const entryBusinessDay = getBusinessDay(new Date(entryTime));
       const currentBusinessDay = getBusinessDay(new Date());
-      
-      // 영업일이 다르면 기본요금을 0으로 처리 (추가요금만 청구)
       if (entryBusinessDay !== currentBusinessDay) {
         includeBasePrice = false;
       }
     }
-    
+
     // 추가요금 할인 적용
     const discountAmount = parseInt(additionalFeeDiscount) || 0;
     let additionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
-    
+
     // 추가요금 분리결제가 아닌 경우에만 부가세 적용
     if (!useAdditionalFeeSplitPayment) {
       const additionalFeeVatApplied = shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
@@ -945,7 +955,7 @@ export default function LockerOptionsDialog({
         additionalFee = Math.round(additionalFee * 1.1);
       }
     }
-    
+
     // 영업일이 같으면 기본요금 + 추가요금, 다르면 추가요금만
     return includeBasePrice ? baseFinalPrice + additionalFee : additionalFee;
   };
