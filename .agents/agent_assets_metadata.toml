@@ -66,3 +66,15 @@ id = "PenlOrXZMzHu2oMV0ym9m"
 uri = "file://hes-v2-deploy.zip"
 type = "unspecified"
 title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
+
+[[outputs]]
+id = "AOZUuYc4iit1Z_Tdj2RA2"
+uri = "file://netlify-v1-equus.zip"
+type = "unspecified"
+title = "V1 에쿠스 (EQUS- 라이선스)"
+
+[[outputs]]
+id = "r3-rwZ78zxsU3uSC7C3mA"
+uri = "file://netlify-v2-hes.zip"
+type = "unspecified"
+title = "V2 히즈 (HIZZ- 라이선스)"
