@@ -206,9 +206,10 @@ export default function StaffLogPage() {
     const todSegs = localDb.getTodayWorkLogs(staffId, currentToday);
     setTodayLogs(todSegs);
 
-    // 근태기록: 오늘 첫 구간 우선
+    // 근태기록: segmentPay=0, workMinutes=0인 출퇴근 전용 레코드만 사용
+    // (급여 구간 레코드를 clockLog로 혼용하면 출퇴근 탭 필터에서 누락되는 버그 발생)
     // 없으면 전날 미퇴근 근태전용 레코드 확인 (야간 출근 → 자정 넘어 퇴근 케이스)
-    let foundClockLog = todSegs.find(s => s.segmentPay === 0 && s.workMinutes === 0 && s.startTime) ?? todSegs[0] ?? null;
+    let foundClockLog = todSegs.find(s => s.segmentPay === 0 && s.workMinutes === 0 && s.startTime) ?? null;
     if (!foundClockLog) {
       const yesterday = format(subDays(getKstNow(), 1), "yyyy-MM-dd");
       const ySegs = localDb.getTodayWorkLogs(staffId, yesterday);
