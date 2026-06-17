@@ -1879,6 +1879,7 @@ export default function Home() {
     parentLocker: log.parentLocker || null,
     deferredPayment: (log as any).deferredPayment || false,
     refundAmount: (log as any).refundAmount || 0,
+    isStaff: (log as any).isStaff || false,
   }));
   
   // 퇴실 취소 핸들러

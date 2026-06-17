@@ -61,6 +61,7 @@ interface LockerEntry {
   deferredPayment?: boolean; // 후불결제 여부
   id?: string; // 퇴실 취소용 로그 ID
   refundAmount?: number; // 환불 금액
+  isStaff?: boolean; // 직원 입실 여부 (방문자 수에서 제외)
 }
 
 interface TodayStatusTableProps {
@@ -161,8 +162,8 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
     ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled && !e.additionalFeeOnly && !e.parentLocker).length
     : 0;
   
-  // Calculate total visitors (exclude additional fee only entries, cancelled entries, and child lockers)
-  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled && !e.parentLocker).length;
+  // Calculate total visitors (exclude additional fee only entries, cancelled entries, child lockers, and staff)
+  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled && !e.parentLocker && !e.isStaff).length;
 
   return (
     <div className={`h-full flex flex-col today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
