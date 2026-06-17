@@ -1017,11 +1017,11 @@ export default function Home() {
       const activeEntries = entries.filter(e => !e.cancelled && !e.deferredPayment);
       const totalRefundsToday = activeEntries.reduce((sum, e) => sum + ((e as any).refundAmount || 0), 0);
       const activeSales = activeEntries.reduce((sum, e) => sum + (e.finalPrice || 0), 0) - totalRefundsToday;
-      const totalVisitors = entries.filter(e => !e.cancelled && !(e as any).parentLocker).length;
+      const totalVisitors = entries.filter(e => !e.cancelled && !(e as any).parentLocker && !(e as any).isStaff).length;
       const cancellations = entries.filter(e => e.cancelled).length;
-      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !(e as any).parentLocker).length;
-      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled && !(e as any).parentLocker).length;
-      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled && !(e as any).parentLocker).length;
+      const foreignerCount = entries.filter(e => e.optionType === 'foreigner' && !e.cancelled && !(e as any).parentLocker && !(e as any).isStaff).length;
+      const dayVisitors = entries.filter(e => e.timeType === '주간' && !e.cancelled && !(e as any).parentLocker && !(e as any).isStaff).length;
+      const nightVisitors = entries.filter(e => e.timeType === '야간' && !e.cancelled && !(e as any).parentLocker && !(e as any).isStaff).length;
       
       // Calculate additional fee sales from the already-fetched events (checkout_time 기준)
       // CRITICAL FIX: 다른 영업일 추가요금만 합산 (같은 영업일은 finalPrice에 포함됨)

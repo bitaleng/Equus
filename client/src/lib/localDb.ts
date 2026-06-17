@@ -2783,14 +2783,14 @@ export function updateDailySummary(businessDay: string) {
   // 참고: final_price에는 이미 선지급금(prepaid_additional_fee)이 포함되어 있음
   const result = db.exec(
     `SELECT 
-      COUNT(*) as total_visitors,
+      COUNT(CASE WHEN (is_staff IS NULL OR is_staff = 0) THEN 1 END) as total_visitors,
       COALESCE(SUM(CASE WHEN status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) THEN final_price - COALESCE(refund_amount, 0) ELSE 0 END), 0) as total_sales,
       COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancellations,
       COALESCE(SUM(CASE WHEN option_type IN ('discount', 'custom') AND status != 'cancelled' THEN option_amount ELSE 0 END), 0) as total_discount,
-      COUNT(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' THEN 1 END) as foreigner_count,
-      COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) THEN final_price - COALESCE(refund_amount, 0) ELSE 0 END), 0) as foreigner_sales,
-      COUNT(CASE WHEN time_type = '주간' AND status != 'cancelled' THEN 1 END) as day_visitors,
-      COUNT(CASE WHEN time_type = '야간' AND status != 'cancelled' THEN 1 END) as night_visitors
+      COUNT(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as foreigner_count,
+      COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) AND (is_staff IS NULL OR is_staff = 0) THEN final_price - COALESCE(refund_amount, 0) ELSE 0 END), 0) as foreigner_sales,
+      COUNT(CASE WHEN time_type = '주간' AND status != 'cancelled' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as day_visitors,
+      COUNT(CASE WHEN time_type = '야간' AND status != 'cancelled' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as night_visitors
     FROM locker_logs
     WHERE business_day = ?`,
     [businessDay]
@@ -2969,10 +2969,10 @@ export function getVisitorStatsByMonth(yearMonth: string) {
   const result = db.exec(
     `SELECT 
       business_day,
-      COUNT(*) as total_visitors,
-      COUNT(CASE WHEN cancelled = 0 AND (option_type IS NULL OR option_type != 'free') AND parent_locker IS NULL THEN 1 END) as actual_visitors,
+      COUNT(CASE WHEN (is_staff IS NULL OR is_staff = 0) THEN 1 END) as total_visitors,
+      COUNT(CASE WHEN cancelled = 0 AND (option_type IS NULL OR option_type != 'free') AND parent_locker IS NULL AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as actual_visitors,
       COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancelled_visitors,
-      COUNT(CASE WHEN cancelled = 0 AND option_type = 'free' THEN 1 END) as free_visitors
+      COUNT(CASE WHEN cancelled = 0 AND option_type = 'free' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as free_visitors
      FROM locker_logs 
      WHERE business_day LIKE ? AND parent_locker IS NULL
      GROUP BY business_day
