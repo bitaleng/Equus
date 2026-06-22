@@ -71,10 +71,10 @@ title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
 id = "AOZUuYc4iit1Z_Tdj2RA2"
 uri = "file://netlify-v1-equus.zip"
 type = "unspecified"
-title = "V1 에쿠스 — EQUS- 라이선스 / LOCKER MANAGER"
+title = "V1 에쿠스 (EQUUS) — netlify-v1-equus.zip"
 
 [[outputs]]
 id = "r3-rwZ78zxsU3uSC7C3mA"
 uri = "file://netlify-v2-hes.zip"
 type = "unspecified"
-title = "V2 히즈 — HIZZ- 라이선스 / He's 입실관리매니저"
+title = "V2 히즈 (He's) — netlify-v2-hes.zip"

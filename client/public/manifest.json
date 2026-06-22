@@ -1,11 +1,11 @@
 {
-  "name": "휴게텔 입실관리매니저",
-  "short_name": "EQUUS",
-  "description": "락카 입실 현황을 실시간으로 관리합니다.",
+  "name": "He's 입실관리매니저",
+  "short_name": "He's",
+  "description": "태블릿 최적화 입실 관리 시스템",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0F172A",
+  "background_color": "#1a1a1a",
+  "theme_color": "#cc44aa",
   "orientation": "landscape",
   "icons": [
     {
