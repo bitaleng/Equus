@@ -135,9 +135,17 @@ export default function Home() {
   const [rentalRevenue, setRentalRevenue] = useState<number>(0);
   const [totalExpenses, setTotalExpenses] = useState<number>(0);
   
-  // Panel collapse state
-  const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
-  const [isLockerPanelCollapsed, setIsLockerPanelCollapsed] = useState(false);
+  // Panel collapse state — localStorage로 새로고침 후에도 상태 복원
+  // isPanelCollapsed: 오늘현황이 잠겨 있으면 새로고침 시 항상 true(입실관리 전체화면)로 강제
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(() => {
+    if (isTodayStatusLocked()) return true; // 보안 잠금 시 항상 오늘현황 숨김
+    const saved = localStorage.getItem('home_panel_collapsed');
+    return saved !== null ? saved === 'true' : true; // 기본값: 입실관리 전체화면
+  });
+  const [isLockerPanelCollapsed, setIsLockerPanelCollapsed] = useState<boolean>(() => {
+    const saved = localStorage.getItem('home_locker_panel_collapsed');
+    return saved === 'true';
+  });
   const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
@@ -249,9 +257,11 @@ export default function Home() {
         setShowPatternDialog(true);
       } else {
         setIsPanelCollapsed(false);
+        localStorage.setItem('home_panel_collapsed', 'false');
       }
     } else {
       setIsPanelCollapsed(true);
+      localStorage.setItem('home_panel_collapsed', 'true');
     }
   };
 
@@ -274,14 +284,16 @@ export default function Home() {
     localStorage.setItem('uiLayoutMode', mode);
     
     if (mode === 'tab') {
-      // 탭 모드: 입실관리 탭이 기본
       setActiveTab('locker');
       setIsPanelCollapsed(false);
+      localStorage.setItem('home_panel_collapsed', 'false');
       setIsLockerPanelCollapsed(false);
+      localStorage.setItem('home_locker_panel_collapsed', 'false');
     } else {
-      // 토글 모드: 좌측 패널 접기 (입실관리만 표시), 매출집계 접힌 상태
       setIsPanelCollapsed(true);
+      localStorage.setItem('home_panel_collapsed', 'true');
       setIsLockerPanelCollapsed(false);
+      localStorage.setItem('home_locker_panel_collapsed', 'false');
       setIsSalesSummaryCollapsed(true);
     }
   };
@@ -488,13 +500,15 @@ export default function Home() {
   
   // Toggle right panel (Locker Management) visibility
   const handleToggleLockerPanel = () => {
-    // No pattern lock - just toggle
-    setIsLockerPanelCollapsed(!isLockerPanelCollapsed);
+    const next = !isLockerPanelCollapsed;
+    setIsLockerPanelCollapsed(next);
+    localStorage.setItem('home_locker_panel_collapsed', next ? 'true' : 'false');
   };
   
   // Pattern verified, expand left panel
   const handlePatternCorrect = () => {
     setIsPanelCollapsed(false);
+    localStorage.setItem('home_panel_collapsed', 'false');
   };
 
   // Update current time every second
