@@ -5,6 +5,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -22,14 +23,41 @@ const items = [
   { title: "직원근무일지", url: "/staff-logs",       icon: Users       },
 ];
 
+const skin = import.meta.env.VITE_SKIN || "v1";
+const appName = import.meta.env.VITE_APP_NAME || "LOCKER MANAGER";
+
 export function AppSidebar() {
   const [location] = useLocation();
 
   return (
     <Sidebar>
+      <SidebarHeader>
+        <div className="flex flex-col items-center gap-2 px-2 py-4 border-b border-sidebar-border">
+          <img
+            src="/icon-192.png"
+            alt={appName}
+            className="w-14 h-14 rounded-xl object-cover"
+            data-testid="sidebar-logo"
+          />
+          <div className="text-center leading-tight">
+            {skin === "v2" ? (
+              <>
+                <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground uppercase">He&apos;s</p>
+                <p className="text-[10px] text-muted-foreground tracking-wide">입실관리매니저</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground uppercase">EQUUS</p>
+                <p className="text-[10px] text-muted-foreground tracking-wide">Locker Manager</p>
+              </>
+            )}
+          </div>
+        </div>
+      </SidebarHeader>
+
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupContent className="pt-6">
+          <SidebarGroupContent className="pt-2">
             <SidebarMenu>
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
