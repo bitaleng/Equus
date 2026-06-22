@@ -26,6 +26,21 @@ const items = [
 const skin = import.meta.env.VITE_SKIN || "v1";
 const appName = import.meta.env.VITE_APP_NAME || "LOCKER MANAGER";
 
+const SKIN_CONFIG = {
+  v1: {
+    logo: "/icon-v1.png",
+    name: "EQUUS",
+    sub: "Locker Manager",
+  },
+  v2: {
+    logo: "/icon-v2.png",
+    name: "He's",
+    sub: "입실관리매니저",
+  },
+} as const;
+
+const skinCfg = SKIN_CONFIG[skin as keyof typeof SKIN_CONFIG] ?? SKIN_CONFIG.v1;
+
 export function AppSidebar() {
   const [location] = useLocation();
 
@@ -34,23 +49,14 @@ export function AppSidebar() {
       <SidebarHeader>
         <div className="flex flex-col items-center gap-2 px-2 py-4 border-b border-sidebar-border">
           <img
-            src="/icon-192.png"
+            src={skinCfg.logo}
             alt={appName}
             className="w-14 h-14 rounded-xl object-cover"
             data-testid="sidebar-logo"
           />
           <div className="text-center leading-tight">
-            {skin === "v2" ? (
-              <>
-                <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground uppercase">He&apos;s</p>
-                <p className="text-[10px] text-muted-foreground tracking-wide">입실관리매니저</p>
-              </>
-            ) : (
-              <>
-                <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground uppercase">EQUUS</p>
-                <p className="text-[10px] text-muted-foreground tracking-wide">Locker Manager</p>
-              </>
-            )}
+            <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground">{skinCfg.name}</p>
+            <p className="text-[10px] text-muted-foreground tracking-wide">{skinCfg.sub}</p>
           </div>
         </div>
       </SidebarHeader>
