@@ -2407,7 +2407,8 @@ export default function Home() {
       )}
 
       {/* Multi-Popup Workspace - Docked or Floating Mode */}
-      {openDialogs.size > 0 && popupsVisible && (
+      {/* display:none으로 숨김 (언마운트 X) → 결제방식 등 내부 state 보존 */}
+      {openDialogs.size > 0 && (
         <div 
           className={`bg-muted/95 backdrop-blur-sm shadow-2xl z-50 flex flex-col ${
             isFloatingMode 
@@ -2421,7 +2422,8 @@ export default function Home() {
             top: floatingPosition.y,
             width: floatingSize.width,
             height: floatingSize.height,
-          } : undefined}
+            display: popupsVisible ? undefined : 'none',
+          } : { display: popupsVisible ? undefined : 'none' }}
         >
           {/* Workspace Header */}
           <div 
@@ -2482,9 +2484,9 @@ export default function Home() {
             </div>
           </div>
           
-          {/* Scrollable Popup Stack */}
+          {/* Scrollable Popup Stack - 최근 선택 순으로 역순 표시 (나중에 선택한 락카가 위에) */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {Array.from(openDialogs.entries()).map(([lockerNumber, dialogInfo]) => {
+            {Array.from(openDialogs.entries()).reverse().map(([lockerNumber, dialogInfo]) => {
               const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
               const newLockerInfo = dialogInfo.newLockerInfo;
               
