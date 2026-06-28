@@ -71,10 +71,10 @@ title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
 id = "AOZUuYc4iit1Z_Tdj2RA2"
 uri = "file://netlify-v1-equus.zip"
 type = "unspecified"
-title = "V1 EQUUS - LOCKER MANAGER (CSS minify 에러 수정본)"
+title = "V1 EQUUS - LOCKER MANAGER (빌드 없음, 좌독 배포용)"
 
 [[outputs]]
 id = "r3-rwZ78zxsU3uSC7C3mA"
 uri = "file://netlify-v2-hes.zip"
 type = "unspecified"
-title = "V2 He's - 입실관리매니저 (CSS minify 에러 수정본)"
+title = "V2 He's - 입실관리매니저 (빌드 없음, 좌독 배포용)"
