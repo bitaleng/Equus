@@ -100,6 +100,7 @@ export function PasswordAuth({ onAuthenticated }: PasswordAuthProps) {
                 maxLength={8}
                 disabled={isLoading}
                 autoFocus
+                autoComplete="new-password"
                 data-testid="input-password"
               />
             </div>

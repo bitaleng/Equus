@@ -307,6 +307,7 @@ export default function DeviceManagement() {
                 value={formData.sharedSecret}
                 onChange={(e) => setFormData(prev => ({ ...prev, sharedSecret: e.target.value }))}
                 placeholder={editingDevice ? "••••••••" : "비밀키 입력"}
+                autoComplete="new-password"
                 data-testid="input-device-secret"
               />
               <p className="text-xs text-muted-foreground mt-1">

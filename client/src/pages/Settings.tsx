@@ -2919,6 +2919,7 @@ export default function Settings() {
                             onChange={(e) => setCurrentPassword(e.target.value)}
                             placeholder="현재 비밀번호 (기본: 12345678)"
                             maxLength={8}
+                            autoComplete="new-password"
                             data-testid="input-current-password"
                           />
                         </div>
@@ -2929,6 +2930,7 @@ export default function Settings() {
                             onChange={(e) => setNewPassword(e.target.value)}
                             placeholder="새 비밀번호 (8자리)"
                             maxLength={8}
+                            autoComplete="new-password"
                             data-testid="input-new-password"
                           />
                         </div>
@@ -2938,6 +2940,7 @@ export default function Settings() {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             placeholder="새 비밀번호 확인"
+                            autoComplete="new-password"
                             data-testid="input-confirm-password"
                           />
                         </div>

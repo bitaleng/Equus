@@ -378,6 +378,7 @@ export default function PatternLockDialog({
               onChange={(e) => { setPasswordInput(e.target.value); setErrorMessage(""); }}
               data-testid="input-password"
               autoFocus
+              autoComplete="new-password"
             />
             {errorMessage && (
               <p className="text-sm text-destructive" data-testid="text-password-error">{errorMessage}</p>

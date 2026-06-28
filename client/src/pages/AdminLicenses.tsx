@@ -152,6 +152,7 @@ function AdminAuthGate({ children, onAuthenticated }: { children: React.ReactNod
               onChange={(e) => setAdminPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleVerify()}
               placeholder="비밀번호 입력"
+              autoComplete="new-password"
               data-testid="input-admin-password"
             />
           </div>
