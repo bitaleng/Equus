@@ -1,5 +1,5 @@
 [build]
-  command = "vite build"
+  command = "npx vite build"
   publish = "dist/public"
 
 [build.environment]
