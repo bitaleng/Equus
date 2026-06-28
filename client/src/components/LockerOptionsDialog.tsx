@@ -240,7 +240,11 @@ export default function LockerOptionsDialog({
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
   const [cancellingRentalItem, setCancellingRentalItem] = useState<{txnId: string; itemId: string; itemName: string} | null>(null);
-  
+  // 직접입력 - 대여비/보증금 직접 수정
+  const [rentalDirectInputEnabled, setRentalDirectInputEnabled] = useState<Set<string>>(new Set());
+  const [rentalCustomFees, setRentalCustomFees] = useState<Map<string, string>>(new Map());
+  const [rentalCustomDeposits, setRentalCustomDeposits] = useState<Map<string, string>>(new Map());
+
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
   const additionalFeePaymentMethodUserChangedRef = useRef(false);
@@ -614,17 +618,38 @@ export default function LockerOptionsDialog({
   };
 
   // Initialize customer memo when dialog opens (separate from other state to avoid conflicts)
+  // Also auto-append rental time info if rental transactions exist
   useEffect(() => {
     if (open) {
-      if (isInUse) {
-        setCustomerMemo(currentCustomerMemo || "");
-      } else {
-        setCustomerMemo("");
+      let baseMemo = isInUse ? (currentCustomerMemo || "") : "";
+
+      // Auto-append rental time info if not already in memo
+      if (isInUse && currentLockerLogId) {
+        const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
+        rentals.forEach(txn => {
+          const itemName = txn.itemName || txn.item_name || '';
+          const rentalTime = txn.rentalTime || txn.rental_time;
+          const returnTime = txn.returnTime || txn.return_time;
+          if (rentalTime && itemName) {
+            const marker = `[${itemName}] 대여:`;
+            if (!baseMemo.includes(marker)) {
+              const rentalTimeStr = new Date(rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+              let line = `${marker} ${rentalTimeStr}`;
+              if (returnTime) {
+                const returnTimeStr = new Date(returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                line += ` / 반납: ${returnTimeStr}`;
+              }
+              baseMemo = baseMemo.trim() ? `${baseMemo}\n${line}` : line;
+            }
+          }
+        });
       }
+
+      setCustomerMemo(baseMemo);
     } else {
       setCustomerMemo(""); // Only reset when dialog closes
     }
-  }, [open, isInUse, currentCustomerMemo]);
+  }, [open, isInUse, currentCustomerMemo, currentLockerLogId]);
 
   // Initialize other state from current option data when dialog opens or closes
   useEffect(() => {
@@ -729,6 +754,9 @@ export default function LockerOptionsDialog({
       setHasBlanket(false);
       setHasLongTowel(false);
       setShowWarningAlert(false);
+      setRentalDirectInputEnabled(new Set());
+      setRentalCustomFees(new Map());
+      setRentalCustomDeposits(new Map());
       
       // Reset all state when dialog closes to prevent state leakage
       setDiscountOption("none");
@@ -993,8 +1021,11 @@ export default function LockerOptionsDialog({
       const isCashReceipt = rentalCashReceiptStatuses.get(itemId) || false;
       
       if (item && depositStatus) {
-        const baseRentalFee = item.rentalFee || 0;
-        const baseDepositAmount = item.depositAmount || 0;
+        // 직접입력이 활성화된 경우 커스텀 가격 우선 적용
+        const customFeeStr = rentalDirectInputEnabled.has(itemId) ? rentalCustomFees.get(itemId) : undefined;
+        const customDepositStr = rentalDirectInputEnabled.has(itemId) ? rentalCustomDeposits.get(itemId) : undefined;
+        const baseRentalFee = (customFeeStr !== undefined && customFeeStr !== '') ? (parseInt(customFeeStr) || 0) : (item.rentalFee || 0);
+        const baseDepositAmount = (customDepositStr !== undefined && customDepositStr !== '') ? (parseInt(customDepositStr) || 0) : (item.depositAmount || 0);
         
         // 부가세 적용 여부 확인
         const vatApplied = shouldApplyVat(rentalPaymentMethod, isCashReceipt);
@@ -3477,6 +3508,16 @@ export default function LockerOptionsDialog({
                                   
                                   setDepositStatuses(newStatuses);
                                   setRentalPaymentMethods(newPaymentMethods);
+                                  // 신규 대여 시 현재 시각을 메모에 자동 기록
+                                  if (!isAlreadyRented) {
+                                    const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    const marker = `[${item.name}] 대여:`;
+                                    setCustomerMemo(prev => {
+                                      if (prev.includes(marker)) return prev;
+                                      const line = `${marker} ${nowTimeStr}`;
+                                      return prev.trim() ? `${prev}\n${line}` : line;
+                                    });
+                                  }
                                 } else {
                                   newSelected.delete(itemId);
                                   // Remove deposit status and payment method only if NOT already rented
@@ -3525,6 +3566,78 @@ export default function LockerOptionsDialog({
                         {/* 대여 물품 옵션 - 체크박스 선택된 경우에만 표시 */}
                         {isChecked && (
                           <div className="ml-6 space-y-3">
+                            {/* 직접입력 - 신규 대여 항목만 (이미 대여 중이거나 반납완료된 경우 제외) */}
+                            {!isAlreadyRented && !returnCompletedItems.has(itemId) && (
+                              <div className="space-y-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className={`text-xs ${rentalDirectInputEnabled.has(itemId) ? 'bg-orange-50 border-orange-400 text-orange-700 dark:bg-orange-900/30 dark:border-orange-700 dark:text-orange-400' : 'text-muted-foreground'}`}
+                                  onClick={() => {
+                                    const newEnabled = new Set(rentalDirectInputEnabled);
+                                    if (newEnabled.has(itemId)) {
+                                      newEnabled.delete(itemId);
+                                      const newFees = new Map(rentalCustomFees);
+                                      const newDeposits = new Map(rentalCustomDeposits);
+                                      newFees.delete(itemId);
+                                      newDeposits.delete(itemId);
+                                      setRentalCustomFees(newFees);
+                                      setRentalCustomDeposits(newDeposits);
+                                    } else {
+                                      newEnabled.add(itemId);
+                                      const newFees = new Map(rentalCustomFees);
+                                      const newDeposits = new Map(rentalCustomDeposits);
+                                      newFees.set(itemId, String(item.rentalFee || 0));
+                                      newDeposits.set(itemId, String(item.depositAmount || 0));
+                                      setRentalCustomFees(newFees);
+                                      setRentalCustomDeposits(newDeposits);
+                                    }
+                                    setRentalDirectInputEnabled(newEnabled);
+                                  }}
+                                  data-testid={`button-direct-input-${itemId}`}
+                                >
+                                  ✎ 직접입력{rentalDirectInputEnabled.has(itemId) ? ' (ON)' : ''}
+                                </Button>
+                                {rentalDirectInputEnabled.has(itemId) && (
+                                  <div className="grid grid-cols-2 gap-2 p-2 bg-orange-50/50 dark:bg-orange-900/20 rounded-md border border-orange-200 dark:border-orange-800">
+                                    <div className="space-y-1">
+                                      <Label className="text-xs text-muted-foreground">대여비 (원)</Label>
+                                      <Input
+                                        type="number"
+                                        value={rentalCustomFees.get(itemId) ?? String(item.rentalFee || 0)}
+                                        onChange={(e) => {
+                                          const newFees = new Map(rentalCustomFees);
+                                          newFees.set(itemId, e.target.value);
+                                          setRentalCustomFees(newFees);
+                                        }}
+                                        className="h-8 text-sm"
+                                        min={0}
+                                        data-testid={`input-custom-rental-fee-${itemId}`}
+                                      />
+                                    </div>
+                                    {(item.depositAmount || 0) > 0 && (
+                                      <div className="space-y-1">
+                                        <Label className="text-xs text-muted-foreground">보증금 (원)</Label>
+                                        <Input
+                                          type="number"
+                                          value={rentalCustomDeposits.get(itemId) ?? String(item.depositAmount || 0)}
+                                          onChange={(e) => {
+                                            const newDeposits = new Map(rentalCustomDeposits);
+                                            newDeposits.set(itemId, e.target.value);
+                                            setRentalCustomDeposits(newDeposits);
+                                          }}
+                                          className="h-8 text-sm"
+                                          min={0}
+                                          data-testid={`input-custom-deposit-${itemId}`}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             {/* 반납완료 표시 */}
                             {returnCompletedItems.has(itemId) && (
                               <div className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
@@ -3596,6 +3709,21 @@ export default function LockerOptionsDialog({
                                     const newReturnCompleted = new Set(returnCompletedItems);
                                     newReturnCompleted.add(itemId);
                                     setReturnCompletedItems(newReturnCompleted);
+                                    // 반납 시각을 메모에 자동 기록
+                                    const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    setCustomerMemo(prev => {
+                                      const rentalMarker = `[${item.name}] 대여:`;
+                                      // 기존 대여 줄에 반납 시각 추가, 없으면 새 줄 추가
+                                      if (prev.includes(rentalMarker)) {
+                                        return prev.split('\n').map(line =>
+                                          line.startsWith(rentalMarker) && !line.includes('반납:')
+                                            ? `${line} / 반납: ${nowTimeStr}`
+                                            : line
+                                        ).join('\n');
+                                      }
+                                      const returnLine = `[${item.name}] 반납: ${nowTimeStr}`;
+                                      return prev.trim() ? `${prev}\n${returnLine}` : returnLine;
+                                    });
                                   }}
                                   data-testid={`button-return-complete-${itemId}`}
                                 >
