@@ -3514,9 +3514,20 @@ export default function LockerOptionsDialog({
                                     const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                                     const marker = `[${item.name}] 대여:`;
                                     setCustomerMemo(prev => {
-                                      if (prev.includes(marker)) return prev;
-                                      const line = `${marker} ${nowTimeStr}`;
-                                      return prev.trim() ? `${prev}\n${line}` : line;
+                                      if (prev.includes(marker)) {
+                                        // 취소 후 재대여: 마지막 세그먼트가 취소 상태인 경우 재대여 시각 추가
+                                        return prev.split('\n').map(line => {
+                                          if (!line.startsWith(marker)) return line;
+                                          const lastSlashIdx = line.lastIndexOf(' / ');
+                                          const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                                          if (lastSeg.includes('대여취소:')) {
+                                            return `${line} / 재대여: ${nowTimeStr}`;
+                                          }
+                                          return line;
+                                        }).join('\n');
+                                      }
+                                      const newLine = `${marker} ${nowTimeStr}`;
+                                      return prev.trim() ? `${prev}\n${newLine}` : newLine;
                                     });
                                   }
                                 } else {
@@ -3653,11 +3664,16 @@ export default function LockerOptionsDialog({
                                     setCustomerMemo(prev => {
                                       const rentalMarker = `[${item.name}] 대여:`;
                                       if (prev.includes(rentalMarker)) {
-                                        return prev.split('\n').map(line =>
-                                          line.startsWith(rentalMarker) && line.includes('반납:') && !line.includes('반납취소:')
-                                            ? `${line}, 반납취소: ${nowTimeStr}`
-                                            : line
-                                        ).join('\n');
+                                        return prev.split('\n').map(line => {
+                                          if (!line.startsWith(rentalMarker)) return line;
+                                          const lastSlashIdx = line.lastIndexOf(' / ');
+                                          const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                                          // 마지막 세그먼트가 반납 상태(반납취소 없음)인 경우만 반납취소 기록
+                                          if (lastSeg.includes('반납:') && !lastSeg.includes('반납취소:')) {
+                                            return `${line}, 반납취소: ${nowTimeStr}`;
+                                          }
+                                          return line;
+                                        }).join('\n');
                                       }
                                       const cancelLine = `[${item.name}] 반납취소: ${nowTimeStr}`;
                                       return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
@@ -3738,13 +3754,17 @@ export default function LockerOptionsDialog({
                                     const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                                     setCustomerMemo(prev => {
                                       const rentalMarker = `[${item.name}] 대여:`;
-                                      // 기존 대여 줄에 반납 시각 추가, 없으면 새 줄 추가
                                       if (prev.includes(rentalMarker)) {
-                                        return prev.split('\n').map(line =>
-                                          line.startsWith(rentalMarker) && !line.includes('반납:')
-                                            ? `${line} / 반납: ${nowTimeStr}`
-                                            : line
-                                        ).join('\n');
+                                        return prev.split('\n').map(line => {
+                                          if (!line.startsWith(rentalMarker)) return line;
+                                          const lastSlashIdx = line.lastIndexOf(' / ');
+                                          const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                                          // 마지막 상태가 반납 전(반납 없거나 반납취소)이면 반납 기록
+                                          if (!lastSeg.includes('반납:') || lastSeg.includes('반납취소:')) {
+                                            return `${line} / 반납: ${nowTimeStr}`;
+                                          }
+                                          return line;
+                                        }).join('\n');
                                       }
                                       const returnLine = `[${item.name}] 반납: ${nowTimeStr}`;
                                       return prev.trim() ? `${prev}\n${returnLine}` : returnLine;
@@ -4126,11 +4146,16 @@ export default function LockerOptionsDialog({
                 setCustomerMemo(prev => {
                   const marker = `[${cancelItemName}] 대여:`;
                   if (prev.includes(marker)) {
-                    return prev.split('\n').map(line =>
-                      line.startsWith(marker) && !line.includes('대여취소:')
-                        ? `${line}, 대여취소: ${cancelTimeStr}`
-                        : line
-                    ).join('\n');
+                    return prev.split('\n').map(line => {
+                      if (!line.startsWith(marker)) return line;
+                      const lastSlashIdx = line.lastIndexOf(' / ');
+                      const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                      // 마지막 세그먼트가 취소 상태가 아닌 경우만 취소 기록
+                      if (!lastSeg.includes('대여취소:')) {
+                        return `${line}, 대여취소: ${cancelTimeStr}`;
+                      }
+                      return line;
+                    }).join('\n');
                   }
                   const cancelLine = `[${cancelItemName}] 대여취소: ${cancelTimeStr}`;
                   return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
@@ -4185,11 +4210,16 @@ export default function LockerOptionsDialog({
                 setCustomerMemo(prev => {
                   const marker = `[${itemName}] 대여:`;
                   if (prev.includes(marker)) {
-                    return prev.split('\n').map(line =>
-                      line.startsWith(marker) && !line.includes('대여취소:')
-                        ? `${line}, 대여취소: ${nowTimeStr}`
-                        : line
-                    ).join('\n');
+                    return prev.split('\n').map(line => {
+                      if (!line.startsWith(marker)) return line;
+                      const lastSlashIdx = line.lastIndexOf(' / ');
+                      const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                      // 마지막 세그먼트가 취소 상태가 아닌 경우만 취소 기록
+                      if (!lastSeg.includes('대여취소:')) {
+                        return `${line}, 대여취소: ${nowTimeStr}`;
+                      }
+                      return line;
+                    }).join('\n');
                   }
                   const cancelLine = `[${itemName}] 대여취소: ${nowTimeStr}`;
                   return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
