@@ -240,6 +240,7 @@ export default function LockerOptionsDialog({
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
   const [cancellingRentalItem, setCancellingRentalItem] = useState<{txnId: string; itemId: string; itemName: string} | null>(null);
+  const [pendingUncheckItem, setPendingUncheckItem] = useState<{itemId: string; itemName: string} | null>(null);
   // 직접입력 - 대여비/보증금 직접 수정
   const [rentalDirectInputEnabled, setRentalDirectInputEnabled] = useState<Set<string>>(new Set());
   const [rentalCustomFees, setRentalCustomFees] = useState<Map<string, string>>(new Map());
@@ -3519,17 +3520,12 @@ export default function LockerOptionsDialog({
                                     });
                                   }
                                 } else {
-                                  newSelected.delete(itemId);
-                                  // Remove deposit status and payment method only if NOT already rented
-                                  // (keep status for already rented items)
+                                  // 신규 대여(이번 세션에서 체크한 것) 해제 시 확인 다이얼로그
                                   if (!isAlreadyRented) {
-                                    const newStatuses = new Map(depositStatuses);
-                                    const newPaymentMethods = new Map(rentalPaymentMethods);
-                                    newStatuses.delete(itemId);
-                                    newPaymentMethods.delete(itemId);
-                                    setDepositStatuses(newStatuses);
-                                    setRentalPaymentMethods(newPaymentMethods);
+                                    setPendingUncheckItem({ itemId, itemName: item.name });
+                                    return;
                                   }
+                                  newSelected.delete(itemId);
                                 }
                                 setSelectedRentalItems(newSelected);
                               }}
@@ -3638,10 +3634,39 @@ export default function LockerOptionsDialog({
                               </div>
                             )}
 
-                            {/* 반납완료 표시 */}
+                            {/* 반납완료 표시 + 반납취소 버튼 */}
                             {returnCompletedItems.has(itemId) && (
-                              <div className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
-                                ✓ 반납완료 ({(item.depositAmount || 0) === 0 ? '처리완료' : depositStatus === 'refunded' ? '환급' : depositStatus === 'forfeited' ? '몰수' : '처리됨'})
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="text-sm font-semibold text-green-600 dark:text-green-400 flex items-center gap-1">
+                                  ✓ 반납완료 ({(item.depositAmount || 0) === 0 ? '처리완료' : depositStatus === 'refunded' ? '환급' : depositStatus === 'forfeited' ? '몰수' : '처리됨'})
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-xs text-muted-foreground h-6 px-2"
+                                  onClick={() => {
+                                    const newReturn = new Set(returnCompletedItems);
+                                    newReturn.delete(itemId);
+                                    setReturnCompletedItems(newReturn);
+                                    const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                    setCustomerMemo(prev => {
+                                      const rentalMarker = `[${item.name}] 대여:`;
+                                      if (prev.includes(rentalMarker)) {
+                                        return prev.split('\n').map(line =>
+                                          line.startsWith(rentalMarker) && line.includes('반납:') && !line.includes('반납취소:')
+                                            ? `${line}, 반납취소: ${nowTimeStr}`
+                                            : line
+                                        ).join('\n');
+                                      }
+                                      const cancelLine = `[${item.name}] 반납취소: ${nowTimeStr}`;
+                                      return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
+                                    });
+                                  }}
+                                  data-testid={`button-return-cancel-${itemId}`}
+                                >
+                                  반납취소
+                                </Button>
                               </div>
                             )}
                             
@@ -4095,7 +4120,81 @@ export default function LockerOptionsDialog({
                 const newReturn = new Set(returnCompletedItems);
                 newReturn.delete(itemId);
                 setReturnCompletedItems(newReturn);
+                // 메모에 대여취소 시각 기록
+                const cancelTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                const cancelItemName = cancellingRentalItem.itemName;
+                setCustomerMemo(prev => {
+                  const marker = `[${cancelItemName}] 대여:`;
+                  if (prev.includes(marker)) {
+                    return prev.split('\n').map(line =>
+                      line.startsWith(marker) && !line.includes('대여취소:')
+                        ? `${line}, 대여취소: ${cancelTimeStr}`
+                        : line
+                    ).join('\n');
+                  }
+                  const cancelLine = `[${cancelItemName}] 대여취소: ${cancelTimeStr}`;
+                  return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
+                });
                 setCancellingRentalItem(null);
+              }}
+            >
+              대여 취소 확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 대여 체크 해제 확인 다이얼로그 (신규 체크 후 해제 시) */}
+      <AlertDialog open={!!pendingUncheckItem} onOpenChange={(open) => { if (!open) setPendingUncheckItem(null); }}>
+        <AlertDialogContent data-testid="dialog-uncheck-rental-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>대여 취소</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                <strong>{pendingUncheckItem?.itemName}</strong> 대여를 취소하시겠습니까?
+              </p>
+              <p className="text-sm text-muted-foreground">
+                취소 시각이 메모에 기록됩니다.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-uncheck-rental-close">
+              취소
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-uncheck-rental-confirm"
+              onClick={() => {
+                if (!pendingUncheckItem) return;
+                const { itemId, itemName } = pendingUncheckItem;
+                const newSelected = new Set(selectedRentalItems);
+                newSelected.delete(itemId);
+                setSelectedRentalItems(newSelected);
+                const newStatuses = new Map(depositStatuses);
+                const newPaymentMethods = new Map(rentalPaymentMethods);
+                const newDirectInput = new Set(rentalDirectInputEnabled);
+                newStatuses.delete(itemId);
+                newPaymentMethods.delete(itemId);
+                newDirectInput.delete(itemId);
+                setDepositStatuses(newStatuses);
+                setRentalPaymentMethods(newPaymentMethods);
+                setRentalDirectInputEnabled(newDirectInput);
+                // 메모에 대여취소 시각 기록
+                const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                setCustomerMemo(prev => {
+                  const marker = `[${itemName}] 대여:`;
+                  if (prev.includes(marker)) {
+                    return prev.split('\n').map(line =>
+                      line.startsWith(marker) && !line.includes('대여취소:')
+                        ? `${line}, 대여취소: ${nowTimeStr}`
+                        : line
+                    ).join('\n');
+                  }
+                  const cancelLine = `[${itemName}] 대여취소: ${nowTimeStr}`;
+                  return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
+                });
+                setPendingUncheckItem(null);
               }}
             >
               대여 취소 확인
