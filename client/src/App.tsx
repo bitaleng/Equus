@@ -18,6 +18,8 @@ import SalesReportPage from "@/pages/SalesReportPage";
 import CashRegisterPage from "@/pages/CashRegisterPage";
 import StaffLogPage from "@/pages/StaffLogPage";
 import AdminLicenses from "@/pages/AdminLicenses";
+import CctvPage from "@/pages/CctvPage";
+import CctvViewPage from "@/pages/CctvViewPage";
 import NotFound from "@/pages/not-found";
 import { initDatabase, getSettings } from "@/lib/localDb";
 import { Menu, Lock } from "lucide-react";
@@ -32,6 +34,10 @@ function isAdminRoute(path: string): boolean {
   return path.startsWith("/admin");
 }
 
+function isCctvViewRoute(path: string): boolean {
+  return path.startsWith("/cctv/view");
+}
+
 function Router() {
   return (
     <Switch>
@@ -44,6 +50,7 @@ function Router() {
       <Route path="/sales-report" component={SalesReportPage} />
       <Route path="/cash-register" component={CashRegisterPage} />
       <Route path="/staff-logs" component={StaffLogPage} />
+      <Route path="/cctv" component={CctvPage} />
       <Route path="/admin/licenses" component={AdminLicenses} />
       <Route component={NotFound} />
     </Switch>
@@ -154,6 +161,10 @@ function AppContent() {
     return <AdminLicenses />;
   }
 
+  if (isCctvViewRoute(location)) {
+    return <CctvViewPage />;
+  }
+
   if (isDemoMode()) {
     return <MainLayout />;
   }
@@ -209,6 +220,11 @@ function App() {
       clearInterval(interval);
     };
   }, [dbReady]);
+
+  // 뷰어 페이지는 앱 비밀번호 없이 접근 가능 (접속 코드로만 인증)
+  if (window.location.pathname.startsWith("/cctv/view")) {
+    return <CctvViewPage />;
+  }
 
   if (!dbReady) {
     return (

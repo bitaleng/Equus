@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { setupVite, log } from "./viteSetup";
 import { registerRoutes } from "./routes";
 import { wsServer } from "./wsServer";
+import { cameraWsServer } from "./cameraWsServer";
 
 const app = express();
 app.use(express.json());
@@ -57,6 +58,7 @@ app.use((req, res, next) => {
 
   // Initialize WebSocket server
   wsServer.initialize(server);
+  cameraWsServer.initialize(server);
 
   // Setup Vite for development
   await setupVite(app);
