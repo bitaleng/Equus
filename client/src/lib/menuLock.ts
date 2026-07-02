@@ -26,6 +26,12 @@ export function isTodayStatusLocked(): boolean {
   return localStorage.getItem("security_today_status_enabled") !== "false";
 }
 
+// 매출집계 탭 전용 잠금 여부 (탭 모드)
+export function isSalesTabLocked(): boolean {
+  if (localStorage.getItem("security_enabled") === "false") return false;
+  return localStorage.getItem("security_sales_tab_enabled") !== "false";
+}
+
 export const MENU_ITEMS = [
   { url: '/logs',         label: '상세 기록' },
   { url: '/scan-logs',    label: '스캔정보' },

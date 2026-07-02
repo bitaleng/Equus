@@ -35,7 +35,7 @@ import PatternLockDialog from "@/components/PatternLockDialog";
 import { getBusinessDay, getBusinessDayRange, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
-import { isTodayStatusLocked } from "@/lib/menuLock";
+import { isTodayStatusLocked, isSalesTabLocked } from "@/lib/menuLock";
 import type { LockerLog as SharedLockerLog } from "@shared/schema";
 import { LiveClock } from "@/components/LiveClock";
 
@@ -227,10 +227,11 @@ export default function Home() {
     const saved = localStorage.getItem('uiLayoutMode');
     return (saved === 'tab' || saved === 'toggle') ? saved : 'toggle';
   });
-  const [activeTab, setActiveTab] = useState<'locker' | 'status'>('locker');
+  const [activeTab, setActiveTab] = useState<'locker' | 'status' | 'sales'>('locker');
   
-  // Tab security: require authentication when switching to 'status' tab
+  // Tab security: require authentication when switching to 'status' or 'sales' tab
   const [showTabAuthDialog, setShowTabAuthDialog] = useState(false);
+  const [showSalesTabAuthDialog, setShowSalesTabAuthDialog] = useState(false);
   
   // Layout mode change security: require authentication when switching modes
   const [showLayoutModeAuthDialog, setShowLayoutModeAuthDialog] = useState(false);
@@ -405,19 +406,31 @@ export default function Home() {
 
   // Tab change handler with security check
   const handleTabChange = (newTab: string) => {
-    const targetTab = newTab as 'locker' | 'status';
+    const targetTab = newTab as 'locker' | 'status' | 'sales';
 
-    if (activeTab === 'locker' && targetTab === 'status' && isTodayStatusLocked()) {
-      setShowTabAuthDialog(true);
-    } else {
-      setActiveTab(targetTab);
+    if (activeTab !== targetTab) {
+      if (targetTab === 'status' && isTodayStatusLocked()) {
+        setShowTabAuthDialog(true);
+        return;
+      }
+      if (targetTab === 'sales' && isSalesTabLocked()) {
+        setShowSalesTabAuthDialog(true);
+        return;
+      }
     }
+    setActiveTab(targetTab);
   };
 
-  // Handle successful tab authentication
+  // Handle successful tab authentication (오늘현황)
   const handleTabAuthSuccess = () => {
     setActiveTab('status');
     setShowTabAuthDialog(false);
+  };
+
+  // Handle successful tab authentication (매출집계)
+  const handleSalesTabAuthSuccess = () => {
+    setActiveTab('sales');
+    setShowSalesTabAuthDialog(false);
   };
 
   // Toggle barcode test button with 5 consecutive clicks on title
@@ -1894,6 +1907,7 @@ export default function Home() {
     deferredPayment: (log as any).deferredPayment || false,
     refundAmount: (log as any).refundAmount || 0,
     isStaff: (log as any).isStaff || false,
+    customerMemo: (log as any).customerMemo || '',
   }));
   
   // 퇴실 취소 핸들러
@@ -1979,58 +1993,28 @@ export default function Home() {
 
   // 오늘현황 + 매출집계 렌더링 함수 (탭 모드용 - 좌우 배치 with 반응형 분리선)
   const renderTodayStatusWithSales = () => (
-    <ResizablePanelGroup direction="horizontal" className="flex-1">
-      {/* 왼쪽: 오늘입실현황 테이블 */}
-      <ResizablePanel defaultSize={60} minSize={30} maxSize={80}>
-        <div className="h-full overflow-hidden">
-          <TodayStatusTable
-            entries={todayEntries}
-            isExpanded={true}
-            onReverseCheckout={handleReverseCheckout}
-            onRowClick={(entry) => {
-              const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
-              if (existingEntry) {
-                setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
-                  lockerNumber: entry.lockerNumber,
-                  isMinimized: false,
-                  timeType: existingEntry.timeType,
-                  basePrice: existingEntry.basePrice
-                }));
-                setPopupsVisible(true);
-              }
-            }}
-            isLockerPanelCollapsed={false}
-            onToggleLockerPanel={() => {}}
-            hideToggleButton={true}
-          />
-        </div>
-      </ResizablePanel>
-      
-      {/* 반응형 분리선 */}
-      <ResizableHandle withHandle />
-      
-      {/* 오른쪽: 매출집계 */}
-      <ResizablePanel defaultSize={40} minSize={20} maxSize={70}>
-        <div className="h-full p-6 overflow-auto">
-          <SalesSummary
-            date={getBusinessDay(new Date(), businessDayStartHour)}
-            totalVisitors={summary?.totalVisitors || 0}
-            totalSales={summary?.totalSales || 0}
-            totalRefunds={summary?.totalRefunds || 0}
-            cancellations={summary?.cancellations || 0}
-            foreignerCount={summary?.foreignerCount || 0}
-            dayVisitors={summary?.dayVisitors || 0}
-            nightVisitors={summary?.nightVisitors || 0}
-            additionalFeeSales={additionalFeeSales}
-            rentalRevenue={rentalRevenue}
-            totalExpenses={totalExpenses}
-            onExpenseAdded={loadData}
-            isCollapsed={false}
-            onToggleCollapse={() => {}}
-          />
-        </div>
-      </ResizablePanel>
-    </ResizablePanelGroup>
+    <div className="h-full overflow-hidden flex flex-col">
+      <TodayStatusTable
+        entries={todayEntries}
+        isExpanded={true}
+        onReverseCheckout={handleReverseCheckout}
+        onRowClick={(entry) => {
+          const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
+          if (existingEntry) {
+            setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+              lockerNumber: entry.lockerNumber,
+              isMinimized: false,
+              timeType: existingEntry.timeType,
+              basePrice: existingEntry.basePrice
+            }));
+            setPopupsVisible(true);
+          }
+        }}
+        isLockerPanelCollapsed={false}
+        onToggleLockerPanel={() => {}}
+        hideToggleButton={true}
+      />
+    </div>
   );
 
   return (
@@ -2044,6 +2028,7 @@ export default function Home() {
               <TabsList>
                 <TabsTrigger value="locker" data-testid="tab-locker">입실 관리</TabsTrigger>
                 <TabsTrigger value="status" data-testid="tab-status">오늘현황</TabsTrigger>
+                <TabsTrigger value="sales" data-testid="tab-sales">매출집계</TabsTrigger>
               </TabsList>
               <LiveClock />
             </div>
@@ -2137,6 +2122,28 @@ export default function Home() {
           {/* 오늘현황 탭 */}
           <TabsContent value="status" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
             {renderTodayStatusWithSales()}
+          </TabsContent>
+
+          {/* 매출집계 탭 */}
+          <TabsContent value="sales" className="flex-1 flex flex-col mt-0 overflow-auto data-[state=active]:flex">
+            <div className="p-6">
+              <SalesSummary
+                date={getBusinessDay(new Date(), businessDayStartHour)}
+                totalVisitors={summary?.totalVisitors || 0}
+                totalSales={summary?.totalSales || 0}
+                totalRefunds={summary?.totalRefunds || 0}
+                cancellations={summary?.cancellations || 0}
+                foreignerCount={summary?.foreignerCount || 0}
+                dayVisitors={summary?.dayVisitors || 0}
+                nightVisitors={summary?.nightVisitors || 0}
+                additionalFeeSales={additionalFeeSales}
+                rentalRevenue={rentalRevenue}
+                totalExpenses={totalExpenses}
+                onExpenseAdded={loadData}
+                isCollapsed={false}
+                onToggleCollapse={() => {}}
+              />
+            </div>
           </TabsContent>
         </Tabs>
       ) : (
@@ -2694,6 +2701,16 @@ export default function Home() {
         title="오늘현황 잠금 해제"
         description="매출 정보를 보려면 패턴을 그리거나 비밀번호를 입력하세요."
         testId="dialog-tab-auth"
+      />
+
+      {/* Pattern Lock Dialog for Sales Tab Switch Security */}
+      <PatternLockDialog
+        open={showSalesTabAuthDialog}
+        onOpenChange={setShowSalesTabAuthDialog}
+        onPatternCorrect={handleSalesTabAuthSuccess}
+        title="매출집계 잠금 해제"
+        description="매출집계를 보려면 패턴을 그리거나 비밀번호를 입력하세요."
+        testId="dialog-sales-tab-auth"
       />
 
       {/* Pattern Lock Dialog for Layout Mode Change Security (tab → toggle) */}

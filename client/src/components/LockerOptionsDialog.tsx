@@ -1725,15 +1725,11 @@ export default function LockerOptionsDialog({
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
     const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
 
-    // 사용자가 명시적으로 변경한 경우에만 추가요금 결제방식 저장
-    // 변경하지 않은 경우 undefined → updateEntry에서 기존 DB 값 보존 (기본값 'cash'로 덮어쓰기 방지)
-    const finalAdditionalFeePaymentMethod = additionalFeePaymentMethodUserChangedRef.current
-      ? additionalFeePaymentMethod
-      : undefined;
-
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
-      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, finalAdditionalFeePaymentMethod, isStaff);
+      // 수정저장 시 현재 다이얼로그에 표시된 additionalFeePaymentMethod를 항상 저장
+      // (undefined 대신 실제 값을 전달해야 DB에 정확히 반영됨)
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff);
       
       // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
       additionalFeePaymentMethodUserChangedRef.current = true;

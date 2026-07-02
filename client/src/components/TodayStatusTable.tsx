@@ -62,6 +62,7 @@ interface LockerEntry {
   id?: string; // 퇴실 취소용 로그 ID
   refundAmount?: number; // 환불 금액
   isStaff?: boolean; // 직원 입실 여부 (방문자 수에서 제외)
+  customerMemo?: string; // 손님 메모
 }
 
 interface TodayStatusTableProps {
@@ -156,6 +157,11 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
       return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
     }
   });
+
+  // 퇴실시간순 정렬 시 퇴실 완료된 항목만 표시
+  if (sortBy === 'exitTime') {
+    displayedEntries = displayedEntries.filter(e => e.status === 'checked_out');
+  }
 
   // Count usage for filtered locker (exclude additional fee only entries and child lockers)
   const usageCount = filteredLockerNumber !== null
@@ -344,6 +350,15 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                 입실시간
               </TableHead>
               <TableHead 
+                className="font-bold whitespace-nowrap"
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: 'var(--fluid-col-time, 5rem)' 
+                } : undefined}
+              >
+                퇴실시간
+              </TableHead>
+              <TableHead 
                 className="font-bold" 
                 style={isExpanded ? { 
                   fontSize: 'var(--fluid-header, 1rem)', 
@@ -388,12 +403,21 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
               >
                 상태
               </TableHead>
+              <TableHead
+                className="font-bold whitespace-nowrap"
+                style={isExpanded ? { 
+                  fontSize: 'var(--fluid-header, 1rem)', 
+                  minWidth: '6rem'
+                } : undefined}
+              >
+                비고
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {displayedEntries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8 text-sm">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-8 text-sm">
                   {filteredLockerNumber !== null 
                     ? `락커 ${filteredLockerNumber}번 사용 기록이 없습니다`
                     : '오늘 방문한 손님이 없습니다'
@@ -440,6 +464,15 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                       } : undefined}
                     >
                       {entry.entryTime || '-'}
+                    </TableCell>
+                    <TableCell 
+                      className="text-muted-foreground whitespace-nowrap"
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-base, 1rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)' 
+                      } : undefined}
+                    >
+                      {entry.exitTime ? new Date(entry.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
                     </TableCell>
                     <TableCell 
                       style={isExpanded ? { 
@@ -550,6 +583,21 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                           </button>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell
+                      className="text-xs text-muted-foreground"
+                      style={isExpanded ? { 
+                        fontSize: 'var(--fluid-base, 1rem)', 
+                        padding: 'var(--fluid-padding, 0.75rem)'
+                      } : undefined}
+                    >
+                      <span
+                        className="block max-w-[7rem] truncate"
+                        title={entry.customerMemo || entry.notes || ''}
+                        style={isExpanded ? { maxWidth: '11rem' } : undefined}
+                      >
+                        {entry.customerMemo || entry.notes || '-'}
+                      </span>
                     </TableCell>
                   </TableRow>
                 );
