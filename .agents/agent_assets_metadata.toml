@@ -2,97 +2,13 @@ uploads = []
 generated = []
 
 [[outputs]]
-id = "gGtX0IqL3JPeibYSqiGcI"
-uri = "file://netlify-deploy.zip"
-type = "unspecified"
-title = "netlify-deploy.zip (He's V2 — 오늘 빌드)"
-
-[[outputs]]
-id = "8-_KvqfTQ0XTRBQ6fL4Am"
-uri = "file://netlify-deploy-v2.zip"
-type = "unspecified"
-title = "v2 히즈 버전 (netlify-deploy-v2.zip, 6.1MB)"
-
-[[outputs]]
-id = "E98OcRrn06OAex5Oi64Ah"
-uri = "file://netlify-deploy-v1.zip"
-type = "unspecified"
-title = "v1 에쿠스 버전 (netlify-deploy-v1.zip, 4.5MB)"
-
-[[outputs]]
-id = "n6MeJzU5uSIkm0AO9Zqik"
-uri = "file://v1_deploy.zip"
-type = "unspecified"
-title = "V1 (EQUUS) Netlify 배포 파일 — 7.9MB"
-
-[[outputs]]
-id = "H_aipQURvDCmJhuFS40dH"
-uri = "file://v2_deploy.zip"
-type = "unspecified"
-title = "V2 (He's) Netlify 배포 파일 — 9.5MB"
-
-[[outputs]]
-id = "5ZXm2FrqZ0MxBiepFGnkm"
-uri = "file://dist/v1-deploy.zip"
-type = "unspecified"
-title = "v1 배포 파일 (v1-deploy.zip, 4.6MB)"
-
-[[outputs]]
-id = "77imHZFdWT-MgMr3xvnyw"
-uri = "file://dist/v2-deploy.zip"
-type = "unspecified"
-title = "v2 배포 파일 (v2-deploy.zip, 6.1MB)"
-
-[[outputs]]
-id = "By4b8wAKfMOcdIt5Tn73i"
-uri = "file://v1-deploy.zip"
-type = "unspecified"
-title = "V1 배포 파일 (기본 버전) — 4.6MB"
-
-[[outputs]]
-id = "Bn0ucroclgO6SbZtDjpqJ"
-uri = "file://v2-deploy.zip"
-type = "unspecified"
-title = "V2 배포 파일 (He's 버전) — 6.1MB"
-
-[[outputs]]
-id = "ZTb8v9hhUudUbPVJcxLTA"
-uri = "file://equus-v1-deploy.zip"
-type = "unspecified"
-title = "에쿠스 v1 — Netlify 배포 파일 (4.6MB)"
-
-[[outputs]]
-id = "PenlOrXZMzHu2oMV0ym9m"
-uri = "file://hes-v2-deploy.zip"
-type = "unspecified"
-title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
-
-[[outputs]]
-id = "AOZUuYc4iit1Z_Tdj2RA2"
+id = "Tu-rSbCI6siX3xGgbYFsZ"
 uri = "file://netlify-v1-equus.zip"
 type = "unspecified"
-title = "V1 에쿠스 배포파일 (PeerJS 적용)"
+title = "V1 에쿠스 (EQUUS) — 최종본 5.3MB"
 
 [[outputs]]
-id = "r3-rwZ78zxsU3uSC7C3mA"
-uri = "file://netlify-v2-hes.zip"
-type = "unspecified"
-title = "V2 He's - 입실관리매니저 (빌드 없음, 좌독 배포용)"
-
-[[outputs]]
-id = "LxrD_gaRLpW2QhCgU2Odi"
-uri = "file://netlify-v1.zip"
-type = "unspecified"
-title = "netlify-v1.zip — V1 에쿠스 (EQUS- 라이선스)"
-
-[[outputs]]
-id = "UB9ynAnIN8i1bBKp2rkmv"
-uri = "file://netlify-v2.zip"
-type = "unspecified"
-title = "netlify-v2.zip — V2 히즈 (HIZZ- 라이선스)"
-
-[[outputs]]
-id = "y4if07zCU-oWDq3D0u2LT"
+id = "CPaNVfqRhztwuTpEAjdst"
 uri = "file://netlify-v2-hizz.zip"
 type = "unspecified"
-title = "V2 히즈 배포파일 (PeerJS 적용)"
+title = "V2 히즈 (HIZZ) — 최종본 6.8MB"
