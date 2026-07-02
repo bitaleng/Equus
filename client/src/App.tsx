@@ -29,6 +29,7 @@ import { useWakeLock } from "@/hooks/useWakeLock";
 import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
 import { isRouteLocked } from "@/lib/menuLock";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { CctvProvider } from "@/contexts/CctvContext";
 
 function isAdminRoute(path: string): boolean {
   return path.startsWith("/admin");
@@ -250,9 +251,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AppContent />
-        <Toaster />
-        <UpdateBanner />
+        <CctvProvider>
+          <AppContent />
+          <Toaster />
+          <UpdateBanner />
+        </CctvProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

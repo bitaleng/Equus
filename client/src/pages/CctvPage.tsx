@@ -1,139 +1,41 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { Camera, CameraOff, Copy, Check, Eye, EyeOff, RefreshCw, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import type { Peer as PeerType, MediaConnection } from "peerjs";
-
-const STORAGE_KEY = "cctv_access_token";
-
-function generateToken(): string {
-  return Math.random().toString(36).substring(2, 6).toUpperCase() +
-         Math.random().toString(36).substring(2, 6).toUpperCase();
-}
-
-const PEER_CONFIG = {
-  config: {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-    ],
-  },
-};
+import { useCctv } from "@/contexts/CctvContext";
+import { useState } from "react";
 
 export function CctvPanel() {
   const { toast } = useToast();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const peerRef = useRef<PeerType | null>(null);
-  const callsRef = useRef<MediaConnection[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
+  const {
+    token, isStreaming, viewerCount, peerStatus, cameraError,
+    streamRef, startStream, stopStream, resetToken,
+  } = useCctv();
 
-  const [token, setToken] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_KEY) || generateToken();
-  });
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [viewerCount, setViewerCount] = useState(0);
-  const [peerStatus, setPeerStatus] = useState<"idle" | "connecting" | "live">("idle");
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
 
   const viewerUrl = `${window.location.origin}/cctv/view?token=${token}`;
 
+  // 패널이 마운트될 때 현재 스트림을 video 태그에 연결
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, token);
-  }, [token]);
-
-  const stopStream = useCallback(() => {
-    callsRef.current.forEach(c => { try { c.close(); } catch {} });
-    callsRef.current = [];
-
-    if (peerRef.current) {
-      try { peerRef.current.destroy(); } catch {}
-      peerRef.current = null;
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
+  });
+
+  // startStream 후 스트림이 생기면 video 태그에 연결
+  const handleStart = async () => {
+    await startStream();
+    // startStream이 완료된 뒤 ref가 세팅됨
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-
-    setIsStreaming(false);
-    setPeerStatus("idle");
-    setViewerCount(0);
-  }, []);
-
-  const startStream = useCallback(async () => {
-    setCameraError(null);
-    setPeerStatus("connecting");
-
-    // 1. 카메라 열기
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-    } catch (err: any) {
-      const msg = err.name === "NotAllowedError"
-        ? "카메라 접근 권한이 없습니다. 브라우저 설정에서 허용해 주세요."
-        : "카메라를 열 수 없습니다: " + err.message;
-      setCameraError(msg);
-      setPeerStatus("idle");
-      return;
-    }
-
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play().catch(() => {});
-    }
-
-    // 2. PeerJS 방송자 생성 (token = peer ID)
-    const { default: Peer } = await import("peerjs");
-    const peer = new Peer(token, PEER_CONFIG);
-    peerRef.current = peer;
-
-    peer.on("open", () => {
-      setIsStreaming(true);
-      setPeerStatus("live");
-
-      // 뷰어가 전화를 걸면 카메라 스트림으로 응답
-      peer.on("call", (call) => {
-        call.answer(stream);
-        callsRef.current.push(call);
-        setViewerCount(c => c + 1);
-
-        const removeCall = () => {
-          callsRef.current = callsRef.current.filter(c => c !== call);
-          setViewerCount(c => Math.max(0, c - 1));
-        };
-        call.on("close", removeCall);
-        call.on("error", removeCall);
-      });
-    });
-
-    peer.on("error", (err: any) => {
-      if (err.type === "unavailable-id") {
-        setCameraError("이 접속 코드는 이미 사용 중입니다. 잠시 후 다시 시도하거나 코드를 변경해 주세요.");
-      } else if (err.type === "network" || err.type === "server-error") {
-        setCameraError("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
-      } else {
-        setCameraError("연결 오류: " + err.message);
-      }
-      stopStream();
-    });
-
-    peer.on("disconnected", () => {
-      try { peer.reconnect(); } catch {}
-    });
-  }, [token, stopStream]);
-
-  useEffect(() => {
-    return () => { stopStream(); };
-  }, [stopStream]);
+  };
 
   const handleCopyUrl = async () => {
     try {
@@ -150,8 +52,7 @@ export function CctvPanel() {
       toast({ title: "감시 중단 후 코드를 변경할 수 있습니다.", variant: "destructive" });
       return;
     }
-    const newToken = generateToken();
-    setToken(newToken);
+    resetToken();
     toast({ title: "접속 코드가 변경되었습니다", description: "기존 뷰어 링크는 더 이상 작동하지 않습니다." });
   };
 
@@ -162,7 +63,7 @@ export function CctvPanel() {
         <Video className="h-4 w-4 text-muted-foreground" />
         <span className="text-sm font-medium">카운터 감시 카메라</span>
         {isStreaming && (
-          <Badge className="bg-red-500 text-white animate-pulse text-xs">LIVE</Badge>
+          <Badge className="bg-red-500 text-white animate-pulse text-xs no-default-active-elevate">LIVE</Badge>
         )}
       </div>
 
@@ -199,7 +100,7 @@ export function CctvPanel() {
       {/* 시작/중단 버튼 */}
       {!isStreaming ? (
         <Button
-          onClick={startStream}
+          onClick={handleStart}
           disabled={peerStatus === "connecting"}
           className="w-full"
           data-testid="button-start-stream"
