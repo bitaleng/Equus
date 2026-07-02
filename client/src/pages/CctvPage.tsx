@@ -1,27 +1,31 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Camera, CameraOff, Copy, Check, Eye, EyeOff, RefreshCw, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import type { Peer as PeerType, MediaConnection } from "peerjs";
 
 const STORAGE_KEY = "cctv_access_token";
-const FRAME_INTERVAL_MS = 200; // 5fps
-const CANVAS_WIDTH = 640;
-const CANVAS_HEIGHT = 480;
-const JPEG_QUALITY = 0.65;
 
 function generateToken(): string {
   return Math.random().toString(36).substring(2, 6).toUpperCase() +
          Math.random().toString(36).substring(2, 6).toUpperCase();
 }
 
+const PEER_CONFIG = {
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ],
+  },
+};
+
 export function CctvPanel() {
   const { toast } = useToast();
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
-  const frameTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const peerRef = useRef<PeerType | null>(null);
+  const callsRef = useRef<MediaConnection[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [token, setToken] = useState<string>(() => {
@@ -29,11 +33,10 @@ export function CctvPanel() {
   });
   const [isStreaming, setIsStreaming] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
-  const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [peerStatus, setPeerStatus] = useState<"idle" | "connecting" | "live">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
-  const [framesSent, setFramesSent] = useState(0);
 
   const viewerUrl = `${window.location.origin}/cctv/view?token=${token}`;
 
@@ -42,13 +45,12 @@ export function CctvPanel() {
   }, [token]);
 
   const stopStream = useCallback(() => {
-    if (frameTimerRef.current) {
-      clearInterval(frameTimerRef.current);
-      frameTimerRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    callsRef.current.forEach(c => { try { c.close(); } catch {} });
+    callsRef.current = [];
+
+    if (peerRef.current) {
+      try { peerRef.current.destroy(); } catch {}
+      peerRef.current = null;
     }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -57,20 +59,21 @@ export function CctvPanel() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+
     setIsStreaming(false);
-    setWsStatus("disconnected");
+    setPeerStatus("idle");
     setViewerCount(0);
-    setFramesSent(0);
   }, []);
 
   const startStream = useCallback(async () => {
     setCameraError(null);
-    setWsStatus("connecting");
+    setPeerStatus("connecting");
 
+    // 1. 카메라 열기
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: CANVAS_WIDTH }, height: { ideal: CANVAS_HEIGHT } },
+        video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       });
     } catch (err: any) {
@@ -78,7 +81,7 @@ export function CctvPanel() {
         ? "카메라 접근 권한이 없습니다. 브라우저 설정에서 허용해 주세요."
         : "카메라를 열 수 없습니다: " + err.message;
       setCameraError(msg);
-      setWsStatus("disconnected");
+      setPeerStatus("idle");
       return;
     }
 
@@ -88,46 +91,44 @@ export function CctvPanel() {
       await videoRef.current.play().catch(() => {});
     }
 
-    const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${wsProto}//${window.location.host}/ws/camera?role=broadcaster&token=${token}`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
+    // 2. PeerJS 방송자 생성 (token = peer ID)
+    const { default: Peer } = await import("peerjs");
+    const peer = new Peer(token, PEER_CONFIG);
+    peerRef.current = peer;
 
-    ws.onopen = () => {
-      setWsStatus("connected");
+    peer.on("open", () => {
       setIsStreaming(true);
+      setPeerStatus("live");
 
-      const canvas = canvasRef.current!;
-      const ctx = canvas.getContext("2d")!;
-      let sent = 0;
+      // 뷰어가 전화를 걸면 카메라 스트림으로 응답
+      peer.on("call", (call) => {
+        call.answer(stream);
+        callsRef.current.push(call);
+        setViewerCount(c => c + 1);
 
-      frameTimerRef.current = setInterval(() => {
-        if (!videoRef.current || ws.readyState !== WebSocket.OPEN) return;
-        ctx.drawImage(videoRef.current, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
-        ws.send(JSON.stringify({ type: "frame", data: dataUrl }));
-        sent++;
-        if (sent % 25 === 0) setFramesSent(sent);
-      }, FRAME_INTERVAL_MS);
-    };
+        const removeCall = () => {
+          callsRef.current = callsRef.current.filter(c => c !== call);
+          setViewerCount(c => Math.max(0, c - 1));
+        };
+        call.on("close", removeCall);
+        call.on("error", removeCall);
+      });
+    });
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type === "viewer_count") setViewerCount(msg.count);
-        if (msg.type === "broadcaster_ready") setViewerCount(msg.viewerCount);
-      } catch {}
-    };
-
-    ws.onerror = () => {
-      setCameraError("서버 연결에 실패했습니다. 앱 서버가 실행 중인지 확인하세요.");
+    peer.on("error", (err: any) => {
+      if (err.type === "unavailable-id") {
+        setCameraError("이 접속 코드는 이미 사용 중입니다. 잠시 후 다시 시도하거나 코드를 변경해 주세요.");
+      } else if (err.type === "network" || err.type === "server-error") {
+        setCameraError("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
+      } else {
+        setCameraError("연결 오류: " + err.message);
+      }
       stopStream();
-    };
+    });
 
-    ws.onclose = () => {
-      setWsStatus("disconnected");
-      setIsStreaming(false);
-    };
+    peer.on("disconnected", () => {
+      try { peer.reconnect(); } catch {}
+    });
   }, [token, stopStream]);
 
   useEffect(() => {
@@ -146,7 +147,7 @@ export function CctvPanel() {
 
   const handleResetToken = () => {
     if (isStreaming) {
-      toast({ title: "스트리밍 중단 후 코드를 변경할 수 있습니다.", variant: "destructive" });
+      toast({ title: "감시 중단 후 코드를 변경할 수 있습니다.", variant: "destructive" });
       return;
     }
     const newToken = generateToken();
@@ -187,7 +188,6 @@ export function CctvPanel() {
           </div>
         )}
       </div>
-      <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="hidden" />
 
       {/* 오류 메시지 */}
       {cameraError && (
@@ -200,12 +200,12 @@ export function CctvPanel() {
       {!isStreaming ? (
         <Button
           onClick={startStream}
-          disabled={wsStatus === "connecting"}
+          disabled={peerStatus === "connecting"}
           className="w-full"
           data-testid="button-start-stream"
         >
           <Camera className="h-4 w-4 mr-2" />
-          {wsStatus === "connecting" ? "연결 중..." : "감시 시작"}
+          {peerStatus === "connecting" ? "연결 중..." : "감시 시작"}
         </Button>
       ) : (
         <Button
@@ -245,11 +245,11 @@ export function CctvPanel() {
         <div className="text-xs text-muted-foreground space-y-0.5 pt-1 border-t">
           <p>① 위 주소를 스마트폰 브라우저에서 열거나 카카오톡으로 전송</p>
           <p>② 같은 와이파이면 태블릿 IP를 직접 입력해도 됩니다</p>
-          <p>③ 외부망 접속은 앱이 배포된 경우에만 가능합니다</p>
+          <p>③ 외부망 접속도 가능합니다 (서버리스 P2P 연결)</p>
         </div>
         {isStreaming && (
           <p className="text-xs text-muted-foreground text-center pt-1">
-            전송 프레임: {framesSent} · 시청자: {viewerCount}명
+            시청자: {viewerCount}명
           </p>
         )}
       </div>
