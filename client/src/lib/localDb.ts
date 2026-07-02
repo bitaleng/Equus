@@ -6630,8 +6630,18 @@ export function updateLockerOuting(logId: string, isOuting: boolean): boolean {
   }
   
   const val = isOuting ? 1 : 0;
-  const startedAt = isOuting ? new Date().toISOString() : null;
-  db.run(`UPDATE locker_logs SET is_outing = ?, outing_started_at = ? WHERE id = ?`, [val, startedAt, logId]);
+  if (isOuting) {
+    // 외출 ON: 이미 외출 중이면 outing_started_at을 보존 (수정저장으로 인한 리셋 방지)
+    // COALESCE(outing_started_at, ?) → 기존 값이 있으면 유지, NULL이면 현재 시각으로 설정
+    const now = new Date().toISOString();
+    db.run(
+      `UPDATE locker_logs SET is_outing = 1, outing_started_at = COALESCE(outing_started_at, ?) WHERE id = ?`,
+      [now, logId]
+    );
+  } else {
+    // 외출 OFF: outing_started_at 초기화
+    db.run(`UPDATE locker_logs SET is_outing = 0, outing_started_at = NULL WHERE id = ?`, [logId]);
+  }
   saveDatabaseDebounced();
   return true;
 }

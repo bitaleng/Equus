@@ -1127,11 +1127,14 @@ export default function Home() {
     lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
     // 외출 시간 초과 여부 계산 (평일/휴일 분리 적용)
     if (!!(log as any).isOuting && outingStartedAt) {
-      const effectiveLimit = isWeekendOrHoliday(lockerTickTime)
+      // 외출이 시작된 시각 기준으로 평일/휴일 판단
+      // (현재 시각 기준으로 하면 자정 이후 요일이 바뀌어 기준이 달라지는 문제 발생)
+      const outingStartDate = new Date(outingStartedAt);
+      const effectiveLimit = isWeekendOrHoliday(outingStartDate)
         ? outingTimeLimitWeekendMinutes
         : outingTimeLimitMinutes;
       if (effectiveLimit > 0) {
-        const outingElapsedMs = lockerTickTime.getTime() - new Date(outingStartedAt).getTime();
+        const outingElapsedMs = lockerTickTime.getTime() - outingStartDate.getTime();
         lockerOutingExceeded[log.lockerNumber] = outingElapsedMs > effectiveLimit * 60 * 1000;
       } else {
         lockerOutingExceeded[log.lockerNumber] = false;
