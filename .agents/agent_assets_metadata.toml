@@ -71,7 +71,7 @@ title = "히즈 v2 — Netlify 배포 파일 (6.1MB)"
 id = "AOZUuYc4iit1Z_Tdj2RA2"
 uri = "file://netlify-v1-equus.zip"
 type = "unspecified"
-title = "V1 EQUUS - LOCKER MANAGER (빌드 없음, 좌독 배포용)"
+title = "V1 에쿠스 배포파일 (netlify-v1-equus.zip)"
 
 [[outputs]]
 id = "r3-rwZ78zxsU3uSC7C3mA"
@@ -90,3 +90,9 @@ id = "UB9ynAnIN8i1bBKp2rkmv"
 uri = "file://netlify-v2.zip"
 type = "unspecified"
 title = "netlify-v2.zip — V2 히즈 (HIZZ- 라이선스)"
+
+[[outputs]]
+id = "y4if07zCU-oWDq3D0u2LT"
+uri = "file://netlify-v2-hizz.zip"
+type = "unspecified"
+title = "V2 히즈 배포파일 (netlify-v2-hizz.zip)"

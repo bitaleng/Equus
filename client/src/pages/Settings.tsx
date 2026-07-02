@@ -1238,7 +1238,8 @@ export default function Settings() {
       const link = document.createElement('a');
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
       link.href = url;
-      link.download = `equus-backup-${timestamp}.json`;
+      const skinPrefix = import.meta.env.VITE_SKIN === 'v2' ? 'hizz' : 'equus';
+      link.download = `${skinPrefix}-backup-${timestamp}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

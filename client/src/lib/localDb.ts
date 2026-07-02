@@ -7,6 +7,11 @@ let db: Database | null = null;
 
 const DB_NAME = 'rest_hotel_db';
 
+// 스킨별 앱 식별자 (빌드 시 VITE_SKIN으로 결정)
+const _SKIN = import.meta.env.VITE_SKIN || 'v1';
+const APP_SYSTEM_NAME = _SKIN === 'v2' ? 'HIZZ Hotel Management System' : 'EQUUS Hotel Management System';
+const BACKUP_PREFIX = _SKIN === 'v2' ? 'hizz' : 'equus';
+
 // ── IndexedDB 설정 (메인 저장소: 비동기, 압축 불필요, UI 블로킹 없음) ──
 const IDB_NAME = 'hotel_idb';
 const IDB_VERSION = 1;
@@ -6740,7 +6745,7 @@ export function exportDatabase(): {
     const exportData: any = {
       version: '1.0',
       exportDate: new Date().toISOString(),
-      appName: 'EQUUS Hotel Management System',
+      appName: APP_SYSTEM_NAME,
       tables: {},
       localStorage: {}
     };
@@ -6853,8 +6858,9 @@ export function importDatabase(jsonString: string): {
       return { success: false, error: '유효하지 않은 백업 파일 형식입니다.' };
     }
     
-    if (importData.appName !== 'EQUUS Hotel Management System') {
-      return { success: false, error: '이 파일은 EQUUS 시스템 백업 파일이 아닙니다.' };
+    const validAppNames = ['EQUUS Hotel Management System', 'HIZZ Hotel Management System'];
+    if (!validAppNames.includes(importData.appName)) {
+      return { success: false, error: '이 파일은 호텔 관리 시스템 백업 파일이 아닙니다.' };
     }
     
     console.log(`Importing database backup from ${importData.exportDate}`);
@@ -7076,7 +7082,7 @@ export function exportRfidMappings(): {
       version: '1.0',
       type: 'rfid_mappings',
       exportDate: new Date().toISOString(),
-      appName: 'EQUUS Hotel Management System',
+      appName: APP_SYSTEM_NAME,
       mappings: [] as any[]
     };
     
@@ -7175,7 +7181,7 @@ export function exportBarcodeMappings(): {
       version: '1.0',
       type: 'barcode_mappings',
       exportDate: new Date().toISOString(),
-      appName: 'EQUUS Hotel Management System',
+      appName: APP_SYSTEM_NAME,
       mappings: [] as any[]
     };
     
