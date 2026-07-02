@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Video } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CctvPanel } from "@/pages/CctvPage";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -2648,85 +2650,106 @@ export default function Settings() {
               </CardHeader>
               
               <CollapsibleContent>
-                <CardContent className="space-y-4 pt-0">
-                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
-                    <div className="flex items-center gap-3">
-                      <CreditCard className={`h-6 w-6 ${cardPaymentAppEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
-                      <div>
-                        <p className="font-medium">카드결제 앱 연동</p>
-                        <p className="text-sm text-muted-foreground">
-                          {cardPaymentAppEnabled 
-                            ? "활성화됨 (카드 버튼 클릭 시 앱 실행)" 
-                            : "비활성화됨"}
-                        </p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={cardPaymentAppEnabled}
-                      onCheckedChange={(checked) => {
-                        setCardPaymentAppEnabled(checked);
-                        localDb.updateSettings({ cardPaymentAppEnabled: checked });
-                        toast({
-                          title: checked ? "카드결제 앱 연동 활성화" : "카드결제 앱 연동 비활성화",
-                          description: checked 
-                            ? "카드 버튼 클릭 시 결제 앱이 자동 실행됩니다." 
-                            : "카드 버튼 클릭 시 결제 앱이 실행되지 않습니다.",
-                        });
-                      }}
-                      data-testid="switch-card-payment-app"
-                    />
-                  </div>
-                  
-                  {cardPaymentAppEnabled && (
-                    <div className="space-y-3 p-4 border rounded-lg">
-                      <Label htmlFor="card-payment-package" className="text-sm font-medium">
-                        앱 패키지명
-                      </Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="card-payment-package"
-                          value={cardPaymentAppPackage}
-                          onChange={(e) => setCardPaymentAppPackage(e.target.value)}
-                          placeholder="com.tossplace.app.release"
-                          className="flex-1"
-                          data-testid="input-card-payment-package"
-                        />
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            localDb.updateSettings({ cardPaymentAppPackage });
+                <CardContent className="pt-0">
+                  <Tabs defaultValue="card-payment">
+                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                      <TabsTrigger value="card-payment">
+                        <CreditCard className="h-4 w-4 mr-1.5" />
+                        카드결제 앱
+                      </TabsTrigger>
+                      <TabsTrigger value="cctv">
+                        <Video className="h-4 w-4 mr-1.5" />
+                        감시카메라
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* 카드결제 앱 탭 */}
+                    <TabsContent value="card-payment" className="space-y-4 mt-0">
+                      <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                        <div className="flex items-center gap-3">
+                          <CreditCard className={`h-6 w-6 ${cardPaymentAppEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
+                          <div>
+                            <p className="font-medium">카드결제 앱 연동</p>
+                            <p className="text-sm text-muted-foreground">
+                              {cardPaymentAppEnabled 
+                                ? "활성화됨 (카드 버튼 클릭 시 앱 실행)" 
+                                : "비활성화됨"}
+                            </p>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={cardPaymentAppEnabled}
+                          onCheckedChange={(checked) => {
+                            setCardPaymentAppEnabled(checked);
+                            localDb.updateSettings({ cardPaymentAppEnabled: checked });
                             toast({
-                              title: "저장 완료",
-                              description: "카드결제 앱 패키지명이 저장되었습니다.",
+                              title: checked ? "카드결제 앱 연동 활성화" : "카드결제 앱 연동 비활성화",
+                              description: checked 
+                                ? "카드 버튼 클릭 시 결제 앱이 자동 실행됩니다." 
+                                : "카드 버튼 클릭 시 결제 앱이 실행되지 않습니다.",
                             });
                           }}
-                          data-testid="button-save-card-payment-package"
-                        >
-                          저장
-                        </Button>
+                          data-testid="switch-card-payment-app"
+                        />
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        TossPOS 앱: com.tossplace.app.release (기본값)
+
+                      {cardPaymentAppEnabled && (
+                        <div className="space-y-3 p-4 border rounded-lg">
+                          <Label htmlFor="card-payment-package" className="text-sm font-medium">
+                            앱 패키지명
+                          </Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="card-payment-package"
+                              value={cardPaymentAppPackage}
+                              onChange={(e) => setCardPaymentAppPackage(e.target.value)}
+                              placeholder="com.tossplace.app.release"
+                              className="flex-1"
+                              data-testid="input-card-payment-package"
+                            />
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                localDb.updateSettings({ cardPaymentAppPackage });
+                                toast({
+                                  title: "저장 완료",
+                                  description: "카드결제 앱 패키지명이 저장되었습니다.",
+                                });
+                              }}
+                              data-testid="button-save-card-payment-package"
+                            >
+                              저장
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            TossPOS 앱: com.tossplace.app.release (기본값)
+                          </p>
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => {
+                              const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardPaymentAppPackage};end`;
+                              window.location.href = intentUrl;
+                            }}
+                            data-testid="button-test-card-payment-app"
+                          >
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            앱 실행 테스트
+                          </Button>
+                        </div>
+                      )}
+
+                      <p className="text-sm text-muted-foreground px-1">
+                        활성화하면 락커 옵션에서 카드 결제 선택 시 TossPOS 등의 결제 앱이 자동으로 실행됩니다.
+                        Android 태블릿에서만 동작합니다.
                       </p>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          const intentUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${cardPaymentAppPackage};end`;
-                          window.location.href = intentUrl;
-                        }}
-                        data-testid="button-test-card-payment-app"
-                      >
-                        <CreditCard className="h-4 w-4 mr-2" />
-                        앱 실행 테스트
-                      </Button>
-                    </div>
-                  )}
-                  
-                  <p className="text-sm text-muted-foreground px-1">
-                    활성화하면 락커 옵션에서 카드 결제 선택 시 TossPOS 등의 결제 앱이 자동으로 실행됩니다.
-                    Android 태블릿에서만 동작합니다.
-                  </p>
+                    </TabsContent>
+
+                    {/* 감시카메라 탭 */}
+                    <TabsContent value="cctv" className="mt-0">
+                      <CctvPanel />
+                    </TabsContent>
+                  </Tabs>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
