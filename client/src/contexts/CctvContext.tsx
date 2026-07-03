@@ -64,6 +64,8 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   const streamRef = useRef<MediaStream | null>(null);
   // LAN 모드 WebRTC
   const lanPcRef = useRef<RTCPeerConnection | null>(null);
+  // 사용자가 명시적으로 중단했는지 추적 — true이면 자동 재시작 금지
+  const isUserStoppedRef = useRef(false);
 
   const [token, setToken] = useState<string>(() =>
     localStorage.getItem(STORAGE_KEY) || generateToken()
@@ -94,6 +96,7 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   }, [isStreaming, mode]);
 
   const stopStream = useCallback(() => {
+    isUserStoppedRef.current = true; // 자동 재시작 금지
     // PeerJS 정리
     callsRef.current.forEach(c => { try { c.close(); } catch {} });
     callsRef.current = [];
@@ -120,6 +123,9 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
 
   // ── PeerJS 모드 ──────────────────────────────────────────────
   const startPeerJs = useCallback(async (stream: MediaStream) => {
+    // 사용자가 명시적으로 중단한 경우 재시작 안 함
+    if (isUserStoppedRef.current) return;
+
     const { default: Peer } = await import("peerjs");
 
     // 이전 인스턴스 제거
@@ -154,34 +160,60 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
     peer.on("open", () => {
       setIsStreaming(true);
       setPeerStatus("live");
+      setCameraError(null);
     });
 
     peer.on("error", (err: any) => {
+      if (isUserStoppedRef.current) return; // 사용자 중단 시 재시도 금지
+
       if (err.type === "unavailable-id") {
-        setCameraError("이 접속 코드는 이미 사용 중입니다. 코드를 변경 후 재시작하세요.");
-        stopStream();
-      } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error") {
-        setCameraError(`P2P 서버 연결 실패 (${err.type}). 잠시 후 자동 재시작합니다.`);
-        // 5초 후 재시작
+        // 이전 peer가 서버에 아직 등록된 경우 — 15초 후 재시도 (서버 만료 대기)
+        setCameraError("재연결 중... (이전 연결 정리 대기)");
         setTimeout(() => {
-          if (streamRef.current) startPeerJs(streamRef.current);
+          if (!isUserStoppedRef.current && streamRef.current) {
+            setCameraError(null);
+            startPeerJs(streamRef.current);
+          }
+        }, 15000);
+      } else if (
+        err.type === "network" || err.type === "server-error" ||
+        err.type === "socket-error" || err.type === "socket-closed"
+      ) {
+        // 서버/네트워크 문제 — 5초 후 재시도
+        setPeerStatus("disconnected");
+        setTimeout(() => {
+          if (!isUserStoppedRef.current && streamRef.current) startPeerJs(streamRef.current);
         }, 5000);
       } else {
-        setCameraError(`연결 오류 (${err.type}). 감시를 중단 후 재시작하세요.`);
-        stopStream();
+        // 기타 오류도 중단하지 않고 8초 후 재시도
+        setPeerStatus("disconnected");
+        setCameraError(`재연결 시도 중 (${err.type})`);
+        setTimeout(() => {
+          if (!isUserStoppedRef.current && streamRef.current) {
+            setCameraError(null);
+            startPeerJs(streamRef.current);
+          }
+        }, 8000);
       }
     });
 
     peer.on("disconnected", () => {
+      if (isUserStoppedRef.current) return;
       setPeerStatus("disconnected");
-      // 완전 재시작 (단순 reconnect는 핸들러 중복 위험)
+      // reconnect() 우선 시도 — 같은 peer 객체 재사용, 핸들러 중복 없음
       setTimeout(() => {
-        if (streamRef.current && peerRef.current === peer) {
-          startPeerJs(streamRef.current);
+        if (isUserStoppedRef.current) return;
+        if (peerRef.current === peer && !peer.destroyed) {
+          try {
+            peer.reconnect();
+            return;
+          } catch {}
         }
+        // reconnect 실패 시 완전 재시작
+        if (streamRef.current) startPeerJs(streamRef.current);
       }, 3000);
     });
-  }, [token, stopStream]);
+  }, [token]);
 
   // ── LAN 직접 모드 (인터넷 불필요) ────────────────────────────
 
@@ -236,6 +268,7 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
 
   // ── 공통 시작 ────────────────────────────────────────────────
   const startStream = useCallback(async (selectedMode: CctvMode) => {
+    isUserStoppedRef.current = false; // 자동 재시작 허용
     setCameraError(null);
     setPeerStatus("connecting");
     setMode(selectedMode);

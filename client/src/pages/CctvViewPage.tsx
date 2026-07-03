@@ -112,8 +112,12 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
       <div className="relative w-full max-w-2xl">
         <video
           ref={videoRef}
-          className={`w-full object-contain ${status === "live" ? "block" : "hidden"}`}
-          playsInline autoPlay muted={false}
+          className="w-full object-contain"
+          style={{ display: status === "live" ? "block" : "none" }}
+          playsInline
+          autoPlay
+          muted
+          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           data-testid="cctv-lan-video"
         />
 
@@ -344,8 +348,12 @@ function PeerViewer({ token }: { token: string }) {
       <div className="relative w-full max-w-2xl">
         <video
           ref={videoRef}
-          className={`w-full object-contain ${status === "live" ? "block" : "hidden"}`}
-          playsInline autoPlay muted={false}
+          className="w-full object-contain"
+          style={{ display: status === "live" ? "block" : "none" }}
+          playsInline
+          autoPlay
+          muted
+          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           data-testid="cctv-view-video"
         />
         {status !== "live" && (
