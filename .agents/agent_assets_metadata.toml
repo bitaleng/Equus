@@ -5,10 +5,10 @@ generated = []
 id = "Tu-rSbCI6siX3xGgbYFsZ"
 uri = "file://netlify-v1-equus.zip"
 type = "unspecified"
-title = "V1 에쿠스 (EQUUS) — 6.0MB"
+title = "V1 에쿠스 (EQUUS) — 6.8MB"
 
 [[outputs]]
 id = "CPaNVfqRhztwuTpEAjdst"
 uri = "file://netlify-v2-hizz.zip"
 type = "unspecified"
-title = "V2 히즈 (HIZZ) — 7.6MB"
+title = "V2 히즈 (HIZZ) — 8.3MB"
