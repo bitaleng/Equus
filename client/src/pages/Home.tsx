@@ -2021,10 +2021,10 @@ export default function Home() {
   );
 
   return (
-    <div className="h-full w-full bg-background">
+    <div className="flex-1 min-h-0 w-full bg-background flex flex-col">
       {/* 탭 모드 UI */}
       {uiLayoutMode === 'tab' ? (
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="h-full flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* 탭 헤더 */}
           <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
             <div className="flex items-center gap-4">

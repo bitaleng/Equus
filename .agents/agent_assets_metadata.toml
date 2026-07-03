@@ -17,10 +17,10 @@ title = "V2 히즈 (HIZZ) — 11MB"
 id = "3eELkbbCpfThm8J3Jc4V5"
 uri = "file://v1-equus.zip"
 type = "unspecified"
-title = "V1 에쿠스 (EQUUS) - 화면 잘림 수정"
+title = "V1 에쿠스 (EQUUS) - 탭모드 동적 높이 수정"
 
 [[outputs]]
 id = "1Uygy162_i8SJCjb27hX4"
 uri = "file://v2-hizz.zip"
 type = "unspecified"
-title = "V2 히즈 (HIZZ) - 화면 잘림 수정"
+title = "V2 히즈 (HIZZ) - 탭모드 동적 높이 수정"
