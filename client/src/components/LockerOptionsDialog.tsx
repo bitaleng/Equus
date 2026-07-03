@@ -1727,9 +1727,14 @@ export default function LockerOptionsDialog({
 
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
-      // 수정저장 시 현재 다이얼로그에 표시된 additionalFeePaymentMethod를 항상 저장
-      // (undefined 대신 실제 값을 전달해야 DB에 정확히 반영됨)
-      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff);
+      // 수정저장 시 추가요금 결제방식 처리:
+      // - 사용자가 직접 Select를 변경한 경우: 변경된 값 저장
+      // - 변경하지 않은 경우: DB 원본 값 유지 (null이면 undefined로 전달 → updateEntry에서 업데이트 생략)
+      // 이렇게 해야 DB에 null이었던 값이 'cash'로 덮어써지는 버그 방지
+      const additionalFeePaymentMethodToSave = additionalFeePaymentMethodUserChangedRef.current
+        ? additionalFeePaymentMethod
+        : (currentAdditionalFeePaymentMethod || undefined);
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethodToSave, isStaff);
       
       // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
       additionalFeePaymentMethodUserChangedRef.current = true;
