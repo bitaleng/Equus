@@ -26,6 +26,14 @@ const PEER_CONFIG = {
   ],
 };
 
+// LAN 모드에서 host 후보만 유지 (태블릿과 동일한 필터)
+function filterHostCandidates(sdp: string): string {
+  return sdp.split("\n").filter(line => {
+    if (!line.startsWith("a=candidate:")) return true;
+    return line.includes(" host ");
+  }).join("\n");
+}
+
 // ─── LAN 직접 모드 뷰어 ──────────────────────────────────────────
 function LanViewer({ offerEncoded }: { offerEncoded: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -36,11 +44,11 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
   const [connectedAt, setConnectedAt] = useState<Date | null>(null);
 
   useEffect(() => {
-    let pc: RTCPeerConnection;
     (async () => {
       try {
-        const offerJson = JSON.parse(decodeURIComponent(atob(offerEncoded)));
-        pc = new RTCPeerConnection({ iceServers: PEER_CONFIG.iceServers });
+        // encodeURIComponent 없이 순수 atob — 태블릿과 인코딩 방식 통일
+        const offerJson = JSON.parse(atob(offerEncoded));
+        const pc = new RTCPeerConnection({ iceServers: PEER_CONFIG.iceServers });
         pcRef.current = pc;
 
         pc.ontrack = (e) => {
@@ -53,16 +61,15 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
         };
 
         pc.oniceconnectionstatechange = () => {
-          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
-            setStatus("ended");
-          }
+          const s = pc.iceConnectionState;
+          if (s === "disconnected" || s === "failed") setStatus("ended");
         };
 
-        await pc.setRemoteDescription(offerJson);
+        await pc.setRemoteDescription(new RTCSessionDescription(offerJson));
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
-        // ICE 수집 완료 대기 (최대 5초)
+        // ICE 수집 완료 대기 (최대 6초)
         await new Promise<void>(resolve => {
           if (pc.iceGatheringState === "complete") { resolve(); return; }
           const check = () => {
@@ -72,13 +79,15 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
             }
           };
           pc.addEventListener("icegatheringstatechange", check);
-          setTimeout(resolve, 5000);
+          setTimeout(resolve, 6000);
         });
 
-        const encoded = btoa(encodeURIComponent(JSON.stringify(pc.localDescription)));
+        const desc = pc.localDescription!;
+        // host 후보만 포함, 순수 btoa (태블릿 applyLanAnswer와 동일 방식)
+        const encoded = btoa(JSON.stringify({ type: desc.type, sdp: filterHostCandidates(desc.sdp) }));
         setAnswerCode(encoded);
-        setStatus("waiting"); // answer 코드 태블릿에 입력 대기 중
-      } catch (e) {
+        setStatus("waiting");
+      } catch {
         setStatus("error");
       }
     })();
@@ -92,8 +101,10 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
     try {
       await navigator.clipboard.writeText(answerCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {}
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      // 클립보드 실패 시 textarea 선택으로 대체
+    }
   };
 
   return (
@@ -107,34 +118,43 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
         />
 
         {status !== "live" && (
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <div className="flex flex-col items-center gap-5 py-10 text-center w-full max-w-sm mx-auto">
             {status === "connecting" && (
               <>
                 <Wifi className="h-12 w-12 text-gray-400 animate-pulse" />
                 <p className="text-gray-300 text-sm">Answer 코드 생성 중...</p>
               </>
             )}
+
             {status === "waiting" && answerCode && (
               <>
                 <Wifi className="h-10 w-10 text-blue-400" />
-                <p className="text-white font-medium">태블릿에 아래 코드를 붙여넣으세요</p>
-                <div className="w-full max-w-sm space-y-2">
-                  <div className="bg-gray-900 rounded-lg p-3 border border-gray-700 text-left">
-                    <p className="text-xs text-gray-400 mb-1">Answer 코드 (전체 복사)</p>
-                    <p className="text-xs text-gray-200 font-mono break-all line-clamp-3">{answerCode.substring(0, 80)}...</p>
-                  </div>
-                  <button
-                    onClick={handleCopy}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors font-medium"
-                    data-testid="button-copy-answer"
-                  >
-                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    {copied ? "복사됨!" : "Answer 코드 복사"}
-                  </button>
-                  <p className="text-xs text-gray-500">복사 후 카카오톡으로 태블릿에 전송 → 태블릿 입력창에 붙여넣기</p>
-                </div>
+                <p className="text-white font-semibold text-base">Answer 코드</p>
+                <p className="text-gray-400 text-xs leading-relaxed">
+                  아래 버튼으로 복사 후 카카오톡으로 태블릿에 전송하세요.<br/>
+                  태블릿 입력창에 붙여넣기 → 연결 확인 버튼 클릭
+                </p>
+
+                {/* 전체 코드가 표시되는 textarea - 직접 선택 복사도 가능 */}
+                <textarea
+                  readOnly
+                  value={answerCode}
+                  onClick={e => (e.target as HTMLTextAreaElement).select()}
+                  className="w-full text-xs font-mono bg-gray-900 text-gray-200 border border-gray-700 rounded-lg p-3 resize-none h-28 leading-relaxed"
+                  data-testid="textarea-answer-code"
+                />
+
+                <button
+                  onClick={handleCopy}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white text-sm rounded-lg font-semibold active:opacity-80"
+                  data-testid="button-copy-answer"
+                >
+                  {copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
+                  {copied ? "복사됨! 카카오톡으로 전송하세요" : "Answer 코드 복사"}
+                </button>
               </>
             )}
+
             {status === "ended" && (
               <>
                 <WifiOff className="h-12 w-12 text-gray-400" />
@@ -144,6 +164,7 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
                 </button>
               </>
             )}
+
             {status === "error" && (
               <>
                 <AlertCircle className="h-12 w-12 text-red-400" />
@@ -226,11 +247,22 @@ function PeerViewer({ token }: { token: string }) {
 
     peer.on("open", () => {
       clearTimeout(openTimeout);
+
+      // 비디오 트랙을 포함한 더미 스트림 필수:
+      // 오디오 전용 스트림으로 call하면 SDP에 video 섹션이 없어
+      // 방송자의 영상을 수신할 수 없음 → canvas로 1×1 더미 비디오 트랙 생성
       let dummyStream: MediaStream;
       try {
-        const audioCtx = new AudioContext();
-        dummyStream = audioCtx.createMediaStreamDestination().stream;
-      } catch { dummyStream = new MediaStream(); }
+        const canvas = document.createElement("canvas");
+        canvas.width = 2; canvas.height = 2;
+        canvas.getContext("2d")?.fillRect(0, 0, 2, 2);
+        dummyStream = (canvas as any).captureStream(1);
+      } catch {
+        try {
+          const audioCtx = new AudioContext();
+          dummyStream = audioCtx.createMediaStreamDestination().stream;
+        } catch { dummyStream = new MediaStream(); }
+      }
 
       const call = peer.call(token, dummyStream);
       callRef.current = call;

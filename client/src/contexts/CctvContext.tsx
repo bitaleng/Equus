@@ -184,6 +184,15 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   }, [token, stopStream]);
 
   // ── LAN 직접 모드 (인터넷 불필요) ────────────────────────────
+
+  // LAN 모드에서는 로컬 IP(host) 후보만 필요 — srflx/relay 제거해 URL 크기 1/3로 감소
+  function filterHostCandidates(sdp: string): string {
+    return sdp.split("\n").filter(line => {
+      if (!line.startsWith("a=candidate:")) return true;
+      return line.includes(" host ");
+    }).join("\n");
+  }
+
   const startLan = useCallback(async (stream: MediaStream) => {
     const pc = new RTCPeerConnection(PEER_CONFIG.config);
     lanPcRef.current = pc;
@@ -194,17 +203,17 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    // ICE gathering 완료 대기 (최대 4초)
+    // ICE gathering 완료 대기 (최대 5초)
     await new Promise<void>(resolve => {
       if (pc.iceGatheringState === "complete") { resolve(); return; }
       const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
       pc.addEventListener("icegatheringstatechange", check);
-      setTimeout(resolve, 4000);
+      setTimeout(resolve, 5000);
     });
 
-    // offer를 base64로 인코딩해 QR로 보여줌
-    const offerJson = JSON.stringify(pc.localDescription);
-    const encoded = btoa(encodeURIComponent(offerJson));
+    const desc = pc.localDescription!;
+    // encodeURIComponent 없이 순수 btoa — SDP는 ASCII만 포함
+    const encoded = btoa(JSON.stringify({ type: desc.type, sdp: filterHostCandidates(desc.sdp) }));
     setLanOffer(encoded);
     setIsStreaming(true);
     setPeerStatus("live");
@@ -214,11 +223,14 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   const applyLanAnswer = useCallback(async () => {
     if (!lanPcRef.current || !lanAnswerInput.trim()) return;
     try {
-      const decoded = JSON.parse(decodeURIComponent(atob(lanAnswerInput.trim())));
-      await lanPcRef.current.setRemoteDescription(decoded);
+      // 공백/개행 모두 제거 후 atob (카카오톡 전송 시 공백 삽입 대비)
+      const clean = lanAnswerInput.replace(/\s/g, "");
+      const decoded = JSON.parse(atob(clean));
+      await lanPcRef.current.setRemoteDescription(new RTCSessionDescription(decoded));
       setViewerCount(1);
-    } catch {
-      setCameraError("Answer 코드가 올바르지 않습니다. 뷰어 화면의 코드를 다시 확인해 주세요.");
+      setCameraError(null);
+    } catch (e) {
+      setCameraError("Answer 코드가 올바르지 않습니다. 뷰어 화면에서 '복사' 버튼을 다시 눌러 전송해 주세요.");
     }
   }, [lanAnswerInput]);
 
