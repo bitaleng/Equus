@@ -146,7 +146,7 @@ export default function ScanLogsPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background" data-testid="page-scan-logs">
+    <div className="flex flex-col bg-background" style={{ height: 'var(--real-vh, 100dvh)' }} data-testid="page-scan-logs">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-4">
@@ -307,7 +307,7 @@ export default function ScanLogsPage() {
             <CardTitle>스캔 기록 ({filteredLogs.length}건)</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <ScrollArea className="h-[calc(100vh-400px)]">
+            <ScrollArea style={{ height: 'calc(var(--real-vh, 100dvh) - 400px)' }}>
               {isLoading ? (
                 <div className="flex items-center justify-center h-32">
                   <p className="text-muted-foreground">로딩 중...</p>

@@ -131,7 +131,7 @@ function MainLayout() {
 
   return (
     <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-      <div className="flex h-dvh w-full">
+      <div className="flex w-full" style={{ height: 'var(--real-vh, 100dvh)' }}>
         <AppSidebar />
         <div className="flex flex-col flex-1 min-h-0">
           <header className="flex items-center justify-start p-2 border-b shrink-0">
@@ -185,6 +185,23 @@ function App() {
   useWakeLock(wakeLockEnabled && isAuthenticated && dbReady);
 
   useEffect(() => {
+    // --real-vh: JS로 정확한 뷰포트 높이 추적
+    // dvh/vh/100vh는 Android 분할모드·플로팅 창 리사이즈 시 재계산되지 않아 하단 잘림 발생
+    // visualViewport API (지원 시) 또는 window.innerHeight로 정확한 값 획득
+    function updateRealVh() {
+      const vh = (window.visualViewport?.height ?? window.innerHeight);
+      document.documentElement.style.setProperty('--real-vh', `${vh}px`);
+    }
+    updateRealVh();
+    window.addEventListener('resize', updateRealVh);
+    window.visualViewport?.addEventListener('resize', updateRealVh);
+    return () => {
+      window.removeEventListener('resize', updateRealVh);
+      window.visualViewport?.removeEventListener('resize', updateRealVh);
+    };
+  }, []);
+
+  useEffect(() => {
     if (isDemoMode()) {
       blockPwaInstall();
     }
@@ -229,7 +246,7 @@ function App() {
 
   if (!dbReady) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center" style={{ height: 'var(--real-vh, 100dvh)' }}>
         <div className="text-center">
           <p className="text-lg">데이터베이스 초기화 중...</p>
         </div>
