@@ -131,10 +131,10 @@ function MainLayout() {
 
   return (
     <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-      <div className="flex h-screen w-full">
+      <div className="flex h-dvh w-full">
         <AppSidebar />
-        <div className="flex flex-col flex-1">
-          <header className="flex items-center justify-start p-2 border-b">
+        <div className="flex flex-col flex-1 min-h-0">
+          <header className="flex items-center justify-start p-2 border-b shrink-0">
             <Button
               variant="ghost"
               size="icon"
@@ -144,7 +144,7 @@ function MainLayout() {
               <Menu className="h-4 w-4" />
             </Button>
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 min-h-0 overflow-auto">
             <RouteGuard>
               <Router />
             </RouteGuard>
