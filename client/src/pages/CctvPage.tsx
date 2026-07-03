@@ -144,9 +144,8 @@ export function CctvPanel() {
           </Button>
         </div>
         <div className="text-xs text-muted-foreground space-y-0.5 pt-1 border-t">
-          <p>① 위 주소를 스마트폰 브라우저에서 열거나 카카오톡으로 전송</p>
-          <p>② 같은 와이파이면 태블릿 IP를 직접 입력해도 됩니다</p>
-          <p>③ 외부망 접속도 가능합니다 (서버리스 P2P 연결)</p>
+          <p>① 위 주소를 복사해 스마트폰 브라우저에서 열거나 카카오톡으로 전송</p>
+          <p>② 같은 와이파이·외부망 모두 접속 가능합니다 (P2P 자동 연결)</p>
         </div>
         {isStreaming && (
           <p className="text-xs text-muted-foreground text-center pt-1">
