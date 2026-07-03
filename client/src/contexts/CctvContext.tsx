@@ -3,7 +3,6 @@ import type { Peer as PeerType, MediaConnection } from "peerjs";
 
 const STORAGE_KEY = "cctv_access_token";
 
-// 20자 토큰 — 충분히 길어서 추측 불가 (36^20 = 약 1.3×10^31 경우의 수)
 function generateToken(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID().replace(/-/g, "").substring(0, 20).toUpperCase();
@@ -12,7 +11,6 @@ function generateToken(): string {
   return Array.from({ length: 20 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-// STUN + 무료 TURN(OpenRelay) — 같은 와이파이·외부망 모두 대응
 const PEER_CONFIG = {
   config: {
     iceServers: [
@@ -38,14 +36,22 @@ const PEER_CONFIG = {
   },
 };
 
+export type CctvMode = "peerjs" | "lan";
+
 interface CctvContextValue {
   token: string;
   isStreaming: boolean;
   viewerCount: number;
-  peerStatus: "idle" | "connecting" | "live";
+  peerStatus: "idle" | "connecting" | "live" | "disconnected";
   cameraError: string | null;
   streamRef: React.MutableRefObject<MediaStream | null>;
-  startStream: () => Promise<void>;
+  mode: CctvMode;
+  // LAN 모드 전용
+  lanOffer: string | null;
+  lanAnswerInput: string;
+  setLanAnswerInput: (v: string) => void;
+  applyLanAnswer: () => Promise<void>;
+  startStream: (mode: CctvMode) => Promise<void>;
   stopStream: () => void;
   resetToken: () => void;
 }
@@ -56,40 +62,51 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   const peerRef = useRef<PeerType | null>(null);
   const callsRef = useRef<MediaConnection[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  // LAN 모드 WebRTC
+  const lanPcRef = useRef<RTCPeerConnection | null>(null);
 
   const [token, setToken] = useState<string>(() =>
     localStorage.getItem(STORAGE_KEY) || generateToken()
   );
   const [isStreaming, setIsStreaming] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
-  const [peerStatus, setPeerStatus] = useState<"idle" | "connecting" | "live">("idle");
+  const [peerStatus, setPeerStatus] = useState<"idle" | "connecting" | "live" | "disconnected">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [mode, setMode] = useState<CctvMode>("peerjs");
+  const [lanOffer, setLanOffer] = useState<string | null>(null);
+  const [lanAnswerInput, setLanAnswerInput] = useState("");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, token);
   }, [token]);
 
-  // 시청자 카운트 정기 정리 — ICE 실패로 close/error 이벤트가 안 와도 5초마다 정확하게 유지
+  // 5초마다 끊긴 PeerJS call 정리
   useEffect(() => {
-    if (!isStreaming) return;
+    if (!isStreaming || mode !== "peerjs") return;
     const interval = setInterval(() => {
       callsRef.current = callsRef.current.filter(call => {
         const state = (call as any).peerConnection?.connectionState;
-        // connected·connecting·new 만 살아있는 연결로 인정
         return state === "connected" || state === "connecting" || state === "new";
       });
       setViewerCount(callsRef.current.length);
     }, 5000);
     return () => clearInterval(interval);
-  }, [isStreaming]);
+  }, [isStreaming, mode]);
 
   const stopStream = useCallback(() => {
+    // PeerJS 정리
     callsRef.current.forEach(c => { try { c.close(); } catch {} });
     callsRef.current = [];
     if (peerRef.current) {
       try { peerRef.current.destroy(); } catch {}
       peerRef.current = null;
     }
+    // LAN RTCPeerConnection 정리
+    if (lanPcRef.current) {
+      try { lanPcRef.current.close(); } catch {}
+      lanPcRef.current = null;
+    }
+    // 카메라 트랙 중지
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -97,11 +114,119 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
     setIsStreaming(false);
     setPeerStatus("idle");
     setViewerCount(0);
+    setLanOffer(null);
+    setLanAnswerInput("");
   }, []);
 
-  const startStream = useCallback(async () => {
+  // ── PeerJS 모드 ──────────────────────────────────────────────
+  const startPeerJs = useCallback(async (stream: MediaStream) => {
+    const { default: Peer } = await import("peerjs");
+
+    // 이전 인스턴스 제거
+    if (peerRef.current) { try { peerRef.current.destroy(); } catch {} peerRef.current = null; }
+
+    const peer = new Peer(token, PEER_CONFIG);
+    peerRef.current = peer;
+
+    // peer.on("open") 바깥에 call 핸들러 등록 → reconnect 시 중복 방지
+    peer.on("call", (call) => {
+      call.answer(stream);
+      let counted = false;
+
+      call.on("stream", () => {
+        if (!counted) {
+          counted = true;
+          callsRef.current.push(call);
+          setViewerCount(callsRef.current.length);
+        }
+      });
+
+      const removeCall = () => {
+        if (counted) {
+          callsRef.current = callsRef.current.filter(c => c !== call);
+          setViewerCount(callsRef.current.length);
+        }
+      };
+      call.on("close", removeCall);
+      call.on("error", removeCall);
+    });
+
+    peer.on("open", () => {
+      setIsStreaming(true);
+      setPeerStatus("live");
+    });
+
+    peer.on("error", (err: any) => {
+      if (err.type === "unavailable-id") {
+        setCameraError("이 접속 코드는 이미 사용 중입니다. 코드를 변경 후 재시작하세요.");
+        stopStream();
+      } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error") {
+        setCameraError(`P2P 서버 연결 실패 (${err.type}). 잠시 후 자동 재시작합니다.`);
+        // 5초 후 재시작
+        setTimeout(() => {
+          if (streamRef.current) startPeerJs(streamRef.current);
+        }, 5000);
+      } else {
+        setCameraError(`연결 오류 (${err.type}). 감시를 중단 후 재시작하세요.`);
+        stopStream();
+      }
+    });
+
+    peer.on("disconnected", () => {
+      setPeerStatus("disconnected");
+      // 완전 재시작 (단순 reconnect는 핸들러 중복 위험)
+      setTimeout(() => {
+        if (streamRef.current && peerRef.current === peer) {
+          startPeerJs(streamRef.current);
+        }
+      }, 3000);
+    });
+  }, [token, stopStream]);
+
+  // ── LAN 직접 모드 (인터넷 불필요) ────────────────────────────
+  const startLan = useCallback(async (stream: MediaStream) => {
+    const pc = new RTCPeerConnection(PEER_CONFIG.config);
+    lanPcRef.current = pc;
+
+    // 카메라 트랙 추가
+    stream.getTracks().forEach(t => pc.addTrack(t, stream));
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // ICE gathering 완료 대기 (최대 4초)
+    await new Promise<void>(resolve => {
+      if (pc.iceGatheringState === "complete") { resolve(); return; }
+      const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
+      pc.addEventListener("icegatheringstatechange", check);
+      setTimeout(resolve, 4000);
+    });
+
+    // offer를 base64로 인코딩해 QR로 보여줌
+    const offerJson = JSON.stringify(pc.localDescription);
+    const encoded = btoa(encodeURIComponent(offerJson));
+    setLanOffer(encoded);
+    setIsStreaming(true);
+    setPeerStatus("live");
+  }, []);
+
+  // LAN 모드: 뷰어가 입력한 answer 적용
+  const applyLanAnswer = useCallback(async () => {
+    if (!lanPcRef.current || !lanAnswerInput.trim()) return;
+    try {
+      const decoded = JSON.parse(decodeURIComponent(atob(lanAnswerInput.trim())));
+      await lanPcRef.current.setRemoteDescription(decoded);
+      setViewerCount(1);
+    } catch {
+      setCameraError("Answer 코드가 올바르지 않습니다. 뷰어 화면의 코드를 다시 확인해 주세요.");
+    }
+  }, [lanAnswerInput]);
+
+  // ── 공통 시작 ────────────────────────────────────────────────
+  const startStream = useCallback(async (selectedMode: CctvMode) => {
     setCameraError(null);
     setPeerStatus("connecting");
+    setMode(selectedMode);
 
     let stream: MediaStream;
     try {
@@ -120,53 +245,12 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
 
     streamRef.current = stream;
 
-    const { default: Peer } = await import("peerjs");
-    const peer = new Peer(token, PEER_CONFIG);
-    peerRef.current = peer;
-
-    peer.on("open", () => {
-      setIsStreaming(true);
-      setPeerStatus("live");
-
-      peer.on("call", (call) => {
-        call.answer(stream);
-
-        // stream 이벤트가 와야 실제 연결 성공 — 그때만 카운트 증가
-        let counted = false;
-        call.on("stream", () => {
-          if (!counted) {
-            counted = true;
-            callsRef.current.push(call);
-            setViewerCount(callsRef.current.length);
-          }
-        });
-
-        const removeCall = () => {
-          if (counted) {
-            callsRef.current = callsRef.current.filter(c => c !== call);
-            setViewerCount(callsRef.current.length);
-          }
-        };
-        call.on("close", removeCall);
-        call.on("error", removeCall);
-      });
-    });
-
-    peer.on("error", (err: any) => {
-      if (err.type === "unavailable-id") {
-        setCameraError("이 접속 코드는 이미 사용 중입니다. 코드를 변경해 주세요.");
-      } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error") {
-        setCameraError("P2P 서버 연결 실패. 인터넷 연결 확인 후 다시 시도해 주세요.");
-      } else {
-        setCameraError(`연결 오류 (${err.type}): 감시 중단 후 재시작해 주세요.`);
-      }
-      stopStream();
-    });
-
-    peer.on("disconnected", () => {
-      try { peer.reconnect(); } catch {}
-    });
-  }, [token, stopStream]);
+    if (selectedMode === "peerjs") {
+      await startPeerJs(stream);
+    } else {
+      await startLan(stream);
+    }
+  }, [startPeerJs, startLan]);
 
   const resetToken = useCallback(() => {
     if (isStreaming) return;
@@ -176,7 +260,8 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   return (
     <CctvContext.Provider value={{
       token, isStreaming, viewerCount, peerStatus, cameraError,
-      streamRef, startStream, stopStream, resetToken,
+      streamRef, mode, lanOffer, lanAnswerInput, setLanAnswerInput,
+      applyLanAnswer, startStream, stopStream, resetToken,
     }}>
       {children}
     </CctvContext.Provider>
