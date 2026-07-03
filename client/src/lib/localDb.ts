@@ -6807,8 +6807,15 @@ export function exportDatabase(): {
       'staff_password',
       'security_enabled',
       'security_pattern',
+      'security_today_status_enabled',
+      'security_sales_tab_enabled',
+      'auth_method_mode',
       'webauthn_enabled',
       'webauthn_credential_id',
+      // 메뉴별 잠금 설정
+      'locked_menu_routes',
+      // 락카 사용설정 (사용불가 락카)
+      'out_of_service_lockers',
       // 금전 관리
       'cash_register',
       'last_settlement_reminder_date',
@@ -6818,6 +6825,7 @@ export function exportDatabase(): {
       'workspaceFloatingMode',
       'workspaceFloatingPosition',
       'workspaceFloatingSize',
+      'workspaceDockedSide',
       'uiLayoutMode'
     ];
     
@@ -6906,8 +6914,15 @@ export function importDatabase(jsonString: string): {
       'staff_password',
       'security_enabled',
       'security_pattern',
+      'security_today_status_enabled',
+      'security_sales_tab_enabled',
+      'auth_method_mode',
       'webauthn_enabled',
       'webauthn_credential_id',
+      // 메뉴별 잠금 설정
+      'locked_menu_routes',
+      // 락카 사용설정 (사용불가 락카)
+      'out_of_service_lockers',
       // 금전 관리
       'cash_register',
       'last_settlement_reminder_date',
@@ -6917,6 +6932,7 @@ export function importDatabase(jsonString: string): {
       'workspaceFloatingMode',
       'workspaceFloatingPosition',
       'workspaceFloatingSize',
+      'workspaceDockedSide',
       'uiLayoutMode'
     ];
     
