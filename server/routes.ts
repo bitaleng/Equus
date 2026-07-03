@@ -1,4 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import path from "path";
+import fs from "fs";
 import { storage } from "./storage";
 import { wsServer } from "./wsServer";
 import {
@@ -705,5 +707,23 @@ export function registerRoutes(app: Express) {
       console.error("Error deleting license:", error);
       res.status(500).json({ success: false, error: "Failed to delete license" });
     }
+  });
+
+  // Netlify 배포용 zip 다운로드
+  const ROOT = path.resolve(process.cwd());
+  app.get("/download/netlify-v1.zip", (_req, res) => {
+    const file = path.join(ROOT, "netlify-v1.zip");
+    if (!fs.existsSync(file)) return res.status(404).send("파일 없음 - build-netlify.sh를 먼저 실행하세요");
+    res.setHeader("Content-Disposition", "attachment; filename=netlify-v1.zip");
+    res.setHeader("Content-Type", "application/zip");
+    res.sendFile(file);
+  });
+
+  app.get("/download/netlify-v2.zip", (_req, res) => {
+    const file = path.join(ROOT, "netlify-v2.zip");
+    if (!fs.existsSync(file)) return res.status(404).send("파일 없음 - build-netlify.sh를 먼저 실행하세요");
+    res.setHeader("Content-Disposition", "attachment; filename=netlify-v2.zip");
+    res.setHeader("Content-Type", "application/zip");
+    res.sendFile(file);
   });
 }
