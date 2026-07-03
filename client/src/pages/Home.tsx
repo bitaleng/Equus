@@ -1942,7 +1942,7 @@ export default function Home() {
 
   // 락카 그리드 렌더링 함수 (토글/탭 모드 공용)
   const renderLockerGrid = (isFullWidth: boolean = false) => (
-    <div className={`flex-1 overflow-auto ${isFullWidth ? 'p-8' : 'p-6'}`}>
+    <div className={`flex-1 min-h-0 overflow-auto ${isFullWidth ? 'p-8' : 'p-6'}`}>
       {lockerGroups.length === 0 ? (
         <div className="text-center text-muted-foreground py-8">
           <p>락커 그룹이 설정되지 않았습니다.</p>
@@ -2083,7 +2083,7 @@ export default function Home() {
           </div>
 
           {/* 입실 관리 탭 */}
-          <TabsContent value="locker" className="flex-1 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
+          <TabsContent value="locker" className="flex-1 min-h-0 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
             {/* 락카 상태 정보 */}
             <div className="flex items-center justify-between px-6 py-3 border-b">
               <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
@@ -2351,7 +2351,7 @@ export default function Home() {
 
           {/* Locker Grid */}
           <div 
-            className={`flex-1 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
+            className={`flex-1 min-h-0 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
           >
           {lockerGroups.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
