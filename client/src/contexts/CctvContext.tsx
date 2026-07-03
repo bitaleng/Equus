@@ -3,16 +3,37 @@ import type { Peer as PeerType, MediaConnection } from "peerjs";
 
 const STORAGE_KEY = "cctv_access_token";
 
+// 20자 토큰 — 충분히 길어서 추측 불가 (36^20 = 약 1.3×10^31 경우의 수)
 function generateToken(): string {
-  return Math.random().toString(36).substring(2, 6).toUpperCase() +
-         Math.random().toString(36).substring(2, 6).toUpperCase();
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, "").substring(0, 20).toUpperCase();
+  }
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  return Array.from({ length: 20 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
+// STUN + 무료 TURN(OpenRelay) — 같은 와이파이·외부망 모두 대응
 const PEER_CONFIG = {
   config: {
     iceServers: [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun.cloudflare.com:3478" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
     ],
   },
 };
@@ -47,6 +68,20 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, token);
   }, [token]);
+
+  // 시청자 카운트 정기 정리 — ICE 실패로 close/error 이벤트가 안 와도 5초마다 정확하게 유지
+  useEffect(() => {
+    if (!isStreaming) return;
+    const interval = setInterval(() => {
+      callsRef.current = callsRef.current.filter(call => {
+        const state = (call as any).peerConnection?.connectionState;
+        // connected·connecting·new 만 살아있는 연결로 인정
+        return state === "connected" || state === "connecting" || state === "new";
+      });
+      setViewerCount(callsRef.current.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isStreaming]);
 
   const stopStream = useCallback(() => {
     callsRef.current.forEach(c => { try { c.close(); } catch {} });
@@ -95,12 +130,22 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
 
       peer.on("call", (call) => {
         call.answer(stream);
-        callsRef.current.push(call);
-        setViewerCount(c => c + 1);
+
+        // stream 이벤트가 와야 실제 연결 성공 — 그때만 카운트 증가
+        let counted = false;
+        call.on("stream", () => {
+          if (!counted) {
+            counted = true;
+            callsRef.current.push(call);
+            setViewerCount(callsRef.current.length);
+          }
+        });
 
         const removeCall = () => {
-          callsRef.current = callsRef.current.filter(c => c !== call);
-          setViewerCount(c => Math.max(0, c - 1));
+          if (counted) {
+            callsRef.current = callsRef.current.filter(c => c !== call);
+            setViewerCount(callsRef.current.length);
+          }
         };
         call.on("close", removeCall);
         call.on("error", removeCall);
@@ -109,11 +154,11 @@ export function CctvProvider({ children }: { children: React.ReactNode }) {
 
     peer.on("error", (err: any) => {
       if (err.type === "unavailable-id") {
-        setCameraError("이 접속 코드는 이미 사용 중입니다. 잠시 후 다시 시도하거나 코드를 변경해 주세요.");
-      } else if (err.type === "network" || err.type === "server-error") {
-        setCameraError("네트워크 오류가 발생했습니다. 인터넷 연결을 확인해 주세요.");
+        setCameraError("이 접속 코드는 이미 사용 중입니다. 코드를 변경해 주세요.");
+      } else if (err.type === "network" || err.type === "server-error" || err.type === "socket-error") {
+        setCameraError("P2P 서버 연결 실패. 인터넷 연결 확인 후 다시 시도해 주세요.");
       } else {
-        setCameraError("연결 오류: " + err.message);
+        setCameraError(`연결 오류 (${err.type}): 감시 중단 후 재시작해 주세요.`);
       }
       stopStream();
     });
