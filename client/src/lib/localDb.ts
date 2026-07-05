@@ -5433,6 +5433,8 @@ export function getLatestClosingDay() {
 }
 
 export function updateClosingDay(businessDay: string, updates: {
+  startTime?: string;
+  endTime?: string;
   openingFloat?: number;
   targetFloat?: number;
   actualCash?: number;
@@ -5446,7 +5448,15 @@ export function updateClosingDay(businessDay: string, updates: {
   
   const fields: string[] = [];
   const values: any[] = [];
-  
+
+  if (updates.startTime !== undefined) {
+    fields.push('start_time = ?');
+    values.push(updates.startTime);
+  }
+  if (updates.endTime !== undefined) {
+    fields.push('end_time = ?');
+    values.push(updates.endTime);
+  }
   if (updates.openingFloat !== undefined) {
     fields.push('opening_float = ?');
     values.push(updates.openingFloat);

@@ -744,7 +744,7 @@ export default function ClosingPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full overflow-y-auto bg-background">
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -869,12 +869,13 @@ export default function ClosingPage() {
           <Alert variant="default" className="border-orange-200 bg-orange-50 dark:border-orange-900 dark:bg-orange-950" data-testid="alert-pending-closings">
             <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             <AlertDescription className="text-orange-800 dark:text-orange-200">
-              <span className="font-semibold">미정산 영업일:</span> {pendingClosings.length}일
+              <span className="font-semibold">저장됨 미확정 정산:</span> {pendingClosings.length}일
               {pendingClosings.length <= 5 && (
                 <span className="ml-2 text-sm">
                   ({pendingClosings.slice(0, 5).join(', ')})
                 </span>
               )}
+              <span className="ml-2 text-sm opacity-80">— 해당 날짜를 선택 후 [정산확정]을 눌러 완료하세요</span>
             </AlertDescription>
           </Alert>
         )}
