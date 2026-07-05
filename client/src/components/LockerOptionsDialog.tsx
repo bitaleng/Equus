@@ -445,7 +445,7 @@ export default function LockerOptionsDialog({
           if (seenItemIds.has(txn.itemId)) return; // already handled most-recent
           seenItemIds.add(txn.itemId);
           
-          const isReturned = txn.return_completed === 1 || txn.returnCompleted === 1;
+          const isReturned = txn.returnCompleted === 1;
           if (isReturned) {
             // Most recent transaction for this item is returned → show as 반납완료, don't auto-select
             newReturnCompleted.add(txn.itemId);
@@ -473,7 +473,7 @@ export default function LockerOptionsDialog({
             if (item?.billingType === 'simple') {
               return false;
             }
-            return txn.return_completed !== 1 && txn.returnCompleted !== 1;
+            return txn.returnCompleted !== 1;
           });
           const hasRentalItems = unresolvedRentals.length > 0;
           
@@ -1789,7 +1789,7 @@ export default function LockerOptionsDialog({
       // Save return_completed status for rental items
       // Only find ACTIVE (non-returned) transactions — skip already-returned ones
       returnCompletedItems.forEach(itemId => {
-        const txn = currentRentalTransactions.find(t => t.itemId === itemId && t.return_completed !== 1);
+        const txn = currentRentalTransactions.find(t => t.itemId === itemId && t.returnCompleted !== 1);
         if (txn) {
           localDb.updateRentalTransaction(txn.id, {
             returnCompleted: true,
@@ -2503,12 +2503,12 @@ export default function LockerOptionsDialog({
               
               {/* 대여 물품 안내 - 반납완료된 항목 제외 (DB에서 이미 반납된 것도 제외) */}
               {isInUse && currentRentalTransactions.filter(txn => 
-                !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1
+                !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1
               ).length > 0 && (
                 <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
                   <span className="text-red-700 dark:text-red-300 font-semibold">
                     {currentRentalTransactions
-                      .filter(txn => !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1)
+                      .filter(txn => !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1)
                       .map(txn => {
                         if (txn.depositAmount > 0) {
                           return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
@@ -3484,7 +3484,7 @@ export default function LockerOptionsDialog({
                     
                     // Check if this specific item is actively rented (not returned)
                     const isAlreadyRented = currentRentalTransactions.some(
-                      txn => txn.itemId === itemId && txn.return_completed !== 1 && txn.returnCompleted !== 1
+                      txn => txn.itemId === itemId && txn.returnCompleted !== 1
                     );
                     
                     return (
@@ -4131,14 +4131,14 @@ export default function LockerOptionsDialog({
               {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (일반판매형 제외, DB에서 이미 반납된 것도 제외) */}
               {currentRentalTransactions.filter(txn => {
                 const item = availableRentalItems.find(i => i.id === txn.itemId);
-                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1;
+                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1;
               }).length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
                   <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
                   {currentRentalTransactions
                     .filter(txn => {
                       const item = availableRentalItems.find(i => i.id === txn.itemId);
-                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1;
+                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1;
                     })
                     .map((txn) => {
                       const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
