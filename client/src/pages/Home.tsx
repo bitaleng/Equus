@@ -1486,8 +1486,9 @@ export default function Home() {
       const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
       
       rentalItems.forEach(item => {
-        // Check if rental transaction already exists for this item
-        const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
+        // Check if an ACTIVE (non-returned) rental transaction exists for this item
+        // Exclude return_completed=1 so re-rental creates a new transaction
+        const existingItem = existingTransactions.find(t => t.itemId === item.itemId && t.return_completed !== 1);
         
         // 부가세 포함 금액 사용 (기존 트랜잭션이 있으면 DB의 값 유지, 없으면 새 값 사용)
         // 기존 트랜잭션이 있으면 이미 DB에 VAT 적용된 금액이 저장되어 있음
@@ -1758,7 +1759,8 @@ export default function Home() {
       rentalItems.forEach(item => {
         // Find existing rental transaction for this item
         const existingTransactions = localDb.getRentalTransactionsByLockerLog(selectedEntry.id);
-        const existingItem = existingTransactions.find(t => t.itemId === item.itemId);
+        // Only match ACTIVE (non-returned) transactions — re-rented items need a new transaction
+        const existingItem = existingTransactions.find(t => t.itemId === item.itemId && t.return_completed !== 1);
         
         // 부가세 포함 금액 사용 (기존 트랜잭션이 있으면 DB의 값 유지, 없으면 새 값 사용)
         const actualRentalFee = existingItem ? existingItem.rentalFee : (item.vatAppliedRentalFee ?? item.rentalFee);

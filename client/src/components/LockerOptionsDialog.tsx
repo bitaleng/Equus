@@ -239,6 +239,7 @@ export default function LockerOptionsDialog({
   const [rentalCashReceiptStatuses, setRentalCashReceiptStatuses] = useState<Map<string, boolean>>(new Map());
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
+  const [pendingReRentalItems, setPendingReRentalItems] = useState<Set<string>>(new Set());
   const [cancellingRentalItem, setCancellingRentalItem] = useState<{txnId: string; itemId: string; itemName: string} | null>(null);
   const [pendingUncheckItem, setPendingUncheckItem] = useState<{itemId: string; itemName: string} | null>(null);
   // 직접입력 - 대여비/보증금 직접 수정
@@ -432,18 +433,27 @@ export default function LockerOptionsDialog({
         setCurrentRentalTransactions(rentals);
         
         // Auto-select checkboxes for existing rental items
+        // rentals are ordered DESC (most recent first) — group by itemId, use latest state per item
         const newSelected = new Set<string>();
         const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
         const newPaymentMethods = new Map<string, 'cash' | 'card' | 'transfer'>();
         const newReturnCompleted = new Set<string>();
         
+        // Group by itemId (first occurrence = most recent due to DESC order)
+        const seenItemIds = new Set<string>();
         rentals.forEach(txn => {
-          newSelected.add(txn.itemId);
-          newStatuses.set(txn.itemId, txn.depositStatus);
-          newPaymentMethods.set(txn.itemId, txn.paymentMethod || 'cash');
-          // Load return_completed status
-          if (txn.return_completed === 1 || txn.returnCompleted === 1) {
+          if (seenItemIds.has(txn.itemId)) return; // already handled most-recent
+          seenItemIds.add(txn.itemId);
+          
+          const isReturned = txn.return_completed === 1 || txn.returnCompleted === 1;
+          if (isReturned) {
+            // Most recent transaction for this item is returned → show as 반납완료, don't auto-select
             newReturnCompleted.add(txn.itemId);
+          } else {
+            // Active rental → auto-select
+            newSelected.add(txn.itemId);
+            newStatuses.set(txn.itemId, txn.depositStatus);
+            newPaymentMethods.set(txn.itemId, txn.paymentMethod || 'cash');
           }
         });
         
@@ -451,6 +461,7 @@ export default function LockerOptionsDialog({
         setDepositStatuses(newStatuses);
         setRentalPaymentMethods(newPaymentMethods);
         setReturnCompletedItems(newReturnCompleted);
+        setPendingReRentalItems(new Set());
         
         // Auto-show warning alert if there are rental items or additional fees
         // Only show once when dialog first opens
@@ -1776,8 +1787,9 @@ export default function LockerOptionsDialog({
       }
       
       // Save return_completed status for rental items
+      // Only find ACTIVE (non-returned) transactions — skip already-returned ones
       returnCompletedItems.forEach(itemId => {
-        const txn = currentRentalTransactions.find(t => t.itemId === itemId);
+        const txn = currentRentalTransactions.find(t => t.itemId === itemId && t.return_completed !== 1);
         if (txn) {
           localDb.updateRentalTransaction(txn.id, {
             returnCompleted: true,
@@ -2489,14 +2501,14 @@ export default function LockerOptionsDialog({
                 <span className="font-semibold">{basePrice.toLocaleString()}원</span>
               </div>
               
-              {/* 대여 물품 안내 - 반납완료된 항목 제외 */}
+              {/* 대여 물품 안내 - 반납완료된 항목 제외 (DB에서 이미 반납된 것도 제외) */}
               {isInUse && currentRentalTransactions.filter(txn => 
-                !returnCompletedItems.has(txn.itemId)
+                !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1
               ).length > 0 && (
                 <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
                   <span className="text-red-700 dark:text-red-300 font-semibold">
                     {currentRentalTransactions
-                      .filter(txn => !returnCompletedItems.has(txn.itemId))
+                      .filter(txn => !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1)
                       .map(txn => {
                         if (txn.depositAmount > 0) {
                           return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
@@ -3470,8 +3482,10 @@ export default function LockerOptionsDialog({
                     const isChecked = selectedRentalItems.has(itemId);
                     const depositStatus = depositStatuses.get(itemId);
                     
-                    // Check if this specific item is already rented
-                    const isAlreadyRented = currentRentalTransactions.some(txn => txn.itemId === itemId);
+                    // Check if this specific item is actively rented (not returned)
+                    const isAlreadyRented = currentRentalTransactions.some(
+                      txn => txn.itemId === itemId && txn.return_completed !== 1 && txn.returnCompleted !== 1
+                    );
                     
                     return (
                       <div key={itemId} className="space-y-2">
@@ -3570,6 +3584,68 @@ export default function LockerOptionsDialog({
                             </Button>
                           )}
                         </div>
+                        
+                        {/* 반납완료 + 재대여 버튼 - DB에서 로드된 반납완료 항목 (체크박스 미선택 상태) */}
+                        {returnCompletedItems.has(itemId) && !isChecked && (
+                          <div className="ml-6 flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                              ✓ 반납완료
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-blue-600 border-blue-600 dark:text-blue-400 dark:border-blue-400"
+                              onClick={() => {
+                                // 재대여: returnCompleted 해제, 신규 대여로 처리
+                                const newReturn = new Set(returnCompletedItems);
+                                newReturn.delete(itemId);
+                                setReturnCompletedItems(newReturn);
+                                
+                                const newSelected = new Set(selectedRentalItems);
+                                newSelected.add(itemId);
+                                setSelectedRentalItems(newSelected);
+                                
+                                const newPending = new Set(pendingReRentalItems);
+                                newPending.add(itemId);
+                                setPendingReRentalItems(newPending);
+                                
+                                // 보증금 상태 초기화 (신규 대여)
+                                const newStatuses = new Map(depositStatuses);
+                                if ((item.depositAmount || 0) === 0) {
+                                  newStatuses.set(itemId, 'none');
+                                } else {
+                                  newStatuses.set(itemId, 'received');
+                                }
+                                setDepositStatuses(newStatuses);
+                                
+                                // 결제방식 기본값 설정
+                                const newPaymentMethods = new Map(rentalPaymentMethods);
+                                if (!newPaymentMethods.has(itemId)) {
+                                  newPaymentMethods.set(itemId, 'cash');
+                                }
+                                setRentalPaymentMethods(newPaymentMethods);
+                                
+                                // 메모에 재대여 시각 기록
+                                const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                                const marker = `[${item.name}] 대여:`;
+                                setCustomerMemo(prev => {
+                                  if (prev.includes(marker)) {
+                                    return prev.split('\n').map(line => {
+                                      if (!line.startsWith(marker)) return line;
+                                      return `${line} / 재대여: ${nowTimeStr}`;
+                                    }).join('\n');
+                                  }
+                                  const newLine = `${marker} 재대여: ${nowTimeStr}`;
+                                  return prev.trim() ? `${prev}\n${newLine}` : newLine;
+                                });
+                              }}
+                              data-testid={`button-rerental-${itemId}`}
+                            >
+                              재대여
+                            </Button>
+                          </div>
+                        )}
                         
                         {/* 대여 물품 옵션 - 체크박스 선택된 경우에만 표시 */}
                         {isChecked && (
@@ -4052,17 +4128,17 @@ export default function LockerOptionsDialog({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-orange-600">확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
-              {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (일반판매형 제외) */}
+              {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (일반판매형 제외, DB에서 이미 반납된 것도 제외) */}
               {currentRentalTransactions.filter(txn => {
                 const item = availableRentalItems.find(i => i.id === txn.itemId);
-                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId);
+                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1;
               }).length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
                   <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
                   {currentRentalTransactions
                     .filter(txn => {
                       const item = availableRentalItems.find(i => i.id === txn.itemId);
-                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId);
+                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.return_completed !== 1;
                     })
                     .map((txn) => {
                       const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
