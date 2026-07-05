@@ -29,10 +29,10 @@ title = "V2 히즈 (HIZZ) - 탭모드 동적 높이 수정"
 id = "or7fZYxdeoWOT9esrE-o0"
 uri = "file://netlify-v1.zip"
 type = "unspecified"
-title = "V1 에쿠스 다운로드 (EQUS- 라이선스) 5.3M"
+title = "netlify-v1.zip — V1 에쿠스 (EQUS- 라이선스, 5.3MB)"
 
 [[outputs]]
 id = "KcnluP9mIfH5idI41FLws"
 uri = "file://netlify-v2.zip"
 type = "unspecified"
-title = "V2 히즈 다운로드 (HIZZ- 라이선스) 6.8M"
+title = "netlify-v2.zip — V2 히즈 (HIZZ- 라이선스, 6.9MB)"
