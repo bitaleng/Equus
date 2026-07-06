@@ -36,3 +36,15 @@ id = "KcnluP9mIfH5idI41FLws"
 uri = "file://netlify-v2.zip"
 type = "unspecified"
 title = "netlify-v2.zip — V2 히즈 (HIZZ- 라이선스, 6.9MB)"
+
+[[outputs]]
+id = "AhXPrbqtW1JAg4ZbP5Wj9"
+uri = "file://source-v1.zip"
+type = "unspecified"
+title = "source-v1.zip — V1 에쿠스 원본 소스 (16MB, EQUS- 라이선스)"
+
+[[outputs]]
+id = "EMoSSDeZGv0Pd9QHSt0Kr"
+uri = "file://source-v2.zip"
+type = "unspecified"
+title = "source-v2.zip — V2 히즈 원본 소스 (16MB, HIZZ- 라이선스)"
