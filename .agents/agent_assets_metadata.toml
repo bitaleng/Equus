@@ -48,3 +48,9 @@ id = "EMoSSDeZGv0Pd9QHSt0Kr"
 uri = "file://source-v2.zip"
 type = "unspecified"
 title = "source-v2.zip — V2 히즈 원본 소스 (16MB, HIZZ- 라이선스)"
+
+[[outputs]]
+id = "PidTHJuNjgCPcJBf8utAg"
+uri = "file://source-v2-complete.zip"
+type = "unspecified"
+title = "source-v2-complete.zip — V2 히즈 완전 소스 패키지 (8.9MB)"
