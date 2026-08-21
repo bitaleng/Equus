@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
-import { Menu, X, Maximize2, ChevronDown, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft, Users } from "lucide-react";
+import { Menu, X, Maximize2, ChevronDown, ChevronUp, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft, Users } from "lucide-react";
+import { ResizeEdgeGrip, DockResizeGrip } from "@/components/ResizeEdgeGrip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -32,7 +33,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PatternLockDialog from "@/components/PatternLockDialog";
-import { getBusinessDay, getBusinessDayRange, getBasePrice, calculateAdditionalFee } from "@shared/businessDay";
+import { getBusinessDay, getBusinessDayRange, getPreviousBusinessDay, getBasePrice, calculateAdditionalFee, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice } from "@shared/businessDay";
+import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
 import { isTodayStatusLocked, isSalesTabLocked } from "@/lib/menuLock";
@@ -80,6 +82,24 @@ interface OpenDialog {
   newLockerInfo?: { lockerNumber: number, timeType: '주간' | '야간', basePrice: number } | null;
 }
 
+/** 락카 옵션창 스택에 추가/포커스. 설정이 접기 기본이면 이전 창은 접고 최신만 펼침 */
+function upsertLockerDialog(
+  prev: Map<number, OpenDialog>,
+  dialog: Omit<OpenDialog, 'isMinimized'>
+): Map<number, OpenDialog> {
+  const defaultCollapsed = localDb.getSettings().lockerStackDefaultCollapsed === true;
+  const next = new Map(prev);
+  if (defaultCollapsed) {
+    for (const [num, info] of Array.from(next.entries())) {
+      if (num !== dialog.lockerNumber) {
+        next.set(num, { ...info, isMinimized: true });
+      }
+    }
+  }
+  next.set(dialog.lockerNumber, { ...dialog, isMinimized: false });
+  return next;
+}
+
 // 금·토·일 및 한국 공휴일 판정
 function isWeekendOrHoliday(date: Date): boolean {
   const day = date.getDay(); // 0=일, 5=금, 6=토
@@ -115,6 +135,153 @@ function isWeekendOrHoliday(date: Date): boolean {
   return false;
 }
 
+type StatusRawEntry = LockerLog & { additionalFeeOnly?: boolean; hasSameDayFee?: boolean };
+
+function loadStatusEntriesForBusinessDay(
+  businessDay: string,
+  businessDayStartHour: number
+): StatusRawEntry[] {
+  const allEntriesFromDb = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
+  const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+
+  const crossDayAdditionalFeeLogIds = new Set(
+    additionalFeeEvents
+      .filter(e => {
+        const event = e as any;
+        return event.entryBusinessDay && event.entryBusinessDay !== e.businessDay;
+      })
+      .map(e => e.lockerLogId)
+  );
+  const entries = allEntriesFromDb.filter(entry => !crossDayAdditionalFeeLogIds.has(entry.id));
+
+  const sameDayAdditionalFeeLogIds = new Set(
+    additionalFeeEvents
+      .filter(e => {
+        const event = e as any;
+        return event.entryBusinessDay && event.entryBusinessDay === e.businessDay;
+      })
+      .map(e => e.lockerLogId)
+  );
+
+  const additionalFeeEntries: StatusRawEntry[] = additionalFeeEvents
+    .filter(event => {
+      const e = event as any;
+      return e.entryBusinessDay && e.entryBusinessDay !== event.businessDay;
+    })
+    .map(event => ({
+      id: event.lockerLogId,
+      lockerNumber: event.lockerNumber,
+      entryTime: null as unknown as string,
+      exitTime: event.checkoutTime,
+      timeType: '추가요금' as any,
+      basePrice: 0,
+      optionType: 'none' as const,
+      optionAmount: 0,
+      finalPrice: event.feeAmount,
+      status: 'checked_out' as const,
+      cancelled: false,
+      paymentMethod: event.paymentMethod as any,
+      paymentCash: (event as any).paymentCash,
+      paymentCard: (event as any).paymentCard,
+      paymentTransfer: (event as any).paymentTransfer,
+      businessDay: event.businessDay,
+      additionalFeeOnly: true,
+    }));
+
+  const entriesWithFeeFlag = entries.map(entry => ({
+    ...entry,
+    hasSameDayFee: sameDayAdditionalFeeLogIds.has(entry.id),
+  }));
+
+  return [...entriesWithFeeFlag, ...additionalFeeEntries].sort((a, b) => {
+    const timeA = a.exitTime || a.entryTime || '';
+    const timeB = b.exitTime || b.entryTime || '';
+    return new Date(timeB).getTime() - new Date(timeA).getTime();
+  });
+}
+
+function mapToStatusTableEntries(logs: StatusRawEntry[]) {
+  return logs.map(log => ({
+    id: log.id,
+    lockerNumber: log.lockerNumber,
+    entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
+    entryTimeRaw: log.entryTime || null,
+    exitTime: log.exitTime || null,
+    timeType: log.timeType,
+    basePrice: log.basePrice,
+    option: log.optionType === 'none' ? '없음' :
+            log.optionType === 'discount' ? '할인' :
+            log.optionType === 'custom' ? `할인직접` :
+            log.optionType === 'direct_price' ? '요금직접' :
+            (log.optionType as string) === 'free' ? ((log as any).isStaff ? '직원' : '무료입장') :
+            '외국인',
+    optionType: log.optionType as 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free',
+    finalPrice: log.finalPrice,
+    status: log.status,
+    cancelled: log.cancelled,
+    notes: log.notes,
+    paymentMethod: log.paymentMethod,
+    paymentCash: log.paymentCash,
+    paymentCard: log.paymentCard,
+    paymentTransfer: log.paymentTransfer,
+    additionalFeeOnly: log.additionalFeeOnly,
+    hasSameDayFee: (log as any).hasSameDayFee || false,
+    parentLocker: log.parentLocker || null,
+    deferredPayment: (log as any).deferredPayment || false,
+    refundAmount: (log as any).refundAmount || 0,
+    isStaff: (log as any).isStaff || false,
+    customerMemo: (log as any).customerMemo || '',
+  }));
+}
+
+type WorkspaceResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'dock';
+
+function getViewportSize() {
+  const vv = window.visualViewport;
+  return {
+    width: Math.round(vv?.width ?? window.innerWidth),
+    height: Math.round(vv?.height ?? window.innerHeight),
+  };
+}
+
+const WORKSPACE_MODAL_SELECTOR = [
+  '[data-radix-alert-dialog-content]',
+  '[data-radix-alert-dialog-overlay]',
+  '[data-radix-dialog-content]',
+  '[data-radix-dialog-overlay]',
+  '[role="alertdialog"]',
+].join(',');
+
+function isWorkspaceRelatedTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('[data-workspace-root]')) return true;
+  if (target.closest('[data-workspace-resize]')) return true;
+  if (target.closest('[data-radix-popper-content-wrapper]')) return true;
+  if (target.closest('[data-radix-select-content]')) return true;
+  if (target.closest('[data-radix-select-viewport]')) return true;
+  if (target.closest('[data-radix-dropdown-menu-content]')) return true;
+  if (target.closest('[data-radix-popover-content]')) return true;
+  if (target.closest('[data-radix-dialog-content]')) return true;
+  if (target.closest('[data-radix-dialog-overlay]')) return true;
+  if (target.closest('[data-radix-alert-dialog-content]')) return true;
+  if (target.closest('[data-radix-alert-dialog-overlay]')) return true;
+  if (target.closest('[role="alertdialog"]')) return true;
+  if (target.closest('[data-sonner-toast]')) return true;
+  return false;
+}
+
+function eventTouchesWorkspaceRelated(e: Event): boolean {
+  const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+  for (const node of path) {
+    if (isWorkspaceRelatedTarget(node)) return true;
+  }
+  return isWorkspaceRelatedTarget(e.target);
+}
+
+function isWorkspaceModalOpen(): boolean {
+  return !!document.querySelector(WORKSPACE_MODAL_SELECTOR);
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -128,6 +295,7 @@ export default function Home() {
   const [lockerTickTime, setLockerTickTime] = useState(new Date());
   const [activeLockers, setActiveLockers] = useState<LockerLog[]>([]);
   const [todayAllEntries, setTodayAllEntries] = useState<(LockerLog & { additionalFeeOnly?: boolean })[]>([]);
+  const [yesterdayAllEntries, setYesterdayAllEntries] = useState<(LockerLog & { additionalFeeOnly?: boolean })[]>([]);
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [lockerGroups, setLockerGroups] = useState<LockerGroup[]>([]);
   const [newLockerInfo, setNewLockerInfo] = useState<{lockerNumber: number, timeType: '주간' | '야간', basePrice: number} | null>(null);
@@ -146,7 +314,7 @@ export default function Home() {
     const saved = localStorage.getItem('home_locker_panel_collapsed');
     return saved === 'true';
   });
-  const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(false);
+  const [isSalesSummaryCollapsed, setIsSalesSummaryCollapsed] = useState(true);
   const [showPatternDialog, setShowPatternDialog] = useState(false);
   const [overviewMode, setOverviewMode] = useState(false); // H key: overview mode
   const [barcodeTestDialogOpen, setBarcodeTestDialogOpen] = useState(false);
@@ -219,8 +387,22 @@ export default function Home() {
     }
     return { width: 450, height: 600 };
   });
+  const [dockedWidth, setDockedWidth] = useState(() => {
+    const saved = parseInt(localStorage.getItem('workspaceDockedWidth') || '', 10);
+    const maxW = typeof window !== 'undefined' ? Math.round(window.innerWidth * 0.55) : 640;
+    if (Number.isFinite(saved) && saved >= 280) return Math.min(saved, maxW);
+    return Math.min(520, maxW);
+  });
   const isDraggingRef = useRef(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const isResizingRef = useRef(false);
+  const resizeEdgeRef = useRef<'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'dock' | null>(null);
+  const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: 0, height: 0, x: 0, y: 0 });
+  const floatingPositionRef = useRef(floatingPosition);
+  const floatingSizeRef = useRef(floatingSize);
+  const dockedWidthRef = useRef(dockedWidth);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const ignoreWorkspaceDismissUntilRef = useRef(0);
   
   // UI Layout Mode: 'toggle' (기존 토글 방식) or 'tab' (탭 전환 방식)
   const [uiLayoutMode, setUiLayoutMode] = useState<'toggle' | 'tab'>(() => {
@@ -244,10 +426,18 @@ export default function Home() {
   const nightPrice = settings.nightPrice;
   const discountAmount = settings.discountAmount;
   const foreignerPrice = settings.foreignerPrice;
+  const resolveForeignerPrice = (timeType: '주간' | '야간') =>
+    getForeignerPrice(timeType, settings as any);
   const domesticCheckpointHour = settings.domesticCheckpointHour;
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
-  const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
+  const domesticAdditionalFeeMode: DomesticAdditionalFeeMode =
+    (settings as any).domesticAdditionalFeeMode === 'pending4'
+      ? 'stagedHourly'
+      : ((settings as any).domesticAdditionalFeeMode || 'nextday');
   const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
+  const settlementCycleOpts = getSettlementCycleOptions(settings as any);
+  const stagedHourlyOpts = getStagedHourlyOptions(settings as any);
+  const nightstartOpts = getNightstartOptions(settings as any);
   const outingTimeLimitMinutes: number = (settings as any).outingTimeLimitMinutes || 0;
   const outingTimeLimitWeekendMinutes: number = (settings as any).outingTimeLimitWeekendMinutes || 0;
   
@@ -312,6 +502,109 @@ export default function Home() {
   const [dockedSide, setDockedSide] = useState<'left' | 'right'>(() => {
     return (localStorage.getItem('workspaceDockedSide') as 'left' | 'right') || 'right';
   });
+  const dockedSideRef = useRef(dockedSide);
+
+  useEffect(() => { floatingPositionRef.current = floatingPosition; }, [floatingPosition]);
+  useEffect(() => { floatingSizeRef.current = floatingSize; }, [floatingSize]);
+  useEffect(() => { dockedWidthRef.current = dockedWidth; }, [dockedWidth]);
+  useEffect(() => { dockedSideRef.current = dockedSide; }, [dockedSide]);
+
+  const WORKSPACE_MIN_W = 320;
+  const WORKSPACE_MIN_H = 280;
+  const WORKSPACE_MIN_DOCK_W = 280;
+
+  const persistWorkspaceLayout = useCallback(() => {
+    localStorage.setItem('workspaceFloatingPosition', JSON.stringify(floatingPositionRef.current));
+    localStorage.setItem('workspaceFloatingSize', JSON.stringify(floatingSizeRef.current));
+    localStorage.setItem('workspaceDockedWidth', String(dockedWidthRef.current));
+  }, []);
+
+  const applyResizeMove = useCallback((clientX: number, clientY: number) => {
+    const edge = resizeEdgeRef.current;
+    if (!edge) return;
+    const start = resizeStartRef.current;
+    const dx = clientX - start.mouseX;
+    const dy = clientY - start.mouseY;
+    const { width: maxW, height: maxH } = getViewportSize();
+
+    if (edge === 'dock') {
+      const side = dockedSideRef.current;
+      const next = side === 'right' ? start.width - dx : start.width + dx;
+      const maxDock = Math.max(WORKSPACE_MIN_DOCK_W, maxW - 72);
+      const clamped = Math.max(WORKSPACE_MIN_DOCK_W, Math.min(maxDock, next));
+      setDockedWidth(clamped);
+      return;
+    }
+
+    let width = start.width;
+    let height = start.height;
+    let x = start.x;
+    let y = start.y;
+
+    if (edge.includes('e')) width = start.width + dx;
+    if (edge.includes('w')) {
+      width = start.width - dx;
+      x = start.x + dx;
+    }
+    if (edge.includes('s')) height = start.height + dy;
+    if (edge.includes('n')) {
+      height = start.height - dy;
+      y = start.y + dy;
+    }
+
+    width = Math.max(WORKSPACE_MIN_W, Math.min(maxW, width));
+    height = Math.max(WORKSPACE_MIN_H, Math.min(maxH, height));
+
+    if (edge.includes('w')) x = start.x + start.width - width;
+    if (edge.includes('n')) y = start.y + start.height - height;
+
+    x = Math.max(0, Math.min(maxW - width, x));
+    y = Math.max(0, Math.min(maxH - height, y));
+
+    setFloatingSize({ width, height });
+    setFloatingPosition({ x, y });
+  }, []);
+
+  const handleResizeStart = useCallback((
+    edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'dock',
+    clientX: number,
+    clientY: number
+  ) => {
+    isResizingRef.current = true;
+    isDraggingRef.current = false;
+    resizeEdgeRef.current = edge;
+    const size = floatingSizeRef.current;
+    const pos = floatingPositionRef.current;
+    resizeStartRef.current = {
+      mouseX: clientX,
+      mouseY: clientY,
+      width: edge === 'dock' ? dockedWidthRef.current : size.width,
+      height: size.height,
+      x: pos.x,
+      y: pos.y,
+    };
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor =
+      edge === 'dock' ? 'ew-resize'
+      : edge === 'n' || edge === 's' ? 'ns-resize'
+      : edge === 'e' || edge === 'w' ? 'ew-resize'
+      : edge === 'ne' || edge === 'sw' ? 'nesw-resize'
+      : 'nwse-resize';
+  }, []);
+
+  const handleResizePointerDown = useCallback((
+    edge: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'dock',
+    e: React.MouseEvent | React.TouchEvent
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if ('touches' in e) {
+      if (e.touches.length !== 1) return;
+      handleResizeStart(edge, e.touches[0].clientX, e.touches[0].clientY);
+    } else {
+      handleResizeStart(edge, e.clientX, e.clientY);
+    }
+  }, [handleResizeStart]);
 
   const toggleDockedSide = useCallback(() => {
     setDockedSide(prev => {
@@ -332,77 +625,144 @@ export default function Home() {
 
   // 플로팅 창 드래그 시작 (마우스)
   const handleFloatingDragStart = useCallback((e: React.MouseEvent) => {
+    if (isResizingRef.current) return;
     isDraggingRef.current = true;
     dragOffsetRef.current = {
-      x: e.clientX - floatingPosition.x,
-      y: e.clientY - floatingPosition.y
+      x: e.clientX - floatingPositionRef.current.x,
+      y: e.clientY - floatingPositionRef.current.y
     };
     e.preventDefault();
-  }, [floatingPosition]);
+  }, []);
 
   // 플로팅 창 드래그 시작 (터치)
   const handleFloatingTouchStart = useCallback((e: React.TouchEvent) => {
+    if (isResizingRef.current) return;
     if (e.touches.length === 1) {
       isDraggingRef.current = true;
       const touch = e.touches[0];
       dragOffsetRef.current = {
-        x: touch.clientX - floatingPosition.x,
-        y: touch.clientY - floatingPosition.y
+        x: touch.clientX - floatingPositionRef.current.x,
+        y: touch.clientY - floatingPositionRef.current.y
       };
     }
-  }, [floatingPosition]);
+  }, []);
 
   // 플로팅 창 드래그 중 (마우스)
   const handleFloatingDragMove = useCallback((e: MouseEvent) => {
+    if (isResizingRef.current) {
+      applyResizeMove(e.clientX, e.clientY);
+      return;
+    }
     if (!isDraggingRef.current) return;
     
-    // 패널이 화면 밖으로 나가지 않도록 클램핑 (패널 높이 고려)
-    const newX = Math.max(0, Math.min(window.innerWidth - floatingSize.width, e.clientX - dragOffsetRef.current.x));
-    const newY = Math.max(0, Math.min(window.innerHeight - floatingSize.height, e.clientY - dragOffsetRef.current.y));
+    const size = floatingSizeRef.current;
+    const { width: maxW, height: maxH } = getViewportSize();
+    const newX = Math.max(0, Math.min(maxW - size.width, e.clientX - dragOffsetRef.current.x));
+    const newY = Math.max(0, Math.min(maxH - size.height, e.clientY - dragOffsetRef.current.y));
     
     setFloatingPosition({ x: newX, y: newY });
-  }, [floatingSize.width, floatingSize.height]);
+  }, [applyResizeMove]);
 
   // 플로팅 창 드래그 중 (터치)
   const handleFloatingTouchMove = useCallback((e: TouchEvent) => {
-    if (!isDraggingRef.current || e.touches.length !== 1) return;
-    
+    if (e.touches.length !== 1) return;
     const touch = e.touches[0];
-    const newX = Math.max(0, Math.min(window.innerWidth - floatingSize.width, touch.clientX - dragOffsetRef.current.x));
-    const newY = Math.max(0, Math.min(window.innerHeight - floatingSize.height, touch.clientY - dragOffsetRef.current.y));
+    if (isResizingRef.current) {
+      applyResizeMove(touch.clientX, touch.clientY);
+      e.preventDefault();
+      return;
+    }
+    if (!isDraggingRef.current) return;
+    
+    const size = floatingSizeRef.current;
+    const { width: maxW, height: maxH } = getViewportSize();
+    const newX = Math.max(0, Math.min(maxW - size.width, touch.clientX - dragOffsetRef.current.x));
+    const newY = Math.max(0, Math.min(maxH - size.height, touch.clientY - dragOffsetRef.current.y));
     
     setFloatingPosition({ x: newX, y: newY });
     e.preventDefault(); // 스크롤 방지
-  }, [floatingSize.width, floatingSize.height]);
+  }, [applyResizeMove]);
 
-  // 플로팅 창 드래그 종료
+  // 플로팅 창 드래그/리사이즈 종료
   const handleFloatingDragEnd = useCallback(() => {
-    if (isDraggingRef.current) {
-      isDraggingRef.current = false;
-      // 위치 저장
-      localStorage.setItem('workspaceFloatingPosition', JSON.stringify(floatingPosition));
-    }
-  }, [floatingPosition]);
+    const wasBusy = isDraggingRef.current || isResizingRef.current;
+    isDraggingRef.current = false;
+    isResizingRef.current = false;
+    resizeEdgeRef.current = null;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    if (wasBusy) persistWorkspaceLayout();
+  }, [persistWorkspaceLayout]);
 
-  // 플로팅 창 드래그 이벤트 리스너 (마우스 + 터치)
+  // 플로팅 창 드래그/리사이즈 이벤트 리스너 (마우스 + 터치)
   useEffect(() => {
-    if (isFloatingMode) {
-      // 마우스 이벤트
-      window.addEventListener('mousemove', handleFloatingDragMove);
-      window.addEventListener('mouseup', handleFloatingDragEnd);
-      // 터치 이벤트
-      window.addEventListener('touchmove', handleFloatingTouchMove, { passive: false });
-      window.addEventListener('touchend', handleFloatingDragEnd);
-      window.addEventListener('touchcancel', handleFloatingDragEnd);
-      return () => {
-        window.removeEventListener('mousemove', handleFloatingDragMove);
-        window.removeEventListener('mouseup', handleFloatingDragEnd);
-        window.removeEventListener('touchmove', handleFloatingTouchMove);
-        window.removeEventListener('touchend', handleFloatingDragEnd);
-        window.removeEventListener('touchcancel', handleFloatingDragEnd);
-      };
-    }
-  }, [isFloatingMode, handleFloatingDragMove, handleFloatingTouchMove, handleFloatingDragEnd]);
+    window.addEventListener('mousemove', handleFloatingDragMove);
+    window.addEventListener('mouseup', handleFloatingDragEnd);
+    window.addEventListener('touchmove', handleFloatingTouchMove, { passive: false });
+    window.addEventListener('touchend', handleFloatingDragEnd);
+    window.addEventListener('touchcancel', handleFloatingDragEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleFloatingDragMove);
+      window.removeEventListener('mouseup', handleFloatingDragEnd);
+      window.removeEventListener('touchmove', handleFloatingTouchMove);
+      window.removeEventListener('touchend', handleFloatingDragEnd);
+      window.removeEventListener('touchcancel', handleFloatingDragEnd);
+    };
+  }, [handleFloatingDragMove, handleFloatingTouchMove, handleFloatingDragEnd]);
+
+  useEffect(() => {
+    const clampLayout = () => {
+      const { width, height } = getViewportSize();
+      const maxDock = Math.max(WORKSPACE_MIN_DOCK_W, width - 72);
+      setDockedWidth((w) => {
+        const next = Math.min(Math.max(w, WORKSPACE_MIN_DOCK_W), maxDock);
+        dockedWidthRef.current = next;
+        return next;
+      });
+      setFloatingSize((s) => {
+        const next = {
+          width: Math.min(Math.max(s.width, WORKSPACE_MIN_W), width),
+          height: Math.min(Math.max(s.height, WORKSPACE_MIN_H), height),
+        };
+        floatingSizeRef.current = next;
+        return next;
+      });
+      setFloatingPosition((p) => {
+        const size = floatingSizeRef.current;
+        const next = {
+          x: Math.max(0, Math.min(width - size.width, p.x)),
+          y: Math.max(0, Math.min(height - size.height, p.y)),
+        };
+        floatingPositionRef.current = next;
+        return next;
+      });
+    };
+    window.addEventListener('resize', clampLayout);
+    window.visualViewport?.addEventListener('resize', clampLayout);
+    clampLayout();
+    return () => {
+      window.removeEventListener('resize', clampLayout);
+      window.visualViewport?.removeEventListener('resize', clampLayout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (openDialogs.size === 0 || !popupsVisible) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (isResizingRef.current || isDraggingRef.current) return;
+      if (Date.now() < ignoreWorkspaceDismissUntilRef.current) return;
+      // 추가요금/대여 알림 등 모달이 떠 있으면 작업공간을 숨기지 않음.
+      // 닫기 직후 같은 탭이 뒤로 통과해도 숨기지 않도록 잠깐 무시한다.
+      if (isWorkspaceModalOpen()) {
+        ignoreWorkspaceDismissUntilRef.current = Date.now() + 500;
+        return;
+      }
+      if (eventTouchesWorkspaceRelated(e)) return;
+      setPopupsVisible(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [openDialogs.size, popupsVisible]);
 
   // Tab change handler with security check
   const handleTabChange = (newTab: string) => {
@@ -576,9 +936,8 @@ export default function Home() {
       const timeType = localDb.getTimeTypeWithSettings(new Date());
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
       
-      setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+      setOpenDialogs(prev => upsertLockerDialog(prev, {
         lockerNumber,
-        isMinimized: false,
         timeType,
         basePrice,
         newLockerInfo: { lockerNumber, timeType, basePrice }
@@ -601,9 +960,8 @@ export default function Home() {
         setChildLockerAlertOpen(true);
       } else {
         // Parent or independent locker: add to openDialogs
-        setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+        setOpenDialogs(prev => upsertLockerDialog(prev, {
           lockerNumber,
-          isMinimized: false,
           timeType: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
           basePrice: currentActiveLockers.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
         }));
@@ -709,9 +1067,8 @@ export default function Home() {
           const timeType = localDb.getTimeTypeWithSettings(scanTime);
           const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
           
-          setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+          setOpenDialogs(prev => upsertLockerDialog(prev, {
             lockerNumber,
-            isMinimized: false,
             timeType,
             basePrice,
             newLockerInfo: { lockerNumber, timeType, basePrice }
@@ -734,9 +1091,8 @@ export default function Home() {
             setChildLockerAlertOpen(true);
           } else {
             // Parent or independent locker: add to openDialogs
-            setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+            setOpenDialogs(prev => upsertLockerDialog(prev, {
               lockerNumber,
-              isMinimized: false,
               timeType: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.timeType || '주간',
               basePrice: activeLockersRef.current.find(l => l.lockerNumber === lockerNumber)?.basePrice || 0
             }));
@@ -958,86 +1314,18 @@ export default function Home() {
   const loadData = () => {
     try {
       const businessDay = getBusinessDay(new Date(), businessDayStartHour);
+      const yesterdayBusinessDay = getPreviousBusinessDay(businessDay);
       
       const activeData = localDb.getActiveLockers();
       setActiveLockers(activeData);
       activeLockersRef.current = activeData;
       
-      
-      // 비즈니스 데이 기준으로 입실 기록 조회 (입실 시간 기준)
-      const allEntriesFromDb = localDb.getEntriesByEntryTime(businessDay, businessDayStartHour);
-      
-      // Get additional fee events for today (모든 추가요금: 같은 영업일 + 다른 영업일)
-      const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
-      
-      // CRITICAL FIX: Only exclude entries with CROSS-DAY additional fees
-      // Same-day additional fees should NOT exclude the original entry
-      const crossDayAdditionalFeeLogIds = new Set(
-        additionalFeeEvents
-          .filter(e => {
-            const event = e as any;
-            return event.entryBusinessDay && event.entryBusinessDay !== e.businessDay;
-          })
-          .map(e => e.lockerLogId)
-      );
-      const entries = allEntriesFromDb.filter(entry => !crossDayAdditionalFeeLogIds.has(entry.id));
-      
-      // Identify same-day additional fee entries for badge display
-      const sameDayAdditionalFeeLogIds = new Set(
-        additionalFeeEvents
-          .filter(e => {
-            const event = e as any;
-            return event.entryBusinessDay && event.entryBusinessDay === e.businessDay;
-          })
-          .map(e => e.lockerLogId)
-      );
-      
-      // Create pseudo entries ONLY for CROSS-DAY additional fee events
-      // Same-day additional fees are already included in the original entry's row
-      const additionalFeeEntries = additionalFeeEvents
-        .filter(event => {
-          const e = event as any;
-          return e.entryBusinessDay && e.entryBusinessDay !== event.businessDay;
-        })
-        .map(event => {
-          return {
-            // CRITICAL: Use lockerLogId as the id so reverseCheckout can find the correct record
-            id: event.lockerLogId,
-            lockerNumber: event.lockerNumber,
-            entryTime: null, // Always display empty entry time for additional fees
-            exitTime: event.checkoutTime,
-            timeType: '추가요금' as any, // Special marker for additional fee
-            basePrice: 0,
-            optionType: 'none' as const,
-            optionAmount: 0,
-            finalPrice: event.feeAmount,
-            status: 'checked_out' as const,
-            cancelled: false,
-            paymentMethod: event.paymentMethod as any,
-            paymentCash: (event as any).paymentCash,
-            paymentCard: (event as any).paymentCard,
-            paymentTransfer: (event as any).paymentTransfer,
-            businessDay: event.businessDay,
-            additionalFeeOnly: true, // Always exclude from visitor count (displayed as separate row)
-          };
-        });
-      
-      // Add same-day additional fee flag to entries
-      const entriesWithFeeFlag = entries.map(entry => ({
-        ...entry,
-        hasSameDayFee: sameDayAdditionalFeeLogIds.has(entry.id),
-      }));
-      
-      // Combine filtered entries with additional fee entries and sort by time
-      // 입실 기록은 entry_time, 추가요금 기록은 checkout_time 기준으로 정렬
-      const allEntries = [...entriesWithFeeFlag, ...additionalFeeEntries].sort((a, b) => {
-        const timeA = a.exitTime || a.entryTime || '';
-        const timeB = b.exitTime || b.entryTime || '';
-        return new Date(timeB).getTime() - new Date(timeA).getTime(); // 최신순
-      });
+      const allEntries = loadStatusEntriesForBusinessDay(businessDay, businessDayStartHour);
       setTodayAllEntries(allEntries);
-      
-      // Calculate summary from entries that were CHECKED IN today (already filtered by getEntriesByBusinessDayRange)
+      setYesterdayAllEntries(loadStatusEntriesForBusinessDay(yesterdayBusinessDay, businessDayStartHour));
+
+      const additionalFeeEvents = localDb.getAdditionalFeeEventsByBusinessDayRange(businessDay, businessDayStartHour);
+      const entries = allEntries.filter(e => !e.additionalFeeOnly);
       // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
       // 자식 락카(parentLocker가 있는 락카)도 방문인원에서 제외 (한 손님이 여러 락카 사용)
       // 후불결제(deferredPayment = true)는 매출에서 제외 - 결제완료 시점에만 반영
@@ -1099,6 +1387,8 @@ export default function Home() {
   const lockerOutingStartedAt: { [key: number]: string | null } = {}; // 외출 시작 시각
   const lockerOutingExceeded: { [key: number]: boolean } = {}; // 외출 시간 초과 여부
   const lockerStaffStatus: { [key: number]: boolean } = {}; // 직원 사용 여부
+  const lockerLongTermStatus: { [key: number]: boolean } = {}; // 장기투숙 여부
+  const lockerCheckoutWarning: { [key: number]: boolean } = {}; // 장기투숙 퇴실경고
   
   lockerGroups.forEach(group => {
     for (let i = group.startNumber; i <= group.endNumber; i++) {
@@ -1112,6 +1402,8 @@ export default function Home() {
       lockerOutingStartedAt[i] = null;
       lockerOutingExceeded[i] = false;
       lockerStaffStatus[i] = false;
+      lockerLongTermStatus[i] = false;
+      lockerCheckoutWarning[i] = false;
     }
   });
   
@@ -1123,6 +1415,8 @@ export default function Home() {
     lockerCustomerMemos[log.lockerNumber] = (log as any).customerMemo || ''; // 손님 메모
     lockerOutingStatus[log.lockerNumber] = !!(log as any).isOuting; // 외출 중 여부
     lockerStaffStatus[log.lockerNumber] = !!(log as any).isStaff; // 직원 사용 여부
+    const isLongTerm = !!(log as any).isLongTerm;
+    lockerLongTermStatus[log.lockerNumber] = isLongTerm;
     const outingStartedAt = (log as any).outingStartedAt || null;
     lockerOutingStartedAt[log.lockerNumber] = outingStartedAt;
     // 외출 시간 초과 여부 계산 (평일/휴일 분리 적용)
@@ -1142,34 +1436,51 @@ export default function Home() {
     } else {
       lockerOutingExceeded[log.lockerNumber] = false;
     }
+
+    // 장기투숙: 예정 퇴실 30분 전부터 퇴실경고
+    if (isLongTerm && (log as any).plannedCheckoutAt) {
+      const planned = new Date((log as any).plannedCheckoutAt);
+      if (!Number.isNaN(planned.getTime())) {
+        const warnAt = planned.getTime() - 30 * 60 * 1000;
+        lockerCheckoutWarning[log.lockerNumber] = lockerTickTime.getTime() >= warnAt;
+      }
+    }
     
     // 외국인 여부 확인
     const isForeigner = log.optionType === 'foreigner';
     
-    // Calculate additional fee for this locker
-    const { additionalFee, midnightsPassed, additionalFeeCount } = calculateAdditionalFee(
-      log.entryTime,
-      log.timeType,
-      dayPrice,
-      nightPrice,
-      lockerTickTime,
-      isForeigner,
-      foreignerPrice,
-      domesticCheckpointHour,
-      foreignerAdditionalFeePeriod,
-      false,
-      domesticAdditionalFeeMode,
-      nightStartHour
-    );
-    
-    // 추가요금 완납 여부 확인: 현재 추가요금이 (지불된 금액 + 선지급 금액) 이하면 완납
-    const paidAmount = (log as any).additionalFeePaidAmount || 0;
-    const prepaidAmount = (log as any).prepaidAdditionalFee || 0;
-    const totalPaidAmount = paidAmount + prepaidAmount;
-    const hasUnpaidAdditionalFee = additionalFee > totalPaidAmount;
-    
-    // 미지불 추가요금이 있을 때만 횟수 표시
-    additionalFeeCounts[log.lockerNumber] = hasUnpaidAdditionalFee ? additionalFeeCount : 0;
+    // 장기투숙은 추가요금 로직 완전 무시
+    if (isLongTerm) {
+      additionalFeeCounts[log.lockerNumber] = 0;
+    } else {
+      // Calculate additional fee for this locker
+      const { additionalFee, midnightsPassed, additionalFeeCount } = calculateAdditionalFee(
+        log.entryTime,
+        log.timeType,
+        dayPrice,
+        nightPrice,
+        lockerTickTime,
+        isForeigner,
+        resolveForeignerPrice(log.timeType),
+        domesticCheckpointHour,
+        foreignerAdditionalFeePeriod,
+        false,
+        domesticAdditionalFeeMode,
+        nightStartHour,
+        settlementCycleOpts,
+        stagedHourlyOpts,
+        nightstartOpts
+      );
+      
+      // 추가요금 완납 여부 확인: 현재 추가요금이 (지불된 금액 + 선지급 금액) 이하면 완납
+      const paidAmount = (log as any).additionalFeePaidAmount || 0;
+      const prepaidAmount = (log as any).prepaidAdditionalFee || 0;
+      const totalPaidAmount = paidAmount + prepaidAmount;
+      const hasUnpaidAdditionalFee = additionalFee > totalPaidAmount;
+      
+      // 미지불 추가요금이 있을 때만 횟수 표시
+      additionalFeeCounts[log.lockerNumber] = hasUnpaidAdditionalFee ? additionalFeeCount : 0;
+    }
     
     // Store time type (convert Korean to English)
     const convertedTimeType = log.timeType === '주간' ? 'day' : 'night';
@@ -1194,9 +1505,8 @@ export default function Home() {
       }
       
       // Add to openDialogs for multi-popup display
-      setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+      setOpenDialogs(prev => upsertLockerDialog(prev, {
         lockerNumber,
-        isMinimized: false,
         timeType,
         basePrice,
         newLockerInfo: { lockerNumber, timeType, basePrice }
@@ -1216,9 +1526,8 @@ export default function Home() {
         // Parent or independent locker: add to openDialogs
         const entry = activeLockers.find(log => log.lockerNumber === lockerNumber);
         if (entry) {
-          setOpenDialogs(prev => new Map(prev).set(lockerNumber, {
+          setOpenDialogs(prev => upsertLockerDialog(prev, {
             lockerNumber,
-            isMinimized: false,
             timeType: entry.timeType,
             basePrice: entry.basePrice
           }));
@@ -1246,6 +1555,7 @@ export default function Home() {
       isCashReceipt?: boolean;
       vatAppliedRentalFee?: number;
       vatAppliedDepositAmount?: number;
+      quantity?: number;
     }>,
     paymentCash?: number,
     paymentCard?: number,
@@ -1256,7 +1566,14 @@ export default function Home() {
     prepaidAdditionalFee?: number, // 추가요금 선지급 금액
     isCashReceipt?: boolean, // 현금영수증 발행 여부
     additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer', // 추가요금 결제방식
-    isStaff?: boolean // 직원 입실 여부
+    isStaff?: boolean, // 직원 입실 여부
+    editedEntryTime?: string, // 입실시간 소급 수정 (사용 중만)
+    longTermStay?: {
+      plannedCheckoutAt: string;
+      dailyFee: number;
+      discount: number;
+      stayDays: number;
+    } | null
   ) => {
     // Use ref to get the latest openDialogs state (prevents stale closure issue)
     const currentOpenDialogs = openDialogsRef.current;
@@ -1284,13 +1601,13 @@ export default function Home() {
         optionType = 'free';
         finalPrice = 0;
         optionAmount = 0;
-      } else if (option === 'direct_price' && customAmount) {
+      } else if ((option === 'direct_price' || option === 'long_term') && customAmount !== undefined) {
         optionType = 'direct_price';
         finalPrice = customAmount;
         optionAmount = customAmount;
       } else if (option === 'foreigner') {
         optionType = 'foreigner';
-        finalPrice = foreignerPrice;
+        finalPrice = resolveForeignerPrice(newLockerInfo.timeType);
       } else if (option === 'discount') {
         optionType = 'discount';
         finalPrice = Math.max(0, newLockerInfo.basePrice - discountAmount);
@@ -1336,11 +1653,16 @@ export default function Home() {
         entryTime: dialogOpenedTime,  // 옵션창 열린 시간을 입실시간으로 기록
         deferredPayment: deferredPayment || false,  // 후불결제 여부
         customerMemo: customerMemo || undefined,  // 손님 메모
-        noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 (VIP 등)
+        noAdditionalFee: !!longTermStay || noAdditionalFee || false,  // 장기투숙·VIP 추가요금 면제
         prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급
         isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부
         additionalFeePaymentMethod: additionalFeePaymentMethod,  // 추가요금 결제방식
         isStaff: isStaff || false,  // 직원 입실 여부
+        isLongTerm: !!longTermStay,
+        plannedCheckoutAt: longTermStay?.plannedCheckoutAt || null,
+        longTermDailyFee: longTermStay?.dailyFee || 0,
+        longTermDiscount: longTermStay?.discount || 0,
+        longTermDays: longTermStay?.stayDays || 0,
       });
 
       // Mark the scan log as processed (if there was a scan)
@@ -1387,7 +1709,7 @@ export default function Home() {
             lockerNumber: newLockerInfo.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장 (단가×수량 합계)
             depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: dialogOpenedTime,  // 옵션창 열린 시간 사용
@@ -1398,6 +1720,7 @@ export default function Home() {
             paymentCard: itemPaymentCard,
             paymentTransfer: itemPaymentTransfer,
             revenue: revenue,
+            quantity: item.quantity ?? 1,
           });
         });
       }
@@ -1419,28 +1742,50 @@ export default function Home() {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
+    let effectiveBasePrice = selectedEntry.basePrice;
+
+    // 입실시간 소급 수정 (사용 중만, 미래 불가 — DB 함수에서 재검증)
+    if (editedEntryTime) {
+      const result = localDb.updateEntryTime(selectedEntry.id, new Date(editedEntryTime));
+      if (!result.success) {
+        console.error('[handleApplyOption] updateEntryTime failed:', result.message);
+        toast({
+          title: "입실시간 수정 실패",
+          description: result.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (typeof result.newBasePrice === 'number') {
+        effectiveBasePrice = result.newBasePrice;
+      }
+    }
+
     let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
-    let finalPrice = selectedEntry.basePrice;
+    let finalPrice = effectiveBasePrice;
     let optionAmount: number | undefined;
 
     if (option === 'free') {
       optionType = 'free';
       finalPrice = 0;
       optionAmount = 0;
-    } else if (option === 'direct_price' && customAmount) {
+    } else if ((option === 'direct_price' || option === 'long_term') && customAmount !== undefined) {
       optionType = 'direct_price';
       finalPrice = customAmount;
       optionAmount = customAmount;
     } else if (option === 'foreigner') {
       optionType = 'foreigner';
-      finalPrice = foreignerPrice;
+      const tt = (editedEntryTime
+        ? localDb.getTimeTypeWithSettings(new Date(editedEntryTime))
+        : selectedEntry.timeType) as '주간' | '야간';
+      finalPrice = resolveForeignerPrice(tt);
     } else if (option === 'discount') {
       optionType = 'discount';
-      finalPrice = selectedEntry.basePrice - discountAmount;
+      finalPrice = effectiveBasePrice - discountAmount;
       optionAmount = discountAmount;
     } else if (option === 'custom' && customAmount) {
       optionType = 'custom';
-      finalPrice = selectedEntry.basePrice - customAmount;
+      finalPrice = effectiveBasePrice - customAmount;
       optionAmount = customAmount;
     }
 
@@ -1474,10 +1819,15 @@ export default function Home() {
       paymentTransfer: totalPaymentTransfer,
       deferredPayment: deferredPayment || false,
       customerMemo: customerMemo || undefined,  // 손님 메모
-      noAdditionalFee: noAdditionalFee || false,  // 추가요금없음 상태 유지
+      noAdditionalFee: !!longTermStay || noAdditionalFee || false,  // 장기투숙·VIP 추가요금 면제
       prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급 상태 유지
       isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부 유지
       additionalFeePaymentMethod: additionalFeePaymentMethod,  // 추가요금 결제방식 유지
+      isLongTerm: !!longTermStay,
+      plannedCheckoutAt: longTermStay?.plannedCheckoutAt || null,
+      longTermDailyFee: longTermStay?.dailyFee || 0,
+      longTermDiscount: longTermStay?.discount || 0,
+      longTermDays: longTermStay?.stayDays || 0,
     });
     
     // Handle rental items for existing entry (if saving changes)
@@ -1490,10 +1840,17 @@ export default function Home() {
         // Exclude returnCompleted=1 so re-rental creates a new transaction
         const existingItem = existingTransactions.find(t => t.itemId === item.itemId && t.returnCompleted !== 1);
         
-        // 부가세 포함 금액 사용 (기존 트랜잭션이 있으면 DB의 값 유지, 없으면 새 값 사용)
-        // 기존 트랜잭션이 있으면 이미 DB에 VAT 적용된 금액이 저장되어 있음
-        const actualRentalFee = existingItem ? existingItem.rentalFee : (item.vatAppliedRentalFee ?? item.rentalFee);
-        const actualDepositAmount = existingItem ? existingItem.depositAmount : (item.vatAppliedDepositAmount ?? item.depositAmount);
+        const incomingFee = item.vatAppliedRentalFee ?? item.rentalFee;
+        const incomingDeposit = item.vatAppliedDepositAmount ?? item.depositAmount;
+        const incomingQty = item.quantity ?? 1;
+        const existingQty = Number(existingItem?.quantity) > 0 ? Number(existingItem.quantity) : 1;
+        const quantityChanged = !!existingItem && existingQty !== incomingQty;
+        
+        // 수량 변경 시에는 새 금액 사용, 그 외 기존 트랜잭션은 DB 금액 유지
+        const actualRentalFee = existingItem && !quantityChanged
+          ? existingItem.rentalFee
+          : incomingFee;
+        const actualDepositAmount = existingItem ? existingItem.depositAmount : incomingDeposit;
         
         // Revenue calculation (부가세 포함 금액 기준):
         // - received: rental fee + deposit (대여 시)
@@ -1564,7 +1921,7 @@ export default function Home() {
             lockerNumber: selectedEntry.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장 (단가×수량 합계)
             depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: new Date(),
@@ -1575,15 +1932,24 @@ export default function Home() {
             paymentCard: itemPaymentCard > 0 ? itemPaymentCard : undefined,
             paymentTransfer: itemPaymentTransfer > 0 ? itemPaymentTransfer : undefined,
             revenue: actualRevenue,
+            quantity: item.quantity ?? 1,
           });
         } else {
           // Update existing rental transaction
-          // DO NOT recalculate payment - keep existing payment info
-          // Only update deposit status, revenue, and return time
           const updateData: any = {
             depositStatus: item.depositStatus,
             revenue: revenue,
           };
+          
+          if (quantityChanged) {
+            updateData.rentalFee = actualRentalFee;
+            updateData.quantity = incomingQty;
+            const itemPaymentMethod = item.paymentMethod || existingItem.paymentMethod || 'cash';
+            updateData.paymentMethod = itemPaymentMethod;
+            updateData.paymentCash = itemPaymentMethod === 'cash' ? revenue : 0;
+            updateData.paymentCard = itemPaymentMethod === 'card' ? revenue : 0;
+            updateData.paymentTransfer = itemPaymentMethod === 'transfer' ? revenue : 0;
+          }
           
           // If deposit status changed to refunded/forfeited and returnTime is not set, set it now
           const isStatusChanging = (item.depositStatus === 'refunded' || item.depositStatus === 'forfeited') && !existingItem.returnTime;
@@ -1628,6 +1994,7 @@ export default function Home() {
       isCashReceipt?: boolean;
       vatAppliedRentalFee?: number;
       vatAppliedDepositAmount?: number;
+      quantity?: number;
     }>,
     paymentCash?: number,
     paymentCard?: number,
@@ -1642,12 +2009,14 @@ export default function Home() {
     customerMemo?: string,
     refundAmount?: number,
     refundNote?: string,
-    refundMethod?: 'cash' | 'card' | 'transfer'
+    refundMethod?: 'cash' | 'card' | 'transfer',
+    exitTimeISO?: string
   ) => {
     const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
     if (!selectedEntry) return;
 
-    const now = new Date();
+    const now = exitTimeISO ? new Date(exitTimeISO) : new Date();
+    if (Number.isNaN(now.getTime())) return;
     const entryBusinessDay = (selectedEntry as any).businessDay;
     const checkoutBusinessDay = getBusinessDay(now, businessDayStartHour);
     
@@ -1660,12 +2029,15 @@ export default function Home() {
       nightPrice,
       now,
       isCurrentlyForeigner,
-      foreignerPrice,
+      resolveForeignerPrice(selectedEntry.timeType),
       domesticCheckpointHour,
       foreignerAdditionalFeePeriod,
       false,
       domesticAdditionalFeeMode,
-      nightStartHour
+      nightStartHour,
+      settlementCycleOpts,
+      stagedHourlyOpts,
+      nightstartOpts
     );
     
     // If checking out on a different business day (after settlement time):
@@ -1721,12 +2093,16 @@ export default function Home() {
     
     // Create additional fee event for ALL checkouts with additional fees
     // This ensures payment method independence between entry and additional fees
+    // 할인으로 청구액이 0원이 되어도 전액할인 기록을 남김
     if (additionalFeeInfo.additionalFee > 0) {
       // 할인 계산: 원래 추가요금에서 할인금액 차감
       const discountAmount = additionalFeePayment?.discount || 0;
       // 부가세가 적용된 실제 결제 금액을 additionalFeePayment에서 계산
       const actualFeeAmount = (additionalFeePayment?.cash || 0) + (additionalFeePayment?.card || 0) + (additionalFeePayment?.transfer || 0);
-      const discountedFee = actualFeeAmount > 0 ? actualFeeAmount : Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
+      // 전액할인처럼 결제액 0 + discount만 있는 경우도 0원으로 기록
+      const discountedFee = actualFeeAmount > 0
+        ? actualFeeAmount
+        : Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
       
       const addFeePayment = additionalFeePayment || {
         method: paymentMethod,
@@ -1739,14 +2115,14 @@ export default function Home() {
         lockerLogId: selectedEntry.id,
         lockerNumber: selectedEntry.lockerNumber,
         checkoutTime: now,
-        feeAmount: discountedFee,  // 부가세 포함된 실제 결제 금액 기록
+        feeAmount: discountedFee,  // 할인·부가세 반영된 실제 청구액 (전액할인 시 0)
         originalFeeAmount: discountAmount > 0 ? additionalFeeInfo.additionalFee : undefined,  // 할인 전 원래 금액
         discountAmount: discountAmount,
         businessDay: checkoutBusinessDay,
         paymentMethod: addFeePayment.method,
-        paymentCash: addFeePayment.cash,
-        paymentCard: addFeePayment.card,
-        paymentTransfer: addFeePayment.transfer,
+        paymentCash: discountedFee === 0 ? undefined : addFeePayment.cash,
+        paymentCard: discountedFee === 0 ? undefined : addFeePayment.card,
+        paymentTransfer: discountedFee === 0 ? undefined : addFeePayment.transfer,
       });
       
       // CRITICAL: Update checkout business day summary to include additional fee revenue
@@ -1807,7 +2183,7 @@ export default function Home() {
             lockerNumber: selectedEntry.lockerNumber,
             itemId: item.itemId,
             itemName: item.itemName,
-            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장
+            rentalFee: actualRentalFee,  // 부가세 포함 금액 저장 (단가×수량 합계)
             depositAmount: actualDepositAmount,  // 부가세 포함 금액 저장
             depositStatus: item.depositStatus,
             rentalTime: selectedEntry.entryTime,
@@ -1815,6 +2191,7 @@ export default function Home() {
             businessDay: checkoutBusinessDay,
             paymentMethod: paymentMethod,
             revenue: itemRevenue,
+            quantity: item.quantity ?? 1,
           });
         }
       });
@@ -1883,37 +2260,10 @@ export default function Home() {
     }
   };
 
-  const todayEntries = todayAllEntries.map(log => ({
-    id: log.id,
-    lockerNumber: log.lockerNumber,
-    entryTime: log.entryTime ? new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : null,
-    entryTimeRaw: log.entryTime || null, // 입실시간 원본 ISO 문자열 (정렬용)
-    exitTime: log.exitTime || null, // 퇴실시간 (ISO 문자열 그대로 전달 - 정렬용)
-    timeType: log.timeType,
-    basePrice: log.basePrice,
-    option: log.optionType === 'none' ? '없음' : 
-            log.optionType === 'discount' ? '할인' :
-            log.optionType === 'custom' ? `할인직접` :
-            log.optionType === 'direct_price' ? '요금직접' :
-            (log.optionType as string) === 'free' ? ((log as any).isStaff ? '직원' : '무료입장') :
-            '외국인',
-    optionType: log.optionType as 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free', // 필터용
-    finalPrice: log.finalPrice,
-    status: log.status,
-    cancelled: log.cancelled,
-    notes: log.notes,
-    paymentMethod: log.paymentMethod,
-    paymentCash: log.paymentCash, // 분리결제 표시용
-    paymentCard: log.paymentCard, // 분리결제 표시용
-    paymentTransfer: log.paymentTransfer, // 분리결제 표시용
-    additionalFeeOnly: log.additionalFeeOnly,
-    hasSameDayFee: (log as any).hasSameDayFee || false,
-    parentLocker: log.parentLocker || null,
-    deferredPayment: (log as any).deferredPayment || false,
-    refundAmount: (log as any).refundAmount || 0,
-    isStaff: (log as any).isStaff || false,
-    customerMemo: (log as any).customerMemo || '',
-  }));
+  const todayBusinessDay = getBusinessDay(new Date(), businessDayStartHour);
+  const yesterdayBusinessDay = getPreviousBusinessDay(todayBusinessDay);
+  const todayEntries = mapToStatusTableEntries(todayAllEntries);
+  const yesterdayEntries = mapToStatusTableEntries(yesterdayAllEntries);
   
   // 퇴실 취소 핸들러
   const handleReverseCheckout = (entry: { id?: string; lockerNumber: number }) => {
@@ -1943,8 +2293,60 @@ export default function Home() {
   };
 
   // 락카 그리드 렌더링 함수 (토글/탭 모드 공용)
+  const renderLockerLegend = (includeStaff = false, includeDisabled = false) => (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <div className="entry-legend-chip">
+        <div className="entry-legend-swatch bg-white border border-gray-300 dark:bg-slate-700 dark:border-slate-500" />
+        <span>빈락카</span>
+      </div>
+      <div className="entry-legend-chip">
+        <div className="entry-legend-swatch bg-[#22C55E]" />
+        <span>이전영업일</span>
+      </div>
+      <div className="entry-legend-chip">
+        <div className="entry-legend-swatch bg-[#FFD700]" />
+        <span>주간</span>
+      </div>
+      <div className="entry-legend-chip">
+        <div className="entry-legend-swatch bg-[#7B68EE]" />
+        <span>야간</span>
+      </div>
+      <div className="entry-legend-chip">
+        <div className="entry-legend-swatch bg-[#FF4444]" />
+        <span>추가요금</span>
+      </div>
+      {includeStaff && (
+        <div className="entry-legend-chip">
+          <div className="entry-legend-swatch bg-[#FF69B4]" />
+          <span>직원</span>
+        </div>
+      )}
+      {includeDisabled && disabledLockers.size > 0 && (
+        <div className="entry-legend-chip">
+          <div className="entry-legend-swatch bg-gray-200 border border-gray-300 dark:bg-gray-700 dark:border-gray-500" />
+          <span>사용불가</span>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderLockerStats = () => (
+    <div className="flex flex-wrap gap-2">
+      <div className="entry-stat-chip">
+        <span className="text-muted-foreground dark:text-black">사용중</span>
+        <span className="stat-value">{activeLockers.length}</span>
+        <span className="text-muted-foreground dark:text-black">개</span>
+      </div>
+      <div className="entry-stat-chip">
+        <span className="text-muted-foreground dark:text-black">방문객</span>
+        <span className="stat-value">{summary?.totalVisitors || 0}</span>
+        <span className="text-muted-foreground dark:text-black">명</span>
+      </div>
+    </div>
+  );
+
   const renderLockerGrid = (isFullWidth: boolean = false) => (
-    <div className={`flex-1 min-h-0 overflow-auto ${isFullWidth ? 'p-8' : 'p-6'}`}>
+    <div className={`flex-1 min-h-0 overflow-auto entry-mgmt-surface ${isFullWidth ? 'p-8' : 'p-6'}`}>
       {lockerGroups.length === 0 ? (
         <div className="text-center text-muted-foreground py-8">
           <p>락커 그룹이 설정되지 않았습니다.</p>
@@ -1954,16 +2356,16 @@ export default function Home() {
         <div className="space-y-8 w-full">
           {lockerGroups.map((group) => (
             <div key={group.id} className="w-full">
-              <h3 className={`text-lg font-semibold mb-3 ${isFullWidth ? "text-center" : ""}`}>
+              <h3 className={`locker-group-title text-base font-semibold tracking-tight text-foreground/90 ${isFullWidth ? "justify-center" : ""}`}>
                 {group.name}
-                {overviewMode && <span className="ml-2 text-xs text-muted-foreground">(전체보기: H)</span>}
+                {overviewMode && <span className="text-xs font-normal text-muted-foreground">(전체보기: H)</span>}
               </h3>
               <div className={`grid w-full ${
                 overviewMode 
-                  ? "grid-cols-12 gap-2" 
+                  ? "grid-cols-12 gap-2.5" 
                   : isFullWidth 
-                    ? "grid-cols-8 gap-4" 
-                    : "grid-cols-8 gap-2 max-w-4xl"
+                    ? "grid-cols-8 gap-3.5" 
+                    : "grid-cols-8 gap-2.5 max-w-4xl"
               }`}>
                 {Array.from(
                   { length: group.endNumber - group.startNumber + 1 },
@@ -1985,6 +2387,8 @@ export default function Home() {
                     isOuting={lockerOutingStatus[num] || false}
                     outingExceeded={lockerOutingExceeded[num] || false}
                     isStaff={lockerStaffStatus[num] || false}
+                    isLongTerm={lockerLongTermStatus[num] || false}
+                    checkoutWarning={lockerCheckoutWarning[num] || false}
                     outOfService={disabledLockers.has(num)}
                   />
                 ))}
@@ -2001,14 +2405,15 @@ export default function Home() {
     <div className="h-full overflow-hidden flex flex-col">
       <TodayStatusTable
         entries={todayEntries}
+        yesterdayEntries={yesterdayEntries}
+        yesterdayBusinessDay={yesterdayBusinessDay}
         isExpanded={true}
         onReverseCheckout={handleReverseCheckout}
         onRowClick={(entry) => {
           const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
           if (existingEntry) {
-            setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+            setOpenDialogs(prev => upsertLockerDialog(prev, {
               lockerNumber: entry.lockerNumber,
-              isMinimized: false,
               timeType: existingEntry.timeType,
               basePrice: existingEntry.basePrice
             }));
@@ -2028,12 +2433,30 @@ export default function Home() {
       {uiLayoutMode === 'tab' ? (
         <Tabs value={activeTab} onValueChange={handleTabChange} className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* 탭 헤더 */}
-          <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+          <div className="entry-mgmt-header flex items-center justify-between px-4 py-2.5">
             <div className="flex items-center gap-4">
-              <TabsList>
-                <TabsTrigger value="locker" data-testid="tab-locker">입실 관리</TabsTrigger>
-                <TabsTrigger value="status" data-testid="tab-status">오늘현황</TabsTrigger>
-                <TabsTrigger value="sales" data-testid="tab-sales">매출집계</TabsTrigger>
+              <TabsList className="bg-muted/60 shadow-2xs dark:bg-transparent dark:shadow-none dark:border dark:border-gray-400 dark:text-gray-400">
+                <TabsTrigger
+                  value="locker"
+                  data-testid="tab-locker"
+                  className="dark:data-[state=active]:bg-transparent dark:data-[state=active]:shadow-none dark:data-[state=active]:text-white dark:text-gray-400"
+                >
+                  입실 관리
+                </TabsTrigger>
+                <TabsTrigger
+                  value="status"
+                  data-testid="tab-status"
+                  className="dark:data-[state=active]:bg-transparent dark:data-[state=active]:shadow-none dark:data-[state=active]:text-white dark:text-gray-400"
+                >
+                  오늘현황
+                </TabsTrigger>
+                <TabsTrigger
+                  value="sales"
+                  data-testid="tab-sales"
+                  className="dark:data-[state=active]:bg-transparent dark:data-[state=active]:shadow-none dark:data-[state=active]:text-white dark:text-gray-400"
+                >
+                  매출집계
+                </TabsTrigger>
               </TabsList>
               <LiveClock />
             </div>
@@ -2044,6 +2467,7 @@ export default function Home() {
                   size="sm"
                   onClick={() => setExpenseDialogOpen(true)}
                   data-testid="button-quick-expense-tab"
+                  className="bg-card/80 shadow-2xs"
                 >
                   <Receipt className="h-4 w-4 mr-2" />
                   지출입력
@@ -2055,6 +2479,7 @@ export default function Home() {
                   size="sm"
                   onClick={() => setLocation('/staff-logs')}
                   data-testid="button-staff-logs-tab"
+                  className="bg-card/80 shadow-2xs"
                 >
                   <Users className="h-4 w-4 mr-2" />
                   직원근무
@@ -2066,7 +2491,7 @@ export default function Home() {
                   size="sm"
                   onClick={handleNfcScan}
                   data-testid="button-nfc-scan-tab"
-                  className="text-xs"
+                  className={`text-xs ${isNfcScanning ? "" : "bg-card/80 shadow-2xs"}`}
                 >
                   {isNfcScanning ? "감지 중지" : "자동감지"}
                 </Button>
@@ -2077,6 +2502,7 @@ export default function Home() {
                 onClick={() => handleLayoutModeChange('toggle')}
                 data-testid="button-mode-toggle"
                 title="토글 모드로 전환"
+                className="bg-card/80 shadow-2xs"
               >
                 <Columns className="h-4 w-4 mr-1" />
                 토글모드
@@ -2087,39 +2513,9 @@ export default function Home() {
           {/* 입실 관리 탭 */}
           <TabsContent value="locker" className="flex-1 min-h-0 flex flex-col mt-0 overflow-hidden data-[state=active]:flex">
             {/* 락카 상태 정보 */}
-            <div className="flex items-center justify-between px-6 py-3 border-b">
-              <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                <span>사용중: {activeLockers.length}개</span>
-                <span>방문객: {summary?.totalVisitors || 0}명</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
-                  <span className="text-xs">빈락카</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
-                  <span className="text-xs">이전영업일</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
-                  <span className="text-xs">주간</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
-                  <span className="text-xs">야간</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
-                  <span className="text-xs">추가요금</span>
-                </div>
-                {disabledLockers.size > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-4 h-4 rounded bg-gray-200 border-2 border-gray-300"></div>
-                    <span className="text-xs">사용불가</span>
-                  </div>
-                )}
-              </div>
+            <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-border/70 bg-muted/40">
+              {renderLockerStats()}
+              {renderLockerLegend(false, true)}
             </div>
             {renderLockerGrid(true)}
           </TabsContent>
@@ -2167,20 +2563,21 @@ export default function Home() {
                 maxSize={isLockerPanelCollapsed ? 100 : 70}
                 className="flex flex-col"
               >
-                <div className="h-full border-r flex flex-col">
+                <div className="h-full border-r border-border/70 flex flex-col bg-muted/30">
                   {/* Today Status */}
-                  <div className={`border-b overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
+                  <div className={`border-b border-border/70 overflow-hidden ${isSalesSummaryCollapsed ? 'flex-1' : 'flex-[3]'}`}>
                     <TodayStatusTable
                       entries={todayEntries}
+                      yesterdayEntries={yesterdayEntries}
+                      yesterdayBusinessDay={yesterdayBusinessDay}
                       isExpanded={isLockerPanelCollapsed}
                       onReverseCheckout={handleReverseCheckout}
                       onRowClick={(entry) => {
                         // Add to openDialogs for multi-popup display
                         const existingEntry = activeLockers.find(log => log.lockerNumber === entry.lockerNumber);
                         if (existingEntry) {
-                          setOpenDialogs(prev => new Map(prev).set(entry.lockerNumber, {
+                          setOpenDialogs(prev => upsertLockerDialog(prev, {
                             lockerNumber: entry.lockerNumber,
-                            isMinimized: false,
                             timeType: existingEntry.timeType,
                             basePrice: existingEntry.basePrice
                           }));
@@ -2195,7 +2592,7 @@ export default function Home() {
 
                   {/* Sales Summary */}
                   {!isSalesSummaryCollapsed && (
-                    <div className="flex-[2] p-6 overflow-auto">
+                    <div className="flex-[2] p-6 overflow-auto bg-gradient-to-b from-transparent to-muted/20">
                       <SalesSummary
                         date={getBusinessDay(new Date(), businessDayStartHour)}
                         totalVisitors={summary?.totalVisitors || 0}
@@ -2217,12 +2614,12 @@ export default function Home() {
 
                 {/* Sales Summary Collapsed Toggle Button */}
                 {isSalesSummaryCollapsed && (
-                  <div className="p-3 border-t">
+                  <div className="p-3 border-t border-border/70">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => setIsSalesSummaryCollapsed(false)}
-                      className="w-full"
+                      className="w-full bg-card/80 shadow-2xs"
                       data-testid="button-expand-sales"
                     >
                       <ChevronDown className="h-4 w-4 mr-2" />
@@ -2240,15 +2637,16 @@ export default function Home() {
         {!isLockerPanelCollapsed && (
           <ResizablePanel defaultSize={isPanelCollapsed ? 100 : 60} className="flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b">
+        <div className="entry-mgmt-header px-6 py-4">
           {/* 1행: 햄버거 + 날짜/시간 (좌측) | 입실 관리 (우측) */}
-          <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center justify-between gap-3 mb-3.5">
             <div className="flex items-center gap-3">
               <Button 
                 variant="ghost" 
                 size="icon" 
                 onClick={handleTogglePanel}
                 data-testid="button-toggle-panel"
+                className="rounded-xl hover:bg-muted/80"
               >
                 {isPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
               </Button>
@@ -2261,7 +2659,7 @@ export default function Home() {
                   size="sm"
                   onClick={handleNfcScan}
                   data-testid="button-nfc-scan"
-                  className="text-xs"
+                  className={`text-xs ${isNfcScanning ? "" : "bg-card/80 shadow-2xs"}`}
                 >
                   {isNfcScanning ? "감지 중지" : "자동감지"}
                 </Button>
@@ -2272,7 +2670,7 @@ export default function Home() {
                   size="sm"
                   onClick={() => setBarcodeTestDialogOpen(true)}
                   data-testid="button-barcode-test"
-                  className="text-xs"
+                  className="text-xs bg-card/80 shadow-2xs"
                 >
                   바코드테스트
                 </Button>
@@ -2283,7 +2681,7 @@ export default function Home() {
                 onClick={() => handleLayoutModeChange('tab')}
                 data-testid="button-mode-tab"
                 title="탭 모드로 전환"
-                className="text-xs"
+                className="text-xs bg-card/80 shadow-2xs"
               >
                 <LayoutGrid className="h-4 w-4 mr-1" />
                 탭모드
@@ -2293,6 +2691,7 @@ export default function Home() {
                 size="sm"
                 onClick={() => setExpenseDialogOpen(true)}
                 data-testid="button-quick-expense-header"
+                className="bg-card/80 shadow-2xs"
               >
                 <Receipt className="h-4 w-4 mr-2" />
                 지출입력
@@ -2302,12 +2701,13 @@ export default function Home() {
                 size="sm"
                 onClick={() => setLocation('/staff-logs')}
                 data-testid="button-staff-logs-header"
+                className="bg-card/80 shadow-2xs"
               >
                 <Users className="h-4 w-4 mr-2" />
                 직원근무
               </Button>
               <h1 
-                className="text-xl font-semibold cursor-pointer select-none" 
+                className="text-xl font-semibold tracking-tight cursor-pointer select-none pl-1" 
                 onClick={handleTitleClick}
                 data-testid="title-entry-management"
               >
@@ -2318,42 +2718,16 @@ export default function Home() {
           
           {/* 2행: 사용중 락카수/총방문인원 (좌측) | 범례 (우측) */}
           <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground ml-12">
-              <span>사용중: {activeLockers.length}개</span>
-              <span>방문객: {summary?.totalVisitors || 0}명</span>
+            <div className="ml-12">
+              {renderLockerStats()}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-white border-2 border-gray-300"></div>
-                <span className="text-xs">빈락카</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-[#22C55E] border-2 border-[#16A34A]"></div>
-                <span className="text-xs">이전영업일</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-[#FFD700] border-2 border-[#FFC700]"></div>
-                <span className="text-xs">주간</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-[#7B68EE] border-2 border-[#6A5ACD]"></div>
-                <span className="text-xs">야간</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-[#FF4444] border-2 border-[#CC0000]"></div>
-                <span className="text-xs">추가요금</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="w-4 h-4 rounded bg-[#FF69B4] border-2 border-[#FF1493]"></div>
-                <span className="text-xs">직원</span>
-              </div>
-            </div>
+            {renderLockerLegend(true, false)}
           </div>
         </div>
 
           {/* Locker Grid */}
           <div 
-            className={`flex-1 min-h-0 overflow-auto ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
+            className={`flex-1 min-h-0 overflow-auto entry-mgmt-surface ${isPanelCollapsed && !overviewMode ? 'p-8' : 'p-6'}`}
           >
           {lockerGroups.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
@@ -2364,16 +2738,16 @@ export default function Home() {
             <div className="space-y-8 w-full">
               {lockerGroups.map((group) => (
                 <div key={group.id} className="w-full">
-                  <h3 className={`text-lg font-semibold mb-3 ${isPanelCollapsed && !overviewMode ? "text-center" : ""}`}>
+                  <h3 className={`locker-group-title text-base font-semibold tracking-tight text-foreground/90 ${isPanelCollapsed && !overviewMode ? "justify-center" : ""}`}>
                     {group.name}
-                    {overviewMode && <span className="ml-2 text-xs text-muted-foreground">(전체보기: H)</span>}
+                    {overviewMode && <span className="text-xs font-normal text-muted-foreground">(전체보기: H)</span>}
                   </h3>
                   <div className={`grid w-full ${
                     overviewMode 
-                      ? "grid-cols-12 gap-2" 
+                      ? "grid-cols-12 gap-2.5" 
                       : isPanelCollapsed 
-                        ? "grid-cols-8 gap-4" 
-                        : "grid-cols-8 gap-2 max-w-4xl"
+                        ? "grid-cols-8 gap-3.5" 
+                        : "grid-cols-8 gap-2.5 max-w-4xl"
                   }`}>
                     {Array.from(
                       { length: group.endNumber - group.startNumber + 1 },
@@ -2395,6 +2769,8 @@ export default function Home() {
                         isOuting={lockerOutingStatus[num] || false}
                         outingExceeded={lockerOutingExceeded[num] || false}
                         isStaff={lockerStaffStatus[num] || false}
+                        isLongTerm={lockerLongTermStatus[num] || false}
+                        checkoutWarning={lockerCheckoutWarning[num] || false}
                         outOfService={disabledLockers.has(num)}
                       />
                     ))}
@@ -2409,25 +2785,18 @@ export default function Home() {
       </ResizablePanelGroup>
       )}
 
-      {/* Backdrop - Click to hide popups temporarily */}
-      {openDialogs.size > 0 && popupsVisible && (
-        <div 
-          className="fixed inset-0 bg-black/20 z-40"
-          onClick={() => setPopupsVisible(false)}
-          title="클릭하여 임시로 숨기기"
-        />
-      )}
-
       {/* Multi-Popup Workspace - Docked or Floating Mode */}
       {/* display:none으로 숨김 (언마운트 X) → 결제방식 등 내부 state 보존 */}
       {openDialogs.size > 0 && (
-        <div 
-          className={`bg-muted/95 backdrop-blur-sm shadow-2xl z-50 flex flex-col ${
+        <div
+          ref={workspaceRef}
+          data-workspace-root="true"
+          className={`locker-workspace-shell z-50 flex flex-col min-w-0 ${
             isFloatingMode 
-              ? "fixed rounded-lg border-2 border-primary" 
+              ? "fixed rounded-[1.35rem]" 
               : dockedSide === 'right'
-                ? "fixed right-0 top-0 bottom-0 w-[45%] border-l-4 border-primary"
-                : "fixed left-0 top-0 bottom-0 w-[45%] border-r-4 border-primary"
+                ? "fixed right-0 top-0 bottom-0"
+                : "fixed left-0 top-0 bottom-0"
           }`}
           style={isFloatingMode ? {
             left: floatingPosition.x,
@@ -2435,30 +2804,111 @@ export default function Home() {
             width: floatingSize.width,
             height: floatingSize.height,
             display: popupsVisible ? undefined : 'none',
-          } : { display: popupsVisible ? undefined : 'none' }}
+          } : {
+            width: dockedWidth,
+            display: popupsVisible ? undefined : 'none',
+          }}
         >
+          {isFloatingMode ? (
+            <>
+              <div className="absolute top-0 left-3 right-3 h-3 cursor-ns-resize z-[60]" data-workspace-resize="true" onMouseDown={(e) => handleResizePointerDown('n', e)} onTouchStart={(e) => handleResizePointerDown('n', e)} title="높이 조절" />
+              <div className="absolute bottom-0 left-3 right-3 h-3 cursor-ns-resize z-[60]" data-workspace-resize="true" onMouseDown={(e) => handleResizePointerDown('s', e)} onTouchStart={(e) => handleResizePointerDown('s', e)} title="높이 조절" />
+              <div className="absolute left-0 top-3 bottom-3 w-3 cursor-ew-resize z-[60]" data-workspace-resize="true" onMouseDown={(e) => handleResizePointerDown('w', e)} onTouchStart={(e) => handleResizePointerDown('w', e)} title="너비 조절" />
+              <div className="absolute right-0 top-3 bottom-3 w-3 cursor-ew-resize z-[60]" data-workspace-resize="true" onMouseDown={(e) => handleResizePointerDown('e', e)} onTouchStart={(e) => handleResizePointerDown('e', e)} title="너비 조절" />
+              <ResizeEdgeGrip edge="n" onDown={handleResizePointerDown} testId="workspace-resize-n" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="s" onDown={handleResizePointerDown} testId="workspace-resize-s" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="w" onDown={handleResizePointerDown} testId="workspace-resize-w" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="e" onDown={handleResizePointerDown} testId="workspace-resize-e" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="nw" onDown={handleResizePointerDown} testId="workspace-resize-nw" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="ne" onDown={handleResizePointerDown} testId="workspace-resize-ne" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="sw" onDown={handleResizePointerDown} testId="workspace-resize-sw" dataWorkspaceResize tone="glass" />
+              <ResizeEdgeGrip edge="se" onDown={handleResizePointerDown} testId="workspace-resize-se" dataWorkspaceResize tone="glass" />
+            </>
+          ) : (
+            <>
+              <div
+                className={`absolute top-0 bottom-0 z-[60] w-3 cursor-ew-resize touch-none ${
+                  dockedSide === 'right' ? 'left-0' : 'right-0'
+                }`}
+                data-workspace-resize="true"
+                onMouseDown={(e) => handleResizePointerDown('dock', e)}
+                onTouchStart={(e) => handleResizePointerDown('dock', e)}
+                title="너비 조절"
+                data-testid="workspace-dock-resize"
+              />
+              <DockResizeGrip
+                side={dockedSide}
+                onDown={(e) => handleResizePointerDown('dock', e)}
+                testId="workspace-dock-resize-grip"
+                dataWorkspaceResize
+                tone="glass"
+              />
+            </>
+          )}
           {/* Workspace Header */}
           <div 
-            className={`flex items-center justify-between px-4 py-3 border-b bg-primary text-primary-foreground ${
-              isFloatingMode ? "cursor-move rounded-t-lg" : ""
+            className={`locker-workspace-header flex flex-wrap items-center justify-between gap-2 px-4 py-3 min-w-0 ${
+              isFloatingMode ? "cursor-move rounded-t-[1.35rem]" : ""
             }`}
             onMouseDown={isFloatingMode ? handleFloatingDragStart : undefined}
             onTouchStart={isFloatingMode ? handleFloatingTouchStart : undefined}
           >
-            <div className="flex items-center gap-3">
-              {isFloatingMode && <Move className="w-4 h-4 opacity-60" />}
-              <h3 className="font-semibold text-lg">처리중인 고객</h3>
-              <span className="px-2 py-1 rounded-full bg-primary-foreground text-primary text-sm font-bold">
+            <div className="flex flex-wrap items-center gap-3 min-w-0">
+              {isFloatingMode && <Move className="w-4 h-4 opacity-60 shrink-0" />}
+              <h3 className="font-semibold text-lg truncate">처리중인 고객</h3>
+              <span className="locker-workspace-count-badge px-2 py-1 rounded-full text-sm font-bold">
                 {openDialogs.size}명
               </span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-end">
+              {openDialogs.size > 1 && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setOpenDialogs(prev => {
+                        const next = new Map(prev);
+                        for (const [num, info] of Array.from(next.entries())) {
+                          next.set(num, { ...info, isMinimized: false });
+                        }
+                        return next;
+                      });
+                    }}
+                    className="locker-workspace-header-btn text-white/90 hover:bg-white/15 gap-1"
+                    title="모든 락카 옵션창 펼치기"
+                    data-testid="button-expand-all-locker-dialogs"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                    일괄 펼치기
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setOpenDialogs(prev => {
+                        const next = new Map(prev);
+                        for (const [num, info] of Array.from(next.entries())) {
+                          next.set(num, { ...info, isMinimized: true });
+                        }
+                        return next;
+                      });
+                    }}
+                    className="locker-workspace-header-btn text-white/90 hover:bg-white/15 gap-1"
+                    title="모든 락카 옵션창 접기"
+                    data-testid="button-collapse-all-locker-dialogs"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                    일괄 접기
+                  </Button>
+                </>
+              )}
               {!isFloatingMode && (
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={toggleDockedSide}
-                  className="text-primary-foreground hover:bg-primary-foreground/20"
+                  className="locker-workspace-header-btn text-white/90 hover:bg-white/15"
                   title={dockedSide === 'right' ? '좌측으로 이동' : '우측으로 이동'}
                   data-testid="button-toggle-docked-side"
                 >
@@ -2469,7 +2919,7 @@ export default function Home() {
                 variant="ghost" 
                 size="icon"
                 onClick={toggleFloatingMode}
-                className="text-primary-foreground hover:bg-primary-foreground/20"
+                className="locker-workspace-header-btn text-white/90 hover:bg-white/15"
                 title={isFloatingMode ? "우측 도킹" : "플로팅 모드"}
                 data-testid="button-toggle-floating"
               >
@@ -2479,7 +2929,7 @@ export default function Home() {
                 variant="ghost" 
                 size="icon"
                 onClick={() => setPopupsVisible(false)}
-                className="text-primary-foreground hover:bg-primary-foreground/20"
+                className="locker-workspace-header-btn text-white/90 hover:bg-white/15"
                 title="임시로 숨기기"
               >
                 ⊟
@@ -2488,7 +2938,7 @@ export default function Home() {
                 variant="ghost" 
                 size="icon"
                 onClick={() => setOpenDialogs(new Map())}
-                className="text-primary-foreground hover:bg-primary-foreground/20"
+                className="locker-workspace-header-btn text-white/90 hover:bg-white/15"
                 title="모두 닫기 (ESC)"
               >
                 ✕
@@ -2497,7 +2947,7 @@ export default function Home() {
           </div>
           
           {/* Scrollable Popup Stack - 최근 선택 순으로 역순 표시 (나중에 선택한 락카가 위에) */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="locker-workspace-body flex-1 overflow-y-auto p-4 space-y-4">
             {Array.from(openDialogs.entries()).reverse().map(([lockerNumber, dialogInfo]) => {
               const selectedEntry = activeLockers.find(log => log.lockerNumber === lockerNumber);
               const newLockerInfo = dialogInfo.newLockerInfo;
@@ -2505,26 +2955,28 @@ export default function Home() {
               return (
                 <div 
                   key={lockerNumber}
-                  className="bg-background rounded-lg border-2 border-primary shadow-xl overflow-hidden"
-                  style={{ minHeight: dialogInfo.isMinimized ? '60px' : '500px' }}
+                  className="locker-opt-popup-shell overflow-hidden min-w-0"
+                  style={{ minHeight: dialogInfo.isMinimized ? '60px' : 'min(500px, calc(100% - 1rem))' }}
                 >
                   {dialogInfo.isMinimized ? (
                     // Minimized view
                     <div 
-                      className="flex items-center justify-between px-4 py-3 cursor-pointer hover-elevate active-elevate-2"
+                      className="locker-opt-minimized flex items-center justify-between px-4 py-3 cursor-pointer"
                       onClick={() => {
                         setOpenDialogs(prev => {
-                          const next = new Map(prev);
-                          const info = next.get(lockerNumber);
-                          if (info) {
-                            next.set(lockerNumber, { ...info, isMinimized: false });
-                          }
-                          return next;
+                          const info = prev.get(lockerNumber);
+                          if (!info) return prev;
+                          return upsertLockerDialog(prev, {
+                            lockerNumber: info.lockerNumber,
+                            timeType: info.timeType,
+                            basePrice: info.basePrice,
+                            newLockerInfo: info.newLockerInfo,
+                          });
                         });
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
+                        <div className="locker-opt-badge locker-opt-badge-sm flex items-center justify-center shrink-0 rounded-2xl font-bold tabular-nums">
                           {lockerNumber}
                         </div>
                         <div>
@@ -2577,15 +3029,19 @@ export default function Home() {
                           currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
                           currentAdditionalFeePaymentMethod={(selectedEntry as any)?.additionalFeePaymentMethod}
                           currentIsStaff={!!(selectedEntry as any)?.isStaff}
+                          currentIsLongTerm={!!(selectedEntry as any)?.isLongTerm}
+                          currentPlannedCheckoutAt={(selectedEntry as any)?.plannedCheckoutAt || undefined}
+                          currentLongTermDailyFee={(selectedEntry as any)?.longTermDailyFee}
+                          currentLongTermDiscount={(selectedEntry as any)?.longTermDiscount}
                           isOuting={lockerOutingStatus[lockerNumber] || false}
                           onToggleOuting={(_newIsOuting, _newMemo) => {
                             loadData();
                           }}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff)
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay) => 
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay)
                           }
-                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod) => 
-                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod)
+                          onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod, exitTimeISO) => 
+                            handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod, exitTimeISO)
                           }
                           onCancel={() => handleCancel(lockerNumber)}
                           onSwap={(fromLocker, toLocker) => handleSwap(lockerNumber, toLocker)}

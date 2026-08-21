@@ -118,13 +118,14 @@ export default function SalesSummary({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">매출 집계</h2>
+        <h2 className="text-lg font-semibold tracking-tight">매출 집계</h2>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setExpenseDialogOpen(true)}
             data-testid="button-quick-add-expense"
+            className="bg-card/80 shadow-2xs"
           >
             <Receipt className="h-4 w-4 mr-2" />
             지출입력
@@ -135,6 +136,7 @@ export default function SalesSummary({
               size="sm"
               onClick={onToggleCollapse}
               data-testid="button-collapse-sales"
+              className="rounded-xl"
             >
               <ChevronUp className="h-4 w-4" />
             </Button>
@@ -149,27 +151,27 @@ export default function SalesSummary({
         </CollapsibleTrigger>
         
         <CollapsibleContent>
-          <Card className="mt-4">
+          <Card className="mt-4 border-border/70 shadow-sm bg-card/90">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-medium text-muted-foreground">
+          <CardTitle className="text-base font-medium text-muted-foreground tracking-tight">
             {date}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/30 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">총 방문인원</p>
-              <p className="text-2xl font-semibold" data-testid="text-total-visitors">{totalVisitors}명</p>
+              <p className="text-2xl font-semibold tracking-tight tabular-nums" data-testid="text-total-visitors">{totalVisitors}명</p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-primary/5 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">총 수입</p>
-              <p className="text-2xl font-semibold text-blue-600 dark:text-blue-400" data-testid="text-grand-total">
+              <p className="text-2xl font-semibold tracking-tight tabular-nums text-primary" data-testid="text-grand-total">
                 {grandTotal.toLocaleString()}원
               </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">입실매출 (추가요금 포함)</p>
-              <p className="text-lg font-medium" data-testid="text-entry-sales">
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-entry-sales">
                 {entrySales.toLocaleString()}원
               </p>
               {totalRefunds > 0 && (
@@ -178,39 +180,39 @@ export default function SalesSummary({
                 </span>
               )}
             </div>
-            <div className="space-y-1">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 매출</p>
-              <p className="text-lg font-medium" data-testid="text-rental-revenue">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide">대여 및 판매 매출</p>
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-rental-revenue">
                 {rentalRevenue.toLocaleString()}원
               </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">총 지출</p>
-              <p className="text-lg font-medium text-red-600 dark:text-red-400" data-testid="text-total-expenses">
+              <p className="text-lg font-medium tracking-tight tabular-nums text-red-600 dark:text-red-400" data-testid="text-total-expenses">
                 {totalExpenses.toLocaleString()}원
               </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">순매출</p>
-              <p className="text-lg font-medium" data-testid="text-net-profit">
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-net-profit">
                 {netProfit.toLocaleString()}원
               </p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">취소 건수</p>
-              <p className="text-lg font-medium" data-testid="text-cancellations">{cancellations}건</p>
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-cancellations">{cancellations}건</p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">외국인 수</p>
-              <p className="text-lg font-medium" data-testid="text-foreigner-count">{foreignerCount}명</p>
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-foreigner-count">{foreignerCount}명</p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">주간 방문수</p>
-              <p className="text-lg font-medium" data-testid="text-day-visitors">{dayVisitors}명</p>
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-day-visitors">{dayVisitors}명</p>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-1 rounded-xl bg-muted/20 px-3 py-2.5">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">야간 방문수</p>
-              <p className="text-lg font-medium" data-testid="text-night-visitors">{nightVisitors}명</p>
+              <p className="text-lg font-medium tracking-tight tabular-nums" data-testid="text-night-visitors">{nightVisitors}명</p>
             </div>
           </div>
         </CardContent>

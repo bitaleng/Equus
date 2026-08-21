@@ -3,8 +3,8 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } fro
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
-  Users, Clock, LogIn, LogOut, Plus, Trash2, Star, AlertTriangle,
-  CheckCircle, TrendingDown, Pencil, ChevronLeft, ChevronUp, ChevronDown,
+  Users, Clock, LogIn, LogOut, Plus, Trash2,
+  CheckCircle, Pencil, ChevronLeft, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
-import type { Staff, StaffWorkLog, StaffRating, StaffRatingValue, PayType } from "@/lib/localDb";
+import type { Staff, StaffWorkLog, PayType } from "@/lib/localDb";
 
 const TZ = "Asia/Seoul";
 const getKstNow = () => toZonedTime(new Date(), TZ);
@@ -65,12 +65,9 @@ const PAY_TYPE_COLORS: Record<PayType, string> = {
   "공휴일": "border-orange-400/50 text-orange-700 dark:text-orange-300 bg-orange-500/10",
 };
 
-const RATING_CONFIG: Record<StaffRatingValue, { color: string; icon: React.ElementType }> = {
-  "훌륭": { color: "border-blue-500/40 text-blue-700 dark:text-blue-400 bg-blue-500/10", icon: Star },
-  "좋음": { color: "border-green-500/40 text-green-700 dark:text-green-400 bg-green-500/10", icon: CheckCircle },
-  "태만": { color: "border-orange-500/40 text-orange-700 dark:text-orange-400 bg-orange-500/10", icon: TrendingDown },
-  "경고": { color: "border-red-500/40 text-red-700 dark:text-red-400 bg-red-500/10", icon: AlertTriangle },
-};
+function isPaySegment(log: StaffWorkLog): boolean {
+  return log.workMinutes > 0 || log.segmentPay > 0;
+}
 
 // ── 커스텀 시간 선택기 ────────────────────────────────────────────
 interface TimePickerButtonProps {
@@ -138,8 +135,6 @@ interface DayGroup {
   segments: StaffWorkLog[];
   totalMinutes: number;
   totalPay: number;
-  clockIn: string;
-  clockOut: string;
 }
 
 function groupByDate(logs: StaffWorkLog[]): DayGroup[] {
@@ -151,9 +146,7 @@ function groupByDate(logs: StaffWorkLog[]): DayGroup[] {
   const result: DayGroup[] = Object.entries(map).map(([date, segs]) => {
     const totalMinutes = segs.reduce((s: number, l: StaffWorkLog) => s + l.workMinutes, 0);
     const totalPay = segs.reduce((s: number, l: StaffWorkLog) => s + l.segmentPay, 0);
-    const clockIn = segs.map((l: StaffWorkLog) => l.startTime).filter(Boolean).sort()[0] || "";
-    const clockOut = segs.map((l: StaffWorkLog) => l.endTime).filter(Boolean).sort().reverse()[0] || "";
-    return { date, segments: segs, totalMinutes, totalPay, clockIn, clockOut };
+    return { date, segments: segs, totalMinutes, totalPay };
   });
   result.sort((a, b) => b.date.localeCompare(a.date));
   return result;
@@ -169,7 +162,6 @@ export default function StaffLogPage() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [workLogs, setWorkLogs] = useState<StaffWorkLog[]>([]);
   const [todayLogs, setTodayLogs] = useState<StaffWorkLog[]>([]);
-  const [ratings, setRatings] = useState<StaffRating[]>([]);
 
   // 오늘 근태기록 (출퇴근 버튼용) — 첫 번째 구간의 실제 출퇴근
   const [clockLog, setClockLog] = useState<StaffWorkLog | null>(null);
@@ -186,12 +178,6 @@ export default function StaffLogPage() {
   }>({ startTime: "", endTime: "", payType: "주간", hourlyRate: "", notes: "" });
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  // 성실도
-  const [isRatingOpen, setIsRatingOpen] = useState(false);
-  const [ratingForm, setRatingForm] = useState<{ rating: StaffRatingValue; date: string; note: string }>({
-    rating: "좋음", date: today, note: "",
-  });
-
   const selectedStaff = staffList.find(s => s.id === selectedStaffId) ?? null;
   const selectedStaffIndex = staffList.findIndex(s => s.id === selectedStaffId);
   const selectedColor = selectedStaffIndex >= 0 ? getStaffColor(selectedStaffIndex) : "#3B82F6";
@@ -205,7 +191,7 @@ export default function StaffLogPage() {
     const logs = localDb.getWorkLogs(staffId);
     setWorkLogs(logs);
     const todSegs = localDb.getTodayWorkLogs(staffId, currentToday);
-    setTodayLogs(todSegs);
+    setTodayLogs(todSegs.filter(isPaySegment));
 
     // 근태기록: segmentPay=0, workMinutes=0인 출퇴근 전용 레코드만 사용
     // (급여 구간 레코드를 clockLog로 혼용하면 출퇴근 탭 필터에서 누락되는 버그 발생)
@@ -219,7 +205,6 @@ export default function StaffLogPage() {
       foundClockLog = nightLog ?? null;
     }
     setClockLog(foundClockLog);
-    setRatings(localDb.getStaffRatings(staffId));
   };
 
   useEffect(() => {
@@ -299,7 +284,7 @@ export default function StaffLogPage() {
     reloadStaffData(selectedStaffId);
     const desc = newSegPay > 0
       ? `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · ₩${newSegPay.toLocaleString()}`
-      : `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · 근태전용`;
+      : `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)})`;
     toast({ title: "근무 구간 추가됨", description: desc });
   };
 
@@ -344,28 +329,12 @@ export default function StaffLogPage() {
     toast({ title: "구간이 수정되었습니다." });
   };
 
-  // 성실도
-  const handleSaveRating = () => {
-    if (!selectedStaffId) return;
-    localDb.createStaffRating({ staffId: selectedStaffId, ratingDate: ratingForm.date, rating: ratingForm.rating, note: ratingForm.note });
-    setRatings(localDb.getStaffRatings(selectedStaffId));
-    setIsRatingOpen(false);
-    toast({ title: "성실도 평가가 등록되었습니다." });
-  };
-
-  const handleDeleteRating = (id: string) => {
-    if (!confirm("이 평가를 삭제하시겠습니까?")) return;
-    localDb.deleteStaffRating(id);
-    setRatings(localDb.getStaffRatings(selectedStaffId));
-    toast({ title: "평가가 삭제되었습니다." });
-  };
-
   const hasClockedIn = !!clockLog?.startTime;
   const hasClockedOut = !!clockLog?.endTime;
   // 전날 출근 기록이 이어지는 야간 근무 여부
   const isNightShift = !!clockLog && clockLog.workDate !== getTodayStr();
 
-  const dayGroups = useMemo(() => groupByDate(workLogs), [workLogs]);
+  const dayGroups = useMemo(() => groupByDate(workLogs.filter(isPaySegment)), [workLogs]);
 
   // ──────────────────────────────────────────────
   if (staffList.length === 0) {
@@ -669,91 +638,32 @@ export default function StaffLogPage() {
             </Card>
           </div>
 
-          {/* ── 근무기록 / 출퇴근 / 성실도 탭 ── */}
+          {/* ── 근무기록 / 출퇴근 탭 ── */}
           <Tabs defaultValue="logs">
             <TabsList>
               <TabsTrigger value="logs">근무 기록</TabsTrigger>
               <TabsTrigger value="attendance" data-testid="tab-attendance">출퇴근 기록</TabsTrigger>
-              <TabsTrigger value="ratings">성실도 평가</TabsTrigger>
             </TabsList>
 
             <TabsContent value="logs" className="mt-3">
               {dayGroups.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10 text-sm">근무 기록이 없습니다.</p>
+                <div className="text-center py-12 space-y-2">
+                  <p className="text-muted-foreground text-sm">근무 기록이 없습니다.</p>
+                  <p className="text-xs text-muted-foreground">위의 오늘 근무 구간에서 시작·종료 시간을 입력하세요.</p>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {dayGroups.map(group => {
-                    // 근태전용 레코드: segmentPay=0, workMinutes=0, startTime 있음
-                    const attendanceRec = group.segments.find(
-                      s => s.segmentPay === 0 && s.workMinutes === 0 && (s.startTime || s.endTime)
-                    ) ?? null;
-                    // 급여 구간: workMinutes>0 또는 segmentPay>0 인 것
-                    const paySegments = group.segments.filter(
-                      s => s.workMinutes > 0 || s.segmentPay > 0
-                    );
-                    return (
+                  {dayGroups.map(group => (
                     <div key={group.date} className="border rounded-md overflow-hidden">
-                      {/* 날짜 헤더 */}
                       <div className="flex items-center gap-3 px-3 py-2 bg-muted/40 border-b flex-wrap">
                         <span className="font-semibold text-sm tabular-nums">{group.date}</span>
-                        {/* 출퇴근 시간 (근태기록) */}
-                        {(attendanceRec?.startTime || attendanceRec?.endTime) ? (
-                          <span className="flex items-center gap-1.5 text-xs">
-                            <LogIn className="h-3 w-3 text-green-600 dark:text-green-400" />
-                            <span className="tabular-nums font-mono">
-                              {attendanceRec.startTime || "—"}
-                            </span>
-                            <LogOut className="h-3 w-3 text-red-500 dark:text-red-400 ml-1" />
-                            <span className="tabular-nums font-mono">
-                              {attendanceRec.endTime || "—"}
-                            </span>
-                          </span>
-                        ) : (group.clockIn || group.clockOut) ? (
-                          <span className="text-xs text-muted-foreground">
-                            {group.clockIn && `출근 ${group.clockIn}`}
-                            {group.clockIn && group.clockOut && " · "}
-                            {group.clockOut && `퇴근 ${group.clockOut}`}
-                          </span>
-                        ) : null}
                         <span className="text-sm font-bold text-primary tabular-nums ml-auto">
                           {group.totalPay > 0
                             ? `${formatMinutes(group.totalMinutes)} · ₩${group.totalPay.toLocaleString()}`
-                            : group.totalMinutes > 0
-                              ? formatMinutes(group.totalMinutes)
-                              : <span className="font-normal text-muted-foreground text-xs">근태전용</span>
-                          }
+                            : formatMinutes(group.totalMinutes)}
                         </span>
                       </div>
-
-                      {/* 근태전용 전용일 경우: 출근/퇴근만 기록된 행 표시 */}
-                      {paySegments.length === 0 && attendanceRec && (
-                        <div className="flex items-center gap-3 px-3 py-2 text-sm bg-green-500/5">
-                          <Badge variant="outline" className="shrink-0 text-xs border-green-400/50 text-green-700 dark:text-green-400 bg-green-500/10">
-                            근태
-                          </Badge>
-                          <span className="font-mono tabular-nums text-muted-foreground flex-1">
-                            {attendanceRec.startTime && attendanceRec.endTime
-                              ? `${attendanceRec.startTime} ~ ${attendanceRec.endTime}`
-                              : attendanceRec.startTime
-                                ? `출근 ${attendanceRec.startTime} (미퇴근)`
-                                : "출근 미기록"}
-                          </span>
-                          {attendanceRec.startTime && attendanceRec.endTime && (
-                            <span className="tabular-nums text-muted-foreground shrink-0">
-                              {formatMinutes(calcWorkMinutes(attendanceRec.startTime, attendanceRec.endTime))}
-                            </span>
-                          )}
-                          <span className="text-xs text-muted-foreground shrink-0">급여계산 없음</span>
-                          <div className="flex gap-1 shrink-0">
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteLog(attendanceRec.id)} data-testid={`button-delete-att-${attendanceRec.id}`}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 급여 구간 목록 */}
-                      {paySegments.map((seg, i) => {
+                      {group.segments.map((seg, i) => {
                         const timeRange = seg.agreedStartTime && seg.agreedEndTime
                           ? `${seg.agreedStartTime} ~ ${seg.agreedEndTime}`
                           : seg.startTime && seg.endTime
@@ -786,8 +696,7 @@ export default function StaffLogPage() {
                         );
                       })}
                     </div>
-                  );
-                  })}
+                  ))}
                 </div>
               )}
             </TabsContent>
@@ -844,33 +753,6 @@ export default function StaffLogPage() {
                   </div>
                 );
               })()}
-            </TabsContent>
-
-            <TabsContent value="ratings" className="mt-3">
-              <div className="flex justify-end mb-3">
-                <Button size="sm" onClick={() => { setRatingForm({ rating: "좋음", date: today, note: "" }); setIsRatingOpen(true); }} data-testid="button-add-rating">
-                  <Plus className="h-4 w-4 mr-1" />평가 추가
-                </Button>
-              </div>
-              {ratings.length === 0 ? (
-                <p className="text-center text-muted-foreground py-10 text-sm">성실도 평가가 없습니다.</p>
-              ) : (
-                <div className="space-y-2">
-                  {ratings.map(r => {
-                    const cfg = RATING_CONFIG[r.rating];
-                    return (
-                      <div key={r.id} className="flex items-center gap-3 p-3 border rounded-md">
-                        <span className="text-sm text-muted-foreground tabular-nums w-24 shrink-0">{r.ratingDate}</span>
-                        <Badge variant="outline" className={cfg.color}>{r.rating}</Badge>
-                        <span className="text-sm flex-1 text-muted-foreground">{r.note}</span>
-                        <Button size="icon" variant="ghost" onClick={() => handleDeleteRating(r.id)} data-testid={`button-delete-rating-${r.id}`}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </TabsContent>
           </Tabs>
         </div>
@@ -940,36 +822,6 @@ export default function StaffLogPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditOpen(false)}>취소</Button>
             <Button onClick={handleSaveEdit} data-testid="button-save-edit-seg">저장</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── 성실도 평가 다이얼로그 ── */}
-      <Dialog open={isRatingOpen} onOpenChange={setIsRatingOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>성실도 평가 — {selectedStaff?.name}</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>날짜</Label>
-              <Input type="date" value={ratingForm.date} onChange={e => setRatingForm(f => ({ ...f, date: e.target.value }))} data-testid="input-rating-date" />
-            </div>
-            <div className="space-y-1">
-              <Label>평가</Label>
-              <Select value={ratingForm.rating} onValueChange={v => setRatingForm(f => ({ ...f, rating: v as StaffRatingValue }))}>
-                <SelectTrigger data-testid="select-rating"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(RATING_CONFIG) as StaffRatingValue[]).map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>비고 (선택)</Label>
-              <Input type="text" value={ratingForm.note} onChange={e => setRatingForm(f => ({ ...f, note: e.target.value }))} placeholder="평가 내용 입력" data-testid="input-rating-note" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRatingOpen(false)}>취소</Button>
-            <Button onClick={handleSaveRating} data-testid="button-save-rating">등록</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

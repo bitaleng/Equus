@@ -48,11 +48,24 @@ HIZZ-XXXX-XXXX-XXXX    (V2 히즈)
 
 ---
 
-## 데모 모드
+## 데모(체험) 모드 — 사이트 분리
 
-URL에 `?demo=true`를 붙이면 라이선스 없이 7일 체험이 가능합니다.
-- PWA 설치 버튼이 숨겨집니다
-- 매장 운영용으로는 사용 불가
+정식 Netlify 사이트와 **체험 전용 Netlify 사이트**를 분리합니다.
+
+### 정식 빌드 (`netlify-v1.zip` / `netlify-v2.zip`)
+- 라이선스 키 필수
+- `?demo=true` 를 붙여도 체험 모드로 진입되지 않습니다
+
+### 체험 빌드 (`netlify-v1-demo.zip` / `netlify-v2-demo.zip`)
+```powershell
+.\build-netlify.ps1 -Skin v1 -Demo
+.\build-netlify.ps1 -Skin v2 -Demo
+```
+- 별도 Netlify 사이트에만 배포
+- 접속만 하면 7일 체험 (비밀번호 `12345678`)
+- PWA 홈 화면 설치 차단
+- Discord CCTV 자동 전송·라이선스 생성기 제외
+- 매장 상시 운영용으로 사용 불가
 
 ---
 

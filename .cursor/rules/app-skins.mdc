@@ -1,0 +1,38 @@
+---
+description: V1/V2/V3 스킨은 개별 브랜딩·설정을 유지하고 기능 소스는 공유한다
+alwaysApply: true
+---
+
+# 앱 스킨 (V1 에쿠스 / V2 히즈 / V3 홈)
+
+기능 업데이트는 **공통 소스**(`client/src`, `shared`, `server` 등)에 한 번만 적용한다.  
+아래만 스킨별로 **개별 유지**한다. 하드코딩으로 한 버전에만 넣지 말 것.
+
+## 스킨별 개별 항목
+
+| 항목 | 위치 |
+|------|------|
+| 아이콘·manifest | `client/skins/{v1\|v2\|v3\|demo}/` |
+| 사이드바 로고 | `client/public/icon-v{1\|2\|3}.png` 또는 체험 `icon-demo.png` + `app-sidebar.tsx` |
+| 앱 제목·설명 | `client/src/lib/appMeta.ts`, `vite.config.ts` `skinMeta` |
+| 시스템설정 기본값 | `localDb.ts` `getSettings()` 의 `v2Overrides` / `v3Overrides` |
+| 라이선스 접두어·시크릿·스토리지키 | `licenseValidation.ts`, `license-generator.html` |
+| 정식 1기기 바인딩 | (제거됨 — 로컬 라이선스만 검증, 세션은 SQLite/IDB에 저장) |
+| 체험판 시크릿 | `demo-trial.ts`, `demo-extension-generator.html` |
+| 백업 접두어·시스템명 | `localDb.ts` `APP_SYSTEM_NAME` / `BACKUP_PREFIX` |
+| Netlify zip | `build-netlify.ps1` — 정식 `-Skin v1\|v2\|v3`, 체험 `-Skin demo` → `netlify-demo.zip` |
+
+## 로컬 실행
+
+```bash
+npm run dev:v1   # 에쿠스
+npm run dev:v2   # 히즈
+npm run dev:v3   # 홈 (home24시)
+npm run dev:demo # 통합 체험판 (PWA 설치 불가)
+```
+
+## 새 기능 추가 시
+
+- UI·요금 로직·DB 스키마는 공통 코드에만 수정 → 세 버전 동시 반영
+- 기본값·브랜드가 버전마다 다르면 `VITE_SKIN` / `getAppSkin()` 분기로만 추가
+- v1/v2에만 있는 분기를 발견하면 v3도 같은 패턴으로 빠짐없이 맞출 것

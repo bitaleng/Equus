@@ -11,6 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Fingerprint, ChevronDown } from "lucide-react";
 import PatternLock from "@/components/PatternLock";
 import { validateLicenseKey } from "@/lib/licenseValidation";
+import { getAppName, getAppSkin } from "@/lib/appMeta";
+
+const LICENSE_PLACEHOLDER =
+  getAppSkin() === "v3" ? "HOME-XXXX-XXXX-XXXX"
+  : getAppSkin() === "v2" ? "HIZZ-XXXX-XXXX-XXXX"
+  : "EQUS-XXXX-XXXX-XXXX";
 
 interface PatternLockDialogProps {
   open: boolean;
@@ -79,7 +85,7 @@ async function registerBiometricCredential(): Promise<boolean> {
       publicKey: {
         challenge: challenge,
         rp: {
-          name: "휴게텔 관리 시스템",
+          name: getAppName(),
           id: window.location.hostname
         },
         user: {
@@ -343,7 +349,7 @@ export default function PatternLockDialog({
           <form onSubmit={handleLicenseSubmit} className="space-y-4">
             <Input
               type="text"
-              placeholder="EQUS-XXXX-XXXX-XXXX"
+              placeholder={LICENSE_PLACEHOLDER}
               value={licenseInput}
               onChange={(e) => { setLicenseInput(e.target.value); setLicenseError(""); }}
               data-testid="input-license-fallback"

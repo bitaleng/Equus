@@ -1,4 +1,5 @@
 {
+  "id": "/hizz",
   "name": "He's 입실관리매니저",
   "short_name": "He's",
   "description": "태블릿 최적화 입실 관리 시스템",
@@ -7,6 +8,7 @@
   "background_color": "#1a1a1a",
   "theme_color": "#cc44aa",
   "orientation": "landscape",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-192.png",

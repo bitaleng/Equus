@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/hooks/useTheme";
 
 interface PatternLockProps {
   onPatternComplete: (pattern: number[]) => void;
@@ -18,6 +19,7 @@ export default function PatternLock({
   showError = false,
   size = 3,
 }: PatternLockProps) {
+  const { isDark } = useTheme();
   const [pattern, setPattern] = useState<number[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [touchPosition, setTouchPosition] = useState<{ x: number; y: number } | null>(null);
@@ -196,6 +198,16 @@ export default function PatternLock({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // 다크모드: 밝은 배경 위이므로 점·선은 어두운 톤으로
+    const idleStroke = isDark ? "#475569" : "hsl(var(--border))";
+    const activeStroke = error
+      ? "hsl(var(--destructive))"
+      : isDark
+        ? "#2563EB"
+        : "hsl(var(--primary))";
+    const activeFill = activeStroke;
+    const innerFill = isDark ? "#FFFFFF" : "hsl(var(--primary-foreground))";
+
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -216,7 +228,7 @@ export default function PatternLock({
         ctx.lineTo(touchPosition.x - rect.left, touchPosition.y - rect.top);
       }
 
-      ctx.strokeStyle = error ? "hsl(var(--destructive))" : "hsl(var(--primary))";
+      ctx.strokeStyle = activeStroke;
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -232,11 +244,11 @@ export default function PatternLock({
       ctx.arc(pos.x, pos.y, dotSize / 2, 0, Math.PI * 2);
 
       if (isSelected) {
-        ctx.fillStyle = error ? "hsl(var(--destructive))" : "hsl(var(--primary))";
+        ctx.fillStyle = activeFill;
         ctx.fill();
-        ctx.strokeStyle = error ? "hsl(var(--destructive))" : "hsl(var(--primary))";
+        ctx.strokeStyle = activeStroke;
       } else {
-        ctx.strokeStyle = "hsl(var(--border))";
+        ctx.strokeStyle = idleStroke;
       }
 
       ctx.lineWidth = 3;
@@ -246,11 +258,11 @@ export default function PatternLock({
       if (isSelected) {
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, dotSize / 4, 0, Math.PI * 2);
-        ctx.fillStyle = "hsl(var(--primary-foreground))";
+        ctx.fillStyle = innerFill;
         ctx.fill();
       }
     }
-  }, [pattern, isDrawing, touchPosition, error, size]);
+  }, [pattern, isDrawing, touchPosition, error, size, isDark]);
 
   useEffect(() => {
     if (showError) {
@@ -263,7 +275,14 @@ export default function PatternLock({
   }, [showError]);
 
   return (
-    <div ref={containerRef} className={cn("flex items-center justify-center", className)}>
+    <div
+      ref={containerRef}
+      className={cn(
+        "flex items-center justify-center",
+        isDark && "rounded-2xl bg-slate-100 p-4 shadow-inner",
+        className
+      )}
+    >
       <canvas
         ref={canvasRef}
         width={canvasSize}

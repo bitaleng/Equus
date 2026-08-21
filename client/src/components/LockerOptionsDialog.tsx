@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import {
   Dialog,
   DialogContent,
@@ -28,10 +28,106 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { calculateAdditionalFee, getBusinessDay } from "@shared/businessDay";
+import { calculateAdditionalFee, getBusinessDay, getBasePrice, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice, getDomesticAdditionalFeeModeNumber, countNightFeeStayDays } from "@shared/businessDay";
+import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw, X } from "lucide-react";
+import { RotateCcw, X, Pencil, Minus, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+function toDatetimeLocalValue(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function datetimeLocalToDate(value: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** 입실~예정퇴실 기준 요금 일수 (24시간 단위 올림, 최소 1일) */
+function calcLongTermStayDays(entry: Date, checkout: Date): number {
+  const ms = checkout.getTime() - entry.getTime();
+  if (ms <= 0) return 0;
+  return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+}
+
+function formatStayDuration(entry: Date, checkout: Date): string {
+  const ms = Math.max(0, checkout.getTime() - entry.getTime());
+  const totalMin = Math.floor(ms / 60000);
+  const days = Math.floor(totalMin / (24 * 60));
+  const hours = Math.floor((totalMin % (24 * 60)) / 60);
+  const mins = totalMin % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}일`);
+  if (hours > 0) parts.push(`${hours}시간`);
+  if (mins > 0 || parts.length === 0) parts.push(`${mins}분`);
+  return parts.join(' ');
+}
+
+function isSimpleSaleItem(item: { billingType?: string; depositAmount?: number }): boolean {
+  if (item.billingType === "simple") return true;
+  if (item.billingType === "rental") return false;
+  return (item.depositAmount || 0) === 0;
+}
+
+/** 메모 마커: 단순판매 → [이름] 판매: / 대여형 → [이름] 대여: */
+function memoActionMarker(itemName: string, isSimple: boolean): string {
+  return `[${itemName}] ${isSimple ? "판매" : "대여"}:`;
+}
+
+function LabelHint({
+  children,
+  content,
+  className,
+}: {
+  children: ReactNode;
+  content: ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Tooltip open={open} onOpenChange={setOpen} delayDuration={200}>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className={cn("inline-flex items-center gap-2 rounded-sm text-left cursor-help", className)}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        align="start"
+        className="z-[80] max-w-[17rem] whitespace-pre-wrap text-xs leading-relaxed"
+      >
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function isUnresolvedRentalTxn(
+  txn: { itemId: string; returnCompleted?: number; depositAmount?: number },
+  items: Array<{ id: string; billingType?: string; depositAmount?: number }>,
+  returnCompletedItems: Set<string>
+): boolean {
+  if (returnCompletedItems.has(txn.itemId) || txn.returnCompleted === 1) return false;
+  const item = items.find((i) => i.id === txn.itemId);
+  if (item) return !isSimpleSaleItem(item);
+  // 설정에서 항목이 삭제된 경우: 보증금 있으면 대여 회수 대상으로 간주
+  return (txn.depositAmount || 0) > 0;
+}
 
 interface RentalItemInfo {
   itemId: string;
@@ -43,6 +139,7 @@ interface RentalItemInfo {
   isCashReceipt?: boolean;
   vatAppliedRentalFee?: number;
   vatAppliedDepositAmount?: number;
+  quantity?: number;
 }
 
 interface LockerOptionsDialogProps {
@@ -74,8 +171,17 @@ interface LockerOptionsDialogProps {
   currentAdditionalFeePaymentMethod?: 'card' | 'cash' | 'transfer'; // 현재 추가요금 결제방식
   isOuting?: boolean; // 현재 외출 중 여부
   currentIsStaff?: boolean; // 현재 직원 입실 여부
+  currentIsLongTerm?: boolean; // 현재 장기투숙 여부
+  currentPlannedCheckoutAt?: string; // 장기투숙 예정 퇴실 (ISO)
+  currentLongTermDailyFee?: number;
+  currentLongTermDiscount?: number;
   onToggleOuting?: (newIsOuting: boolean, newMemo: string) => void; // 외출/복귀 토글 콜백
-  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer', isStaff?: boolean) => void;
+  onApply: (option: string, customAmount?: number, notes?: string, paymentMethod?: 'card' | 'cash' | 'transfer', rentalItems?: RentalItemInfo[], paymentCash?: number, paymentCard?: number, paymentTransfer?: number, deferredPayment?: boolean, customerMemo?: string, noAdditionalFee?: boolean, prepaidAdditionalFee?: number, isCashReceipt?: boolean, additionalFeePaymentMethod?: 'card' | 'cash' | 'transfer', isStaff?: boolean, editedEntryTime?: string, longTermStay?: {
+    plannedCheckoutAt: string;
+    dailyFee: number;
+    discount: number;
+    stayDays: number;
+  } | null) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -92,12 +198,101 @@ interface LockerOptionsDialogProps {
     customerMemo?: string,
     refundAmount?: number,
     refundNote?: string,
-    refundMethod?: 'cash' | 'card' | 'transfer'
+    refundMethod?: 'cash' | 'card' | 'transfer',
+    exitTimeISO?: string
   ) => void;
   onCancel: () => void;
   onSwap?: (fromLocker: number, toLocker: number) => void;
   onPaymentComplete?: () => void; // 후불결제 완료 시 데이터 새로고침용 콜백
   onMinimize?: () => void; // 최소화 버튼 콜백 (팝업 워크스페이스용)
+}
+
+/** DB에 저장된(VAT 포함 가능) 분리결제 금액을 입력칸용 기본금액으로 변환 */
+function splitAmountsToBaseFields(
+  cash: number | undefined,
+  card: number | undefined,
+  transfer: number | undefined,
+  opts: {
+    enableCardVat: boolean;
+    cashHadVat: boolean;
+    transferHadVat: boolean;
+    expectedBaseTotal?: number;
+  }
+): { cash: string; card: string; transfer: string } {
+  const c = cash || 0;
+  const k = card || 0;
+  const t = transfer || 0;
+  const rawSum = c + k + t;
+  const expected = opts.expectedBaseTotal;
+
+  const strip = (cc: number, kk: number, tt: number) => {
+    const bc = opts.cashHadVat && cc > 0 ? Math.round(cc / 1.1) : cc;
+    const bk = opts.enableCardVat && kk > 0 ? Math.round(kk / 1.1) : kk;
+    const bt = opts.transferHadVat && tt > 0 ? Math.round(tt / 1.1) : tt;
+    return { bc, bk, bt, sum: bc + bk + bt };
+  };
+
+  // 이미 기본금액만 저장된 경우 (합계 ≈ 기본요금)
+  if (expected != null && expected > 0 && Math.abs(rawSum - expected) <= 1) {
+    return {
+      cash: c > 0 ? String(c) : "",
+      card: k > 0 ? String(k) : "",
+      transfer: t > 0 ? String(t) : "",
+    };
+  }
+
+  const normal = strip(c, k, t);
+  if (expected == null || expected <= 0 || Math.abs(normal.sum - expected) <= 1) {
+    return {
+      cash: normal.bc > 0 ? String(normal.bc) : "",
+      card: normal.bk > 0 ? String(normal.bk) : "",
+      transfer: normal.bt > 0 ? String(normal.bt) : "",
+    };
+  }
+
+  // 현금↔카드가 뒤바뀐 저장값 복구 (VAT 포함 카드액이 현금칸에 들어간 경우)
+  const swapped = strip(k, c, t);
+  if (Math.abs(swapped.sum - expected) <= 1) {
+    return {
+      cash: swapped.bc > 0 ? String(swapped.bc) : "",
+      card: swapped.bk > 0 ? String(swapped.bk) : "",
+      transfer: swapped.bt > 0 ? String(swapped.bt) : "",
+    };
+  }
+
+  return {
+    cash: normal.bc > 0 ? String(normal.bc) : "",
+    card: normal.bk > 0 ? String(normal.bk) : "",
+    transfer: normal.bt > 0 ? String(normal.bt) : "",
+  };
+}
+
+/** 입력칸 기본금액 → DB 저장용(수단별 VAT 1회 적용) */
+function applyVatToSplitBases(
+  cashBase: number,
+  cardBase: number,
+  transferBase: number,
+  opts: { enableCardVat: boolean; enableCashReceiptVat: boolean; isCashReceipt: boolean }
+): { cash?: number; card?: number; transfer?: number } {
+  let cashVal: number | undefined;
+  let cardVal: number | undefined;
+  let transferVal: number | undefined;
+
+  if (opts.enableCashReceiptVat && opts.isCashReceipt) {
+    if (cashBase > 0) cashVal = Math.round(cashBase * 1.1);
+    if (transferBase > 0) transferVal = Math.round(transferBase * 1.1);
+  } else {
+    if (cashBase > 0) cashVal = cashBase;
+    if (transferBase > 0) transferVal = transferBase;
+  }
+
+  if (opts.enableCardVat && cardBase > 0) {
+    cardVal = Math.round(cardBase * 1.1);
+  } else if (cardBase > 0) {
+    cardVal = cardBase;
+  }
+
+  return { cash: cashVal, card: cardVal, transfer: transferVal };
 }
 
 export default function LockerOptionsDialog({
@@ -128,6 +323,11 @@ export default function LockerOptionsDialog({
   currentIsCashReceipt = false, // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod, // 현재 추가요금 결제방식
   isOuting = false, // 현재 외출 중 여부
+  currentIsStaff = false,
+  currentIsLongTerm = false,
+  currentPlannedCheckoutAt,
+  currentLongTermDailyFee,
+  currentLongTermDiscount,
   onToggleOuting,
   onApply,
   onCheckout,
@@ -140,17 +340,39 @@ export default function LockerOptionsDialog({
   const settings = localDb.getSettings();
   const domesticCheckpointHour = settings.domesticCheckpointHour;
   const foreignerAdditionalFeePeriod = settings.foreignerAdditionalFeePeriod;
-  const domesticAdditionalFeeMode: 'nextday' | 'nightstart' = (settings as any).domesticAdditionalFeeMode || 'nextday';
+  const domesticAdditionalFeeMode: DomesticAdditionalFeeMode =
+    (settings as any).domesticAdditionalFeeMode === 'pending4'
+      ? 'stagedHourly'
+      : ((settings as any).domesticAdditionalFeeMode || 'nextday');
+  const domesticAdditionalFeeModeNumber = getDomesticAdditionalFeeModeNumber(domesticAdditionalFeeMode);
   const nightStartHour = parseInt(((settings as any).nightStartTime || '19:00').split(':')[0], 10);
+  const settlementCycleOpts = getSettlementCycleOptions(settings as any);
+  const stagedHourlyOpts = getStagedHourlyOptions(settings as any);
+  const nightstartOpts = getNightstartOptions(settings as any);
   const enableDiscountOption = settings.enableDiscountOption !== false; // 기본값 true
   const enableForeignerOption = settings.enableForeignerOption !== false; // 기본값 true
+  const enableDirectPriceOption = settings.enableDirectPriceOption !== false; // 기본값 true
+  const enableStaffOption = settings.enableStaffOption !== false; // 기본값 true
+  const enableFreeEntryOption = settings.enableFreeEntryOption !== false; // 기본값 true
+  const enableLongTermOption = settings.enableLongTermOption !== false; // 기본값 true
   const enableCashReceiptVat = settings.enableCashReceiptVat === true; // 기본값 false
   const enableCardVat = settings.enableCardVat === true; // 기본값 false
+  const resolveForeignerPrice = (tt: '주간' | '야간') =>
+    getForeignerPrice(tt, {
+      foreignerSeparateDayNight: (settings as any).foreignerSeparateDayNight === true,
+      foreignerPrice: foreignerPrice ?? (settings as any).foreignerPrice,
+      foreignerDayPrice: (settings as any).foreignerDayPrice,
+      foreignerNightPrice: (settings as any).foreignerNightPrice,
+    });
   const [discountOption, setDiscountOption] = useState<string>("none");
   const [discountInputAmount, setDiscountInputAmount] = useState<string>("");
   const [isForeigner, setIsForeigner] = useState(false);
   const [isFreeEntry, setIsFreeEntry] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const [isLongTerm, setIsLongTerm] = useState(false);
+  const [longTermCheckoutLocal, setLongTermCheckoutLocal] = useState("");
+  const [longTermDailyFee, setLongTermDailyFee] = useState("");
+  const [longTermDiscount, setLongTermDiscount] = useState("");
   const [noAdditionalFee, setNoAdditionalFee] = useState(false); // 추가요금없음 (VIP 등)
   const [hasPrepaidAdditionalFee, setHasPrepaidAdditionalFee] = useState(false); // 추가요금 선지급 체크박스
   const [prepaidAdditionalFeeAmount, setPrepaidAdditionalFeeAmount] = useState<string>(""); // 추가요금 선지급 금액
@@ -162,11 +384,22 @@ export default function LockerOptionsDialog({
   const [paymentCard, setPaymentCard] = useState<string>("");
   const [paymentTransfer, setPaymentTransfer] = useState<string>("");
   const [useSplitPayment, setUseSplitPayment] = useState(false);
+  /** 기본요금보다 큰 분리결제 허용 시, 받을 총금액 입력란 사용 */
+  const [splitCustomTotalEnabled, setSplitCustomTotalEnabled] = useState(false);
+  const [splitCustomTotal, setSplitCustomTotal] = useState<string>("");
+  const [showOverBaseConfirm, setShowOverBaseConfirm] = useState(false);
+  const [pendingOverBaseField, setPendingOverBaseField] = useState<'cash' | 'card' | null>(null);
+  const [pendingOverBaseValue, setPendingOverBaseValue] = useState<string>("");
   const [isDeferredPayment, setIsDeferredPayment] = useState(false); // 후불결제 여부 (신규 입실용)
   const [isCurrentlyDeferred, setIsCurrentlyDeferred] = useState(false); // 현재 락카의 후불결제 상태 (기존 입실용)
   const [customerMemo, setCustomerMemo] = useState(""); // 손님 메모
   const [isCashReceipt, setIsCashReceipt] = useState(false); // 현금영수증 발행 여부 (부가세 10% 추가)
   const [isAdditionalFeeCashReceipt, setIsAdditionalFeeCashReceipt] = useState(false); // 추가요금 현금영수증
+  
+  // 입실시간 소급 수정 (사용 중만)
+  const [isEditingEntryTime, setIsEditingEntryTime] = useState(false);
+  const [editedEntryTimeLocal, setEditedEntryTimeLocal] = useState("");
+  const [entryTimeDraftISO, setEntryTimeDraftISO] = useState<string | undefined>(undefined);
   
   // Additional fee payment states
   // Default to main payment method when no specific additional fee payment method is saved
@@ -180,6 +413,27 @@ export default function LockerOptionsDialog({
   const [additionalFeePartialDiscount, setAdditionalFeePartialDiscount] = useState(false); // 일부 할인
   const [additionalFeeResolved, setAdditionalFeeResolved] = useState(false); // 추가요금 완납 처리
   const [showCheckoutConfirm, setShowCheckoutConfirm] = useState(false);
+  /** true면 퇴실확인 창에서 퇴실시간 지정 UI 표시 (희소 케이스) */
+  const [checkoutCustomTimeMode, setCheckoutCustomTimeMode] = useState(false);
+  const [checkoutTimeLocal, setCheckoutTimeLocal] = useState("");
+  const [pendingCheckoutArgs, setPendingCheckoutArgs] = useState<{
+    paymentMethod: 'card' | 'cash' | 'transfer';
+    rentalItems: RentalItemInfo[];
+    paymentCash?: number;
+    paymentCard?: number;
+    paymentTransfer?: number;
+    additionalFeePayment?: {
+      method: 'card' | 'cash' | 'transfer';
+      cash?: number;
+      card?: number;
+      transfer?: number;
+      discount?: number;
+    };
+    customerMemo?: string;
+    refundAmount?: number;
+    refundNote?: string;
+    refundMethod?: 'cash' | 'card' | 'transfer';
+  } | null>(null);
   // 환불 처리 states
   const [showRefund, setShowRefund] = useState(false);
   const [currentIsOuting, setCurrentIsOuting] = useState(isOuting);
@@ -231,6 +485,7 @@ export default function LockerOptionsDialog({
   // Dynamic rental items from database
   const [availableRentalItems, setAvailableRentalItems] = useState<any[]>([]);
   const [selectedRentalItems, setSelectedRentalItems] = useState<Set<string>>(new Set());
+  const [rentalItemQuantities, setRentalItemQuantities] = useState<Map<string, number>>(new Map());
   
   // User-defined pricing options from database
   const [pricingOptions, setPricingOptions] = useState<any[]>([]);
@@ -240,7 +495,13 @@ export default function LockerOptionsDialog({
   const [currentRentalTransactions, setCurrentRentalTransactions] = useState<any[]>([]);
   const [returnCompletedItems, setReturnCompletedItems] = useState<Set<string>>(new Set());
   const [pendingReRentalItems, setPendingReRentalItems] = useState<Set<string>>(new Set());
-  const [cancellingRentalItem, setCancellingRentalItem] = useState<{txnId: string; itemId: string; itemName: string} | null>(null);
+  const [cancellingRentalItem, setCancellingRentalItem] = useState<{
+    txnId: string;
+    itemId: string;
+    itemName: string;
+    isSimple?: boolean;
+  } | null>(null);
+  const [showCancelEntrySalesDialog, setShowCancelEntrySalesDialog] = useState(false);
   const [pendingUncheckItem, setPendingUncheckItem] = useState<{itemId: string; itemName: string} | null>(null);
   // 직접입력 - 대여비/보증금 직접 수정
   const [rentalDirectInputEnabled, setRentalDirectInputEnabled] = useState<Set<string>>(new Set());
@@ -251,6 +512,7 @@ export default function LockerOptionsDialog({
   const initialOpenRef = useRef(false);
   const additionalFeePaymentMethodUserChangedRef = useRef(false);
   const previousLockerRef = useRef<string | null>(null);
+  const paymentFieldsInitializedRef = useRef(false);
   const memoTextareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   
@@ -275,11 +537,11 @@ export default function LockerOptionsDialog({
         setPaidAdditionalFeeAmount(paidAmount);
         
         // 현재 추가요금 직접 계산
-        // noAdditionalFee가 true이면 추가요금 완전 면제
+        // noAdditionalFee / 장기투숙이면 추가요금 완전 면제
         const isForeigner = currentOptionType === 'foreigner';
         const isFreeEntry = currentOptionType === 'free';
         let rawCurrentFee = 0;
-        if (!currentNoAdditionalFee) {
+        if (!currentNoAdditionalFee && !currentIsLongTerm) {
           const currentFeeInfo = calculateAdditionalFee(
             entryTime || '',
             timeType,
@@ -287,12 +549,15 @@ export default function LockerOptionsDialog({
             nightPrice,
             new Date(),
             isForeigner,
-            foreignerPrice,
+            resolveForeignerPrice(timeType),
             domesticCheckpointHour,
             foreignerAdditionalFeePeriod,
             isFreeEntry,
             domesticAdditionalFeeMode,
-            nightStartHour
+            nightStartHour,
+            settlementCycleOpts,
+            stagedHourlyOpts,
+            nightstartOpts
           );
           rawCurrentFee = currentFeeInfo.additionalFee;
         }
@@ -302,6 +567,25 @@ export default function LockerOptionsDialog({
         const netCurrentFee = Math.max(0, rawCurrentFee - prepaidFee);
         
         console.log('[DEBUG] 다이얼로그 열림:', { logId: currentLockerLogId, rawCurrentFee, prepaidFee, netCurrentFee, paidAmount });
+
+        // 수정저장으로 남겨 둔 추가요금 할인 복원
+        const savedDiscount = localDb.getLockerLogAdditionalFeeDiscount(currentLockerLogId);
+        const restoreDiscount = Math.min(Math.max(0, savedDiscount), rawCurrentFee);
+        if (restoreDiscount > 0 && rawCurrentFee > 0) {
+          if (restoreDiscount >= rawCurrentFee) {
+            setAdditionalFeeFullDiscount(true);
+            setAdditionalFeePartialDiscount(false);
+            setAdditionalFeeDiscount(String(rawCurrentFee));
+          } else {
+            setAdditionalFeeFullDiscount(false);
+            setAdditionalFeePartialDiscount(true);
+            setAdditionalFeeDiscount(String(restoreDiscount));
+          }
+        } else {
+          setAdditionalFeeFullDiscount(false);
+          setAdditionalFeePartialDiscount(false);
+          setAdditionalFeeDiscount("");
+        }
         
         // 순 추가요금(선지급 차감 후)과 정산된 금액 비교
         if (netCurrentFee > paidAmount) {
@@ -319,6 +603,17 @@ export default function LockerOptionsDialog({
           console.log('[DEBUG] 추가요금 완납 상태 - checkoutResolved: true');
           setCheckoutResolved(true);
           setAdditionalFeeResolved(true);
+        } else if (restoreDiscount > 0 && Math.max(0, netCurrentFee - restoreDiscount) === 0 && paidAmount >= 0) {
+          // 전액할인 등으로 청구액 0 + 이전에 정산 표시된 경우
+          // paidAmount가 0이어도 할인으로 완납 처리된 케이스 복원
+          const wasPaid = localDb.getLockerLogAdditionalFeePaid(currentLockerLogId);
+          if (wasPaid) {
+            setCheckoutResolved(true);
+            setAdditionalFeeResolved(true);
+          } else {
+            setCheckoutResolved(false);
+            setAdditionalFeeResolved(false);
+          }
         } else {
           // 추가요금 없음
           console.log('[DEBUG] 추가요금 없음');
@@ -329,10 +624,10 @@ export default function LockerOptionsDialog({
         setPaidAdditionalFeeAmount(0);
         setCheckoutResolved(false);
         setAdditionalFeeResolved(false);
+        setAdditionalFeeFullDiscount(false);
+        setAdditionalFeePartialDiscount(false);
+        setAdditionalFeeDiscount("");
       }
-      setAdditionalFeeFullDiscount(false);
-      setAdditionalFeePartialDiscount(false);
-      setAdditionalFeeDiscount("");
       // 추가요금없음 상태를 현재 값으로 초기화
       setNoAdditionalFee(currentNoAdditionalFee || false);
       // 선지급 추가요금 상태를 현재 값으로 초기화
@@ -363,56 +658,70 @@ export default function LockerOptionsDialog({
   }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod, currentPaymentMethod]);
   
     
-  // Initialize payment fields when dialog opens
+  // Initialize payment fields when dialog opens (한번만 — loadData 주기 갱신으로 UI가 덮어씌워지지 않게)
   useEffect(() => {
-    if (open) {
-      // Calculate final price for auto-fill
-      const computedFinalPrice = currentFinalPrice || basePrice;
-      
-      // Load existing payment data if available (check for undefined, not truthy)
-      // This allows 0 values to be preserved
-      const hasExistingData = currentPaymentCash !== undefined || 
-                             currentPaymentCard !== undefined || 
-                             currentPaymentTransfer !== undefined;
-      
-      if (hasExistingData) {
-        // Check if this is a split payment (multiple payment methods used)
-        const paymentCount = [
-          currentPaymentCash && currentPaymentCash > 0,
-          currentPaymentCard && currentPaymentCard > 0,
-          currentPaymentTransfer && currentPaymentTransfer > 0,
-        ].filter(Boolean).length;
-        
-        setUseSplitPayment(paymentCount > 1);
-        
-        // 분리결제창에서 VAT를 다시 적용하므로, DB에 저장된 VAT 포함 금액을 기본 금액으로 변환
-        // 현금/이체: enableCashReceiptVat && currentIsCashReceipt인 경우 VAT가 포함되어 있음
-        // 카드: enableCardVat인 경우 VAT가 포함되어 있음
-        const cashHadVat = enableCashReceiptVat && currentIsCashReceipt;
-        const cardHadVat = enableCardVat;
-        const transferHadVat = enableCashReceiptVat && currentIsCashReceipt;
-        
-        // VAT 포함 금액을 기본 금액으로 변환 (VAT 제거)
-        const baseCash = (cashHadVat && currentPaymentCash) 
-          ? Math.round(currentPaymentCash / 1.1) 
-          : currentPaymentCash;
-        const baseCard = (cardHadVat && currentPaymentCard) 
-          ? Math.round(currentPaymentCard / 1.1) 
-          : currentPaymentCard;
-        const baseTransfer = (transferHadVat && currentPaymentTransfer) 
-          ? Math.round(currentPaymentTransfer / 1.1) 
-          : currentPaymentTransfer;
-        
-        setPaymentCash(baseCash !== undefined ? String(baseCash) : "");
-        setPaymentCard(baseCard !== undefined ? String(baseCard) : "");
-        setPaymentTransfer(baseTransfer !== undefined ? String(baseTransfer) : "");
+    if (!open) {
+      paymentFieldsInitializedRef.current = false;
+      setShowOverBaseConfirm(false);
+      setPendingOverBaseField(null);
+      setPendingOverBaseValue("");
+      return;
+    }
+    if (paymentFieldsInitializedRef.current) return;
+    paymentFieldsInitializedRef.current = true;
+
+    const hasExistingData = currentPaymentCash !== undefined ||
+                           currentPaymentCard !== undefined ||
+                           currentPaymentTransfer !== undefined;
+
+    if (hasExistingData) {
+      const paymentCount = [
+        currentPaymentCash && currentPaymentCash > 0,
+        currentPaymentCard && currentPaymentCard > 0,
+        currentPaymentTransfer && currentPaymentTransfer > 0,
+      ].filter(Boolean).length;
+
+      setUseSplitPayment(paymentCount > 1);
+
+      const cashHadVat = enableCashReceiptVat && currentIsCashReceipt;
+      const transferHadVat = enableCashReceiptVat && currentIsCashReceipt;
+      // 기대 기본요금: 입실 기본가(옵션 반영 전/후는 basePrice 근사). VAT 포함 finalPrice로 추정하지 않음
+      // (잘못 추정하면 현금↔카드 뒤바뀜 복구가 실패함)
+      const expectedBase = basePrice > 0 ? basePrice : undefined;
+
+      const fields = splitAmountsToBaseFields(
+        currentPaymentCash,
+        currentPaymentCard,
+        currentPaymentTransfer,
+        {
+          enableCardVat,
+          cashHadVat: !!cashHadVat,
+          transferHadVat: !!transferHadVat,
+          expectedBaseTotal: expectedBase,
+        }
+      );
+      setPaymentCash(fields.cash);
+      setPaymentCard(fields.card);
+      setPaymentTransfer(fields.transfer);
+      // 저장된 분리결제 합계가 기본요금보다 크면 총금액 모드로 복원
+      const restoredSum =
+        (parseInt(fields.cash) || 0) +
+        (parseInt(fields.card) || 0) +
+        (parseInt(fields.transfer) || 0);
+      if (paymentCount > 1 && restoredSum > (expectedBase || 0) && (expectedBase || 0) > 0) {
+        setSplitCustomTotalEnabled(true);
+        setSplitCustomTotal(String(restoredSum));
       } else {
-        // For new entries, default to single payment method (no split payment)
-        setUseSplitPayment(false);
-        setPaymentCash("");
-        setPaymentCard("");
-        setPaymentTransfer("");
+        setSplitCustomTotalEnabled(false);
+        setSplitCustomTotal("");
       }
+    } else {
+      setUseSplitPayment(false);
+      setPaymentCash("");
+      setPaymentCard("");
+      setPaymentTransfer("");
+      setSplitCustomTotalEnabled(false);
+      setSplitCustomTotal("");
     }
   }, [open, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentFinalPrice, basePrice, enableCashReceiptVat, currentIsCashReceipt, enableCardVat]);
 
@@ -438,6 +747,7 @@ export default function LockerOptionsDialog({
         const newStatuses = new Map<string, 'received' | 'refunded' | 'forfeited'>();
         const newPaymentMethods = new Map<string, 'cash' | 'card' | 'transfer'>();
         const newReturnCompleted = new Set<string>();
+        const newQuantities = new Map<string, number>();
         
         // Group by itemId (first occurrence = most recent due to DESC order)
         const seenItemIds = new Set<string>();
@@ -454,6 +764,8 @@ export default function LockerOptionsDialog({
             newSelected.add(txn.itemId);
             newStatuses.set(txn.itemId, txn.depositStatus);
             newPaymentMethods.set(txn.itemId, txn.paymentMethod || 'cash');
+            const qty = Number(txn.quantity);
+            newQuantities.set(txn.itemId, Number.isFinite(qty) && qty > 0 ? qty : 1);
           }
         });
         
@@ -461,6 +773,7 @@ export default function LockerOptionsDialog({
         setDepositStatuses(newStatuses);
         setRentalPaymentMethods(newPaymentMethods);
         setReturnCompletedItems(newReturnCompleted);
+        setRentalItemQuantities(newQuantities);
         setPendingReRentalItems(new Set());
         
         // Auto-show warning alert if there are rental items or additional fees
@@ -469,7 +782,9 @@ export default function LockerOptionsDialog({
           // 반납완료되지 않은 대여형(rental) 품목만 체크 (일반판매형 제외)
           const unresolvedRentals = rentals.filter(txn => {
             const item = items.find(i => i.id === txn.itemId);
-            // 일반판매형(simple)은 반납 불필요하므로 제외
+            if (item && isSimpleSaleItem(item)) {
+              return false;
+            }
             if (item?.billingType === 'simple') {
               return false;
             }
@@ -486,7 +801,7 @@ export default function LockerOptionsDialog({
           const prepaidAmount = currentPrepaidAdditionalFee || 0;
           const totalPaidAmount = savedPaidAmount + prepaidAmount;
           
-          if (!currentNoAdditionalFee) {
+          if (!currentNoAdditionalFee && !currentIsLongTerm) {
             const additionalFeeCalc = calculateAdditionalFee(
               entryTime, 
               timeType, 
@@ -494,12 +809,15 @@ export default function LockerOptionsDialog({
               nightPrice, 
               new Date(), 
               isCurrentlyForeigner, 
-              foreignerPrice,
+              resolveForeignerPrice(timeType),
               domesticCheckpointHour,
               foreignerAdditionalFeePeriod,
               isFreeEntry,
               domesticAdditionalFeeMode,
-              nightStartHour
+              nightStartHour,
+              settlementCycleOpts,
+              stagedHourlyOpts,
+              nightstartOpts
             );
             // 추가요금이 (지불된 금액 + 선지급 금액) 보다 클 때만 미지불 상태
             hasUnpaidAdditionalFee = additionalFeeCalc.additionalFee > totalPaidAmount;
@@ -532,6 +850,7 @@ export default function LockerOptionsDialog({
         setSelectedRentalItems(new Set());
         setDepositStatuses(new Map());
         setRentalPaymentMethods(new Map());
+        setRentalItemQuantities(new Map());
       }
     }
   }, [open, isInUse, currentLockerLogId, lockerNumber, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, currentOptionType, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentNoAdditionalFee]);
@@ -630,29 +949,39 @@ export default function LockerOptionsDialog({
   };
 
   // Initialize customer memo when dialog opens (separate from other state to avoid conflicts)
-  // Also auto-append rental time info if rental transactions exist
+  // Also auto-append rental/sale time info if transactions exist
   useEffect(() => {
     if (open) {
       let baseMemo = isInUse ? (currentCustomerMemo || "") : "";
 
-      // Auto-append rental time info if not already in memo
+      // Auto-append rental/sale time info if not already in memo
       if (isInUse && currentLockerLogId) {
         const rentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
+        const items = localDb.getAdditionalRevenueItems();
         rentals.forEach(txn => {
           const itemName = txn.itemName || txn.item_name || '';
           const rentalTime = txn.rentalTime || txn.rental_time;
           const returnTime = txn.returnTime || txn.return_time;
           if (rentalTime && itemName) {
-            const marker = `[${itemName}] 대여:`;
-            if (!baseMemo.includes(marker)) {
-              const rentalTimeStr = new Date(rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-              let line = `${marker} ${rentalTimeStr}`;
-              if (returnTime) {
-                const returnTimeStr = new Date(returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                line += ` / 반납: ${returnTimeStr}`;
-              }
-              baseMemo = baseMemo.trim() ? `${baseMemo}\n${line}` : line;
+            const item = items.find((i: any) => i.id === txn.itemId);
+            const isSimple = item ? isSimpleSaleItem(item) : false;
+            const marker = memoActionMarker(itemName, isSimple);
+            const legacyRentalMarker = `[${itemName}] 대여:`;
+            // 이미 판매/대여 마커가 있으면 중복 추가하지 않음
+            if (baseMemo.includes(marker) || (!isSimple && baseMemo.includes(legacyRentalMarker))) {
+              return;
             }
+            // 단순판매인데 예전에 대여로 잘못 기록된 줄이 있으면 그대로 둠(중복 방지)
+            if (isSimple && baseMemo.includes(legacyRentalMarker)) {
+              return;
+            }
+            const rentalTimeStr = new Date(rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+            let line = `${marker} ${rentalTimeStr}`;
+            if (!isSimple && returnTime) {
+              const returnTimeStr = new Date(returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+              line += ` / 반납: ${returnTimeStr}`;
+            }
+            baseMemo = baseMemo.trim() ? `${baseMemo}\n${line}` : line;
           }
         });
       }
@@ -711,8 +1040,33 @@ export default function LockerOptionsDialog({
       setHasBlanket(blanketPresent);
       setHasLongTowel(towelPresent);
       
-      // Initialize option states based on current optionType
-      if (currentOptionType === 'free') {
+      // Initialize option states based on current optionType / long-term
+      if (currentIsLongTerm) {
+        setIsLongTerm(true);
+        setIsFreeEntry(false);
+        setIsDirectPrice(false);
+        setIsForeigner(false);
+        setIsStaff(false);
+        setDiscountOption("none");
+        setDirectPrice("");
+        setDiscountInputAmount("");
+        setLongTermCheckoutLocal(
+          currentPlannedCheckoutAt
+            ? toDatetimeLocalValue(currentPlannedCheckoutAt)
+            : ""
+        );
+        setLongTermDailyFee(
+          currentLongTermDailyFee != null && currentLongTermDailyFee > 0
+            ? String(currentLongTermDailyFee)
+            : String(dayPrice)
+        );
+        setLongTermDiscount(
+          currentLongTermDiscount != null && currentLongTermDiscount > 0
+            ? String(currentLongTermDiscount)
+            : ""
+        );
+      } else if (currentOptionType === 'free') {
+        setIsLongTerm(false);
         setIsFreeEntry(true);
         setIsDirectPrice(false);
         setIsForeigner(false);
@@ -720,6 +1074,7 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
+        setIsLongTerm(false);
         setIsFreeEntry(false);
         setIsDirectPrice(true);
         // option_amount = 사용자가 입력한 직접요금 (prepaid 미포함)
@@ -732,6 +1087,7 @@ export default function LockerOptionsDialog({
         setDiscountOption("none");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'foreigner') {
+        setIsLongTerm(false);
         setIsFreeEntry(false);
         setIsForeigner(true);
         setIsDirectPrice(false);
@@ -739,6 +1095,7 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'discount') {
+        setIsLongTerm(false);
         setIsFreeEntry(false);
         setDiscountOption("discount");
         setIsForeigner(false);
@@ -746,6 +1103,7 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'custom' && currentOptionAmount !== undefined) {
+        setIsLongTerm(false);
         setIsFreeEntry(false);
         setDiscountOption("custom");
         setDiscountInputAmount(currentOptionAmount.toString());
@@ -754,6 +1112,7 @@ export default function LockerOptionsDialog({
         setDirectPrice("");
       } else {
         // none or default
+        setIsLongTerm(false);
         setIsFreeEntry(false);
         setDiscountOption("none");
         setIsForeigner(false);
@@ -775,6 +1134,11 @@ export default function LockerOptionsDialog({
       setDiscountInputAmount("");
       setIsForeigner(false);
       setIsFreeEntry(false);
+      setIsStaff(false);
+      setIsLongTerm(false);
+      setLongTermCheckoutLocal("");
+      setLongTermDailyFee("");
+      setLongTermDiscount("");
       setNoAdditionalFee(false); // 추가요금없음 상태도 초기화
       setHasPrepaidAdditionalFee(false); // 선지급 추가요금 상태도 초기화
       setPrepaidAdditionalFeeAmount(""); // 선지급 추가요금 금액도 초기화
@@ -787,7 +1151,7 @@ export default function LockerOptionsDialog({
       additionalFeePaymentMethodUserChangedRef.current = false; // 다이얼로그 닫힐 때 리셋
       // Note: checkoutResolved is NOT reset here to preserve acknowledgement state
     }
-  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse, currentPaymentCash, currentPaymentCard, currentPaymentTransfer]);
+  }, [open, currentNotes, currentPaymentMethod, currentOptionType, currentOptionAmount, currentFinalPrice, lockerNumber, checkoutResolved, currentDeferredPayment, isInUse, currentPaymentCash, currentPaymentCard, currentPaymentTransfer, currentIsLongTerm, currentPlannedCheckoutAt, currentLongTermDailyFee, currentLongTermDiscount, dayPrice]);
 
   // 선지급 추가요금 초기화
   useEffect(() => {
@@ -802,8 +1166,60 @@ export default function LockerOptionsDialog({
     }
   }, [open, isInUse, currentPrepaidAdditionalFee]);
 
+  // 다이얼로그 열릴 때 입실시간 수정 상태 초기화
+  useEffect(() => {
+    if (open) {
+      setIsEditingEntryTime(false);
+      setEditedEntryTimeLocal(toDatetimeLocalValue(entryTime));
+      setEntryTimeDraftISO(undefined);
+    }
+  }, [open, entryTime]);
+
+  // 입실시간 수정 초안 기준 표시용 값
+  const effectiveEntryTimeISO = entryTimeDraftISO || entryTime;
+  const effectiveEntryDate = effectiveEntryTimeISO ? new Date(effectiveEntryTimeISO) : null;
+  const effectiveTimeType: '주간' | '야간' =
+    effectiveEntryDate && !Number.isNaN(effectiveEntryDate.getTime())
+      ? localDb.getTimeTypeWithSettings(effectiveEntryDate)
+      : timeType;
+  const effectiveBasePrice =
+    isForeigner || isStaff || isFreeEntry || isDirectPrice || isLongTerm
+      ? basePrice
+      : getBasePrice(effectiveTimeType, dayPrice, nightPrice);
+
+  const longTermCheckoutDate = datetimeLocalToDate(longTermCheckoutLocal);
+  const longTermStayDays =
+    isLongTerm && effectiveEntryDate && longTermCheckoutDate
+      ? calcLongTermStayDays(effectiveEntryDate, longTermCheckoutDate)
+      : 0;
+  const longTermDailyFeeNum = Math.max(0, parseInt(longTermDailyFee) || 0);
+  const longTermDiscountNum = Math.max(0, parseInt(longTermDiscount) || 0);
+  const longTermTotal = Math.max(
+    0,
+    longTermStayDays * longTermDailyFeeNum - longTermDiscountNum
+  );
+  const longTermDurationLabel =
+    isLongTerm && effectiveEntryDate && longTermCheckoutDate && longTermStayDays > 0
+      ? formatStayDuration(effectiveEntryDate, longTermCheckoutDate)
+      : "";
+
+  const buildLongTermStayPayload = () => {
+    if (!isLongTerm || !longTermCheckoutDate || longTermStayDays <= 0) return null;
+    return {
+      plannedCheckoutAt: longTermCheckoutDate.toISOString(),
+      dailyFee: longTermDailyFeeNum,
+      discount: longTermDiscountNum,
+      stayDays: longTermStayDays,
+    };
+  };
+
   const calculateFinalPrice = () => {
-    // 우선순위 0: 직원 또는 무료입장
+    // 우선순위 0: 장기투숙 (일수 × 일요금 − 할인)
+    if (isLongTerm) {
+      return longTermTotal;
+    }
+
+    // 우선순위 0.5: 직원 또는 무료입장
     if (isStaff || isFreeEntry) {
       return 0;
     }
@@ -815,7 +1231,7 @@ export default function LockerOptionsDialog({
     
     // 우선순위 2: 외국인 (할인 옵션이 있으면 외국인 요금에 할인 적용)
     if (isForeigner) {
-      const foreignerBase = foreignerPrice;
+      const foreignerBase = resolveForeignerPrice(effectiveTimeType);
       if (discountOption === "discount") {
         return Math.max(0, foreignerBase - discountAmount);
       }
@@ -837,7 +1253,7 @@ export default function LockerOptionsDialog({
     
     // 우선순위 3: 기본 할인 옵션
     if (discountOption === "discount") {
-      return basePrice - discountAmount;
+      return effectiveBasePrice - discountAmount;
     }
     
     // 우선순위 4: 사용자 정의 요금옵션 (pricing_xxx)
@@ -846,9 +1262,9 @@ export default function LockerOptionsDialog({
       const option = pricingOptions.find(o => o.id === optionId);
       if (option) {
         if (option.optionType === 'discount') {
-          return basePrice - option.amount;
+          return effectiveBasePrice - option.amount;
         } else if (option.optionType === 'surcharge') {
-          return basePrice + option.amount;
+          return effectiveBasePrice + option.amount;
         } else if (option.optionType === 'fixed') {
           return option.amount;
         }
@@ -858,10 +1274,95 @@ export default function LockerOptionsDialog({
     // 우선순위 5: 직접입력 (음수면 할인, 양수면 할증)
     if (discountOption === "custom" && discountInputAmount) {
       const inputAmount = parseInt(discountInputAmount);
-      return basePrice + inputAmount; // 음수 입력 시 할인, 양수 입력 시 할증
+      return effectiveBasePrice + inputAmount; // 음수 입력 시 할인, 양수 입력 시 할증
     }
     
-    return basePrice;
+    return effectiveBasePrice;
+  };
+
+  /** 분리결제 자동완성 기준 금액 (기본요금±선지급, 또는 사용자 지정 총금액) */
+  const getDefaultSplitTarget = () => {
+    const prepaid = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    return calculateFinalPrice() + prepaid;
+  };
+
+  const getSplitAutoFillTarget = () => {
+    if (splitCustomTotalEnabled) {
+      const custom = parseInt(splitCustomTotal) || 0;
+      if (custom > 0) return custom;
+    }
+    return getDefaultSplitTarget();
+  };
+
+  const applySplitAutoFillFromCash = (cashStr: string, targetOverride?: number) => {
+    const cashVal = parseInt(cashStr) || 0;
+    const target = targetOverride ?? getSplitAutoFillTarget();
+    const remaining = target - cashVal;
+    if (remaining > 0) {
+      setPaymentCard(String(remaining));
+      setPaymentTransfer("");
+    } else {
+      // 0 이하: 이전 자동입력 잔액이 남지 않도록 비움
+      setPaymentCard("");
+      setPaymentTransfer("");
+    }
+  };
+
+  const requestOrApplySplitAmount = (field: 'cash' | 'card', newValue: string) => {
+    const amount = parseInt(newValue) || 0;
+    const defaultTarget = getDefaultSplitTarget();
+
+    if (!splitCustomTotalEnabled && amount > defaultTarget && defaultTarget > 0) {
+      setPendingOverBaseField(field);
+      setPendingOverBaseValue(newValue);
+      if (field === 'cash') {
+        setPaymentCash(newValue);
+        setPaymentCard("");
+        setPaymentTransfer("");
+      } else {
+        setPaymentCard(newValue);
+        setPaymentTransfer("");
+      }
+      setShowOverBaseConfirm(true);
+      return;
+    }
+
+    if (field === 'cash') {
+      setPaymentCash(newValue);
+      applySplitAutoFillFromCash(newValue);
+    } else {
+      setPaymentCard(newValue);
+      const target = getSplitAutoFillTarget();
+      const cashVal = parseInt(paymentCash) || 0;
+      const cardVal = parseInt(newValue) || 0;
+      const remaining = target - cashVal - cardVal;
+      if (remaining > 0) {
+        setPaymentTransfer(String(remaining));
+      } else {
+        setPaymentTransfer("");
+      }
+    }
+  };
+
+  const confirmOverBaseSplitYes = () => {
+    setSplitCustomTotalEnabled(true);
+    setSplitCustomTotal("");
+    setPendingOverBaseField(null);
+    setPendingOverBaseValue("");
+    setShowOverBaseConfirm(false);
+  };
+
+  const confirmOverBaseSplitNo = () => {
+    if (pendingOverBaseField === 'cash') {
+      setPaymentCash("");
+    } else if (pendingOverBaseField === 'card') {
+      setPaymentCard("");
+    }
+    setPaymentCard("");
+    setPaymentTransfer("");
+    setPendingOverBaseField(null);
+    setPendingOverBaseValue("");
+    setShowOverBaseConfirm(false);
   };
 
   /**
@@ -914,8 +1415,9 @@ export default function LockerOptionsDialog({
     
     // 입실시간과 현재시간의 영업일 비교
     if (entryTime) {
-      const entryBusinessDay = getBusinessDay(new Date(entryTime));
-      const currentBusinessDay = getBusinessDay(new Date());
+      const bdHour = Number(settings.businessDayStartHour) || 10;
+      const entryBusinessDay = getBusinessDay(new Date(entryTime), bdHour);
+      const currentBusinessDay = getBusinessDay(new Date(), bdHour);
       
       // 영업일이 다르면 기본요금을 0으로 처리 (추가요금만 청구)
       if (entryBusinessDay !== currentBusinessDay) {
@@ -981,15 +1483,26 @@ export default function LockerOptionsDialog({
     // 입실시간과 현재시간의 영업일 비교
     let includeBasePrice = true;
     if (entryTime) {
-      const entryBusinessDay = getBusinessDay(new Date(entryTime));
-      const currentBusinessDay = getBusinessDay(new Date());
+      const bdHour = Number(settings.businessDayStartHour) || 10;
+      const entryBusinessDay = getBusinessDay(new Date(entryTime), bdHour);
+      const currentBusinessDay = getBusinessDay(new Date(), bdHour);
       if (entryBusinessDay !== currentBusinessDay) {
         includeBasePrice = false;
       }
     }
 
-    // 추가요금 할인 적용
-    const discountAmount = parseInt(additionalFeeDiscount) || 0;
+    // 추가요금 할인 적용 (전액할인 체크 시 전체)
+    let discountAmount = parseInt(additionalFeeDiscount) || 0;
+    if (additionalFeeFullDiscount) {
+      discountAmount = additionalFeeInfo.additionalFee;
+    } else if (discountAmount <= 0 && currentLockerLogId) {
+      discountAmount = Math.min(
+        localDb.getLockerLogAdditionalFeeDiscount(currentLockerLogId) || 0,
+        additionalFeeInfo.additionalFee
+      );
+    } else {
+      discountAmount = Math.min(discountAmount, additionalFeeInfo.additionalFee);
+    }
     let additionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
 
     // 추가요금 분리결제가 아닌 경우에만 부가세 적용
@@ -1015,7 +1528,8 @@ export default function LockerOptionsDialog({
     selectedRentalItems.forEach(itemId => {
       const item = availableRentalItems.find(i => i.id === itemId);
       if (item) {
-        parts.push(item.name);
+        const qty = rentalItemQuantities.get(itemId) || 1;
+        parts.push(isSimpleSaleItem(item) && qty > 1 ? `${item.name}×${qty}` : item.name);
       }
     });
     return parts.length > 0 ? parts.join(', ') : '';
@@ -1024,7 +1538,6 @@ export default function LockerOptionsDialog({
   // Generate rental item info for checkout
   const generateRentalItemInfo = (): RentalItemInfo[] => {
     const rentalItems: RentalItemInfo[] = [];
-    const settings = localDb.getSettings();
     
     selectedRentalItems.forEach(itemId => {
       const item = availableRentalItems.find(i => i.id === itemId);
@@ -1036,13 +1549,18 @@ export default function LockerOptionsDialog({
         // 직접입력이 활성화된 경우 커스텀 가격 우선 적용
         const customFeeStr = rentalDirectInputEnabled.has(itemId) ? rentalCustomFees.get(itemId) : undefined;
         const customDepositStr = rentalDirectInputEnabled.has(itemId) ? rentalCustomDeposits.get(itemId) : undefined;
-        const baseRentalFee = (customFeeStr !== undefined && customFeeStr !== '') ? (parseInt(customFeeStr) || 0) : (item.rentalFee || 0);
-        const baseDepositAmount = (customDepositStr !== undefined && customDepositStr !== '') ? (parseInt(customDepositStr) || 0) : (item.depositAmount || 0);
+        const unitRentalFee = (customFeeStr !== undefined && customFeeStr !== '') ? (parseInt(customFeeStr) || 0) : (item.rentalFee || 0);
+        const unitDepositAmount = (customDepositStr !== undefined && customDepositStr !== '') ? (parseInt(customDepositStr) || 0) : (item.depositAmount || 0);
+        const quantity = isSimpleSaleItem(item)
+          ? Math.max(1, rentalItemQuantities.get(itemId) || 1)
+          : 1;
+        const baseRentalFee = unitRentalFee * quantity;
+        const baseDepositAmount = unitDepositAmount; // 대여 보증금은 수량 미적용
         
         // 부가세 적용 여부 확인
         const vatApplied = shouldApplyVat(rentalPaymentMethod, isCashReceipt);
         
-        // 부가세가 적용되면 대여비와 보증금 모두에 적용
+        // 부가세가 적용되면 대여비와 보증금 모두에 적용 (단가×수량 합계 기준)
         const vatAppliedRentalFee = vatApplied ? Math.round(baseRentalFee * 1.1) : baseRentalFee;
         const vatAppliedDepositAmount = vatApplied ? Math.round(baseDepositAmount * 1.1) : baseDepositAmount;
         
@@ -1056,6 +1574,7 @@ export default function LockerOptionsDialog({
           isCashReceipt: isCashReceipt,
           vatAppliedRentalFee: vatAppliedRentalFee,
           vatAppliedDepositAmount: vatAppliedDepositAmount,
+          quantity,
         });
       }
     });
@@ -1111,8 +1630,18 @@ export default function LockerOptionsDialog({
     const computedFinalPrice = calculateFinalPrice();
     
     // 분리결제 검증
-    if (useSplitPayment && !validateMixedPayment(computedFinalPrice)) {
-      return;
+    if (useSplitPayment) {
+      if (splitCustomTotalEnabled && !(parseInt(splitCustomTotal) > 0)) {
+        toast({
+          title: "총금액 미입력",
+          description: "받을 총금액을 입력해 주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!validateMixedPayment(getSplitAutoFillTarget())) {
+        return;
+      }
     }
     
     // 결제 금액 계산
@@ -1201,6 +1730,25 @@ export default function LockerOptionsDialog({
   
   const handleProcessEntry = () => {
     playClickSound();
+
+    if (isLongTerm) {
+      if (!longTermCheckoutDate || longTermStayDays <= 0) {
+        toast({
+          title: "퇴실 예정 시각 확인",
+          description: "입실보다 이후의 퇴실 날짜·시간을 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (longTermDailyFeeNum <= 0) {
+        toast({
+          title: "1일 입장료 미입력",
+          description: "1일 입장료를 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     
     // 후불결제가 아닌 경우에만 지불방식 검증 (무료입장/직원은 검증 스킵)
     if (!isDeferredPayment && !isFreeEntry && !isStaff && !useSplitPayment && !paymentMethod) {
@@ -1212,10 +1760,13 @@ export default function LockerOptionsDialog({
       return;
     }
     
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' | 'long_term' = 'none';
     let optionAmount: number | undefined;
 
-    if (isStaff || isFreeEntry) {
+    if (isLongTerm) {
+      optionType = 'long_term';
+      optionAmount = calculateFinalPrice();
+    } else if (isStaff || isFreeEntry) {
       optionType = 'free';
       optionAmount = 0;
     } else if (isDirectPrice && directPrice) {
@@ -1242,8 +1793,10 @@ export default function LockerOptionsDialog({
     }
     
     const baseFinalPrice = calculateFinalPrice();
-    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    const prepaidAmount = (!isLongTerm && hasPrepaidAdditionalFee) ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     const computedFinalPrice = baseFinalPrice + prepaidAmount; // 선지급금 포함 총액
+    const longTermPayload = buildLongTermStayPayload();
+    const effectiveNoAdditionalFee = isLongTerm ? true : noAdditionalFee;
     
     // 선지급금 정보를 메모에 자동 기록
     let finalCustomerMemo = customerMemo;
@@ -1257,6 +1810,18 @@ export default function LockerOptionsDialog({
           ? `${customerMemo}\n${prepaidMemoText}` 
           : prepaidMemoText;
         setCustomerMemo(finalCustomerMemo);
+      }
+    }
+
+    if (isLongTerm && longTermPayload) {
+      const checkoutLabel = longTermCheckoutDate!.toLocaleString('ko-KR', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const longTermMemo = `장기투숙 ${longTermPayload.stayDays}일 (퇴실예정 ${checkoutLabel})`;
+      if (!finalCustomerMemo.includes('장기투숙')) {
+        finalCustomerMemo = finalCustomerMemo.trim()
+          ? `${longTermMemo}\n${finalCustomerMemo}`
+          : longTermMemo;
       }
     }
     
@@ -1273,7 +1838,7 @@ export default function LockerOptionsDialog({
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -1290,7 +1855,7 @@ export default function LockerOptionsDialog({
     const isPrepaidAutoSplit = !useSplitPayment && prepaidAmount > 0 && effectivePrepaidMethod !== paymentMethod;
 
     if (useSplitPayment) {
-      if (prepaidAdditionalFeePaymentMethod !== null && prepaidAmount > 0) {
+      if (prepaidAdditionalFeePaymentMethod !== null && prepaidAmount > 0 && !splitCustomTotalEnabled) {
         // 분리결제 + 선지급 별도 결제방식: 기본요금 합계만 검증하고 선지급은 자동 추가
         if (!validateMixedPayment(baseFinalPrice)) {
           return;
@@ -1303,8 +1868,16 @@ export default function LockerOptionsDialog({
         else if (effectivePrepaidMethod === 'card') cardVal = (cardVal || 0) + prepaidAmount;
         else if (effectivePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + prepaidAmount;
       } else {
-        // 기존 분리결제: 선지급 포함 전체 금액 검증
-        if (!validateMixedPayment(computedFinalPrice)) {
+        // 분리결제 (총금액 모드 포함): 자동완성 기준 금액으로 검증
+        if (splitCustomTotalEnabled && !(parseInt(splitCustomTotal) > 0)) {
+          toast({
+            title: "총금액 미입력",
+            description: "받을 총금액을 입력해 주세요.",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (!validateMixedPayment(getSplitAutoFillTarget())) {
           return;
         }
         cashVal = parseInt(paymentCash) || undefined;
@@ -1345,8 +1918,8 @@ export default function LockerOptionsDialog({
     // 후불결제 시 결제 금액을 0원으로 처리
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
-      const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, noAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff);
+      const prepaidFee = (!isLongTerm && hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount) ? parseInt(prepaidAdditionalFeeAmount) : 0;
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
       setDialogOpen(false);
       return;
     }
@@ -1387,19 +1960,41 @@ export default function LockerOptionsDialog({
     
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
-    const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff);
+    const prepaidFee = (!isLongTerm && hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount) ? parseInt(prepaidAdditionalFeeAmount) : 0;
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
     setDialogOpen(false);
   };
 
   const handleSaveChanges = () => {
     playClickSound();
     console.log('[handleSaveChanges] called', { useSplitPayment, hasExistingSplitPayment: isInUse && [currentPaymentCash && currentPaymentCash > 0, currentPaymentCard && currentPaymentCard > 0, currentPaymentTransfer && currentPaymentTransfer > 0].filter(Boolean).length > 1, paymentCash, paymentCard, paymentTransfer, hasPrepaidAdditionalFee, prepaidAdditionalFeeAmount, prepaidAdditionalFeePaymentMethod });
+
+    if (isLongTerm) {
+      if (!longTermCheckoutDate || longTermStayDays <= 0) {
+        toast({
+          title: "퇴실 예정 시각 확인",
+          description: "입실보다 이후의 퇴실 날짜·시간을 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (longTermDailyFeeNum <= 0) {
+        toast({
+          title: "1일 입장료 미입력",
+          description: "1일 입장료를 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
     
-    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' = 'none';
+    let optionType: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free' | 'long_term' = 'none';
     let optionAmount: number | undefined;
 
-    if (isStaff || isFreeEntry) {
+    if (isLongTerm) {
+      optionType = 'long_term';
+      optionAmount = calculateFinalPrice();
+    } else if (isStaff || isFreeEntry) {
       optionType = 'free';
       optionAmount = 0;
     } else if (isDirectPrice && directPrice) {
@@ -1426,9 +2021,11 @@ export default function LockerOptionsDialog({
     }
     
     const computedFinalPrice = calculateFinalPrice();
+    const longTermPayload = buildLongTermStayPayload();
+    const effectiveNoAdditionalFee = isLongTerm ? true : noAdditionalFee;
     
     // 선지급금 정보를 메모에 자동 기록 (새로 선지급금을 추가하는 경우에만)
-    const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    const prepaidAmount = (!isLongTerm && hasPrepaidAdditionalFee) ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     // 결제 버킷 할당 시 선지급금 포함 총액 (optionAmount는 기본요금만 사용)
     const totalPriceForPayment = computedFinalPrice + prepaidAmount;
     let finalCustomerMemo = customerMemo;
@@ -1445,132 +2042,133 @@ export default function LockerOptionsDialog({
         setCustomerMemo(finalCustomerMemo);
       }
     }
+
+    if (isLongTerm && longTermPayload) {
+      const checkoutLabel = longTermCheckoutDate!.toLocaleString('ko-KR', {
+        month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const longTermMemo = `장기투숙 ${longTermPayload.stayDays}일 (퇴실예정 ${checkoutLabel})`;
+      if (!finalCustomerMemo.includes('장기투숙')) {
+        finalCustomerMemo = finalCustomerMemo.trim()
+          ? `${longTermMemo}\n${finalCustomerMemo}`
+          : longTermMemo;
+      }
+    }
+
+    // 입실시간 수정 초안이 있으면 검증 후 전달
+    let editedEntryTimeToSave: string | undefined;
+    if (isInUse && entryTimeDraftISO && entryTimeDraftISO !== entryTime) {
+      const draftDate = new Date(entryTimeDraftISO);
+      if (Number.isNaN(draftDate.getTime())) {
+        toast({
+          title: "입실시간 오류",
+          description: "올바른 입실시간을 입력해주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (draftDate.getTime() > Date.now() + 30_000) {
+        toast({
+          title: "입실시간 오류",
+          description: "입실시간을 미래로 설정할 수 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      editedEntryTimeToSave = draftDate.toISOString();
+
+      const oldLabel = entryTime
+        ? new Date(entryTime).toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+        : '-';
+      const newLabel = draftDate.toLocaleString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+      const checkTime = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const entryTimeMemo = `[${checkTime}] 입실시간 수정: ${oldLabel} → ${newLabel}`;
+      if (!finalCustomerMemo.includes(entryTimeMemo)) {
+        finalCustomerMemo = finalCustomerMemo.trim()
+          ? `${finalCustomerMemo}\n${entryTimeMemo}`
+          : entryTimeMemo;
+        setCustomerMemo(finalCustomerMemo);
+      }
+    }
+
+    // 편집 중인 datetime 입력이 열려 있으면 먼저 적용 유도
+    if (isEditingEntryTime) {
+      toast({
+        title: "입실시간 수정 중",
+        description: "입실시간 '적용'을 누른 뒤 수정저장 해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     // Get payment breakdown
     let cashVal: number | undefined;
     let cardVal: number | undefined;
     let transferVal: number | undefined;
     
-    // 기존 분리결제 데이터가 있는지 확인 (isInUse이고 여러 결제 수단에 값이 있음)
+    // 기존 단일결제 데이터가 있는지 확인 (분리결제가 아닐 때만 사용)
     const hasExistingSplitPayment = isInUse && [
       currentPaymentCash && currentPaymentCash > 0,
       currentPaymentCard && currentPaymentCard > 0,
       currentPaymentTransfer && currentPaymentTransfer > 0,
     ].filter(Boolean).length > 1;
     
-    // 기존 단일결제 데이터가 있는지 확인
     const hasExistingSinglePayment = isInUse && (
       (currentPaymentCash && currentPaymentCash > 0) ||
       (currentPaymentCard && currentPaymentCard > 0) ||
       (currentPaymentTransfer && currentPaymentTransfer > 0)
     ) && !hasExistingSplitPayment;
     
-    // 선지급금 환불로 인해 결제금액이 수정되었는지 확인
-    // 환불 처리 시 모든 결제금액 상태가 설정됨 (빈 문자열이 아님)
-    const paymentModifiedByRefund = paymentCash !== "" && paymentCard !== "" && paymentTransfer !== "";
-    
-    
     if (useSplitPayment) {
-      if (hasExistingSplitPayment && paymentModifiedByRefund) {
-        // 환불로 인해 결제금액이 수정된 경우 수정된 값 사용
-        // 분리결제 필드에는 기본 금액(VAT 미포함)이 표시되므로 VAT를 다시 적용해야 함
-        let cashBase = parseInt(paymentCash) || 0;
-        let cardBase = parseInt(paymentCard) || 0;
-        let transferBase = parseInt(paymentTransfer) || 0;
-        
-        // 음수가 되지 않는지만 확인
-        if (cashBase < 0 || cardBase < 0 || transferBase < 0) {
-          toast({
-            title: "결제 금액 오류",
-            description: "결제 금액이 0원 미만이 될 수 없습니다.",
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // 기본 금액에 VAT 적용하여 저장
-        const settings = localDb.getSettings();
-        
-        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-        if (settings.enableCashReceiptVat && isCashReceipt) {
-          if (cashBase > 0) {
-            cashVal = Math.round(cashBase * 1.1);
-          }
-          if (transferBase > 0) {
-            transferVal = Math.round(transferBase * 1.1);
-          }
-        } else {
-          cashVal = cashBase > 0 ? cashBase : undefined;
-          transferVal = transferBase > 0 ? transferBase : undefined;
-        }
-        
-        // 카드: 카드 부가세 설정이 ON이면 자동 적용
-        if (settings.enableCardVat && cardBase > 0) {
-          cardVal = Math.round(cardBase * 1.1);
-        } else {
-          cardVal = cardBase > 0 ? cardBase : undefined;
-        }
+      // 분리결제: 항상 화면 입력값(기본금액)을 기준으로 VAT를 1회만 적용해 저장
+      // 총금액 모드면 사용자 지정 총금액을 검증 기준으로 사용
+      const splitTarget = getSplitAutoFillTarget();
+      if (splitCustomTotalEnabled && !(parseInt(splitCustomTotal) > 0)) {
+        toast({
+          title: "총금액 미입력",
+          description: "받을 총금액을 입력해 주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!validateMixedPayment(splitTarget)) {
+        return;
+      }
 
-        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
-        const savePrepaidMethodSplitR = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
-        const isNewPrepaidAddedSplitR =
-          hasPrepaidAdditionalFee &&
-          prepaidAmount > 0 &&
-          prepaidAmount !== currentPrepaidAdditionalFee;
-        if (isNewPrepaidAddedSplitR) {
-          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
-          if (savePrepaidMethodSplitR === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodSplitR === 'card') cardVal = (cardVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodSplitR === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
-        }
-      } else if (hasExistingSplitPayment && !paymentModifiedByRefund) {
-        // 기존 분리결제가 있고 환불 수정이 없으면 기존 값 사용
-        // 단, 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
-        const savePrepaidMethodSplit = prepaidAdditionalFeePaymentMethod || paymentMethod;
-        const isNewPrepaidAddedToSplit =
-          hasPrepaidAdditionalFee &&
-          prepaidAmount > 0 &&
-          prepaidAmount !== currentPrepaidAdditionalFee;
+      const cashBase = parseInt(paymentCash) || 0;
+      const cardBase = parseInt(paymentCard) || 0;
+      const transferBase = parseInt(paymentTransfer) || 0;
 
-        if (isNewPrepaidAddedToSplit) {
-          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
-          cashVal = currentPaymentCash || undefined;
-          cardVal = currentPaymentCard || undefined;
-          transferVal = currentPaymentTransfer || undefined;
-          if (savePrepaidMethodSplit === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodSplit === 'card') cardVal = (cardVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodSplit === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
-        } else {
-          cashVal = currentPaymentCash;
-          cardVal = currentPaymentCard;
-          transferVal = currentPaymentTransfer;
-        }
-      } else {
-        // 신규 분리결제: 검증 수행 (선지급금 포함 총액으로 검증)
-        if (!validateMixedPayment(totalPriceForPayment)) {
-          return;
-        }
-        cashVal = parseInt(paymentCash) || undefined;
-        cardVal = parseInt(paymentCard) || undefined;
-        transferVal = parseInt(paymentTransfer) || undefined;
-        
-        // 분리결제 시 부가세 적용
-        const settings = localDb.getSettings();
-        
-        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-        if (settings.enableCashReceiptVat && isCashReceipt) {
-          if (cashVal) {
-            cashVal = Math.round(cashVal * 1.1);
-          }
-          if (transferVal) {
-            transferVal = Math.round(transferVal * 1.1);
-          }
-        }
-        
-        // 카드: 카드 부가세 설정이 ON이면 자동 적용
-        if (settings.enableCardVat && cardVal) {
-          cardVal = Math.round(cardVal * 1.1);
-        }
+      if (cashBase < 0 || cardBase < 0 || transferBase < 0) {
+        toast({
+          title: "결제 금액 오류",
+          description: "결제 금액이 0원 미만이 될 수 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const settings = localDb.getSettings();
+      const withVat = applyVatToSplitBases(cashBase, cardBase, transferBase, {
+        enableCardVat: !!settings.enableCardVat,
+        enableCashReceiptVat: !!settings.enableCashReceiptVat,
+        isCashReceipt,
+      });
+      cashVal = withVat.cash;
+      cardVal = withVat.card;
+      transferVal = withVat.transfer;
+
+      // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
+      const savePrepaidMethodSplit = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
+      const isNewPrepaidAddedToSplit =
+        hasPrepaidAdditionalFee &&
+        prepaidAmount > 0 &&
+        prepaidAmount !== currentPrepaidAdditionalFee;
+      if (isNewPrepaidAddedToSplit) {
+        const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
+        if (savePrepaidMethodSplit === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
+        else if (savePrepaidMethodSplit === 'card') cardVal = (cardVal || 0) + addedPrepaid;
+        else if (savePrepaidMethodSplit === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
       }
     } else {
       // 결제방식 변경 여부 확인 (핵심!)
@@ -1604,72 +2202,21 @@ export default function LockerOptionsDialog({
             transferVal = priceWithVat;
           }
         }
-      } else if (hasExistingSinglePayment && paymentModifiedByRefund) {
-        // 환불로 인해 결제금액이 수정된 경우, 또는 단순히 paymentCard/Transfer 초기값이 "0"이어서
-        // paymentModifiedByRefund가 true로 평가된 경우 모두 이 분기에서 처리
-        let cashBase = parseInt(paymentCash) || 0;
-        let cardBase = parseInt(paymentCard) || 0;
-        let transferBase = parseInt(paymentTransfer) || 0;
-        
-        // 음수가 되지 않는지만 확인
-        if (cashBase < 0 || cardBase < 0 || transferBase < 0) {
-          toast({
-            title: "결제 금액 오류",
-            description: "결제 금액이 0원 미만이 될 수 없습니다.",
-            variant: "destructive",
-          });
-          return;
-        }
-        
-        // 기본 금액에 VAT 적용하여 저장
-        const settings = localDb.getSettings();
-        
-        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-        if (settings.enableCashReceiptVat && isCashReceipt) {
-          if (cashBase > 0) {
-            cashVal = Math.round(cashBase * 1.1);
-          }
-          if (transferBase > 0) {
-            transferVal = Math.round(transferBase * 1.1);
-          }
-        } else {
-          cashVal = cashBase > 0 ? cashBase : undefined;
-          transferVal = transferBase > 0 ? transferBase : undefined;
-        }
-        
-        // 카드: 카드 부가세 설정이 ON이면 자동 적용
-        if (settings.enableCardVat && cardBase > 0) {
-          cardVal = Math.round(cardBase * 1.1);
-        } else {
-          cardVal = cardBase > 0 ? cardBase : undefined;
-        }
-
-        // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 추가
-        // (동일 결제방식이든 다른 결제방식이든 모두 처리)
-        // paymentCard="0"/paymentTransfer="0" 초기값으로 인해 이 분기로 오는 경우 포함
-        const savePrepaidMethodR = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
-        const isNewPrepaidR =
-          hasPrepaidAdditionalFee &&
-          prepaidAmount > 0 &&
-          prepaidAmount !== currentPrepaidAdditionalFee;
-        if (isNewPrepaidR) {
-          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
-          if (savePrepaidMethodR === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodR === 'card') cardVal = (cardVal || 0) + addedPrepaid;
-          else if (savePrepaidMethodR === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
-        }
-      } else if (hasExistingSinglePayment && !paymentModifiedByRefund && paymentMethod === currentPaymentMethod) {
-        // 기존 단일결제가 있고 환불 수정이 없고 결제방식도 변경되지 않았으면 기존 값 사용
-        // 단, 요금이 변경된 경우(직접입력 등)에는 새 금액으로 결제 재계산
+      } else if (hasExistingSinglePayment && paymentMethod === currentPaymentMethod) {
+        // 기존 단일결제 + 결제방식 유지: 요금 변경 시에만 재계산
         const savePrepaidMethod = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
         const isNewPrepaidAdded =
           hasPrepaidAdditionalFee &&
           prepaidAmount > 0 &&
           prepaidAmount !== currentPrepaidAdditionalFee;
 
-        // 기존 결제 합계와 새 계산 요금 비교 → 요금이 바뀐 경우 결제액도 재계산 (선지급금 포함 총액 비교)
         const existingPaymentSum = (currentPaymentCash || 0) + (currentPaymentCard || 0) + (currentPaymentTransfer || 0);
-        const priceChangedFromExisting = totalPriceForPayment !== existingPaymentSum;
+        const vatOn = shouldApplyVat(paymentMethod, isCashReceipt);
+        const expectedStoredTotal = vatOn
+          ? Math.round(totalPriceForPayment * 1.1)
+          : totalPriceForPayment;
+        // VAT 포함 합계와 비교 (기본요금끼리 비교하면 항상 '변경됨'으로 오판 → VAT 중복 위험)
+        const priceChangedFromExisting = existingPaymentSum !== expectedStoredTotal;
 
         if (isNewPrepaidAdded) {
           const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
@@ -1680,12 +2227,10 @@ export default function LockerOptionsDialog({
           else if (savePrepaidMethod === 'card') cardVal = (cardVal || 0) + addedPrepaid;
           else if (savePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
         } else if (priceChangedFromExisting) {
-          // 요금이 변경됨 → 새 금액으로 결제 재할당 (부가세 포함, 선지급금 포함 총액 사용)
           if (paymentMethod === 'cash') { cashVal = totalPriceForPayment; cardVal = undefined; transferVal = undefined; }
           else if (paymentMethod === 'card') { cashVal = undefined; cardVal = totalPriceForPayment; transferVal = undefined; }
           else if (paymentMethod === 'transfer') { cashVal = undefined; cardVal = undefined; transferVal = totalPriceForPayment; }
-          const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-          if (vatApplied) {
+          if (vatOn) {
             const priceWithVat = Math.round(totalPriceForPayment * 1.1);
             if (paymentMethod === 'cash') cashVal = priceWithVat;
             else if (paymentMethod === 'card') cardVal = priceWithVat;
@@ -1734,7 +2279,7 @@ export default function LockerOptionsDialog({
     const finalPaymentMethod = paymentMethod || 'cash';
     // 후불결제 상태 전달 (체크 해제 시 결제 완료 처리)
     // 기존 입실 수정 시 noAdditionalFee 상태 - 체크박스의 현재 상태 사용
-    const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
+    const prepaidFee = (!isLongTerm && hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount) ? parseInt(prepaidAdditionalFeeAmount) : 0;
 
     // try-catch: onApply 및 이후 DB 작업에서 예외 발생 시에도 dialog가 항상 닫히도록 보장
     try {
@@ -1745,7 +2290,7 @@ export default function LockerOptionsDialog({
       const additionalFeePaymentMethodToSave = additionalFeePaymentMethodUserChangedRef.current
         ? additionalFeePaymentMethod
         : (currentAdditionalFeePaymentMethod || undefined);
-      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, noAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethodToSave, isStaff);
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethodToSave, isStaff, editedEntryTimeToSave, longTermPayload);
       
       // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
       additionalFeePaymentMethodUserChangedRef.current = true;
@@ -1758,31 +2303,104 @@ export default function LockerOptionsDialog({
         
         // 추가요금 완납 상태 저장 (checkoutResolved 또는 additionalFeeResolved가 true인 경우)
         // 현재 추가요금 총액을 저장하여 새로운 추가요금 발생 시 감지 가능
+        // ※ 할인액은 paid_amount와 별도 저장 — paid_amount는 원 추가요금(신규 발생 감지용)
         if (checkoutResolved || additionalFeeResolved) {
           // 추가요금 직접 계산 (additionalFeeInfo가 아직 정의되지 않았을 수 있음)
           // noAdditionalFee가 true이면 추가요금 0
           let currentFee = 0;
-          if (!currentNoAdditionalFee) {
+          if (!currentNoAdditionalFee && !isLongTerm && !currentIsLongTerm) {
             const isForeigner = currentOptionType === 'foreigner';
             const isFreeEntry = currentOptionType === 'free';
+            const feeTt = editedEntryTimeToSave
+              ? localDb.getTimeTypeWithSettings(new Date(editedEntryTimeToSave))
+              : timeType;
             const feeInfo = calculateAdditionalFee(
-              entryTime || '',
-              timeType,
+              editedEntryTimeToSave || entryTime || '',
+              feeTt,
               dayPrice,
               nightPrice,
               new Date(),
               isForeigner,
-              foreignerPrice,
+              resolveForeignerPrice(feeTt),
               domesticCheckpointHour,
               foreignerAdditionalFeePeriod,
               isFreeEntry,
               domesticAdditionalFeeMode,
-              nightStartHour
+              nightStartHour,
+              settlementCycleOpts,
+              stagedHourlyOpts,
+              nightstartOpts
             );
             currentFee = feeInfo.additionalFee;
           }
-          console.log('[DEBUG] 수정저장: 추가요금 완납 저장', { logId: currentLockerLogId, currentFee, checkoutResolved, additionalFeeResolved });
-          localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, currentFee);
+          // UI 할인은 선지급 차감 후(net) 금액 기준
+          const prepaidAtSave = hasPrepaidAdditionalFee
+            ? (parseInt(prepaidAdditionalFeeAmount) || 0)
+            : (currentPrepaidAdditionalFee || 0);
+          const netFee = Math.max(0, currentFee - prepaidAtSave);
+          const discountToSave = additionalFeeFullDiscount
+            ? netFee
+            : Math.min(Math.max(0, parseInt(additionalFeeDiscount) || 0), netFee);
+          console.log('[DEBUG] 수정저장: 추가요금 완납 저장', {
+            logId: currentLockerLogId,
+            currentFee,
+            netFee,
+            discountToSave,
+            checkoutResolved,
+            additionalFeeResolved,
+          });
+          localDb.updateLockerLogAdditionalFeePaid(currentLockerLogId, true, netFee, discountToSave);
+
+          // 할인 메모가 없으면 자동 기록
+          if (discountToSave > 0) {
+            let additionalFeeMemo = '';
+            if (discountToSave >= netFee) {
+              additionalFeeMemo = `추가요금 총 ${netFee.toLocaleString()}원 전액할인`;
+            } else {
+              additionalFeeMemo = `추가요금 총 ${netFee.toLocaleString()}원중 ${discountToSave.toLocaleString()}원 할인 받음`;
+            }
+            if (additionalFeeMemo && !finalCustomerMemo.includes(additionalFeeMemo)) {
+              finalCustomerMemo = finalCustomerMemo.trim()
+                ? `${finalCustomerMemo}\n${additionalFeeMemo}`
+                : additionalFeeMemo;
+              localDb.updateLockerLogMemo(currentLockerLogId, finalCustomerMemo);
+              setCustomerMemo(finalCustomerMemo);
+            }
+          }
+        } else {
+          // 완납 전이라도 할인 입력값은 저장해 두어 재오픈 시 복원
+          let currentFee = 0;
+          if (!currentNoAdditionalFee && !isLongTerm && !currentIsLongTerm) {
+            const feeTt = editedEntryTimeToSave
+              ? localDb.getTimeTypeWithSettings(new Date(editedEntryTimeToSave))
+              : timeType;
+            const feeInfo = calculateAdditionalFee(
+              editedEntryTimeToSave || entryTime || '',
+              feeTt,
+              dayPrice,
+              nightPrice,
+              new Date(),
+              currentOptionType === 'foreigner',
+              resolveForeignerPrice(feeTt),
+              domesticCheckpointHour,
+              foreignerAdditionalFeePeriod,
+              currentOptionType === 'free',
+              domesticAdditionalFeeMode,
+              nightStartHour,
+              settlementCycleOpts,
+              stagedHourlyOpts,
+              nightstartOpts
+            );
+            currentFee = feeInfo.additionalFee;
+          }
+          const prepaidAtSave = hasPrepaidAdditionalFee
+            ? (parseInt(prepaidAdditionalFeeAmount) || 0)
+            : (currentPrepaidAdditionalFee || 0);
+          const netFee = Math.max(0, currentFee - prepaidAtSave);
+          const discountToSave = additionalFeeFullDiscount
+            ? netFee
+            : Math.min(Math.max(0, parseInt(additionalFeeDiscount) || 0), netFee);
+          localDb.updateLockerLogAdditionalFeeDiscount(currentLockerLogId, discountToSave);
         }
       }
       
@@ -1811,8 +2429,9 @@ export default function LockerOptionsDialog({
     setTimeout(() => setDialogOpen(false), 100);
   };
 
-  const handleCheckoutClick = () => {
+  const handleCheckoutClick = (options?: { customExitTime?: boolean }) => {
     playClickSound();
+    const customExitTime = !!options?.customExitTime;
     
     // NOTE: Warning check removed - warning already shows when dialog first opens
     // Redundant check was causing infinite loop when user clicked checkout after warning close
@@ -1887,8 +2506,18 @@ export default function LockerOptionsDialog({
     } | undefined = undefined;
     
     if (additionalFeeInfo.additionalFee > 0) {
-      // 할인 적용된 추가요금 계산
-      const discountAmount = parseInt(additionalFeeDiscount) || 0;
+      // 할인 적용된 추가요금 계산 (UI → 없으면 DB에 저장된 수정저장 할인)
+      let discountAmount = parseInt(additionalFeeDiscount) || 0;
+      if (additionalFeeFullDiscount) {
+        discountAmount = additionalFeeInfo.additionalFee;
+      } else if (discountAmount <= 0 && currentLockerLogId) {
+        discountAmount = Math.min(
+          localDb.getLockerLogAdditionalFeeDiscount(currentLockerLogId) || 0,
+          additionalFeeInfo.additionalFee
+        );
+      } else {
+        discountAmount = Math.min(discountAmount, additionalFeeInfo.additionalFee);
+      }
       const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
       
       if (useAdditionalFeeSplitPayment) {
@@ -1957,162 +2586,110 @@ export default function LockerOptionsDialog({
     const parsedRefundAmountClick = showRefund ? (parseInt(refundAmount) || 0) : 0;
     const finalRefundNoteClick = showRefund && parsedRefundAmountClick > 0 ? refundNote : undefined;
 
-    if (selectedRentalItems.size > 0) {
+    const rentalItemInfo = generateRentalItemInfo();
+    const checkoutArgs = {
+      paymentMethod: finalPaymentMethod as 'card' | 'cash' | 'transfer',
+      rentalItems: rentalItemInfo,
+      paymentCash: cashVal,
+      paymentCard: cardVal,
+      paymentTransfer: transferVal,
+      additionalFeePayment,
+      customerMemo,
+      refundAmount: parsedRefundAmountClick > 0 ? parsedRefundAmountClick : undefined,
+      refundNote: finalRefundNoteClick,
+      refundMethod: (parsedRefundAmountClick > 0 ? refundMethod : undefined) as 'cash' | 'card' | 'transfer' | undefined,
+    };
+
+    // 일반 퇴실: 대여품만 있으면 확인창, 없으면 즉시 퇴실(현재시각)
+    // 퇴실시간 지정: 확인창에서 시각 선택 (희소 케이스)
+    if (customExitTime || selectedRentalItems.size > 0) {
+      setPendingCheckoutArgs(checkoutArgs);
+      setCheckoutCustomTimeMode(customExitTime);
+      setCheckoutTimeLocal(toDatetimeLocalValue(new Date().toISOString()));
       setShowCheckoutConfirm(true);
     } else {
-      const rentalItemInfo = generateRentalItemInfo();
       onCheckout(
-        finalPaymentMethod,
-        rentalItemInfo,
-        cashVal,
-        cardVal,
-        transferVal,
-        additionalFeePayment,
-        customerMemo,
-        parsedRefundAmountClick > 0 ? parsedRefundAmountClick : undefined,
-        finalRefundNoteClick,
-        parsedRefundAmountClick > 0 ? refundMethod : undefined
+        checkoutArgs.paymentMethod,
+        checkoutArgs.rentalItems,
+        checkoutArgs.paymentCash,
+        checkoutArgs.paymentCard,
+        checkoutArgs.paymentTransfer,
+        checkoutArgs.additionalFeePayment,
+        checkoutArgs.customerMemo,
+        checkoutArgs.refundAmount,
+        checkoutArgs.refundNote,
+        checkoutArgs.refundMethod
       );
     }
   };
 
   const confirmCheckout = () => {
-    playCloseSound(); // Use a more distinctive sound for checkout
+    if (!pendingCheckoutArgs) return;
+
+    let exitTimeISO: string | undefined;
+    if (checkoutCustomTimeMode) {
+      const exitDate = datetimeLocalToDate(checkoutTimeLocal);
+      if (!exitDate) {
+        toast({
+          title: "퇴실시간 오류",
+          description: "퇴실 날짜·시간을 선택해 주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const entryDate = effectiveEntryTimeISO ? new Date(effectiveEntryTimeISO) : null;
+      if (entryDate && exitDate.getTime() < entryDate.getTime()) {
+        toast({
+          title: "퇴실시간 오류",
+          description: "퇴실시간은 입실시간 이후여야 합니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const now = new Date();
+      if (exitDate.getTime() > now.getTime() + 60_000) {
+        toast({
+          title: "퇴실시간 오류",
+          description: "미래 시각으로는 퇴실할 수 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      exitTimeISO = exitDate.toISOString();
+    }
+
+    playCloseSound();
     setShowCheckoutConfirm(false);
-    const rentalItemInfo = generateRentalItemInfo();
-    
-    // 기본요금과 추가요금을 독립적으로 처리
-    const computedFinalPrice = calculateFinalPrice();
-    
-    // 기본요금 결제 할당 (기본요금만)
-    let cashVal: number | undefined;
-    let cardVal: number | undefined;
-    let transferVal: number | undefined;
-    
-    if (useSplitPayment) {
-      cashVal = parseInt(paymentCash) || undefined;
-      cardVal = parseInt(paymentCard) || undefined;
-      transferVal = parseInt(paymentTransfer) || undefined;
-      
-      // 분리결제 시 부가세 적용
-      const settings = localDb.getSettings();
-      
-      // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-      if (settings.enableCashReceiptVat && isCashReceipt) {
-        if (cashVal) {
-          cashVal = Math.round(cashVal * 1.1);
-        }
-        if (transferVal) {
-          transferVal = Math.round(transferVal * 1.1);
-        }
-      }
-      
-      // 카드: 카드 부가세 설정이 ON이면 자동 적용
-      if (settings.enableCardVat && cardVal) {
-        cardVal = Math.round(cardVal * 1.1);
-      }
-    } else {
-      // Single payment method - automatically assign full amount (기본요금만)
-      // 부가세 적용
-      const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-      const priceToAssign = vatApplied 
-        ? Math.round(computedFinalPrice * 1.1) 
-        : computedFinalPrice;
-      
-      if (paymentMethod === 'cash') {
-        cashVal = priceToAssign;
-        cardVal = undefined;
-        transferVal = undefined;
-      } else if (paymentMethod === 'card') {
-        cashVal = undefined;
-        cardVal = priceToAssign;
-        transferVal = undefined;
-      } else if (paymentMethod === 'transfer') {
-        cashVal = undefined;
-        cardVal = undefined;
-        transferVal = priceToAssign;
+
+    let memoToSave = pendingCheckoutArgs.customerMemo;
+    if (exitTimeISO) {
+      const exitDate = new Date(exitTimeISO);
+      const now = new Date();
+      const diffMs = Math.abs(now.getTime() - exitDate.getTime());
+      if (diffMs > 60_000) {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const stamp = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+        const exitLabel = `${exitDate.getFullYear()}-${pad(exitDate.getMonth() + 1)}-${pad(exitDate.getDate())} ${pad(exitDate.getHours())}:${pad(exitDate.getMinutes())}`;
+        const note = `[${stamp}] 퇴실시간 소급 지정: ${exitLabel}`;
+        memoToSave = memoToSave?.trim() ? `${memoToSave.trim()}\n${note}` : note;
       }
     }
-    
-    // Prepare and validate additional fee payment info (if there's an additional fee)
-    let additionalFeePayment: typeof additionalFeeInfo.additionalFee extends 0 ? undefined : {
-      method: 'card' | 'cash' | 'transfer';
-      cash?: number;
-      card?: number;
-      transfer?: number;
-      discount?: number;
-    } | undefined = undefined;
-    
-    if (additionalFeeInfo.additionalFee > 0) {
-      // 할인 적용된 추가요금 계산
-      const discountAmount = parseInt(additionalFeeDiscount) || 0;
-      const discountedAdditionalFee = Math.max(0, additionalFeeInfo.additionalFee - discountAmount);
-      
-      if (useAdditionalFeeSplitPayment) {
-        // 추가요금 분리결제 (할인 적용된 금액 기준)
-        let addCashVal = parseInt(additionalFeePaymentCash) || 0;
-        let addCardVal = parseInt(additionalFeePaymentCard) || 0;
-        let addTransferVal = parseInt(additionalFeePaymentTransfer) || 0;
-        
-        // 분리결제 시 부가세 적용
-        const settings = localDb.getSettings();
-        
-        // 현금/이체: 현금영수증 체크 시에만 부가세 적용
-        if (settings.enableCashReceiptVat && isAdditionalFeeCashReceipt) {
-          if (addCashVal > 0) {
-            addCashVal = Math.round(addCashVal * 1.1);
-          }
-          if (addTransferVal > 0) {
-            addTransferVal = Math.round(addTransferVal * 1.1);
-          }
-        }
-        
-        // 카드: 카드 부가세 설정이 ON이면 자동 적용
-        if (settings.enableCardVat && addCardVal > 0) {
-          addCardVal = Math.round(addCardVal * 1.1);
-        }
-        
-        additionalFeePayment = {
-          method: additionalFeePaymentMethod,
-          cash: addCashVal > 0 ? addCashVal : undefined,
-          card: addCardVal > 0 ? addCardVal : undefined,
-          transfer: addTransferVal > 0 ? addTransferVal : undefined,
-          discount: discountAmount > 0 ? discountAmount : undefined,
-        };
-      } else {
-        // 추가요금 단일결제 (할인 적용된 금액 사용)
-        // 부가세 적용
-        const additionalFeeVatApplied = shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
-        const finalAdditionalFee = additionalFeeVatApplied 
-          ? Math.round(discountedAdditionalFee * 1.1) 
-          : discountedAdditionalFee;
-        
-        additionalFeePayment = {
-          method: additionalFeePaymentMethod,
-          cash: additionalFeePaymentMethod === 'cash' ? finalAdditionalFee : undefined,
-          card: additionalFeePaymentMethod === 'card' ? finalAdditionalFee : undefined,
-          transfer: additionalFeePaymentMethod === 'transfer' ? finalAdditionalFee : undefined,
-          discount: discountAmount > 0 ? discountAmount : undefined,
-        };
-      }
-    }
-    
-    // paymentMethod should be set for existing entries (isInUse)
-    const finalPaymentMethod = paymentMethod || 'cash';
-    const parsedRefundAmount = showRefund ? (parseInt(refundAmount) || 0) : 0;
-    const finalRefundNote = showRefund && parsedRefundAmount > 0 ? refundNote : undefined;
+
     onCheckout(
-      finalPaymentMethod,
-      rentalItemInfo,
-      cashVal,
-      cardVal,
-      transferVal,
-      additionalFeePayment,
-      customerMemo,
-      parsedRefundAmount > 0 ? parsedRefundAmount : undefined,
-      finalRefundNote,
-      parsedRefundAmount > 0 ? refundMethod : undefined
+      pendingCheckoutArgs.paymentMethod,
+      pendingCheckoutArgs.rentalItems,
+      pendingCheckoutArgs.paymentCash,
+      pendingCheckoutArgs.paymentCard,
+      pendingCheckoutArgs.paymentTransfer,
+      pendingCheckoutArgs.additionalFeePayment,
+      memoToSave,
+      pendingCheckoutArgs.refundAmount,
+      pendingCheckoutArgs.refundNote,
+      pendingCheckoutArgs.refundMethod,
+      exitTimeISO
     );
+    setPendingCheckoutArgs(null);
+    setCheckoutCustomTimeMode(false);
   };
 
   const handleWarningResolved = () => {
@@ -2129,7 +2706,35 @@ export default function LockerOptionsDialog({
 
   const handleCancelClick = () => {
     playClickSound();
+
+    // 최신 대여/판매 거래 확인 (입실취소 전)
+    let salesOrRentals = currentRentalTransactions;
+    if (currentLockerLogId) {
+      salesOrRentals = localDb.getRentalTransactionsByLockerLog(currentLockerLogId);
+      setCurrentRentalTransactions(salesOrRentals);
+    }
+
+    if (salesOrRentals.length > 0) {
+      setShowCancelEntrySalesDialog(true);
+      return;
+    }
+
     onCancel();
+  };
+
+  const handleCancelEntryKeepSales = () => {
+    playClickSound();
+    setShowCancelEntrySalesDialog(false);
+    onCancel();
+  };
+
+  const handleCancelEntryGoHandleSales = () => {
+    playClickSound();
+    setShowCancelEntrySalesDialog(false);
+    toast({
+      title: "판매/대여를 먼저 처리해 주세요",
+      description: "판매취소·대여취소 또는 반납완료 후 다시 입실취소를 눌러 주세요. 매출을 유지하려면 다음 확인에서 '아니요'를 선택하세요.",
+    });
   };
 
   const handleCloseClick = () => {
@@ -2251,9 +2856,8 @@ export default function LockerOptionsDialog({
         });
         setShowLinkConfirm(false);
         setSelectedChildLockers(new Set());
+        // 페이지 리로드 없이 닫기 → Home.onClose에서 loadData()로 화면 갱신
         onClose();
-        // Refresh page to show updated locker states
-        window.location.reload();
       } else {
         toast({
           variant: "destructive",
@@ -2352,7 +2956,6 @@ export default function LockerOptionsDialog({
           setShowChangeParentConfirm(false);
           setNewParentLocker("");
           onClose();
-          window.location.reload();
         } else {
           toast({
             variant: "destructive",
@@ -2375,7 +2978,6 @@ export default function LockerOptionsDialog({
           setShowChangeParentConfirm(false);
           setNewParentLocker("");
           onClose();
-          window.location.reload();
         } else {
           toast({
             variant: "destructive",
@@ -2397,14 +2999,14 @@ export default function LockerOptionsDialog({
   };
 
   // Calculate additional fee if entry time exists
-  // noAdditionalFee가 true이면 추가요금 완전 면제
+  // noAdditionalFee / 장기투숙이면 추가요금 완전 면제
   const isCurrentlyForeigner = currentOptionType === 'foreigner';
   const isCurrentlyFreeEntry = currentOptionType === 'free';
-  const rawAdditionalFeeInfo = entryTime && isInUse
-    ? (currentNoAdditionalFee 
-        ? { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 }
-        : calculateAdditionalFee(entryTime, timeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry, domesticAdditionalFeeMode, nightStartHour))
-    : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0 };
+  const rawAdditionalFeeInfo = effectiveEntryTimeISO && isInUse
+    ? (currentNoAdditionalFee || noAdditionalFee || isLongTerm || currentIsLongTerm
+        ? { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0, feeDetails: [] as Array<{ label: string; amount: number }> }
+        : calculateAdditionalFee(effectiveEntryTimeISO, effectiveTimeType, dayPrice, nightPrice, new Date(), isCurrentlyForeigner, resolveForeignerPrice(effectiveTimeType), domesticCheckpointHour, foreignerAdditionalFeePeriod, isCurrentlyFreeEntry, domesticAdditionalFeeMode, nightStartHour, settlementCycleOpts, stagedHourlyOpts, nightstartOpts))
+    : { additionalFee: 0, midnightsPassed: 0, additionalFeeCount: 0, feeDetails: [] as Array<{ label: string; amount: number }> };
   
   // 선지급 금액 차감 적용 - 다이얼로그에서 입력 중인 값 우선 사용 (미리보기)
   // hasPrepaidAdditionalFee가 true이고 금액이 입력되어 있으면 입력값 사용, 아니면 저장된 값 사용
@@ -2418,117 +3020,232 @@ export default function LockerOptionsDialog({
     prepaidAmount: effectivePrepaidAmount,
     rawAdditionalFee: rawAdditionalFeeInfo.additionalFee,
   };
+  const nightFeeStayDays =
+    !isCurrentlyForeigner
+      ? countNightFeeStayDays(
+          additionalFeeInfo.feeDetails,
+          dayPrice,
+          nightPrice,
+          domesticAdditionalFeeMode
+        )
+      : null;
+  const additionalFeeCountLabel =
+    nightFeeStayDays != null
+      ? `추가 요금 (${additionalFeeInfo.additionalFeeCount}회 · ${nightFeeStayDays}일)`
+      : `추가 요금 (${additionalFeeInfo.additionalFeeCount}회)`;
   
   // Note: Additional fee comparison is now done in the dialog open useEffect above
   // This separate useEffect is no longer needed as we calculate fees directly when dialog opens
 
   // Format entry date and time
-  const formatEntryDateTime = (entryTime?: string) => {
-    if (!entryTime) return null;
-    const date = new Date(entryTime);
-    const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const formatEntryDateTime = (entryTimeValue?: string) => {
+    if (!entryTimeValue) return null;
+    const date = new Date(entryTimeValue);
+    if (Number.isNaN(date.getTime())) return null;
+    const dateStr = date.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });
     const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
     return { dateStr, timeStr };
   };
 
-  const entryDateTime = formatEntryDateTime(entryTime);
+  const entryDateTime = formatEntryDateTime(effectiveEntryTimeISO);
+  const maxEntryTimeLocal = toDatetimeLocalValue(new Date().toISOString());
+
+  const applyEntryTimeDraft = () => {
+    const parsed = datetimeLocalToDate(editedEntryTimeLocal);
+    if (!parsed) {
+      toast({
+        title: "입실시간 오류",
+        description: "올바른 날짜와 시간을 입력해주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (parsed.getTime() > Date.now() + 30_000) {
+      toast({
+        title: "입실시간 오류",
+        description: "입실시간을 미래로 설정할 수 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setEntryTimeDraftISO(parsed.toISOString());
+    setIsEditingEntryTime(false);
+    toast({
+      title: "입실시간 변경 예정",
+      description: "수정저장을 누르면 반영됩니다.",
+    });
+  };
+
+  const cancelEntryTimeEdit = () => {
+    setIsEditingEntryTime(false);
+    setEditedEntryTimeLocal(toDatetimeLocalValue(effectiveEntryTimeISO));
+  };
 
   return (
     <>
       {/* Main Popup Card - No Dialog wrapper for multi-popup support */}
       {open && (
-        <div className="flex flex-col h-full bg-background rounded-lg overflow-hidden" data-testid="dialog-locker-options">
+        <div className="locker-options-container flex flex-col h-full overflow-hidden min-w-0" data-testid="dialog-locker-options">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b bg-muted/30">
-            <div className="flex items-center gap-4">
-              {/* 큰 원형 락카번호 배지 */}
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-blue-500 text-white text-3xl font-bold shadow-md">
+          <div className="locker-opt-header flex items-center justify-between gap-3 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="locker-opt-badge flex items-center justify-center shrink-0 rounded-2xl font-bold tabular-nums">
                 {lockerNumber}
               </div>
-              <h2 className="text-xl font-semibold">
-                락커 {lockerNumber}번 - {isInUse ? '옵션 수정' : '입실 처리'}
-              </h2>
+              <div className="min-w-0">
+                <h2 className="locker-opt-title font-semibold truncate tracking-tight">
+                  락커 {lockerNumber}번
+                </h2>
+                <p className="text-xs text-muted-foreground truncate">
+                  {isInUse ? '옵션 수정 · 사용 중' : '신규 입실'}
+                </p>
+              </div>
             </div>
-            <div className="flex gap-1">
+            <div className="locker-opt-window-controls flex items-center shrink-0">
               {onMinimize && (
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
                   onClick={onMinimize}
-                  className="h-8 w-8"
+                  className="locker-opt-window-btn h-7 w-7 rounded-lg"
                   title="최소화"
                 >
-                  _
+                  <Minus className="h-3.5 w-3.5" />
                 </Button>
               )}
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={handleCloseClick}
-                className="h-8 w-8"
+                className="locker-opt-window-btn h-7 w-7 rounded-lg"
                 title="닫기"
               >
-                ✕
+                <X className="h-3.5 w-3.5" />
               </Button>
             </div>
           </div>
           
           {/* Content - scrollable */}
-          <div className="flex-1 overflow-y-auto px-6">
-          <div className="space-y-4 py-4">
+          <div className="locker-opt-body flex-1 overflow-y-auto min-w-0">
+          <div className="locker-opt-stack">
             {/* 입실 정보 섹션 */}
-            <div className="space-y-2">
+            <div className="locker-opt-section locker-opt-section-hero">
               {/* 입실 날짜/시간 표시 (사용중일 때만) */}
               {isInUse && entryDateTime && (
                 <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">입실 날짜</span>
-                    <span className="font-medium">{entryDateTime.dateStr}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">입실 시간</span>
-                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">{entryDateTime.timeStr}</span>
-                  </div>
+                  {!isEditingEntryTime ? (
+                    <>
+                      <div className="locker-opt-row locker-opt-row-plain">
+                        <span className="locker-opt-row-label">입실 날짜</span>
+                        <span className="locker-opt-row-value">{entryDateTime.dateStr}</span>
+                      </div>
+                      <div className="locker-opt-row locker-opt-row-highlight">
+                        <span className="locker-opt-row-label">입실 시간</span>
+                        <div className="flex items-center gap-2">
+                          <span className="locker-opt-entry-time">{entryDateTime.timeStr}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2"
+                            onClick={() => {
+                              setEditedEntryTimeLocal(toDatetimeLocalValue(effectiveEntryTimeISO));
+                              setIsEditingEntryTime(true);
+                            }}
+                            data-testid="button-edit-entry-time"
+                          >
+                            <Pencil className="h-3.5 w-3.5 mr-1" />
+                            수정
+                          </Button>
+                        </div>
+                      </div>
+                      {entryTimeDraftISO && entryTimeDraftISO !== entryTime && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 text-right">
+                          입실시간 변경 예정 · 수정저장 시 반영
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor="edit-entry-time" className="text-sm text-muted-foreground">
+                          입실시간 수정
+                        </Label>
+                        <span className="text-[11px] text-muted-foreground">미래 시각 불가</span>
+                      </div>
+                      <Input
+                        id="edit-entry-time"
+                        type="datetime-local"
+                        value={editedEntryTimeLocal}
+                        max={maxEntryTimeLocal}
+                        onChange={(e) => setEditedEntryTimeLocal(e.target.value)}
+                        className="h-10"
+                        data-testid="input-edit-entry-time"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="ghost" size="sm" onClick={cancelEntryTimeEdit}>
+                          취소
+                        </Button>
+                        <Button type="button" size="sm" onClick={applyEntryTimeDraft} data-testid="button-apply-entry-time-draft">
+                          적용
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
               
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">시간대</span>
-                <span className="font-medium">{timeType}</span>
+              <div className="locker-opt-row locker-opt-row-plain">
+                <span className="locker-opt-row-label">시간대</span>
+                <span className="locker-opt-row-value">
+                  {effectiveTimeType}
+                  {effectiveTimeType !== timeType && (
+                    <span className="ml-1 text-xs text-amber-600">(변경 예정)</span>
+                  )}
+                </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">기본 요금</span>
-                <span className="font-semibold">{basePrice.toLocaleString()}원</span>
+              <div className="locker-opt-row locker-opt-row-plain">
+                <span className="locker-opt-row-label">{isLongTerm ? '장기투숙 요금' : '기본 요금'}</span>
+                <span className="locker-opt-row-value locker-opt-row-value-strong">
+                  {(isLongTerm ? longTermTotal : effectiveBasePrice).toLocaleString()}원
+                  {!isLongTerm && effectiveBasePrice !== basePrice && !isForeigner && !isDirectPrice && !isFreeEntry && !isStaff && (
+                    <span className="ml-1 text-xs font-normal text-amber-600">(변경 예정)</span>
+                  )}
+                </span>
               </div>
               
-              {/* 대여 물품 안내 - 반납완료된 항목 제외 (DB에서 이미 반납된 것도 제외) */}
-              {isInUse && currentRentalTransactions.filter(txn => 
-                !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1
+              {/* 대여 물품 회수 안내 — 단순판매형·반납완료 제외 */}
+              {isInUse && currentRentalTransactions.filter(txn =>
+                isUnresolvedRentalTxn(txn, availableRentalItems, returnCompletedItems)
               ).length > 0 && (
                 <div className="text-sm bg-red-50 dark:bg-red-950 p-2 rounded border border-red-200 dark:border-red-800">
                   <span className="text-red-700 dark:text-red-300 font-semibold">
                     {currentRentalTransactions
-                      .filter(txn => !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1)
+                      .filter(txn => isUnresolvedRentalTxn(txn, availableRentalItems, returnCompletedItems))
                       .map(txn => {
                         if (txn.depositAmount > 0) {
-                          return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 있음)`;
-                        } else {
-                          return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원 없음)`;
+                          return `${txn.itemName} 회수 (보증금 ${txn.depositAmount.toLocaleString()}원)`;
                         }
+                        return `${txn.itemName} 회수`;
                       }).join(', ')}
                   </span>
                 </div>
               )}
             </div>
 
-            {/* 요금직접입력 체크박스 - 직원일 때는 숨김 */}
-            {!isStaff && (
+            {/* 요금·옵션 */}
+            <div className="locker-opt-section locker-opt-section-options space-y-3">
+            {!isStaff && !isLongTerm && (enableDirectPriceOption || isDirectPrice) && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="direct-price" 
                   checked={isDirectPrice}
-                  onCheckedChange={(checked) => setIsDirectPrice(checked as boolean)}
+                  onCheckedChange={(checked) => {
+                    const on = checked as boolean;
+                    setIsDirectPrice(on);
+                    if (on) setIsLongTerm(false);
+                  }}
                   data-testid="checkbox-direct-price"
                 />
                 <Label htmlFor="direct-price" className="text-sm font-semibold cursor-pointer">
@@ -2548,7 +3265,7 @@ export default function LockerOptionsDialog({
             )}
 
             {/* 외국인 체크박스 - 설정에서 활성화된 경우에만 표시 */}
-            {enableForeignerOption && !isDirectPrice && !isFreeEntry && !isStaff && (
+            {(enableForeignerOption || isForeigner) && !isDirectPrice && !isFreeEntry && !isStaff && !isLongTerm && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="foreigner" 
@@ -2557,13 +3274,15 @@ export default function LockerOptionsDialog({
                   data-testid="checkbox-foreigner"
                 />
                 <Label htmlFor="foreigner" className="text-sm font-semibold cursor-pointer">
-                  외국인 ({foreignerPrice.toLocaleString()}원)
+                  {((settings as any).foreignerSeparateDayNight
+                    ? `외국인 (주간 ${resolveForeignerPrice('주간').toLocaleString()} / 야간 ${resolveForeignerPrice('야간').toLocaleString()}원)`
+                    : `외국인 (${resolveForeignerPrice(effectiveTimeType).toLocaleString()}원)`)}
                 </Label>
               </div>
             )}
 
             {/* 직원 체크박스 - 신규 입실에서만 표시 */}
-            {!isInUse && !isDirectPrice && !isForeigner && !isFreeEntry && (
+            {(enableStaffOption || isStaff) && !isInUse && !isDirectPrice && !isForeigner && !isFreeEntry && !isLongTerm && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="is-staff" 
@@ -2573,6 +3292,7 @@ export default function LockerOptionsDialog({
                     if (checked) {
                       setDiscountOption("none");
                       setDiscountInputAmount("");
+                      setIsLongTerm(false);
                     }
                   }}
                   data-testid="checkbox-is-staff"
@@ -2584,7 +3304,7 @@ export default function LockerOptionsDialog({
             )}
 
             {/* 무료입장 체크박스 - 신규 입실에서만 표시 */}
-            {!isInUse && !isDirectPrice && !isForeigner && !isStaff && (
+            {(enableFreeEntryOption || isFreeEntry) && !isInUse && !isDirectPrice && !isForeigner && !isStaff && !isLongTerm && (
               <div className="flex items-center space-x-2">
                 <Checkbox 
                   id="free-entry" 
@@ -2594,6 +3314,7 @@ export default function LockerOptionsDialog({
                     if (checked) {
                       setDiscountOption("none");
                       setDiscountInputAmount("");
+                      setIsLongTerm(false);
                     } else {
                       // 무료입장 해제 시 추가요금없음도 해제
                       setNoAdditionalFee(false);
@@ -2606,9 +3327,118 @@ export default function LockerOptionsDialog({
                 </Label>
               </div>
             )}
+
+            {/* 장기투숙 */}
+            {(enableLongTermOption || isLongTerm) && !isDirectPrice && !isForeigner && !isStaff && !isFreeEntry && (
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="long-term-stay"
+                    checked={isLongTerm}
+                    onCheckedChange={(checked) => {
+                      const on = checked as boolean;
+                      setIsLongTerm(on);
+                      if (on) {
+                        setIsDirectPrice(false);
+                        setIsForeigner(false);
+                        setIsStaff(false);
+                        setIsFreeEntry(false);
+                        setNoAdditionalFee(true);
+                        setHasPrepaidAdditionalFee(false);
+                        setDiscountOption("none");
+                        setDiscountInputAmount("");
+                        // 기본: 입실 + 1일, 일요금=주간요금
+                        if (!longTermCheckoutLocal) {
+                          const base = effectiveEntryDate || new Date();
+                          const def = new Date(base.getTime() + 24 * 60 * 60 * 1000);
+                          setLongTermCheckoutLocal(toDatetimeLocalValue(def.toISOString()));
+                        }
+                        if (!longTermDailyFee) {
+                          setLongTermDailyFee(String(dayPrice));
+                        }
+                      }
+                    }}
+                    data-testid="checkbox-long-term"
+                  />
+                  <Label htmlFor="long-term-stay" className="text-sm font-semibold cursor-pointer text-teal-700 dark:text-teal-400">
+                    장기투숙
+                  </Label>
+                </div>
+                {isLongTerm && (
+                  <div className="ml-6 space-y-3 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/60 dark:bg-teal-950/30 p-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="long-term-checkout" className="text-xs">퇴실 예정 날짜·시간</Label>
+                      <Input
+                        id="long-term-checkout"
+                        type="datetime-local"
+                        value={longTermCheckoutLocal}
+                        onChange={(e) => setLongTermCheckoutLocal(e.target.value)}
+                        data-testid="input-long-term-checkout"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        {longTermStayDays > 0 ? (
+                          <>
+                            투숙 <strong>{longTermStayDays}일</strong>
+                            {longTermDurationLabel ? ` · 실제 체류 ${longTermDurationLabel}` : ''}
+                            {' '}(요금은 24시간 단위 올림)
+                          </>
+                        ) : (
+                          '입실보다 이후 시각을 입력하면 투숙 일수가 자동 계산됩니다.'
+                        )}
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="long-term-daily-fee" className="text-xs">1일 입장료 (원)</Label>
+                        <Input
+                          id="long-term-daily-fee"
+                          type="text"
+                          inputMode="numeric"
+                          value={longTermDailyFee}
+                          onChange={(e) => setLongTermDailyFee(e.target.value.replace(/[^\d]/g, ''))}
+                          data-testid="input-long-term-daily-fee"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="long-term-discount" className="text-xs">할인금액 (원)</Label>
+                        <Input
+                          id="long-term-discount"
+                          type="text"
+                          inputMode="numeric"
+                          value={longTermDiscount}
+                          onChange={(e) => setLongTermDiscount(e.target.value.replace(/[^\d]/g, ''))}
+                          placeholder="0"
+                          data-testid="input-long-term-discount"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-md bg-white/70 dark:bg-black/20 px-3 py-2 border border-teal-200/80 dark:border-teal-800/80 space-y-1">
+                      <p className="text-[10px] font-semibold text-teal-800/80 dark:text-teal-300/80">계산식</p>
+                      <div className="flex justify-between text-xs text-teal-900 dark:text-teal-100">
+                        <span>{longTermStayDays || 0}일 × {longTermDailyFeeNum.toLocaleString()}원</span>
+                        <span>{(longTermStayDays * longTermDailyFeeNum).toLocaleString()}원</span>
+                      </div>
+                      {longTermDiscountNum > 0 && (
+                        <div className="flex justify-between text-xs text-teal-900 dark:text-teal-100">
+                          <span>할인</span>
+                          <span>-{longTermDiscountNum.toLocaleString()}원</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm font-bold text-teal-800 dark:text-teal-200 border-t border-teal-200 dark:border-teal-700 pt-1 mt-1">
+                        <span>총 금액</span>
+                        <span>{longTermTotal.toLocaleString()}원</span>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground pt-1">
+                        장기투숙은 주·야간 요금·추가요금 로직을 적용하지 않습니다. 예정 퇴실 30분 전부터 락커에 「퇴실경고」가 표시됩니다.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* 추가요금없음 체크박스 - 무료입장 선택 시에만 표시 (VIP, 지인 등) */}
-            {!isInUse && isFreeEntry && (
+            {!isInUse && isFreeEntry && !isLongTerm && (
               <div className="flex items-center space-x-2 ml-6">
                 <Checkbox 
                   id="no-additional-fee" 
@@ -2622,8 +3452,8 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 추가요금 선지급 체크박스 - 무료입장/직원/추가요금없음이 아닌 경우에만 표시 */}
-            {!isFreeEntry && !isStaff && !noAdditionalFee && (
+            {/* 추가요금 선지급 체크박스 - 무료입장/직원/추가요금없음/장기투숙이 아닌 경우에만 표시 */}
+            {!isFreeEntry && !isStaff && !noAdditionalFee && !isLongTerm && (
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <Checkbox 
@@ -2724,7 +3554,7 @@ export default function LockerOptionsDialog({
                     data-testid="checkbox-prepaid-additional-fee"
                   />
                   <Label htmlFor="prepaid-additional-fee" className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-400">
-                    추가요금 선지급 (야간요금/장기이용 미리 결제)
+                    추가요금 선지급
                   </Label>
                 </div>
                 {hasPrepaidAdditionalFee && (
@@ -2800,7 +3630,7 @@ export default function LockerOptionsDialog({
             )}
 
             {/* 요금 옵션 Select */}
-            {!isDirectPrice && !isFreeEntry && !isStaff && (
+            {!isDirectPrice && !isFreeEntry && !isStaff && !isLongTerm && (
               <div className="space-y-3">
                 <Label className="text-sm font-semibold">요금 옵션</Label>
                 <Select value={discountOption} onValueChange={setDiscountOption}>
@@ -2834,15 +3664,17 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
+            </div>
+
             {/* 후불결제 상태 배너 - 사용중이고 후불결제 상태인 경우 */}
             {isInUse && isCurrentlyDeferred && (
-              <div className="p-4 rounded-lg bg-gradient-to-r from-yellow-100 via-pink-100 to-purple-100 dark:from-yellow-950 dark:via-pink-950 dark:to-purple-950 border-2 border-pink-300 dark:border-pink-700 animate-pulse">
+              <div className="locker-opt-banner locker-opt-banner-warning">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-lg font-bold text-pink-700 dark:text-pink-300">
+                    <p className="text-base font-semibold text-amber-900 dark:text-amber-100">
                       미결제 금액: {calculateFinalPrice().toLocaleString()}원
                     </p>
-                    <p className="text-sm text-pink-600 dark:text-pink-400 mt-1">
+                    <p className="text-sm text-amber-800/90 dark:text-amber-200/90 mt-1">
                       후불결제 대기 중 - 아래에서 결제 방식을 선택 후 결제 완료 버튼을 눌러주세요.
                     </p>
                   </div>
@@ -2852,7 +3684,7 @@ export default function LockerOptionsDialog({
 
             {/* 지불방식 - 무료입장/직원일 때는 숨김 */}
             {!isFreeEntry && !isStaff && (
-            <div className="space-y-3">
+            <div className="locker-opt-section locker-opt-section-payment space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-semibold">지불방식</Label>
                 <div className="flex items-center gap-4">
@@ -2871,6 +3703,8 @@ export default function LockerOptionsDialog({
                             setPaymentCash("");
                             setPaymentCard("");
                             setPaymentTransfer("");
+                            setSplitCustomTotalEnabled(false);
+                            setSplitCustomTotal("");
                           }
                         }}
                         data-testid="checkbox-deferred-payment"
@@ -2889,12 +3723,12 @@ export default function LockerOptionsDialog({
                         checked={useSplitPayment}
                         onCheckedChange={(checked) => {
                           setUseSplitPayment(checked as boolean);
-                          // When switching to split payment, clear all fields
-                          if (checked) {
-                            setPaymentCash("");
-                            setPaymentCard("");
-                            setPaymentTransfer("");
-                          }
+                          setPaymentCash("");
+                          setPaymentCard("");
+                          setPaymentTransfer("");
+                          setSplitCustomTotalEnabled(false);
+                          setSplitCustomTotal("");
+                          setShowOverBaseConfirm(false);
                         }}
                         data-testid="checkbox-split-payment"
                       />
@@ -2917,32 +3751,49 @@ export default function LockerOptionsDialog({
               
               {(!isDeferredPayment || isCurrentlyDeferred) && useSplitPayment ? (
                 <>
-                  <div className="grid grid-cols-3 gap-2">
+                  {splitCustomTotalEnabled && (
+                    <div className="space-y-1.5 p-3 rounded-lg border border-amber-500/40 bg-amber-500/5">
+                      <Label htmlFor="split-custom-total" className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                        받을 총금액 (기본요금 초과)
+                      </Label>
+                      <Input
+                        id="split-custom-total"
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="예: 35000"
+                        value={splitCustomTotal}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(/[^\d]/g, "");
+                          setSplitCustomTotal(v);
+                          const target = parseInt(v) || 0;
+                          if (target > 0) {
+                            applySplitAutoFillFromCash(paymentCash, target);
+                          } else {
+                            setPaymentCard("");
+                            setPaymentTransfer("");
+                          }
+                        }}
+                        data-testid="input-split-custom-total"
+                        className="mt-1"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        총금액을 입력한 뒤 현금·카드·이체를 나누면, 남은 금액이 자동으로 채워집니다.
+                        (기본요금 {getDefaultSplitTarget().toLocaleString()}원)
+                      </p>
+                    </div>
+                  )}
+                  <div className="locker-opt-split-grid">
                     <div>
                       <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">현금</Label>
                       <Input
                         id="payment-cash"
                         type="text"
+                        inputMode="numeric"
                         placeholder="0"
                         value={paymentCash}
                         onChange={(e) => {
-                          const newCash = e.target.value;
-                          setPaymentCash(newCash);
-                          
-                          // Auto-fill card with remaining amount (선지급금 포함)
-                          const baseFinalPrice = calculateFinalPrice();
-                          const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
-                          const computedFinalPrice = baseFinalPrice + prepaidAmount;
-                          const cashVal = parseInt(newCash) || 0;
-                          const remaining = computedFinalPrice - cashVal;
-                          
-                          if (remaining > 0) {
-                            setPaymentCard(String(remaining));
-                            setPaymentTransfer("");
-                          } else if (remaining === 0) {
-                            setPaymentCard("");
-                            setPaymentTransfer("");
-                          }
+                          const newCash = e.target.value.replace(/[^\d]/g, "");
+                          requestOrApplySplitAmount('cash', newCash);
                         }}
                         data-testid="input-payment-cash"
                         className="mt-1"
@@ -2953,25 +3804,12 @@ export default function LockerOptionsDialog({
                       <Input
                         id="payment-card"
                         type="text"
+                        inputMode="numeric"
                         placeholder="0"
                         value={paymentCard}
                         onChange={(e) => {
-                          const newCard = e.target.value;
-                          setPaymentCard(newCard);
-                          
-                          // Auto-fill transfer with remaining amount (선지급금 포함)
-                          const baseFinalPrice = calculateFinalPrice();
-                          const prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
-                          const computedFinalPrice = baseFinalPrice + prepaidAmount;
-                          const cashVal = parseInt(paymentCash) || 0;
-                          const cardVal = parseInt(newCard) || 0;
-                          const remaining = computedFinalPrice - cashVal - cardVal;
-                          
-                          if (remaining > 0) {
-                            setPaymentTransfer(String(remaining));
-                          } else if (remaining === 0) {
-                            setPaymentTransfer("");
-                          }
+                          const newCard = e.target.value.replace(/[^\d]/g, "");
+                          requestOrApplySplitAmount('card', newCard);
                         }}
                         data-testid="input-payment-card"
                         className="mt-1"
@@ -2982,9 +3820,10 @@ export default function LockerOptionsDialog({
                       <Input
                         id="payment-transfer"
                         type="text"
+                        inputMode="numeric"
                         placeholder="0"
                         value={paymentTransfer}
-                        onChange={(e) => setPaymentTransfer(e.target.value)}
+                        onChange={(e) => setPaymentTransfer(e.target.value.replace(/[^\d]/g, ""))}
                         data-testid="input-payment-transfer"
                         className="mt-1"
                       />
@@ -3044,11 +3883,11 @@ export default function LockerOptionsDialog({
                   )}
                 </>
               ) : (!isDeferredPayment || isCurrentlyDeferred) ? (
-                <div className="flex gap-9">
+                <div className="flex gap-3">
                   <Button
                     type="button"
                     variant={paymentMethod === 'cash' ? 'default' : 'outline'}
-                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'cash' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    className={`flex-1 h-11 text-base font-semibold rounded-xl ${paymentMethod === 'cash' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                     onClick={() => setPaymentMethod('cash')}
                     data-testid="button-payment-cash"
                   >
@@ -3057,7 +3896,7 @@ export default function LockerOptionsDialog({
                   <Button
                     type="button"
                     variant={paymentMethod === 'card' ? 'default' : 'outline'}
-                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    className={`flex-1 h-11 text-base font-semibold rounded-xl ${paymentMethod === 'card' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                     onClick={() => {
                       setPaymentMethod('card');
                       const cardSettings = localDb.getSettings();
@@ -3073,7 +3912,7 @@ export default function LockerOptionsDialog({
                   <Button
                     type="button"
                     variant={paymentMethod === 'transfer' ? 'default' : 'outline'}
-                    className={`flex-1 h-12 text-base font-semibold ${paymentMethod === 'transfer' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+                    className={`flex-1 h-11 text-base font-semibold rounded-xl ${paymentMethod === 'transfer' ? 'ring-2 ring-primary ring-offset-2' : ''}`}
                     onClick={() => setPaymentMethod('transfer')}
                     data-testid="button-payment-transfer"
                   >
@@ -3110,11 +3949,32 @@ export default function LockerOptionsDialog({
 
             {/* 선지급 금액이 추가요금을 완전히 커버한 경우 */}
             {isInUse && additionalFeeInfo.prepaidAmount > 0 && additionalFeeInfo.rawAdditionalFee > 0 && additionalFeeInfo.additionalFee === 0 && (
-              <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
+              <div className="p-4 border rounded-[1.25rem] bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800">
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-green-700 dark:text-green-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
+                  <span className="text-green-700 dark:text-green-300 font-semibold inline-flex items-center gap-1.5">
+                    {!isCurrentlyForeigner && (
+                      <span
+                        className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-green-700 px-1.5 text-[11px] font-bold text-white"
+                        title={`추가요금 방식 ${domesticAdditionalFeeModeNumber}번`}
+                      >
+                        {domesticAdditionalFeeModeNumber}
+                      </span>
+                    )}
+                    {additionalFeeCountLabel}
+                  </span>
                   <span className="font-bold text-green-700 dark:text-green-300">{additionalFeeInfo.rawAdditionalFee.toLocaleString()}원</span>
                 </div>
+                {Array.isArray((additionalFeeInfo as any).feeDetails) && (additionalFeeInfo as any).feeDetails.length > 0 && (
+                  <div className="rounded-md bg-white/60 dark:bg-black/20 px-3 py-2 space-y-1 mb-2 border border-green-200/80 dark:border-green-800/80">
+                    <p className="text-[10px] font-semibold text-green-700/80 dark:text-green-300/80 mb-0.5">계산 내역</p>
+                    {((additionalFeeInfo as any).feeDetails as Array<{ label: string; amount: number }>).map((d, idx) => (
+                      <div key={`${d.label}-${idx}`} className="flex justify-between text-xs text-green-800/90 dark:text-green-200/90">
+                        <span>{d.label}</span>
+                        <span className="font-medium">+{d.amount.toLocaleString()}원</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-green-700 dark:text-green-300">선지급 차감</span>
                   <span className="font-bold text-green-700 dark:text-green-300">-{additionalFeeInfo.prepaidAmount.toLocaleString()}원</span>
@@ -3128,11 +3988,33 @@ export default function LockerOptionsDialog({
 
             {/* 추가요금 섹션 - 추가요금이 있을 때만 표시 */}
             {isInUse && additionalFeeInfo.additionalFee > 0 && (
-              <div className="space-y-3 p-4 border rounded-lg bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
+              <div className="space-y-3 p-4 border rounded-[1.25rem] bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
                 <div className="flex justify-between text-sm">
-                  <span className="text-orange-700 dark:text-orange-300 font-semibold">추가 요금 ({additionalFeeInfo.additionalFeeCount}회)</span>
+                  <span className="text-orange-700 dark:text-orange-300 font-semibold inline-flex items-center gap-1.5">
+                    {!isCurrentlyForeigner && (
+                      <span
+                        className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-orange-600 px-1.5 text-[11px] font-bold text-white"
+                        title={`추가요금 방식 ${domesticAdditionalFeeModeNumber}번`}
+                      >
+                        {domesticAdditionalFeeModeNumber}
+                      </span>
+                    )}
+                    {additionalFeeCountLabel}
+                  </span>
                   <span className="font-bold text-orange-700 dark:text-orange-300">+{additionalFeeInfo.rawAdditionalFee.toLocaleString()}원</span>
                 </div>
+                {/* 추가요금 계산 내역 (모든 방식 공통) */}
+                {Array.isArray((additionalFeeInfo as any).feeDetails) && (additionalFeeInfo as any).feeDetails.length > 0 && (
+                  <div className="rounded-md bg-white/70 dark:bg-black/20 px-3 py-2 space-y-1 border border-orange-200/80 dark:border-orange-800/80">
+                    <p className="text-[10px] font-semibold text-orange-700/80 dark:text-orange-300/80 mb-0.5">계산 내역</p>
+                    {((additionalFeeInfo as any).feeDetails as Array<{ label: string; amount: number }>).map((d, idx) => (
+                      <div key={`${d.label}-${idx}`} className="flex justify-between text-xs text-orange-800/90 dark:text-orange-200/90">
+                        <span>{d.label}</span>
+                        <span className="font-medium">+{d.amount.toLocaleString()}원</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* 선지급 금액이 있지만 추가요금이 남아있는 경우 */}
                 {additionalFeeInfo.prepaidAmount > 0 && (
                   <>
@@ -3175,7 +4057,7 @@ export default function LockerOptionsDialog({
 
                   {useAdditionalFeeSplitPayment ? (
                     <>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="locker-opt-split-grid">
                         <div>
                           <Label htmlFor="additional-fee-payment-cash" className="text-xs text-muted-foreground">현금</Label>
                           <Input
@@ -3423,10 +4305,10 @@ export default function LockerOptionsDialog({
                 {/* 추가요금완납 버튼 */}
                 <Button
                   type="button"
-                  className={`w-full h-12 text-base font-semibold ${
+                  className={`w-full h-12 text-base font-semibold border rounded-xl ${
                     additionalFeeResolved 
-                      ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed' 
-                      : 'bg-green-600 hover:bg-green-700'
+                      ? 'bg-gray-400 hover:bg-gray-400 cursor-not-allowed border-white' 
+                      : 'bg-[hsl(232_92%_58%)] hover:bg-[hsl(232_92%_52%)] text-white border-white'
                   }`}
                   onClick={() => {
                     // 추가요금 정보를 메모에 자동 기록
@@ -3466,105 +4348,238 @@ export default function LockerOptionsDialog({
               </div>
             )}
 
-            {/* 최종 요금 - 구분선 아래 (부가세 포함) */}
-            <div className="flex justify-between text-base pt-4 border-t-2">
-              <span className="font-semibold">최종 요금</span>
-              <span className="font-bold text-xl text-primary">{calculateDisplayTotal().toLocaleString()}원</span>
+            {/* 최종 요금 (부가세 포함) — 설명은 라벨 호버/클릭 시에만 */}
+            <div className="locker-opt-section locker-opt-section-final">
+              <div className="locker-opt-final-total">
+                <LabelHint
+                  className="font-semibold"
+                  content={(() => {
+                    const lines = ["표시 금액은 부가세가 적용된 최종 요금입니다."];
+                    if (isInUse && entryTime && additionalFeeInfo.additionalFee > 0) {
+                      const bdHour = Number(settings.businessDayStartHour) || 10;
+                      const entryBd = getBusinessDay(new Date(entryTime), bdHour);
+                      const currentBd = getBusinessDay(new Date(), bdHour);
+                      if (entryBd !== currentBd) {
+                        lines.push("입실 영업일과 달라 기본요금(이미 수납)은 최종에서 제외합니다.");
+                        const vatOn =
+                          !useAdditionalFeeSplitPayment &&
+                          shouldApplyVat(additionalFeePaymentMethod, isAdditionalFeeCashReceipt);
+                        if (vatOn) {
+                          lines.push("카드/현금영수증 부가세 10%가 추가요금에 포함됩니다.");
+                        }
+                      }
+                    }
+                    return lines.join("\n");
+                  })()}
+                >
+                  최종 요금
+                </LabelHint>
+                <span className="font-bold text-xl text-primary">{calculateDisplayTotal().toLocaleString()}원</span>
+              </div>
             </div>
 
-            {/* 비고 - 대여 물품 체크박스 */}
+            {/* 추가매출 항목 - 버튼형 선택 */}
             {availableRentalItems.length > 0 && (
               <div className="space-y-3">
-                <Label className="text-sm font-semibold">대여 물품 (선택사항)</Label>
+                <Label className="text-sm font-semibold">추가매출 항목 (선택사항)</Label>
                 <div className="space-y-3">
                   {availableRentalItems.map((item) => {
                     const itemId = item.id;
                     const isChecked = selectedRentalItems.has(itemId);
                     const depositStatus = depositStatuses.get(itemId);
+                    const isSimple = isSimpleSaleItem(item);
+                    const quantity = rentalItemQuantities.get(itemId) || 1;
                     
                     // Check if this specific item is actively rented (not returned)
                     const isAlreadyRented = currentRentalTransactions.some(
                       txn => txn.itemId === itemId && txn.returnCompleted !== 1
                     );
+
+                    const selectItem = () => {
+                      const newSelected = new Set(selectedRentalItems);
+                      newSelected.add(itemId);
+                      const newStatuses = new Map(depositStatuses);
+                      const newPaymentMethods = new Map(rentalPaymentMethods);
+                      const newQuantities = new Map(rentalItemQuantities);
+
+                      if (isSimple || item.depositAmount === 0) {
+                        newStatuses.set(itemId, 'none');
+                      } else if (!isAlreadyRented) {
+                        newStatuses.set(itemId, 'received');
+                      } else {
+                        const existingTransaction = currentRentalTransactions.find(txn => txn.itemId === itemId);
+                        if (existingTransaction) {
+                          newStatuses.set(itemId, existingTransaction.depositStatus);
+                          newPaymentMethods.set(itemId, existingTransaction.paymentMethod || 'cash');
+                        }
+                      }
+
+                      if (!newPaymentMethods.has(itemId)) {
+                        newPaymentMethods.set(itemId, 'cash');
+                      }
+                      if (isSimple && !newQuantities.has(itemId)) {
+                        newQuantities.set(itemId, 1);
+                      }
+
+                      setDepositStatuses(newStatuses);
+                      setRentalPaymentMethods(newPaymentMethods);
+                      setRentalItemQuantities(newQuantities);
+
+                      if (!isAlreadyRented) {
+                        const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
+                        const marker = memoActionMarker(item.name, isSimple);
+                        setCustomerMemo(prev => {
+                          if (prev.includes(marker)) {
+                            if (isSimple) return prev;
+                            return prev.split('\n').map(line => {
+                              if (!line.startsWith(marker)) return line;
+                              const lastSlashIdx = line.lastIndexOf(' / ');
+                              const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                              if (lastSeg.includes('대여취소:')) {
+                                return `${line} / 재대여: ${nowTimeStr}`;
+                              }
+                              return line;
+                            }).join('\n');
+                          }
+                          const newLine = `${marker} ${nowTimeStr}`;
+                          return prev.trim() ? `${prev}\n${newLine}` : newLine;
+                        });
+                      }
+
+                      setSelectedRentalItems(newSelected);
+                    };
+
+                    const deselectItem = () => {
+                      // 단순판매·신규 선택은 확인 없이 바로 해제
+                      if (!isAlreadyRented && isSimple) {
+                        const newSelected = new Set(selectedRentalItems);
+                        newSelected.delete(itemId);
+                        setSelectedRentalItems(newSelected);
+                        const newQuantities = new Map(rentalItemQuantities);
+                        newQuantities.delete(itemId);
+                        setRentalItemQuantities(newQuantities);
+                        const newStatuses = new Map(depositStatuses);
+                        const newPaymentMethods = new Map(rentalPaymentMethods);
+                        newStatuses.delete(itemId);
+                        newPaymentMethods.delete(itemId);
+                        setDepositStatuses(newStatuses);
+                        setRentalPaymentMethods(newPaymentMethods);
+                        // 신규 판매 선택 취소 시 메모의 해당 판매 줄 제거
+                        const marker = memoActionMarker(item.name, true);
+                        setCustomerMemo(prev =>
+                          prev
+                            .split('\n')
+                            .filter(line => !line.startsWith(marker))
+                            .join('\n')
+                            .trim()
+                        );
+                        return;
+                      }
+                      if (!isAlreadyRented) {
+                        setPendingUncheckItem({ itemId, itemName: item.name });
+                        return;
+                      }
+                      const newSelected = new Set(selectedRentalItems);
+                      newSelected.delete(itemId);
+                      setSelectedRentalItems(newSelected);
+                      const newQuantities = new Map(rentalItemQuantities);
+                      newQuantities.delete(itemId);
+                      setRentalItemQuantities(newQuantities);
+                    };
+
+                    const unitFee = item.rentalFee || 0;
+                    const priceLabel = isSimple
+                      ? `${unitFee.toLocaleString()}원`
+                      : (item.depositAmount || 0) === 0
+                        ? `대여 ${unitFee.toLocaleString()}원`
+                        : `대여 ${unitFee.toLocaleString()}원 · 보증금 ${(item.depositAmount || 0).toLocaleString()}원`;
                     
                     return (
                       <div key={itemId} className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center space-x-2">
-                            <Checkbox 
-                              id={`rental-${itemId}`}
-                              checked={isChecked}
-                              onCheckedChange={(checked) => {
-                                const newSelected = new Set(selectedRentalItems);
-                                if (checked) {
-                                  newSelected.add(itemId);
-                                  // Automatically set depositStatus based on deposit amount and rental status
-                                  const newStatuses = new Map(depositStatuses);
-                                  const newPaymentMethods = new Map(rentalPaymentMethods);
-                                  
-                                  if (item.depositAmount === 0) {
-                                    // No deposit - set to 'none'
-                                    newStatuses.set(itemId, 'none');
-                                  } else if (!isAlreadyRented) {
-                                    // New rental (not already rented) - set to 'received' by default
-                                    newStatuses.set(itemId, 'received');
-                                  } else {
-                                    // If already rented, keep existing status from currentRentalTransactions
-                                    const existingTransaction = currentRentalTransactions.find(txn => txn.itemId === itemId);
-                                    if (existingTransaction) {
-                                      newStatuses.set(itemId, existingTransaction.depositStatus);
-                                      newPaymentMethods.set(itemId, existingTransaction.paymentMethod || 'cash');
-                                    }
-                                  }
-                                  
-                                  // Set default payment method if not already set
-                                  if (!newPaymentMethods.has(itemId)) {
-                                    newPaymentMethods.set(itemId, 'cash');
-                                  }
-                                  
-                                  setDepositStatuses(newStatuses);
-                                  setRentalPaymentMethods(newPaymentMethods);
-                                  // 신규 대여 시 현재 시각을 메모에 자동 기록
-                                  if (!isAlreadyRented) {
-                                    const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
-                                    const marker = `[${item.name}] 대여:`;
-                                    setCustomerMemo(prev => {
-                                      if (prev.includes(marker)) {
-                                        // 취소 후 재대여: 마지막 세그먼트가 취소 상태인 경우 재대여 시각 추가
-                                        return prev.split('\n').map(line => {
-                                          if (!line.startsWith(marker)) return line;
-                                          const lastSlashIdx = line.lastIndexOf(' / ');
-                                          const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
-                                          if (lastSeg.includes('대여취소:')) {
-                                            return `${line} / 재대여: ${nowTimeStr}`;
-                                          }
-                                          return line;
-                                        }).join('\n');
-                                      }
-                                      const newLine = `${marker} ${nowTimeStr}`;
-                                      return prev.trim() ? `${prev}\n${newLine}` : newLine;
-                                    });
-                                  }
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={isChecked ? "default" : "outline"}
+                              className={`h-9 px-3 text-sm font-medium ${
+                                isChecked
+                                  ? "shadow-sm"
+                                  : "text-muted-foreground hover:text-foreground"
+                              }`}
+                              onClick={() => {
+                                if (isChecked) {
+                                  deselectItem();
                                 } else {
-                                  // 신규 대여(이번 세션에서 체크한 것) 해제 시 확인 다이얼로그
-                                  if (!isAlreadyRented) {
-                                    setPendingUncheckItem({ itemId, itemName: item.name });
-                                    return;
-                                  }
-                                  newSelected.delete(itemId);
+                                  selectItem();
                                 }
-                                setSelectedRentalItems(newSelected);
                               }}
-                              data-testid={`checkbox-rental-${itemId}`}
-                            />
-                            <Label htmlFor={`rental-${itemId}`} className="text-sm cursor-pointer font-normal">
-                              {item.name} {(item.depositAmount || 0) === 0 
-                                ? `(가격: ${item.rentalFee?.toLocaleString() ?? '0'}원)`
-                                : `(대여비: ${item.rentalFee?.toLocaleString() ?? '0'}원, 보증금: ${item.depositAmount?.toLocaleString() ?? '0'}원)`
-                              }
-                            </Label>
+                              data-testid={`button-rental-item-${itemId}`}
+                            >
+                              <span className="truncate">{item.name}</span>
+                              <span className={`ml-2 text-xs ${isChecked ? "opacity-90" : "opacity-70"}`}>
+                                {priceLabel}
+                              </span>
+                            </Button>
+
+                            {isChecked && isSimple && (
+                              <div
+                                className="inline-flex items-center gap-1 rounded-md border bg-background px-1 py-0.5"
+                                data-testid={`quantity-controls-${itemId}`}
+                              >
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    const current = rentalItemQuantities.get(itemId) || 1;
+                                    if (current <= 1) {
+                                      deselectItem();
+                                      return;
+                                    }
+                                    const next = new Map(rentalItemQuantities);
+                                    next.set(itemId, current - 1);
+                                    setRentalItemQuantities(next);
+                                  }}
+                                  data-testid={`button-qty-minus-${itemId}`}
+                                >
+                                  <Minus className="h-3.5 w-3.5" />
+                                </Button>
+                                <span
+                                  className="min-w-[1.5rem] text-center text-sm font-semibold tabular-nums"
+                                  data-testid={`text-qty-${itemId}`}
+                                >
+                                  {quantity}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  onClick={() => {
+                                    if (!isChecked) {
+                                      selectItem();
+                                      return;
+                                    }
+                                    const current = rentalItemQuantities.get(itemId) || 1;
+                                    const next = new Map(rentalItemQuantities);
+                                    next.set(itemId, Math.min(99, current + 1));
+                                    setRentalItemQuantities(next);
+                                  }}
+                                  data-testid={`button-qty-plus-${itemId}`}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                                {quantity > 1 && (
+                                  <span className="pr-1 text-xs text-muted-foreground tabular-nums">
+                                    = {(unitFee * quantity).toLocaleString()}원
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          {/* 대여 취소 버튼 - 이미 대여 중이고 반납완료 안 된 항목만 */}
+                          {/* 취소 버튼 - 이미 저장된 거래이고 반납완료 안 된 항목만 */}
                           {isAlreadyRented && !returnCompletedItems.has(itemId) && (
                             <Button
                               type="button"
@@ -3574,13 +4589,18 @@ export default function LockerOptionsDialog({
                               onClick={() => {
                                 const txn = currentRentalTransactions.find(t => t.itemId === itemId);
                                 if (txn) {
-                                  setCancellingRentalItem({ txnId: txn.id, itemId: itemId, itemName: item.name });
+                                  setCancellingRentalItem({
+                                    txnId: txn.id,
+                                    itemId: itemId,
+                                    itemName: item.name,
+                                    isSimple,
+                                  });
                                 }
                               }}
                               data-testid={`button-cancel-rental-${itemId}`}
                             >
                               <X className="h-3 w-3 mr-1" />
-                              대여 취소
+                              {isSimple ? "판매 취소" : "대여 취소"}
                             </Button>
                           )}
                         </div>
@@ -3609,6 +4629,10 @@ export default function LockerOptionsDialog({
                                 const newPending = new Set(pendingReRentalItems);
                                 newPending.add(itemId);
                                 setPendingReRentalItems(newPending);
+
+                                const newQuantities = new Map(rentalItemQuantities);
+                                newQuantities.set(itemId, 1);
+                                setRentalItemQuantities(newQuantities);
                                 
                                 // 보증금 상태 초기화 (신규 대여)
                                 const newStatuses = new Map(depositStatuses);
@@ -3686,7 +4710,9 @@ export default function LockerOptionsDialog({
                                 {rentalDirectInputEnabled.has(itemId) && (
                                   <div className="grid grid-cols-2 gap-2 p-2 bg-orange-50/50 dark:bg-orange-900/20 rounded-md border border-orange-200 dark:border-orange-800">
                                     <div className="space-y-1">
-                                      <Label className="text-xs text-muted-foreground">대여비 (원)</Label>
+                                      <Label className="text-xs text-muted-foreground">
+                                        {isSimpleSaleItem(item) ? "가격 (원)" : "대여비 (원)"}
+                                      </Label>
                                       <Input
                                         type="number"
                                         value={rentalCustomFees.get(itemId) ?? String(item.rentalFee || 0)}
@@ -3933,35 +4959,52 @@ export default function LockerOptionsDialog({
             )}
             
             {/* 손님 메모 입력 */}
-            <div className={`mt-4 rounded-lg ${customerMemo && customerMemo.trim() ? 'animate-memo-gradient p-3' : 'bg-muted/30 border p-3'}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Label htmlFor="customer-memo" className={`text-sm font-semibold flex items-center gap-2 ${customerMemo && customerMemo.trim() ? 'text-white' : ''}`}>
+            <div
+              className={`locker-opt-section locker-opt-section-memo ${
+                customerMemo && customerMemo.trim() ? 'locker-opt-memo-active animate-memo-gradient' : ''
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <LabelHint
+                  className={`text-sm font-semibold ${
+                    customerMemo && customerMemo.trim() ? "text-white" : ""
+                  }`}
+                  content={"손님에 관한 특별한 인상이나 특이사항을 기록하세요.\n예: 야간요금 냈으므로 추가요금 발생 시 전액할인"}
+                >
                   <span className="text-base">📝</span> 손님 메모
-                </Label>
+                </LabelHint>
                 {customerMemo && (
-                  <span className={`text-xs ${customerMemo && customerMemo.trim() ? 'text-white/80' : 'text-muted-foreground'}`}>(저장됨)</span>
+                  <span
+                    className={`text-xs ${
+                      customerMemo && customerMemo.trim() ? 'text-white/80' : 'text-muted-foreground'
+                    }`}
+                  >
+                    (저장됨)
+                  </span>
                 )}
               </div>
-              <Textarea
-                ref={memoTextareaRef}
-                id="customer-memo"
-                placeholder="손님에 관한 특별한 인상이나 특이사항을 기록하세요. 예: 야간요금 냈으므로 추가요금발생시 전액할인"
-                value={customerMemo}
-                onChange={(e) => setCustomerMemo(e.target.value)}
-                className="min-h-[60px] resize-none text-sm bg-white dark:bg-gray-900 border-0 overflow-hidden"
-                data-testid="input-customer-memo"
-              />
+              <div className="locker-opt-memo-input-shell">
+                <Textarea
+                  ref={memoTextareaRef}
+                  id="customer-memo"
+                  placeholder=""
+                  value={customerMemo}
+                  onChange={(e) => setCustomerMemo(e.target.value)}
+                  className="locker-opt-memo-input overflow-hidden"
+                  data-testid="input-customer-memo"
+                />
+              </div>
             </div>
           </div>
 
           {/* 환불 처리 섹션 (퇴실 시에만 표시) */}
           {isInUse && (
-            <div className="mx-6 mb-3">
+            <div className="mb-3">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => { setShowRefund(v => !v); if (showRefund) { setRefundAmount(""); setRefundNote(""); setRefundMethod(currentPaymentMethod || 'cash'); } }}
-                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${showRefund ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400' : 'border-border text-muted-foreground hover-elevate'}`}
+                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${showRefund ? 'bg-red-50 border-red-300 text-red-700 dark:bg-red-900/30 dark:border-red-700 dark:text-red-400' : 'bg-white border-border text-muted-foreground hover-elevate dark:bg-zinc-800'}`}
                   data-testid="button-toggle-refund"
                 >
                   <RotateCcw className="w-4 h-4" />
@@ -3979,7 +5022,7 @@ export default function LockerOptionsDialog({
                     setCustomerMemo(newMemo);
                     setCurrentIsOuting(newIsOuting);
                   }}
-                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${currentIsOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'border-border text-muted-foreground hover-elevate'}`}
+                  className={`flex items-center gap-2 text-sm font-medium px-3 py-1.5 rounded-md border transition-colors ${currentIsOuting ? 'bg-[#374151] border-[#1F2937] text-white' : 'bg-white border-border text-muted-foreground hover-elevate dark:bg-zinc-800'}`}
                   data-testid="button-toggle-outing"
                 >
                   {currentIsOuting ? '복귀' : '외출'}
@@ -4040,87 +5083,192 @@ export default function LockerOptionsDialog({
             </div>
           )}
 
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t bg-muted/10">
+          </div>
+
+          {/* Footer: 창 너비에 맞춰 버튼이 줄바꿈 */}
+          <div className="locker-opt-footer shrink-0" data-testid="locker-options-footer">
             {isInUse ? (
-              <>
-                <Button variant="destructive" onClick={handleCancelClick} data-testid="button-cancel">
-                  입실취소
-                </Button>
-                <Button variant="secondary" onClick={handleSwapClick} data-testid="button-swap">
-                  락카교체
-                </Button>
-                {!parentLockerNumber && (
-                  <Button variant="secondary" onClick={handleLinkClick} data-testid="button-link">
-                    락카묶기
+              <div className="locker-opt-footer-actions">
+                  <Button variant="destructive" className="locker-opt-footer-btn" onClick={handleCancelClick} data-testid="button-cancel">
+                    입실취소
                   </Button>
-                )}
-                {parentLockerNumber && (
-                  <Button variant="secondary" onClick={handleUnlinkFromParent} data-testid="button-unlink">
-                    묶기 해제
+                  <Button variant="secondary" className="locker-opt-footer-btn" onClick={handleSwapClick} data-testid="button-swap">
+                    락카교체
                   </Button>
-                )}
-                <Button variant="outline" onClick={handleSaveChanges} data-testid="button-save">
-                  수정저장
-                </Button>
-                {/* 후불결제 완료 버튼 - 후불결제 상태인 경우만 표시 */}
-                {isCurrentlyDeferred && (
-                  <Button 
-                    onClick={handleCompleteDeferredPayment} 
-                    className="bg-gradient-to-r from-yellow-500 to-pink-500 hover:from-yellow-600 hover:to-pink-600 text-white font-bold"
-                    data-testid="button-complete-payment"
-                    disabled={!useSplitPayment && !paymentMethod}
-                  >
-                    결제 완료
+                  {!parentLockerNumber && (
+                    <Button variant="secondary" className="locker-opt-footer-btn" onClick={handleLinkClick} data-testid="button-link">
+                      락카묶기
+                    </Button>
+                  )}
+                  {parentLockerNumber && (
+                    <Button variant="secondary" className="locker-opt-footer-btn" onClick={handleUnlinkFromParent} data-testid="button-unlink">
+                      묶기 해제
+                    </Button>
+                  )}
+                  <Button variant="outline" className="locker-opt-footer-btn bg-white dark:bg-zinc-800" onClick={handleSaveChanges} data-testid="button-save">
+                    수정저장
                   </Button>
-                )}
-                <Button 
-                  onClick={handleCheckoutClick} 
-                  className="bg-primary" 
-                  data-testid="button-checkout"
-                  disabled={(() => {
-                    // 후불결제 상태인 경우 퇴실 비활성화 (결제 완료 먼저 필요)
-                    if (isCurrentlyDeferred) {
-                      return true;
-                    }
-                    
-                    // 추가요금 처리 여부 체크 (추가요금만 있으면 요금 결제만 하면 됨)
-                    const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0 && !checkoutResolved;
-                    
-                    // 선택된 대여품목 중 반납완료되지 않은 것이 있는지 체크
-                    // 대여형(rental)만 반납완료가 필요, 일반판매형(simple)은 반납 불필요
-                    const hasUnresolvedRentalItems = Array.from(selectedRentalItems).some(itemId => {
-                      const item = availableRentalItems.find(i => i.id === itemId);
-                      // 일반판매형(simple)은 반납완료 불필요 - 항상 false 반환
-                      if (item?.billingType === 'simple') {
-                        return false;
+                  {isCurrentlyDeferred && (
+                    <Button
+                      onClick={handleCompleteDeferredPayment}
+                      className="locker-opt-footer-btn locker-opt-footer-btn-accent"
+                      data-testid="button-complete-payment"
+                      disabled={!useSplitPayment && !paymentMethod}
+                    >
+                      결제 완료
+                    </Button>
+                  )}
+                  {(() => {
+                    const checkoutDisabled = (() => {
+                      if (isCurrentlyDeferred) {
+                        return true;
                       }
-                      // 대여형(rental)만 반납완료 체크
-                      return !returnCompletedItems.has(itemId);
-                    });
-                    
-                    // 추가요금 있거나 반납완료되지 않은 대여품목 있으면 비활성화
-                    return hasUnresolvedAdditionalFees || hasUnresolvedRentalItems;
+                      const hasUnresolvedAdditionalFees = additionalFeeInfo.additionalFee > 0 && !checkoutResolved;
+                      const hasUnresolvedRentalItems = Array.from(selectedRentalItems).some(itemId => {
+                        const item = availableRentalItems.find(i => i.id === itemId);
+                        if (item && isSimpleSaleItem(item)) {
+                          return false;
+                        }
+                        if (item?.billingType === 'simple') {
+                          return false;
+                        }
+                        return !returnCompletedItems.has(itemId);
+                      });
+                      return hasUnresolvedAdditionalFees || hasUnresolvedRentalItems;
+                    })();
+                    const checkoutTitle = isCurrentlyDeferred ? "후불결제 완료 후 퇴실 가능" : undefined;
+
+                    return (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="locker-opt-footer-btn locker-opt-footer-btn-primary"
+                          onClick={() => handleCheckoutClick({ customExitTime: true })}
+                          data-testid="button-checkout-custom-time"
+                          disabled={checkoutDisabled}
+                          title={checkoutTitle ?? "실제 퇴실시각을 지정해 퇴실합니다"}
+                        >
+                          퇴실시간 지정
+                        </Button>
+                        <Button
+                          onClick={() => handleCheckoutClick()}
+                          className="locker-opt-footer-btn locker-opt-footer-btn-primary"
+                          data-testid="button-checkout"
+                          disabled={checkoutDisabled}
+                          title={checkoutTitle}
+                        >
+                          퇴실
+                        </Button>
+                      </>
+                    );
                   })()}
-                  title={isCurrentlyDeferred ? "후불결제 완료 후 퇴실 가능" : undefined}
-                >
-                  퇴실
-                </Button>
-              </>
+              </div>
             ) : (
-              <>
-                <Button variant="ghost" onClick={handleCloseClick} data-testid="button-close-new">
+              <div className="locker-opt-footer-actions">
+                <Button variant="ghost" className="locker-opt-footer-btn" onClick={handleCloseClick} data-testid="button-close-new">
                   취소
                 </Button>
-                <Button onClick={handleProcessEntry} className="bg-primary" data-testid="button-process-entry">
+                <Button onClick={handleProcessEntry} className="locker-opt-footer-btn locker-opt-footer-btn-primary" data-testid="button-process-entry">
                   입실
                 </Button>
-              </>
+              </div>
             )}
-          </div>
           </div>
         </div>
       )}
+
+      {/* 입실취소 시 대여/판매 매출 확인 */}
+      <AlertDialog
+        open={showOverBaseConfirm}
+        onOpenChange={(open) => {
+          if (!open) {
+            if (pendingOverBaseField) confirmOverBaseSplitNo();
+            else setShowOverBaseConfirm(false);
+          }
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-split-over-base-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>기본요금보다 큰 금액을 분리결제하실건가요?</AlertDialogTitle>
+            <AlertDialogDescription>
+              현재 기본요금은 {getDefaultSplitTarget().toLocaleString()}원입니다.
+              {pendingOverBaseValue
+                ? ` 입력하신 금액은 ${parseInt(pendingOverBaseValue || "0").toLocaleString()}원입니다.`
+                : ""}
+              <br />
+              <br />
+              예를 누르면 받을 총금액을 따로 입력한 뒤, 그 총금액을 기준으로 현금·카드·이체를 나눌 수 있습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={confirmOverBaseSplitNo} data-testid="button-split-over-base-no">
+              아니요
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmOverBaseSplitYes} data-testid="button-split-over-base-yes">
+              예
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showCancelEntrySalesDialog} onOpenChange={setShowCancelEntrySalesDialog}>
+        <AlertDialogContent data-testid="dialog-cancel-entry-sales">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">판매·대여 매출 확인</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  이 손님에게 <strong className="text-foreground">판매 또는 대여 매출</strong>이 있습니다.
+                  입실취소 전에 판매취소·대여취소를 하시겠습니까?
+                </p>
+                <div className="rounded-md border bg-muted/40 p-3 space-y-1.5">
+                  {(currentLockerLogId
+                    ? localDb.getRentalTransactionsByLockerLog(currentLockerLogId)
+                    : currentRentalTransactions
+                  ).map((txn: any) => {
+                    const item = availableRentalItems.find((i) => i.id === txn.itemId);
+                    const isSimple = item ? isSimpleSaleItem(item) : (txn.depositAmount || 0) === 0;
+                    const returned = txn.returnCompleted === 1 || returnCompletedItems.has(txn.itemId);
+                    return (
+                      <div key={txn.id} className="flex justify-between gap-2 text-foreground">
+                        <span>
+                          {isSimple ? "판매" : "대여"} · {txn.itemName}
+                          {!isSimple && returned ? " (반납완료)" : ""}
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                          {(txn.revenue ?? txn.rentalFee ?? 0).toLocaleString()}원
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <ul className="list-disc pl-4 space-y-1 text-xs">
+                  <li>
+                    <strong className="text-foreground">예</strong> — 락카 창에서 판매취소·대여취소(또는 반납완료)를 직접 처리합니다.
+                  </li>
+                  <li>
+                    <strong className="text-foreground">아니요</strong> — 판매·대여 매출은 정산에 남기고 입실만 취소합니다.
+                  </li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              data-testid="button-cancel-entry-keep-sales"
+              onClick={handleCancelEntryKeepSales}
+            >
+              아니요
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-cancel-entry-handle-sales"
+              onClick={handleCancelEntryGoHandleSales}
+            >
+              예
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Warning Alert for rental items and additional fees */}
       <AlertDialog open={showWarningAlert} onOpenChange={setShowWarningAlert}>
@@ -4129,17 +5277,16 @@ export default function LockerOptionsDialog({
             <AlertDialogTitle className="text-orange-600">확인 필요</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (일반판매형 제외, DB에서 이미 반납된 것도 제외) */}
-              {currentRentalTransactions.filter(txn => {
-                const item = availableRentalItems.find(i => i.id === txn.itemId);
-                return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1;
-              }).length > 0 && (
+              {/* 반납완료되지 않은 대여형(rental) 품목만 표시 (단순판매형 제외) */}
+              {currentRentalTransactions.filter(txn =>
+                isUnresolvedRentalTxn(txn, availableRentalItems, returnCompletedItems)
+              ).length > 0 && (
                 <div className="p-4 bg-orange-50 dark:bg-orange-950 rounded-md border border-orange-200 dark:border-orange-800 space-y-2">
                   <p className="font-semibold text-orange-700 dark:text-orange-300 mb-2">대여 물품 회수:</p>
                   {currentRentalTransactions
-                    .filter(txn => {
-                      const item = availableRentalItems.find(i => i.id === txn.itemId);
-                      return item?.billingType !== 'simple' && !returnCompletedItems.has(txn.itemId) && txn.returnCompleted !== 1;
-                    })
+                    .filter(txn =>
+                      isUnresolvedRentalTxn(txn, availableRentalItems, returnCompletedItems)
+                    )
                     .map((txn) => {
                       const status = depositStatuses.get(txn.itemId) || txn.depositStatus;
                       return (
@@ -4152,7 +5299,7 @@ export default function LockerOptionsDialog({
                             {txn.depositAmount > 0 && (
                               <p className="text-sm text-orange-600 dark:text-orange-400 mt-0.5">
                                 {status === 'refunded' && `보증금 ${txn.depositAmount.toLocaleString()}원 환급하세요`}
-                                {status === 'received' && `보증금 ${txn.depositAmount.toLocaleString()}원 받으세요 (아직 처리 안됨)`}
+                                {status === 'received' && `회수완료시 보증금을 돌려주세요 (보증금 ${txn.depositAmount.toLocaleString()}원)`}
                                 {status === 'forfeited' && `보증금 ${txn.depositAmount.toLocaleString()}원 몰수 (분실/훼손)`}
                               </p>
                             )}
@@ -4180,18 +5327,27 @@ export default function LockerOptionsDialog({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 대여 취소 확인 다이얼로그 */}
+      {/* 대여/판매 취소 확인 다이얼로그 */}
       <AlertDialog open={!!cancellingRentalItem} onOpenChange={(open) => { if (!open) setCancellingRentalItem(null); }}>
         <AlertDialogContent data-testid="dialog-cancel-rental-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle>대여 취소</AlertDialogTitle>
+            <AlertDialogTitle>
+              {cancellingRentalItem?.isSimple ? "판매 취소" : "대여 취소"}
+            </AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
               <p>
-                <strong>{cancellingRentalItem?.itemName}</strong> 대여를 취소하시겠습니까?
+                <strong>{cancellingRentalItem?.itemName}</strong>
+                {cancellingRentalItem?.isSimple ? " 판매를 취소하시겠습니까?" : " 대여를 취소하시겠습니까?"}
               </p>
               <p className="text-sm text-muted-foreground">
-                대여 기록이 삭제되며 대여금·보증금이 청구되지 않습니다.<br/>
-                이미 받은 보증금이 있다면 직접 환불해 주세요.
+                {cancellingRentalItem?.isSimple ? (
+                  <>판매 기록이 삭제되며 판매 금액이 청구되지 않습니다.</>
+                ) : (
+                  <>
+                    대여 기록이 삭제되며 대여금·보증금이 청구되지 않습니다.<br/>
+                    이미 받은 보증금이 있다면 직접 환불해 주세요.
+                  </>
+                )}
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -4204,7 +5360,7 @@ export default function LockerOptionsDialog({
                 if (!cancellingRentalItem) return;
                 localDb.deleteRentalTransaction(cancellingRentalItem.txnId);
                 setCurrentRentalTransactions(prev => prev.filter(t => t.id !== cancellingRentalItem.txnId));
-                const { itemId } = cancellingRentalItem;
+                const { itemId, isSimple } = cancellingRentalItem;
                 const newSelected = new Set(selectedRentalItems);
                 newSelected.delete(itemId);
                 setSelectedRentalItems(newSelected);
@@ -4217,30 +5373,47 @@ export default function LockerOptionsDialog({
                 const newReturn = new Set(returnCompletedItems);
                 newReturn.delete(itemId);
                 setReturnCompletedItems(newReturn);
-                // 메모에 대여취소 시각 기록
+                const newQuantities = new Map(rentalItemQuantities);
+                newQuantities.delete(itemId);
+                setRentalItemQuantities(newQuantities);
+                // 메모에 취소 시각 기록
                 const cancelTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 const cancelItemName = cancellingRentalItem.itemName;
+                const actionLabel = isSimple ? "판매" : "대여";
+                const cancelLabel = isSimple ? "판매취소" : "대여취소";
                 setCustomerMemo(prev => {
-                  const marker = `[${cancelItemName}] 대여:`;
+                  const marker = `[${cancelItemName}] ${actionLabel}:`;
                   if (prev.includes(marker)) {
                     return prev.split('\n').map(line => {
                       if (!line.startsWith(marker)) return line;
                       const lastSlashIdx = line.lastIndexOf(' / ');
                       const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
-                      // 마지막 세그먼트가 취소 상태가 아닌 경우만 취소 기록
-                      if (!lastSeg.includes('대여취소:')) {
-                        return `${line}, 대여취소: ${cancelTimeStr}`;
+                      if (!lastSeg.includes(`${cancelLabel}:`)) {
+                        return `${line}, ${cancelLabel}: ${cancelTimeStr}`;
                       }
                       return line;
                     }).join('\n');
                   }
-                  const cancelLine = `[${cancelItemName}] 대여취소: ${cancelTimeStr}`;
+                  // 예전 메모 형식([이름] 대여:)도 단순판매 취소 시 이어서 기록
+                  const legacyMarker = `[${cancelItemName}] 대여:`;
+                  if (isSimple && prev.includes(legacyMarker)) {
+                    return prev.split('\n').map(line => {
+                      if (!line.startsWith(legacyMarker)) return line;
+                      const lastSlashIdx = line.lastIndexOf(' / ');
+                      const lastSeg = lastSlashIdx >= 0 ? line.slice(lastSlashIdx + 3) : line;
+                      if (!lastSeg.includes("판매취소:") && !lastSeg.includes("대여취소:")) {
+                        return `${line}, 판매취소: ${cancelTimeStr}`;
+                      }
+                      return line;
+                    }).join('\n');
+                  }
+                  const cancelLine = `[${cancelItemName}] ${cancelLabel}: ${cancelTimeStr}`;
                   return prev.trim() ? `${prev}\n${cancelLine}` : cancelLine;
                 });
                 setCancellingRentalItem(null);
               }}
             >
-              대여 취소 확인
+              {cancellingRentalItem?.isSimple ? "판매 취소 확인" : "대여 취소 확인"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -4276,12 +5449,15 @@ export default function LockerOptionsDialog({
                 const newStatuses = new Map(depositStatuses);
                 const newPaymentMethods = new Map(rentalPaymentMethods);
                 const newDirectInput = new Set(rentalDirectInputEnabled);
+                const newQuantities = new Map(rentalItemQuantities);
                 newStatuses.delete(itemId);
                 newPaymentMethods.delete(itemId);
                 newDirectInput.delete(itemId);
+                newQuantities.delete(itemId);
                 setDepositStatuses(newStatuses);
                 setRentalPaymentMethods(newPaymentMethods);
                 setRentalDirectInputEnabled(newDirectInput);
+                setRentalItemQuantities(newQuantities);
                 // 메모에 대여취소 시각 기록
                 const nowTimeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
                 setCustomerMemo(prev => {
@@ -4310,20 +5486,63 @@ export default function LockerOptionsDialog({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showCheckoutConfirm} onOpenChange={setShowCheckoutConfirm}>
+      <AlertDialog open={showCheckoutConfirm} onOpenChange={(open) => {
+        setShowCheckoutConfirm(open);
+        if (!open) {
+          setPendingCheckoutArgs(null);
+          setCheckoutCustomTimeMode(false);
+        }
+      }}>
         <AlertDialogContent data-testid="dialog-checkout-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle>퇴실 확인</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>다음 대여 물품을 확인하셨습니까?</p>
-              <div className="p-3 bg-muted rounded-md border">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{currentNotes || generateNotes()}</p>
+            <AlertDialogTitle>
+              {checkoutCustomTimeMode ? "퇴실시간 지정 퇴실" : "퇴실 확인"}
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {(pendingCheckoutArgs?.rentalItems?.length ?? 0) > 0 && (
+                  <>
+                    <p>다음 대여 물품을 확인하셨습니까?</p>
+                    <div className="p-3 bg-muted rounded-md border">
+                      <p className="text-sm text-foreground whitespace-pre-wrap">{currentNotes || generateNotes()}</p>
+                    </div>
+                  </>
+                )}
+                {checkoutCustomTimeMode && (
+                  <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3 text-left">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="checkout-exit-time" className="text-sm text-foreground font-medium">
+                        퇴실 날짜·시간
+                      </Label>
+                      <span className="text-[11px] text-muted-foreground">입실 이후 · 기본 현재시각</span>
+                    </div>
+                    <Input
+                      id="checkout-exit-time"
+                      type="datetime-local"
+                      value={checkoutTimeLocal}
+                      min={toDatetimeLocalValue(effectiveEntryTimeISO)}
+                      max={toDatetimeLocalValue(new Date().toISOString())}
+                      onChange={(e) => setCheckoutTimeLocal(e.target.value)}
+                      className="h-10"
+                      data-testid="input-checkout-exit-time"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      이미 나간 손님을 뒤늦게 처리할 때 실제 퇴실 시각으로 지정합니다.
+                    </p>
+                  </div>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-checkout-cancel">취소</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmCheckout} data-testid="button-checkout-confirm">
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                confirmCheckout();
+              }}
+              data-testid="button-checkout-confirm"
+            >
               확인 및 퇴실
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -4539,9 +5758,14 @@ export default function LockerOptionsDialog({
                   return (
                     <Button
                       key={num}
+                      type="button"
                       variant={selectedChildLockers.has(num) ? "default" : "outline"}
                       size="sm"
-                      onClick={() => toggleChildLocker(num)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleChildLocker(num);
+                      }}
                       data-testid={`button-child-locker-${num}`}
                       className={`h-10 ${isLinkedChild ? 'border-blue-500 border-2' : ''}`}
                       title={isLinkedChild ? '현재 연결된 자식 락카' : '빈 락카'}
@@ -4739,7 +5963,7 @@ export default function LockerOptionsDialog({
                     
                     <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-md border border-blue-200 dark:border-blue-800">
                       <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">현재 결제 내역:</p>
-                      <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div className="locker-opt-split-grid text-sm">
                         {cashPayment > 0 && (
                           <div className="text-blue-600 dark:text-blue-400">
                             현금: {cashPayment.toLocaleString()}원
@@ -4904,7 +6128,7 @@ export default function LockerOptionsDialog({
                           <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
                             선지급금 {basePrepaidAmount.toLocaleString()}원을 결제수단별로 분배 입력
                           </p>
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="locker-opt-split-grid">
                             {cashPayment > 0 && (
                               <div className="space-y-1">
                                 <Label className="text-xs">

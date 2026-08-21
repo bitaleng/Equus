@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Table,
   TableBody,
@@ -8,7 +8,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -16,6 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LockerNumberLookupDialog } from "@/components/LockerNumberLookupDialog";
+import * as localDb from "@/lib/localDb";
 import {
   Dialog,
   DialogContent,
@@ -25,8 +26,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Filter, FileText, Menu, Maximize2, Undo2 } from "lucide-react";
-import { formatPaymentMethod } from "@/lib/utils";
+import { X, Filter, FileText, Menu, Maximize2, Undo2, MessageSquare, Hash, RotateCcw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn, formatPaymentMethod } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,8 +67,14 @@ interface LockerEntry {
   customerMemo?: string; // 손님 메모
 }
 
+function getEntryMemoText(entry: LockerEntry): string {
+  return entry.customerMemo?.trim() || "";
+}
+
 interface TodayStatusTableProps {
   entries: LockerEntry[];
+  yesterdayEntries?: LockerEntry[];
+  yesterdayBusinessDay?: string;
   isExpanded?: boolean;
   onRowClick?: (entry: LockerEntry) => void;
   isLockerPanelCollapsed?: boolean;
@@ -75,16 +83,29 @@ interface TodayStatusTableProps {
   hideToggleButton?: boolean; // 탭 모드에서 토글 버튼 숨김
 }
 
-export default function TodayStatusTable({ entries, isExpanded = false, onRowClick, isLockerPanelCollapsed = false, onToggleLockerPanel, onReverseCheckout, hideToggleButton = false }: TodayStatusTableProps) {
-  const [lockerNumberInput, setLockerNumberInput] = useState("");
-  const [filteredLockerNumber, setFilteredLockerNumber] = useState<number | null>(null);
+export default function TodayStatusTable({
+  entries,
+  yesterdayEntries,
+  yesterdayBusinessDay,
+  isExpanded = false,
+  onRowClick,
+  isLockerPanelCollapsed = false,
+  onToggleLockerPanel,
+  onReverseCheckout,
+  hideToggleButton = false,
+}: TodayStatusTableProps) {
+  const [dayView, setDayView] = useState<'today' | 'yesterday'>('today');
+  const showYesterdayTab = yesterdayEntries !== undefined;
+  const activeEntries = dayView === 'yesterday' && yesterdayEntries ? yesterdayEntries : entries;
+  const [showLockerNumberDialog, setShowLockerNumberDialog] = useState(false);
+  const [lockerNumberFilter, setLockerNumberFilter] = useState<number[]>([]);
   const [reverseCheckoutDialogOpen, setReverseCheckoutDialogOpen] = useState(false);
   const [selectedEntryForReverse, setSelectedEntryForReverse] = useState<LockerEntry | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("exitTime");
+  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("entryTime");
   
   // Memo state
   const [memoDialogOpen, setMemoDialogOpen] = useState(false);
@@ -92,16 +113,33 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
     return localStorage.getItem('daily_memo') || '';
   });
 
-  const handleLockerUsageFilter = () => {
-    const num = parseInt(lockerNumberInput);
-    if (!isNaN(num) && num > 0) {
-      setFilteredLockerNumber(num);
+  const lockerGroups = useMemo(() => {
+    try {
+      return localDb.getLockerGroups() as Array<{ id: string; name: string; startNumber: number; endNumber: number; sortOrder: number }>;
+    } catch {
+      return [];
     }
-  };
+  }, []);
+  const lockerNumbers = useMemo(() => {
+    const nums: number[] = [];
+    for (const group of lockerGroups) {
+      for (let n = group.startNumber; n <= group.endNumber; n++) {
+        if (!nums.includes(n)) nums.push(n);
+      }
+    }
+    return nums.length > 0 ? nums : Array.from({ length: 80 }, (_, i) => i + 1);
+  }, [lockerGroups]);
+
+  const lockerFilterLabel = lockerNumberFilter.length === 0
+    ? "락카번호 조회"
+    : lockerNumberFilter.length === 1
+      ? `${lockerNumberFilter[0]}번`
+      : lockerNumberFilter.length <= 3
+        ? `${lockerNumberFilter.slice().sort((a, b) => a - b).join(", ")}번`
+        : `${[...lockerNumberFilter].sort((a, b) => a - b).slice(0, 2).join(", ")}번 외 ${lockerNumberFilter.length - 2}개`;
 
   const clearFilter = () => {
-    setFilteredLockerNumber(null);
-    setLockerNumberInput("");
+    setLockerNumberFilter([]);
     setCancelledFilter("all");
     setTimeTypeFilter("all");
     setPaymentMethodFilter("all");
@@ -115,10 +153,10 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
     setMemoDialogOpen(false);
   };
 
-  // Filter entries based on all filters
-  let displayedEntries = filteredLockerNumber !== null
-    ? entries.filter(e => e.lockerNumber === filteredLockerNumber)
-    : entries;
+  const lockerFilterSet = new Set(lockerNumberFilter);
+  let displayedEntries = lockerNumberFilter.length > 0
+    ? activeEntries.filter(e => lockerFilterSet.has(e.lockerNumber))
+    : activeEntries;
 
   // Apply additional filters
   if (cancelledFilter === "cancelled") {
@@ -164,38 +202,98 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
   }
 
   // Count usage for filtered locker (exclude additional fee only entries and child lockers)
-  const usageCount = filteredLockerNumber !== null
-    ? entries.filter(e => e.lockerNumber === filteredLockerNumber && !e.cancelled && !e.additionalFeeOnly && !e.parentLocker).length
+  const usageCount = lockerNumberFilter.length > 0
+    ? activeEntries.filter(e => lockerFilterSet.has(e.lockerNumber) && !e.cancelled && !e.additionalFeeOnly && !e.parentLocker).length
     : 0;
   
   // Calculate total visitors (exclude additional fee only entries, cancelled entries, child lockers, and staff)
-  const totalVisitors = entries.filter(e => !e.additionalFeeOnly && !e.cancelled && !e.parentLocker && !e.isStaff).length;
+  const totalVisitors = activeEntries.filter(e => !e.additionalFeeOnly && !e.cancelled && !e.parentLocker && !e.isStaff).length;
+
+  const formatBusinessDayLabel = (ymd?: string) => {
+    if (!ymd) return '';
+    const [y, m, d] = ymd.split('-').map(Number);
+    return `${m}/${d}`;
+  };
 
   return (
     <div className={`h-full flex flex-col today-status-container ${isExpanded ? 'expanded-mode' : ''}`}>
       {/* 헤더: 제목 + 방문수 (좌측) | 메모버튼 + 토글버튼 (우측) */}
-      <div className="p-4 border-b flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold">오늘 현황</h2>
-          <span className="text-sm text-muted-foreground">
-            총 방문: {totalVisitors}명
-          </span>
-          {filteredLockerNumber !== null && (
+      <div className="px-4 py-3.5 border-b border-border/70 flex items-center justify-between gap-3 bg-muted/40">
+        <div className="flex items-center gap-3 flex-wrap min-w-0">
+          {showYesterdayTab ? (
+            <div
+              className="flex items-center rounded-xl border border-border/70 bg-background/80 p-0.5 shadow-2xs"
+              role="tablist"
+              aria-label="입실 현황 기간"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dayView === 'today'}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap",
+                  dayView === 'today'
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setDayView('today')}
+                data-testid="tab-today-status"
+              >
+                오늘 현황
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={dayView === 'yesterday'}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap",
+                  dayView === 'yesterday'
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setDayView('yesterday')}
+                data-testid="tab-yesterday-status"
+              >
+                어제 현황
+                {yesterdayBusinessDay && (
+                  <span className="ml-1.5 text-xs font-medium opacity-80">
+                    ({formatBusinessDayLabel(yesterdayBusinessDay)})
+                  </span>
+                )}
+              </button>
+            </div>
+          ) : (
+            <h2 className="text-lg font-semibold tracking-tight">오늘 현황</h2>
+          )}
+          <div className="entry-stat-chip">
+            <span className="text-muted-foreground dark:text-black">총 방문</span>
+            <span className="stat-value">{totalVisitors}</span>
+            <span className="text-muted-foreground dark:text-black">명</span>
+          </div>
+          {lockerNumberFilter.length === 1 && (
             <span className="text-sm font-semibold text-primary">
-              락커 {filteredLockerNumber}번 사용: {usageCount}회
+              락커 {lockerNumberFilter[0]}번 사용: {usageCount}회
+            </span>
+          )}
+          {lockerNumberFilter.length > 1 && (
+            <span className="text-sm font-semibold text-primary">
+              선택 락커 {lockerNumberFilter.length}개 사용: {usageCount}회
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant={memo ? "default" : "outline"}
-            onClick={() => setMemoDialogOpen(true)}
-            data-testid="button-daily-memo"
-          >
-            <FileText className="h-4 w-4 mr-1" />
-            메모
-          </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {dayView === 'today' && (
+            <Button
+              size="sm"
+              variant={memo ? "default" : "outline"}
+              onClick={() => setMemoDialogOpen(true)}
+              data-testid="button-daily-memo"
+              className={memo ? "" : "bg-card/80 shadow-2xs"}
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              메모
+            </Button>
+          )}
           {onToggleLockerPanel && !hideToggleButton && (
             <Button 
               variant="ghost" 
@@ -203,6 +301,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
               onClick={onToggleLockerPanel}
               data-testid="button-toggle-locker-panel"
               title={isLockerPanelCollapsed ? "입실관리 표시" : "입실관리 숨기기"}
+              className="rounded-xl"
             >
               {isLockerPanelCollapsed ? <Menu className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
             </Button>
@@ -214,23 +313,32 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
         
         {/* 세 번째 줄: 입력란과 버튼들 */}
         <div className="flex items-center gap-2 flex-wrap">
-          <Input
-            type="text"
-            placeholder="락커번호"
-            value={lockerNumberInput}
-            onChange={(e) => setLockerNumberInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleLockerUsageFilter()}
-            className="w-24 h-9"
-            data-testid="input-locker-number-filter"
-          />
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={handleLockerUsageFilter}
-            data-testid="button-locker-usage"
-          >
-            락커번호조회
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant={lockerNumberFilter.length > 0 ? "default" : "outline"}
+              size="sm"
+              className="h-8 rounded-lg"
+              onClick={() => setShowLockerNumberDialog(true)}
+              data-testid="button-locker-number-lookup"
+            >
+              <Hash className="h-3.5 w-3.5 mr-1" />
+              {lockerFilterLabel}
+            </Button>
+            {lockerNumberFilter.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg"
+                onClick={() => setLockerNumberFilter([])}
+                data-testid="button-clear-locker-number-filter"
+              >
+                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                초기화
+              </Button>
+            )}
+          </div>
           <Button 
             variant={showFilters || hasActiveFilters ? "default" : "outline"}
             size="sm" 
@@ -240,7 +348,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
             <Filter className="h-4 w-4 mr-1" />
             필터
           </Button>
-          {(filteredLockerNumber !== null || hasActiveFilters) && (
+          {(lockerNumberFilter.length > 0 || hasActiveFilters) && (
             <Button 
               variant="ghost" 
               size="sm"
@@ -410,7 +518,7 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                   minWidth: '6rem'
                 } : undefined}
               >
-                비고
+                메모
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -418,8 +526,12 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
             {displayedEntries.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center text-muted-foreground py-8 text-sm">
-                  {filteredLockerNumber !== null 
-                    ? `락커 ${filteredLockerNumber}번 사용 기록이 없습니다`
+                  {lockerNumberFilter.length === 1
+                    ? `락커 ${lockerNumberFilter[0]}번 사용 기록이 없습니다`
+                    : lockerNumberFilter.length > 1
+                    ? "선택한 락커 사용 기록이 없습니다"
+                    : dayView === 'yesterday'
+                    ? '어제 영업일 입실 기록이 없습니다'
                     : '오늘 방문한 손님이 없습니다'
                   }
                 </TableCell>
@@ -590,14 +702,42 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
                         fontSize: 'var(--fluid-base, 1rem)', 
                         padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      <span
-                        className="block max-w-[7rem] truncate"
-                        title={entry.customerMemo || entry.notes || ''}
-                        style={isExpanded ? { maxWidth: '11rem' } : undefined}
-                      >
-                        {entry.customerMemo || entry.notes || '-'}
-                      </span>
+                      {(() => {
+                        const memoText = getEntryMemoText(entry);
+                        if (!memoText) {
+                          return <span>-</span>;
+                        }
+                        return (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                className="flex items-center gap-1 max-w-[7rem] text-left hover:text-foreground transition-colors"
+                                style={isExpanded ? { maxWidth: '11rem' } : undefined}
+                                title="클릭하여 전체 보기"
+                                data-testid={`memo-preview-${entry.lockerNumber}`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 text-yellow-600" />
+                                <span className="truncate">{memoText}</span>
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="left"
+                              align="center"
+                              sideOffset={8}
+                              className="w-max max-w-[80vw] p-3 text-sm bg-yellow-100 dark:bg-yellow-200 border-yellow-300 dark:border-yellow-400 shadow-lg z-[100]"
+                              data-testid={`popover-memo-status-${entry.id ?? entry.lockerNumber}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <MessageSquare className="w-4 h-4 mt-0.5 flex-shrink-0 text-yellow-700" />
+                                <p className="whitespace-pre-wrap text-gray-900 max-h-[50vh] overflow-y-auto">{memoText}</p>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        );
+                      })()}
                     </TableCell>
                   </TableRow>
                 );
@@ -675,6 +815,18 @@ export default function TodayStatusTable({ entries, isExpanded = false, onRowCli
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LockerNumberLookupDialog
+        open={showLockerNumberDialog}
+        onOpenChange={setShowLockerNumberDialog}
+        lockerGroups={lockerGroups}
+        lockerNumbers={lockerNumbers}
+        selected={lockerNumberFilter}
+        onApply={(nums) => {
+          setLockerNumberFilter(nums);
+          setShowLockerNumberDialog(false);
+        }}
+      />
     </div>
   );
 }

@@ -1,8 +1,11 @@
 import CryptoJS from 'crypto-js';
 
 const skin = import.meta.env.VITE_SKIN || 'v1';
-const LICENSE_PREFIX = skin === 'v2' ? 'HIZZ' : 'EQUS';
-const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY || (skin === 'v2' ? 'rest_hotel_license_v2' : 'rest_hotel_license');
+const LICENSE_PREFIX = skin === 'v3' ? 'HOME' : skin === 'v2' ? 'HIZZ' : 'EQUS';
+const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY
+  || (skin === 'v3' ? 'rest_hotel_license_v3'
+    : skin === 'v2' ? 'rest_hotel_license_v2'
+    : 'rest_hotel_license');
 
 export interface LicenseData {
   customerCode: string;
@@ -13,6 +16,17 @@ export interface LicenseData {
 }
 
 function getSecret(): string {
+  if (skin === 'v3') {
+    // V3 전용 시크릿 (v1/v2 라이센스키와 호환되지 않음)
+    const parts = [
+      String.fromCharCode(72, 111, 77, 101),
+      "2025!",
+      String.fromCharCode(72, 109, 50, 52, 83),
+      "#HmKy@",
+      String.fromCharCode(83, 99, 82, 116, 51, 116)
+    ];
+    return parts.join('');
+  }
   if (skin === 'v2') {
     // V2 전용 시크릿 (v1 라이센스키와 호환되지 않음)
     const parts = [
@@ -138,11 +152,19 @@ export function getStoredLicense(): string | null {
 }
 
 export function storeLicense(licenseKey: string): void {
-  localStorage.setItem(LICENSE_STORAGE_KEY, licenseKey.toUpperCase());
+  try {
+    localStorage.setItem(LICENSE_STORAGE_KEY, licenseKey.toUpperCase());
+  } catch (err) {
+    console.warn('storeLicense failed', err);
+  }
 }
 
 export function clearLicense(): void {
-  localStorage.removeItem(LICENSE_STORAGE_KEY);
+  try {
+    localStorage.removeItem(LICENSE_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function checkStoredLicenseValidity(): LicenseData | null {

@@ -18,9 +18,11 @@ interface LockerButtonProps {
   outingExceeded?: boolean; // 외출 시간 초과 여부
   isStaff?: boolean; // 직원 사용 여부
   outOfService?: boolean; // 사용불가 (관리자 설정)
+  checkoutWarning?: boolean; // 장기투숙 퇴실 임박/초과 경고
+  isLongTerm?: boolean; // 장기투숙 여부
 }
 
-export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false, isStaff = false, outOfService = false }: LockerButtonProps) {
+export default function LockerButton({ number, status, additionalFeeCount = 0, timeType = 'day', entryTime, businessDayStartHour = 10, onClick, isExpanded = false, parentLocker = null, deferredPayment = false, customerMemo, isOuting = false, outingExceeded = false, isStaff = false, outOfService = false, checkoutWarning = false, isLongTerm = false }: LockerButtonProps) {
   // 후불결제 애니메이션 색상 변화 (노란색 ↔ 퍼플블루 싸이렌 효과 - blur 없이 색상만)
   const getDeferredPaymentStyles = () => {
     return `
@@ -34,26 +36,30 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       return "bg-gray-200 text-gray-400 cursor-not-allowed border-2 border-gray-300 dark:bg-gray-700 dark:text-gray-500 dark:border-gray-600";
     }
     if (status === 'disabled') {
-      return "bg-white text-white cursor-not-allowed border-2 border-muted";
+      return "bg-white text-white cursor-not-allowed border-2 border-muted dark:bg-slate-800 dark:text-slate-800 dark:border-slate-600";
     }
     if (status === 'in-use') {
       // 0순위: 외출중
       if (isOuting) {
         // 외출 시간 초과 → 다크그레이↔레드 점멸 경보
         if (outingExceeded) {
-          return "animate-outing-exceeded border-2 border-red-600";
+          return "animate-outing-exceeded border-2 border-red-600 locker-btn-occupied";
         }
-        // 정상 외출중 → 다크그레이
-        return "bg-[#374151] text-white border-2 border-[#1F2937]";
+        // 정상 외출중 → 라이트=다크그레이 / 다크=라이트그레이+어두운글자(빈락카와 구분, 무채색)
+        return "bg-[#374151] text-white border-2 border-[#1F2937] dark:bg-slate-300 dark:text-slate-900 dark:border-slate-400 locker-btn-occupied";
+      }
+      // 0.5순위: 장기투숙 퇴실경고 (외출경보와 동일 점멸)
+      if (checkoutWarning) {
+        return "animate-outing-exceeded border-2 border-red-600 locker-btn-occupied";
       }
       // 1순위: 후불결제 -> 노란색↔퍼플블루 애니메이션 (추가요금보다 우선)
       if (deferredPayment) {
-        return getDeferredPaymentStyles();
+        return `${getDeferredPaymentStyles()} locker-btn-occupied`;
       }
       
       // 1순위: 추가요금 있음 -> 무조건 레드
       if (additionalFeeCount > 0) {
-        return "bg-[#FF4444] text-white border-2 border-[#CC0000]";
+        return "bg-[#FF4444] text-white border-2 border-[#CC0000] locker-btn-occupied";
       }
       
       // 2순위: 이전 영업일 입실 -> 그린색
@@ -65,26 +71,31 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         const now = new Date();
         const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
         if (entryTime < businessDayStart) {
-          return "bg-[#22C55E] text-white border-2 border-[#16A34A]";
+          return "bg-[#22C55E] text-white border-2 border-[#16A34A] locker-btn-occupied";
         }
       }
       
       // 3순위: 직원 사용중 -> 핑크색
       if (isStaff) {
-        return "bg-[#FF69B4] text-white border-2 border-[#FF1493]";
+        return "bg-[#FF69B4] text-white border-2 border-[#FF1493] locker-btn-occupied";
+      }
+
+      // 장기투숙 (경고 전) → 청록색으로 구분
+      if (isLongTerm) {
+        return "bg-[#0D9488] text-white border-2 border-[#0F766E] locker-btn-occupied";
       }
       
       // 4순위: 추가요금 없음 -> 주간/야간 구분
       if (timeType === 'day') {
         // 주간: 노란색
-        return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700]";
+        return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700] locker-btn-occupied";
       } else {
         // 야간: 퍼플 블루
-        return "bg-[#7B68EE] text-white border-2 border-[#6A5ACD]";
+        return "bg-[#7B68EE] text-white border-2 border-[#6A5ACD] locker-btn-occupied";
       }
     }
-    // 빈 락카: 흰색
-    return "bg-white text-gray-700 border-2 border-gray-300 hover-elevate active-elevate-2";
+    // 빈 락카: 라이트=흰색 / 다크=슬레이트 (번호·상태 텍스트 대비 유지)
+    return "bg-white text-gray-700 border-2 border-gray-300/90 hover-elevate active-elevate-2 locker-btn-empty dark:bg-slate-800 dark:text-slate-100 dark:border-slate-500";
   };
 
   const getStatusText = () => {
@@ -95,11 +106,14 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       if (parentLocker) return null;
       // 외출중
       if (isOuting) return outingExceeded ? '외출경보' : '외출중';
+      // 장기투숙 퇴실 임박/초과
+      if (checkoutWarning) return '퇴실경고';
       // 후불결제인 경우 '후불결제' 표시
       if (deferredPayment) return '후불결제';
       // 추가요금이 있으면 횟수만 표시
       if (additionalFeeCount > 0) return `추가 ${additionalFeeCount}회`;
       if (isStaff) return '직원';
+      if (isLongTerm) return '장기투숙';
       return '사용중';
     }
     return '비어있음';
@@ -119,11 +133,11 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       onClick={handleClick}
       disabled={status === 'disabled' || outOfService}
       className={`
-        aspect-square w-full rounded-lg font-semibold
-        transition-all duration-100
-        active:scale-95
+        aspect-square w-full rounded-xl font-semibold
+        transition-all duration-200 ease-out
+        active:scale-[0.96]
         flex flex-col items-center justify-center gap-0.5
-        relative
+        relative overflow-hidden
         ${isExpanded ? 'min-h-[80px] text-lg' : 'min-h-[56px] text-base'}
         ${getButtonStyles()}
       `}
@@ -131,16 +145,20 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
     >
       {/* 메모 아이콘 - 우측 상단 */}
       {customerMemo && customerMemo.trim() && (
-        <div className="absolute top-1 right-1">
-          <MessageSquare className={`${isExpanded ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'} opacity-80`} />
+        <div className="absolute top-1.5 right-1.5 rounded-full bg-black/10 p-0.5 backdrop-blur-[1px]">
+          <MessageSquare className={`${isExpanded ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'} opacity-90`} />
         </div>
       )}
-      <span className={isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}>{number}</span>
-      {getStatusText() && <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{getStatusText()}</span>}
+      <span className={`tracking-tight ${isExpanded ? "text-3xl font-bold" : "text-2xl font-bold"}`}>{number}</span>
+      {getStatusText() && (
+        <span className={`leading-none tracking-tight ${isExpanded ? "text-xs font-medium opacity-90" : "text-[10px] font-medium opacity-90"}`}>
+          {getStatusText()}
+        </span>
+      )}
       {parentLocker && (
-        <div className="flex items-center gap-1">
-          <Link2 className={isExpanded ? "w-3 h-3 opacity-90" : "w-2.5 h-2.5 opacity-90"} />
-          <span className={isExpanded ? "text-xs font-normal opacity-90" : "text-[10px] font-normal opacity-90"}>{parentLocker}번</span>
+        <div className="flex items-center gap-1 opacity-90">
+          <Link2 className={isExpanded ? "w-3 h-3" : "w-2.5 h-2.5"} />
+          <span className={isExpanded ? "text-xs font-medium" : "text-[10px] font-medium"}>{parentLocker}번</span>
         </div>
       )}
     </Button>

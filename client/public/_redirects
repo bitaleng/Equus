@@ -1,2 +1,4 @@
-/license-generator.html  /license-generator.html  200
-/*    /index.html   200
+# Netlify Drop에서도 인식되도록 _redirects 병행
+/api/cctv/register  /.netlify/functions/cctv-register  200
+/api/demo/trial     /.netlify/functions/demo-trial     200
+/*                  /index.html                        200

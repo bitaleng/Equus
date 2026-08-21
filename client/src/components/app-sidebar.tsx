@@ -10,54 +10,56 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { getAppName, getAppSkin } from "@/lib/appMeta";
+import { useTheme } from "@/hooks/useTheme";
 
 const items = [
   { title: "입실 관리",   url: "/",               icon: Home        },
   { title: "상세 기록",   url: "/logs",            icon: FileText    },
-  { title: "스캔정보",    url: "/scan-logs",        icon: ScanBarcode },
-  { title: "시스템 설정", url: "/settings",         icon: Settings    },
   { title: "정산하기",    url: "/closing",          icon: Calculator  },
   { title: "시재금관리",  url: "/cash-register",    icon: Banknote    },
   { title: "지출관리",    url: "/expenses",         icon: Receipt     },
   { title: "매출리포트",  url: "/sales-report",     icon: BarChart3   },
+  { title: "시스템 설정", url: "/settings",         icon: Settings    },
   { title: "직원근무일지", url: "/staff-logs",       icon: Users       },
+  { title: "스캔정보",    url: "/scan-logs",        icon: ScanBarcode },
 ];
 
-const skin = import.meta.env.VITE_SKIN || "v1";
-const appName = import.meta.env.VITE_APP_NAME || "LOCKER MANAGER";
+const skin = getAppSkin();
+const appName = getAppName();
 
-const SKIN_CONFIG = {
-  v1: {
-    logo: "/icon-v1.png",
-    name: "EQUUS",
-    sub: "Locker Manager",
-  },
-  v2: {
-    logo: "/icon-v2.png",
-    name: "He's",
-    sub: "입실관리매니저",
-  },
+const SKIN_LOGO: Record<string, string> = {
+  v1: "/icon-v1.png",
+  v2: "/icon-v2.png",
+  v3: "/icon-v3.png",
+  demo: "/icon-demo.png",
+};
+
+/** V2만 라이트/다크 아이콘 분리 */
+const V2_LOGO = {
+  light: "/icon-v2-light.png",
+  dark: "/icon-v2.png",
 } as const;
-
-const skinCfg = SKIN_CONFIG[skin as keyof typeof SKIN_CONFIG] ?? SKIN_CONFIG.v1;
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { isDark } = useTheme();
+
+  const logoSrc =
+    skin === "v2"
+      ? (isDark ? V2_LOGO.dark : V2_LOGO.light)
+      : (SKIN_LOGO[skin] ?? SKIN_LOGO.v1);
 
   return (
     <Sidebar>
       <SidebarHeader>
-        <div className="flex flex-col items-center gap-2 px-2 py-4 border-b border-sidebar-border">
+        <div className="flex items-center justify-center px-2 py-4 border-b border-sidebar-border">
           <img
-            src={skinCfg.logo}
+            src={logoSrc}
             alt={appName}
-            className="w-14 h-14 rounded-xl object-cover"
+            className="w-[84px] h-[84px] rounded-2xl object-cover"
             data-testid="sidebar-logo"
           />
-          <div className="text-center leading-tight">
-            <p className="text-xs font-extrabold tracking-widest text-sidebar-foreground">{skinCfg.name}</p>
-            <p className="text-[10px] text-muted-foreground tracking-wide">{skinCfg.sub}</p>
-          </div>
         </div>
       </SidebarHeader>
 

@@ -1,6 +1,15 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import LZString from 'lz-string';
-import { getTimeType, getBusinessDayRange, getBusinessDay, calculateAdditionalFee } from '@shared/businessDay';
+import {
+  getTimeType,
+  getBusinessDayRange,
+  getBusinessDay,
+  calculateAdditionalFee,
+  getBasePrice,
+  getSettlementCycleOptions,
+  getStagedHourlyOptions,
+  getNightstartOptions,
+} from '@shared/businessDay';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -9,32 +18,276 @@ const DB_NAME = 'rest_hotel_db';
 
 // 스킨별 앱 식별자 (빌드 시 VITE_SKIN으로 결정)
 const _SKIN = import.meta.env.VITE_SKIN || 'v1';
-const APP_SYSTEM_NAME = _SKIN === 'v2' ? 'HIZZ Hotel Management System' : 'EQUUS Hotel Management System';
-const BACKUP_PREFIX = _SKIN === 'v2' ? 'hizz' : 'equus';
+const APP_SYSTEM_NAME =
+  _SKIN === 'demo' ? 'Demo Hotel Management System'
+  : _SKIN === 'v3' ? 'HOME24 Hotel Management System'
+  : _SKIN === 'v2' ? 'HIZZ Hotel Management System'
+  : 'EQUUS Hotel Management System';
+export const BACKUP_PREFIX =
+  _SKIN === 'demo' ? 'demo'
+  : _SKIN === 'v3' ? 'home'
+  : _SKIN === 'v2' ? 'hes'
+  : 'equus';
 
 // ── IndexedDB 설정 (메인 저장소: 비동기, 압축 불필요, UI 블로킹 없음) ──
 const IDB_NAME = 'hotel_idb';
-const IDB_VERSION = 1;
+const IDB_VERSION = 2;
 const IDB_STORE = 'database';
+const IDB_META_STORE = 'meta';
 const IDB_KEY = 'main';
 
 function _openIDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, IDB_VERSION);
     req.onupgradeneeded = (e) => {
-      (e.target as IDBOpenDBRequest).result.createObjectStore(IDB_STORE);
+      const database = (e.target as IDBOpenDBRequest).result;
+      if (!database.objectStoreNames.contains(IDB_STORE)) {
+        database.createObjectStore(IDB_STORE);
+      }
+      if (!database.objectStoreNames.contains(IDB_META_STORE)) {
+        database.createObjectStore(IDB_META_STORE);
+      }
     };
     req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
     req.onerror = () => reject(req.error);
   });
 }
 
+/** 앱 세션 메타(라이선스·로그인 등) — DB와 같은 IDB에 보관해 PWA 재실행 시 유지 */
+export async function saveAppMeta(key: string, value: string): Promise<void> {
+  await saveIdbMetaValue(key, value);
+}
+
+/** IndexedDB meta 저장 (문자열·디렉터리 핸들 등 structured clone 가능 값) */
+export async function saveIdbMetaValue(key: string, value: unknown): Promise<void> {
+  try {
+    const idb = await _openIDB();
+    await new Promise<void>((resolve, reject) => {
+      const tx = idb.transaction(IDB_META_STORE, 'readwrite');
+      tx.objectStore(IDB_META_STORE).put(value, key);
+      tx.oncomplete = () => { idb.close(); resolve(); };
+      tx.onerror = () => { idb.close(); reject(tx.error); };
+    });
+  } catch (err) {
+    console.warn('saveIdbMetaValue failed', key, err);
+  }
+}
+
+export async function loadIdbMetaValue<T = unknown>(key: string): Promise<T | null> {
+  try {
+    const idb = await _openIDB();
+    return await new Promise((resolve) => {
+      try {
+        if (!idb.objectStoreNames.contains(IDB_META_STORE)) {
+          idb.close();
+          resolve(null);
+          return;
+        }
+        const tx = idb.transaction(IDB_META_STORE, 'readonly');
+        const req = tx.objectStore(IDB_META_STORE).get(key);
+        req.onsuccess = () => {
+          idb.close();
+          resolve((req.result as T) ?? null);
+        };
+        req.onerror = () => { idb.close(); resolve(null); };
+      } catch {
+        try { idb.close(); } catch {}
+        resolve(null);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function loadAppMeta(key: string): Promise<string | null> {
+  try {
+    const idb = await _openIDB();
+    return await new Promise((resolve) => {
+      try {
+        if (!idb.objectStoreNames.contains(IDB_META_STORE)) {
+          idb.close();
+          resolve(null);
+          return;
+        }
+        const tx = idb.transaction(IDB_META_STORE, 'readonly');
+        const req = tx.objectStore(IDB_META_STORE).get(key);
+        req.onsuccess = () => {
+          idb.close();
+          resolve(typeof req.result === 'string' ? req.result : null);
+        };
+        req.onerror = () => { idb.close(); resolve(null); };
+      } catch {
+        try { idb.close(); } catch {}
+        resolve(null);
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteAppMeta(key: string): Promise<void> {
+  try {
+    const idb = await _openIDB();
+    await new Promise<void>((resolve) => {
+      try {
+        if (!idb.objectStoreNames.contains(IDB_META_STORE)) {
+          idb.close();
+          resolve();
+          return;
+        }
+        const tx = idb.transaction(IDB_META_STORE, 'readwrite');
+        tx.objectStore(IDB_META_STORE).delete(key);
+        tx.oncomplete = () => { idb.close(); resolve(); };
+        tx.onerror = () => { idb.close(); resolve(); };
+      } catch {
+        try { idb.close(); } catch {}
+        resolve();
+      }
+    });
+  } catch {
+    // ignore
+  }
+}
+
+const LICENSE_STORAGE_KEY_FOR_SESSION =
+  import.meta.env.VITE_LICENSE_STORAGE_KEY ||
+  (_SKIN === 'v3'
+    ? 'rest_hotel_license_v3'
+    : _SKIN === 'v2'
+      ? 'rest_hotel_license_v2'
+      : 'rest_hotel_license');
+
+export function getSystemMeta(key: string): string | null {
+  if (!db) return null;
+  try {
+    const result = db.exec(`SELECT value FROM system_metadata WHERE key = ?`, [key]);
+    if (result.length > 0 && result[0].values.length > 0) {
+      return String(result[0].values[0][0]);
+    }
+  } catch (err) {
+    console.warn('getSystemMeta failed', key, err);
+  }
+  return null;
+}
+
+export function setSystemMeta(key: string, value: string): void {
+  if (!db) return;
+  try {
+    db.run(
+      `INSERT OR REPLACE INTO system_metadata (key, value) VALUES (?, ?)`,
+      [key, value]
+    );
+    saveDatabase();
+  } catch (err) {
+    console.warn('setSystemMeta failed', key, err);
+  }
+}
+
+export function deleteSystemMeta(key: string): void {
+  if (!db) return;
+  try {
+    db.run(`DELETE FROM system_metadata WHERE key = ?`, [key]);
+    saveDatabase();
+  } catch (err) {
+    console.warn('deleteSystemMeta failed', key, err);
+  }
+}
+
+/** SQLite에 저장된 라이선스·로그인을 localStorage로 복구 (PWA 재실행 유지) */
+export function restoreSessionFromDatabase(): void {
+  if (!db) return;
+  try {
+    const license = getSystemMeta('app_license_key');
+    if (license) {
+      try {
+        localStorage.setItem(LICENSE_STORAGE_KEY_FOR_SESSION, license.toUpperCase());
+      } catch {}
+      void saveAppMeta('app_license_key', license.toUpperCase());
+    } else {
+      // localStorage에만 있으면 DB로 승격
+      try {
+        const fromLs = localStorage.getItem(LICENSE_STORAGE_KEY_FOR_SESSION);
+        if (fromLs) setSystemMeta('app_license_key', fromLs.toUpperCase());
+      } catch {}
+    }
+
+    const auth = getSystemMeta('app_authenticated');
+    if (auth === 'true') {
+      try {
+        localStorage.setItem('authenticated', 'true');
+      } catch {}
+      void saveAppMeta('app_authenticated', 'true');
+    } else {
+      try {
+        if (localStorage.getItem('authenticated') === 'true') {
+          setSystemMeta('app_authenticated', 'true');
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('restoreSessionFromDatabase failed', err);
+  }
+}
+
+export function persistLicenseToDatabase(licenseKey: string | null): void {
+  if (licenseKey) {
+    setSystemMeta('app_license_key', licenseKey.toUpperCase());
+    void saveAppMeta('app_license_key', licenseKey.toUpperCase());
+  } else {
+    deleteSystemMeta('app_license_key');
+    void deleteAppMeta('app_license_key');
+  }
+}
+
+export function persistAuthToDatabase(authenticated: boolean): void {
+  if (authenticated) {
+    setSystemMeta('app_authenticated', 'true');
+    void saveAppMeta('app_authenticated', 'true');
+  } else {
+    deleteSystemMeta('app_authenticated');
+    void deleteAppMeta('app_authenticated');
+  }
+}
+
+const DB_META_KEY = 'rest_hotel_db_meta';
+const SAVE_DEBOUNCE_MS = 350;
+/** localStorage 전체 백업은 소용량일 때만 (대용량 base64는 UI 멈춤 원인) */
+const LS_FULL_BACKUP_MAX_BYTES = 350_000;
+
+let _allowDbShrink = false;
+let _persistedBytes = 0;
+let _saveChain: Promise<void> = Promise.resolve();
+let _saveDebouncedTimer: ReturnType<typeof setTimeout> | null = null;
+let _persistRequested = false;
+let _persistScheduled = false;
+
+function _readPersistMetaSize(): number {
+  try {
+    const raw = localStorage.getItem(DB_META_KEY);
+    if (!raw) return 0;
+    const m = JSON.parse(raw);
+    return typeof m?.size === 'number' && m.size > 0 ? m.size : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function _writePersistMeta(size: number) {
+  _persistedBytes = size;
+  try {
+    localStorage.setItem(DB_META_KEY, JSON.stringify({ size, ts: Date.now() }));
+  } catch {}
+}
+
 async function _saveToIDB(data: Uint8Array): Promise<void> {
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
   const idb = await _openIDB();
   return new Promise((resolve, reject) => {
     const tx = idb.transaction(IDB_STORE, 'readwrite');
-    // slice(0): ArrayBuffer를 복사하여 Transferable로 전달
-    tx.objectStore(IDB_STORE).put(data.buffer.slice(0), IDB_KEY);
+    tx.objectStore(IDB_STORE).put(copy, IDB_KEY);
     tx.oncomplete = () => { idb.close(); resolve(); };
     tx.onerror = () => { idb.close(); reject(tx.error); };
   });
@@ -48,7 +301,16 @@ async function _loadFromIDB(): Promise<Uint8Array | null> {
       const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
       req.onsuccess = () => {
         idb.close();
-        resolve(req.result ? new Uint8Array(req.result as ArrayBuffer) : null);
+        const result = req.result;
+        if (!result) { resolve(null); return; }
+        if (result instanceof Uint8Array) { resolve(result); return; }
+        if (result instanceof ArrayBuffer) { resolve(new Uint8Array(result)); return; }
+        if (result && typeof result === 'object' && 'buffer' in result && (result as ArrayBufferView).buffer instanceof ArrayBuffer) {
+          const view = result as ArrayBufferView;
+          resolve(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+          return;
+        }
+        resolve(null);
       };
       req.onerror = () => { idb.close(); resolve(null); };
     });
@@ -57,8 +319,54 @@ async function _loadFromIDB(): Promise<Uint8Array | null> {
   }
 }
 
-// ── localStorage 동기 저장 (beforeunload 안전망 전용) ──
-function _saveDatabaseToLocalStorage(data: Uint8Array) {
+async function _idbHasMain(): Promise<boolean> {
+  try {
+    const idb = await _openIDB();
+    return await new Promise((resolve) => {
+      try {
+        const tx = idb.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+        req.onsuccess = () => {
+          const v = req.result;
+          idb.close();
+          if (!v) resolve(false);
+          else if (v instanceof Uint8Array) resolve(v.byteLength > 0);
+          else if (v instanceof ArrayBuffer) resolve(v.byteLength > 0);
+          else resolve(!!v);
+        };
+        req.onerror = () => { idb.close(); resolve(false); };
+      } catch {
+        try { idb.close(); } catch {}
+        resolve(false);
+      }
+    });
+  } catch {
+    return false;
+  }
+}
+
+/** 구버전(OPFS) 데이터가 있으면 1회만 읽어 IDB로 이관 */
+async function _loadFromOPFSOnce(): Promise<Uint8Array | null> {
+  try {
+    const storage = navigator.storage as StorageManager & {
+      getDirectory?: () => Promise<FileSystemDirectoryHandle>;
+    };
+    if (!storage?.getDirectory) return null;
+    const root = await storage.getDirectory();
+    const fh = await root.getFileHandle('rest_hotel.sqlite');
+    const file = await fh.getFile();
+    if (!file || file.size <= 0) return null;
+    return new Uint8Array(await file.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+function _saveDatabaseToLocalStorage(data: Uint8Array): boolean {
+  if (data.length > LS_FULL_BACKUP_MAX_BYTES) {
+    try { localStorage.removeItem(DB_NAME); } catch {}
+    return false;
+  }
   const chunkSize = 65535;
   let binary = '';
   for (let i = 0; i < data.length; i += chunkSize) {
@@ -66,35 +374,22 @@ function _saveDatabaseToLocalStorage(data: Uint8Array) {
     binary += String.fromCharCode.apply(null, Array.from(chunk));
   }
   const base64 = btoa(binary);
-  const compressed = LZString.compressToUTF16(base64);
   try {
+    const compressed = LZString.compressToUTF16(base64);
     localStorage.setItem(DB_NAME, compressed);
+    return true;
   } catch {
-    try { localStorage.setItem(DB_NAME, base64); } catch {}
+    try {
+      localStorage.setItem(DB_NAME, base64);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 
-// Initialize SQL.js and load database
-export async function initDatabase(): Promise<Database> {
-  if (db) return db;
-
-  if (!SQL) {
-    SQL = await initSqlJs({
-      locateFile: (file: string) => `/${file}`
-    });
-  }
-
-  // 1순위: IndexedDB (비동기 저장소, 기존 데이터가 있으면 우선 사용)
-  const idbData = await _loadFromIDB();
-  if (idbData && idbData.length > 0) {
-    db = new SQL.Database(idbData);
-    migrateDatabase();
-    return db;
-  }
-
-  // 2순위: localStorage (기존 사용자 자동 마이그레이션)
-  const savedDb = localStorage.getItem(DB_NAME);
-  if (savedDb) {
+function _decodeLocalStorageDb(savedDb: string): Uint8Array | null {
+  try {
     let base64: string;
     try {
       const decompressed = LZString.decompressFromUTF16(savedDb);
@@ -102,51 +397,191 @@ export async function initDatabase(): Promise<Database> {
     } catch {
       base64 = savedDb;
     }
-    const buf = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-    db = new SQL.Database(buf);
-    migrateDatabase(); // 마이그레이션 끝에 saveDatabase() 호출 → IndexedDB에 저장됨
-    return db;
+    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  } catch {
+    return null;
+  }
+}
+
+function _shouldBlockShrink(nextSize: number): boolean {
+  if (_allowDbShrink) return false;
+  const known = Math.max(_persistedBytes, _readPersistMetaSize());
+  if (known > 20000 && nextSize < known * 0.25) return true;
+  if (known > 8000 && nextSize < 4500) return true;
+  return false;
+}
+
+/** 메인 저장: IndexedDB만. LS는 IDB 실패 + 소용량일 때만. */
+async function _persistAll(data: Uint8Array): Promise<void> {
+  if (_shouldBlockShrink(data.length)) {
+    console.error('[DB] Blocked shrink overwrite', {
+      known: Math.max(_persistedBytes, _readPersistMetaSize()),
+      next: data.length,
+    });
+    return;
   }
 
-  // 신규 DB
+  try {
+    await _saveToIDB(data);
+    _writePersistMeta(data.length);
+    _allowDbShrink = false;
+    return;
+  } catch (err) {
+    console.warn('[DB] IndexedDB save failed, trying localStorage fallback', err);
+  }
+
+  if (_saveDatabaseToLocalStorage(data)) {
+    _writePersistMeta(data.length);
+    _allowDbShrink = false;
+  } else {
+    console.error('[DB] Persist failed');
+  }
+}
+
+function _openFromBytes(buf: Uint8Array): Database {
+  const opened = new SQL!.Database(buf);
+  db = opened;
+  _persistedBytes = Math.max(_persistedBytes, buf.length, _readPersistMetaSize());
+  migrateDatabase();
+  return opened;
+}
+
+export async function initDatabase(): Promise<Database> {
+  if (db) return db;
+
+  if (!SQL) {
+    SQL = await initSqlJs({
+      locateFile: (file: string) => '/' + file
+    });
+  }
+
+  try {
+    if (navigator.storage?.persist) {
+      await navigator.storage.persist();
+    }
+  } catch {}
+
+  _persistedBytes = _readPersistMetaSize();
+  const idbHadData = await _idbHasMain();
+
+  // 1) IndexedDB
+  try {
+    const idbData = await _loadFromIDB();
+    if (idbData && idbData.length > 0) {
+      return _openFromBytes(idbData);
+    }
+  } catch (err) {
+    console.error('[DB] IndexedDB open failed', err);
+  }
+
+  // 2) 구버전 OPFS → IDB 이관 (이후 OPFS 미사용)
+  try {
+    const opfsData = await _loadFromOPFSOnce();
+    if (opfsData && opfsData.length > 0) {
+      console.log('[DB] migrating OPFS → IndexedDB', opfsData.length);
+      const opened = _openFromBytes(opfsData);
+      void _saveToIDB(opfsData).then(() => _writePersistMeta(opfsData.length));
+      return opened;
+    }
+  } catch {}
+
+  // 3) 예전 localStorage 백업
+  const lsRaw = localStorage.getItem(DB_NAME);
+  if (lsRaw) {
+    const buf = _decodeLocalStorageDb(lsRaw);
+    if (buf && buf.length > 0) {
+      try {
+        const opened = _openFromBytes(buf);
+        void _persistAll(buf);
+        return opened;
+      } catch (err) {
+        console.error('[DB] localStorage DB open failed', err);
+      }
+    }
+  }
+
+  if (idbHadData) {
+    throw new Error(
+      '저장된 입실 데이터베이스를 열 수 없습니다. 앱을 다시 열어주세요.'
+    );
+  }
+
+  _allowDbShrink = true;
   db = new SQL.Database();
   createTables();
   return db;
 }
 
-// ── Debounced save (고빈도 쓰기 코일레센스) ──
-let _saveDebouncedTimer: ReturnType<typeof setTimeout> | null = null;
-function saveDatabaseDebounced() {
+export function saveDatabaseDebounced() {
   if (_saveDebouncedTimer) clearTimeout(_saveDebouncedTimer);
   _saveDebouncedTimer = setTimeout(() => {
-    saveDatabase();
     _saveDebouncedTimer = null;
-  }, 500);
+    saveDatabase();
+  }, SAVE_DEBOUNCE_MS);
 }
 
-// 페이지 닫힐 때: pending 저장을 동기 localStorage로 즉시 flush (안전망)
+/** 앱 숨김 시 pending 저장 flush */
+export function flushDatabaseSync() {
+  if (_saveDebouncedTimer) {
+    clearTimeout(_saveDebouncedTimer);
+    _saveDebouncedTimer = null;
+  }
+  if (!db) return;
+  try {
+    const data = db.export();
+    if (_shouldBlockShrink(data.length)) return;
+    _writePersistMeta(data.length);
+    void _saveToIDB(data).catch((err) => console.warn('[DB] flush IDB failed', err));
+  } catch (err) {
+    console.warn('[DB] flushDatabaseSync failed', err);
+  }
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    if (_saveDebouncedTimer) {
-      clearTimeout(_saveDebouncedTimer);
-      _saveDebouncedTimer = null;
-    }
-    // IndexedDB는 비동기라 beforeunload에서 완료 보장 불가 → localStorage 동기 저장
-    if (db) {
-      _saveDatabaseToLocalStorage(db.export());
-    }
+  const onHide = () => flushDatabaseSync();
+  window.addEventListener('pagehide', onHide);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') onHide();
   });
 }
 
-// ── saveDatabase: IndexedDB에 비동기 저장 (메인 스레드 블로킹 없음) ──
 export function saveDatabase() {
   if (!db) return;
-  const data = db.export();
-  _saveToIDB(data).catch(err => {
-    // IndexedDB 실패 시(사생활 보호 모드 등) localStorage로 폴백
-    console.warn('[DB] IndexedDB save failed, falling back to localStorage:', err);
-    _saveDatabaseToLocalStorage(data);
-  });
+  _persistRequested = true;
+  if (_persistScheduled) return;
+  _persistScheduled = true;
+  _saveChain = _saveChain
+    .then(async () => {
+      try {
+        while (_persistRequested && db) {
+          _persistRequested = false;
+          await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          if (!db) return;
+          const data = db.export();
+          await _persistAll(data);
+        }
+      } finally {
+        _persistScheduled = false;
+        if (_persistRequested) saveDatabase();
+      }
+    })
+    .catch((err) => {
+      console.warn('[DB] save chain error', err);
+    });
+}
+
+export async function saveDatabaseAsync(): Promise<void> {
+  if (!db) return;
+  if (_saveDebouncedTimer) {
+    clearTimeout(_saveDebouncedTimer);
+    _saveDebouncedTimer = null;
+  }
+  saveDatabase();
+  await _saveChain;
+}
+
+export function allowDatabaseShrink(): void {
+  _allowDbShrink = true;
 }
 
 // Migrate existing database schema
@@ -350,6 +785,10 @@ function migrateDatabase() {
     try {
       db.run(`ALTER TABLE rental_transactions ADD COLUMN return_completed INTEGER DEFAULT 0`);
       console.log('Added return_completed column to rental_transactions');
+    } catch (e) {}
+    try {
+      db.run(`ALTER TABLE rental_transactions ADD COLUMN quantity INTEGER DEFAULT 1`);
+      console.log('Added quantity column to rental_transactions');
     } catch (e) {}
     
     // expenses
@@ -997,6 +1436,7 @@ function migrateDatabase() {
       db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_business_day ON scan_logs(business_day)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_scan_logs_scan_time ON scan_logs(scan_time)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_additional_fee_events_business_day ON additional_fee_events(business_day)`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_additional_fee_events_locker_log_id ON additional_fee_events(locker_log_id)`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_rental_transactions_business_day ON rental_transactions(business_day)`);
       console.log('Created performance indexes (Step 28)');
     } catch (e) {
@@ -1015,7 +1455,7 @@ function migrateDatabase() {
         // VACUUM 실패해도 계속 진행
       }
     }
-    saveDatabase();
+    // 저장은 마이그레이션 끝에서 1회만 (대용량 DB에서 부팅 이중 export 방지)
 
     // Step 29: 직원관리 테이블 추가 (staff, staff_work_logs, staff_ratings)
     try {
@@ -1088,6 +1528,54 @@ function migrateDatabase() {
       console.log('Added hourly_rate column to staff_work_logs (Step 32)');
     } catch (e) { /* 이미 존재하면 무시 */ }
 
+    // Step 33: 장기투숙 필드
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN is_long_term INTEGER DEFAULT 0`);
+      console.log('Added is_long_term column to locker_logs (Step 33)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN planned_checkout_at TEXT`);
+      console.log('Added planned_checkout_at column to locker_logs (Step 33)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN long_term_daily_fee INTEGER DEFAULT 0`);
+      console.log('Added long_term_daily_fee column to locker_logs (Step 33)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN long_term_discount INTEGER DEFAULT 0`);
+      console.log('Added long_term_discount column to locker_logs (Step 33)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN long_term_days INTEGER DEFAULT 0`);
+      console.log('Added long_term_days column to locker_logs (Step 33)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
+    // Step 34: 추가요금 할인액 (수정저장 후 재오픈·퇴실 시 반영)
+    try {
+      db.run(`ALTER TABLE locker_logs ADD COLUMN additional_fee_discount INTEGER DEFAULT 0`);
+      console.log('Added additional_fee_discount column to locker_logs (Step 34)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
+    // Step 35: 자동 백업 후에도 매출리포트용 일별 집계 스냅샷
+    db.run(`
+      CREATE TABLE IF NOT EXISTS report_daily_snapshots (
+        business_day TEXT PRIMARY KEY,
+        total_visitors INTEGER NOT NULL DEFAULT 0,
+        total_sales INTEGER NOT NULL DEFAULT 0,
+        cancellations INTEGER NOT NULL DEFAULT 0,
+        total_discount INTEGER NOT NULL DEFAULT 0,
+        foreigner_count INTEGER NOT NULL DEFAULT 0,
+        foreigner_sales INTEGER NOT NULL DEFAULT 0,
+        day_visitors INTEGER NOT NULL DEFAULT 0,
+        night_visitors INTEGER NOT NULL DEFAULT 0,
+        actual_visitors INTEGER NOT NULL DEFAULT 0,
+        cancelled_visitors INTEGER NOT NULL DEFAULT 0,
+        free_visitors INTEGER NOT NULL DEFAULT 0,
+        archived_at TEXT NOT NULL
+      )
+    `);
+    console.log('Ensured report_daily_snapshots table (Step 35)');
+
     saveDatabase();
 
   } catch (error) {
@@ -1136,7 +1624,13 @@ function createTables() {
       refund_time TEXT,
       refund_method TEXT DEFAULT 'cash',
       is_outing INTEGER DEFAULT 0,
-      is_staff INTEGER DEFAULT 0
+      is_staff INTEGER DEFAULT 0,
+      is_long_term INTEGER DEFAULT 0,
+      planned_checkout_at TEXT,
+      long_term_daily_fee INTEGER DEFAULT 0,
+      long_term_discount INTEGER DEFAULT 0,
+      long_term_days INTEGER DEFAULT 0,
+      additional_fee_discount INTEGER DEFAULT 0
     )
   `);
 
@@ -1152,6 +1646,24 @@ function createTables() {
       foreigner_sales INTEGER NOT NULL DEFAULT 0,
       day_visitors INTEGER NOT NULL DEFAULT 0,
       night_visitors INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS report_daily_snapshots (
+      business_day TEXT PRIMARY KEY,
+      total_visitors INTEGER NOT NULL DEFAULT 0,
+      total_sales INTEGER NOT NULL DEFAULT 0,
+      cancellations INTEGER NOT NULL DEFAULT 0,
+      total_discount INTEGER NOT NULL DEFAULT 0,
+      foreigner_count INTEGER NOT NULL DEFAULT 0,
+      foreigner_sales INTEGER NOT NULL DEFAULT 0,
+      day_visitors INTEGER NOT NULL DEFAULT 0,
+      night_visitors INTEGER NOT NULL DEFAULT 0,
+      actual_visitors INTEGER NOT NULL DEFAULT 0,
+      cancelled_visitors INTEGER NOT NULL DEFAULT 0,
+      free_visitors INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT NOT NULL
     )
   `);
 
@@ -1228,6 +1740,7 @@ function createTables() {
       deposit_status TEXT NOT NULL CHECK(deposit_status IN ('received', 'refunded', 'forfeited', 'none')),
       revenue INTEGER NOT NULL DEFAULT 0,
       return_completed INTEGER DEFAULT 0,
+      quantity INTEGER DEFAULT 1,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -1381,6 +1894,7 @@ export function forceRegenerateDatabase() {
   
   try {
     console.log('[Force Regenerate] Starting database regeneration...');
+    allowDatabaseShrink();
     
     // Drop all existing tables
     const tables = ['locker_logs', 'locker_daily_summaries', 'locker_groups', 
@@ -1446,6 +1960,11 @@ export function createEntry(entry: {
   isCashReceipt?: boolean;  // 현금영수증 발행 여부
   additionalFeePaymentMethod?: string;  // 추가요금 결제방식
   isStaff?: boolean;  // 직원 입실 여부
+  isLongTerm?: boolean;  // 장기투숙 여부
+  plannedCheckoutAt?: string | null;  // 장기투숙 예정 퇴실 시각 (ISO)
+  longTermDailyFee?: number;  // 1일 입장료
+  longTermDiscount?: number;  // 장기투숙 할인
+  longTermDays?: number;  // 투숙 일수
 }): string {
   if (!db) throw new Error('Database not initialized');
 
@@ -1460,8 +1979,9 @@ export function createEntry(entry: {
     `INSERT INTO locker_logs 
     (id, locker_number, entry_time, business_day, time_type, base_price, 
      option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method, is_staff)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method, is_staff,
+     is_long_term, planned_checkout_at, long_term_daily_fee, long_term_discount, long_term_days)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -1484,7 +2004,12 @@ export function createEntry(entry: {
       entry.prepaidAdditionalFee || 0,
       entry.isCashReceipt ? 1 : 0,
       entry.additionalFeePaymentMethod || null,
-      entry.isStaff ? 1 : 0
+      entry.isStaff ? 1 : 0,
+      entry.isLongTerm ? 1 : 0,
+      entry.plannedCheckoutAt || null,
+      entry.longTermDailyFee || 0,
+      entry.longTermDiscount || 0,
+      entry.longTermDays || 0,
     ]
   );
 
@@ -1584,6 +2109,26 @@ export function updateEntry(id: string, updates: any) {
     sets.push('is_staff = ?');
     values.push(updates.isStaff ? 1 : 0);
   }
+  if (updates.isLongTerm !== undefined) {
+    sets.push('is_long_term = ?');
+    values.push(updates.isLongTerm ? 1 : 0);
+  }
+  if (updates.plannedCheckoutAt !== undefined) {
+    sets.push('planned_checkout_at = ?');
+    values.push(updates.plannedCheckoutAt || null);
+  }
+  if (updates.longTermDailyFee !== undefined) {
+    sets.push('long_term_daily_fee = ?');
+    values.push(updates.longTermDailyFee || 0);
+  }
+  if (updates.longTermDiscount !== undefined) {
+    sets.push('long_term_discount = ?');
+    values.push(updates.longTermDiscount || 0);
+  }
+  if (updates.longTermDays !== undefined) {
+    sets.push('long_term_days = ?');
+    values.push(updates.longTermDays || 0);
+  }
   if (updates.refundAmount !== undefined) {
     sets.push('refund_amount = ?');
     values.push(updates.refundAmount || 0);
@@ -1621,6 +2166,102 @@ export function updateEntry(id: string, updates: any) {
 
     saveDatabaseDebounced();
   }
+}
+
+/** 사용 중 락커의 입실시각 수정 (영업일·시간대·기본요금 재계산) */
+export function updateEntryTime(
+  id: string,
+  newEntryTime: Date
+): {
+  success: boolean;
+  message: string;
+  newEntryTime?: string;
+  newBusinessDay?: string;
+  newTimeType?: '주간' | '야간';
+  newBasePrice?: number;
+  oldEntryTime?: string;
+} {
+  if (!db) throw new Error('Database not initialized');
+  const now = new Date();
+  if (Number.isNaN(newEntryTime.getTime())) {
+    return { success: false, message: '유효하지 않은 입실시간입니다.' };
+  }
+  if (newEntryTime.getTime() > now.getTime() + 30_000) {
+    return { success: false, message: '입실시간을 미래로 설정할 수 없습니다.' };
+  }
+  const result = db.exec(`SELECT * FROM locker_logs WHERE id = ?`, [id]);
+  if (result.length === 0 || result[0].values.length === 0) {
+    return { success: false, message: '입실 기록을 찾을 수 없습니다.' };
+  }
+  const entry = rowsToObjects(result[0])[0];
+  if (entry.status !== 'in_use') {
+    return { success: false, message: '사용 중인 락커만 입실시간을 수정할 수 있습니다.' };
+  }
+  if (entry.parentLocker) {
+    return { success: false, message: '묶인 자식 락커는 부모 락커에서 입실시간을 수정하세요.' };
+  }
+  const settings = getSettings();
+  const businessDayStartHour = settings.businessDayStartHour ?? 10;
+  const dayPrice = settings.dayPrice ?? 10000;
+  const nightPrice = settings.nightPrice ?? 15000;
+  const oldEntryTime = entry.entryTime as string;
+  const oldBusinessDay = entry.businessDay as string;
+  const newEntryTimeISO = newEntryTime.toISOString();
+  const newBusinessDay = getBusinessDay(newEntryTime, businessDayStartHour);
+  const newTimeType = getTimeTypeWithSettings(newEntryTime);
+  const newBasePrice = getBasePrice(newTimeType, dayPrice, nightPrice);
+  const oldDate = new Date(oldEntryTime);
+  if (
+    !Number.isNaN(oldDate.getTime()) &&
+    oldDate.getFullYear() === newEntryTime.getFullYear() &&
+    oldDate.getMonth() === newEntryTime.getMonth() &&
+    oldDate.getDate() === newEntryTime.getDate() &&
+    oldDate.getHours() === newEntryTime.getHours() &&
+    oldDate.getMinutes() === newEntryTime.getMinutes()
+  ) {
+    return {
+      success: true,
+      message: '입실시간이 동일합니다.',
+      newEntryTime: oldEntryTime,
+      newBusinessDay: oldBusinessDay,
+      newTimeType: entry.timeType,
+      newBasePrice: entry.basePrice,
+      oldEntryTime,
+    };
+  }
+  db.run(
+    `UPDATE locker_logs
+     SET entry_time = ?,
+         business_day = ?,
+         time_type = ?,
+         base_price = ?,
+         additional_fee_paid = 0,
+         additional_fee_paid_amount = 0
+     WHERE id = ? AND status = 'in_use'`,
+    [newEntryTimeISO, newBusinessDay, newTimeType, newBasePrice, id]
+  );
+  db.run(
+    `UPDATE locker_logs
+     SET entry_time = ?,
+         business_day = ?,
+         time_type = ?
+     WHERE parent_locker = ? AND status = 'in_use'`,
+    [newEntryTimeISO, newBusinessDay, newTimeType, entry.lockerNumber]
+  );
+  updateDailySummary(oldBusinessDay);
+  if (newBusinessDay !== oldBusinessDay) {
+    updateDailySummary(newBusinessDay);
+  }
+  saveDatabaseDebounced();
+  return {
+    success: true,
+    message: '입실시간이 수정되었습니다.',
+    newEntryTime: newEntryTimeISO,
+    newBusinessDay,
+    newTimeType,
+    newBasePrice,
+    oldEntryTime,
+  };
 }
 
 // 퇴실 취소 (퇴실 처리된 락카를 다시 사용 중 상태로 복구)
@@ -2791,7 +3432,18 @@ export function updateDailySummary(businessDay: string) {
       COUNT(CASE WHEN (is_staff IS NULL OR is_staff = 0) THEN 1 END) as total_visitors,
       COALESCE(SUM(CASE WHEN status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) THEN final_price - COALESCE(refund_amount, 0) ELSE 0 END), 0) as total_sales,
       COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancellations,
-      COALESCE(SUM(CASE WHEN option_type IN ('discount', 'custom') AND status != 'cancelled' THEN option_amount ELSE 0 END), 0) as total_discount,
+      COALESCE(SUM(
+        CASE
+          WHEN status = 'cancelled' THEN 0
+          WHEN option_type = 'discount' THEN COALESCE(option_amount, 0)
+          WHEN option_type = 'custom' AND COALESCE(option_amount, 0) < 0 THEN -option_amount
+          WHEN option_type = 'direct_price' AND COALESCE(option_amount, 0) < base_price
+            THEN base_price - option_amount
+          ELSE 0
+        END
+      ), 0) + COALESCE(SUM(
+        CASE WHEN status != 'cancelled' THEN COALESCE(long_term_discount, 0) ELSE 0 END
+      ), 0) as total_discount,
       COUNT(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as foreigner_count,
       COALESCE(SUM(CASE WHEN option_type = 'foreigner' AND status != 'cancelled' AND (deferred_payment IS NULL OR deferred_payment = 0) AND (is_staff IS NULL OR is_staff = 0) THEN final_price - COALESCE(refund_amount, 0) ELSE 0 END), 0) as foreigner_sales,
       COUNT(CASE WHEN time_type = '주간' AND status != 'cancelled' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as day_visitors,
@@ -2803,12 +3455,14 @@ export function updateDailySummary(businessDay: string) {
 
   if (result.length === 0 || result[0].values.length === 0) return;
 
-  const [totalVisitors, baseSales, cancellations, totalDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
+  const [totalVisitors, baseSales, cancellations, entryDiscount, foreignerCount, foreignerSales, dayVisitors, nightVisitors] = result[0].values[0];
 
   // Get additional fee events for this business day (fees recorded at checkout time)
   // 참고: 이것은 퇴실 시 발생하는 추가요금이며, 입실 시 선지급금과는 별개임
   const additionalFeeResult = db.exec(
-    `SELECT COALESCE(SUM(fee_amount), 0) as additional_fee_total
+    `SELECT
+       COALESCE(SUM(fee_amount), 0) as additional_fee_total,
+       COALESCE(SUM(COALESCE(discount_amount, 0)), 0) as additional_fee_discount
      FROM additional_fee_events
      WHERE business_day = ?`,
     [businessDay]
@@ -2817,9 +3471,13 @@ export function updateDailySummary(businessDay: string) {
   const additionalFeeTotal = additionalFeeResult.length > 0 && additionalFeeResult[0].values.length > 0 
     ? additionalFeeResult[0].values[0][0] 
     : 0;
+  const additionalFeeDiscount = additionalFeeResult.length > 0 && additionalFeeResult[0].values.length > 0
+    ? (additionalFeeResult[0].values[0][1] as number)
+    : 0;
 
   // Total sales = base sales from locker_logs (선지급금 포함) + additional fees from checkout time
   const totalSales = (baseSales as number) + (additionalFeeTotal as number);
+  const totalDiscount = (entryDiscount as number) + additionalFeeDiscount;
 
   // Insert or update
   db.run(
@@ -2843,13 +3501,19 @@ export function updateDailySummary(businessDay: string) {
 export function getAllDailySummaries() {
   if (!db) throw new Error('Database not initialized');
 
+  const cols = _snapshotSummaryColumns();
   const result = db.exec(
-    'SELECT * FROM locker_daily_summaries ORDER BY business_day DESC'
+    `SELECT ${cols} FROM locker_daily_summaries ORDER BY business_day DESC`
   );
 
-  if (result.length === 0) return [];
+  const live = result.length === 0 ? [] : rowsToObjects(result[0]);
 
-  return rowsToObjects(result[0]);
+  const snapResult = db.exec(
+    `SELECT ${cols} FROM report_daily_snapshots ORDER BY business_day DESC`
+  );
+  const snapshots = snapResult.length === 0 ? [] : rowsToObjects(snapResult[0]);
+
+  return _mergeDailySummariesByMonth(live, snapshots).reverse();
 }
 
 // 진단 함수: 데이터베이스 상태 확인
@@ -2932,23 +3596,293 @@ export function debugDatabaseStatus() {
 }
 
 // Get daily summaries for a specific year-month (YYYY-MM)
+/** 자동 백업으로 삭제된 영업일은 report_daily_snapshots에서 보조 */
+function _snapshotSummaryColumns(): string {
+  return `business_day, total_visitors, total_sales, cancellations, total_discount,
+    foreigner_count, foreigner_sales, day_visitors, night_visitors`;
+}
+
+function _mergeDailySummariesByMonth(
+  liveRows: any[],
+  snapshotRows: any[]
+): any[] {
+  const liveDays = new Set(liveRows.map((r) => r.businessDay));
+  const merged = [...liveRows];
+  for (const row of snapshotRows) {
+    if (!liveDays.has(row.businessDay)) {
+      merged.push(row);
+    }
+  }
+  merged.sort((a, b) => String(a.businessDay).localeCompare(String(b.businessDay)));
+  return merged;
+}
+
+export function snapshotReportDailyThrough(throughDate: string): number {
+  if (!db) throw new Error('Database not initialized');
+  if (!_isBusinessDay(throughDate)) {
+    throw new Error('날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)');
+  }
+
+  const daysResult = db.exec(
+    `SELECT DISTINCT business_day FROM (
+       SELECT business_day FROM locker_daily_summaries
+         WHERE business_day <= ? AND business_day IS NOT NULL AND business_day != ''
+       UNION
+       SELECT business_day FROM locker_logs
+         WHERE business_day <= ? AND business_day IS NOT NULL AND business_day != '' AND status != 'in_use'
+     )
+     ORDER BY business_day ASC`,
+    [throughDate, throughDate]
+  );
+
+  if (daysResult.length === 0 || daysResult[0].values.length === 0) {
+    return 0;
+  }
+
+  const archivedAt = new Date().toISOString();
+  let count = 0;
+
+  for (const row of daysResult[0].values) {
+    const businessDay = String(row[0]);
+    try {
+      updateDailySummary(businessDay);
+    } catch {
+      // 집계 실패 시 기존 summary·로그 기준으로 계속
+    }
+
+    const summaryResult = db.exec(
+      `SELECT total_visitors, total_sales, cancellations, total_discount,
+              foreigner_count, foreigner_sales, day_visitors, night_visitors
+       FROM locker_daily_summaries WHERE business_day = ?`,
+      [businessDay]
+    );
+
+    let totalVisitors = 0;
+    let totalSales = 0;
+    let cancellations = 0;
+    let totalDiscount = 0;
+    let foreignerCount = 0;
+    let foreignerSales = 0;
+    let dayVisitors = 0;
+    let nightVisitors = 0;
+
+    if (summaryResult.length > 0 && summaryResult[0].values.length > 0) {
+      [
+        totalVisitors,
+        totalSales,
+        cancellations,
+        totalDiscount,
+        foreignerCount,
+        foreignerSales,
+        dayVisitors,
+        nightVisitors,
+      ] = summaryResult[0].values[0].map((v) => Number(v) || 0);
+    }
+
+    const visitorResult = db.exec(
+      `SELECT
+         COUNT(CASE WHEN (is_staff IS NULL OR is_staff = 0) THEN 1 END) as total_visitors,
+         COUNT(CASE WHEN cancelled = 0 AND (option_type IS NULL OR option_type != 'free') AND parent_locker IS NULL AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as actual_visitors,
+         COUNT(CASE WHEN cancelled = 1 THEN 1 END) as cancelled_visitors,
+         COUNT(CASE WHEN cancelled = 0 AND option_type = 'free' AND (is_staff IS NULL OR is_staff = 0) THEN 1 END) as free_visitors
+       FROM locker_logs
+       WHERE business_day = ? AND parent_locker IS NULL`,
+      [businessDay]
+    );
+
+    let actualVisitors = 0;
+    let cancelledVisitors = 0;
+    let freeVisitors = 0;
+    if (visitorResult.length > 0 && visitorResult[0].values.length > 0) {
+      const [tv, av, cv, fv] = visitorResult[0].values[0].map((v) => Number(v) || 0);
+      if (tv > 0) totalVisitors = tv;
+      actualVisitors = av;
+      cancelledVisitors = cv;
+      freeVisitors = fv;
+    }
+
+    db.run(
+      `INSERT INTO report_daily_snapshots
+       (business_day, total_visitors, total_sales, cancellations, total_discount,
+        foreigner_count, foreigner_sales, day_visitors, night_visitors,
+        actual_visitors, cancelled_visitors, free_visitors, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(business_day) DO UPDATE SET
+         total_visitors = excluded.total_visitors,
+         total_sales = excluded.total_sales,
+         cancellations = excluded.cancellations,
+         total_discount = excluded.total_discount,
+         foreigner_count = excluded.foreigner_count,
+         foreigner_sales = excluded.foreigner_sales,
+         day_visitors = excluded.day_visitors,
+         night_visitors = excluded.night_visitors,
+         actual_visitors = excluded.actual_visitors,
+         cancelled_visitors = excluded.cancelled_visitors,
+         free_visitors = excluded.free_visitors,
+         archived_at = excluded.archived_at`,
+      [
+        businessDay,
+        totalVisitors,
+        totalSales,
+        cancellations,
+        totalDiscount,
+        foreignerCount,
+        foreignerSales,
+        dayVisitors,
+        nightVisitors,
+        actualVisitors,
+        cancelledVisitors,
+        freeVisitors,
+        archivedAt,
+      ]
+    );
+    count++;
+  }
+
+  if (count > 0) {
+    saveDatabase();
+  }
+  return count;
+}
+
 export function getDailySummariesByMonth(yearMonth: string) {
   if (!db) throw new Error('Database not initialized');
 
+  const cols = _snapshotSummaryColumns();
   const result = db.exec(
-    `SELECT * FROM locker_daily_summaries 
+    `SELECT ${cols} FROM locker_daily_summaries 
      WHERE business_day LIKE ?
      ORDER BY business_day ASC`,
     [yearMonth + '%']
   );
 
-  console.log(`[getDailySummariesByMonth] 쿼리: ${yearMonth}%, 결과 rows:`, result.length > 0 ? result[0].values?.length : 0);
+  const live =
+    result.length === 0 ? [] : rowsToObjects(result[0]);
 
-  if (result.length === 0) return [];
+  const snapResult = db.exec(
+    `SELECT ${cols} FROM report_daily_snapshots
+     WHERE business_day LIKE ?
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+  const snapshots =
+    snapResult.length === 0 ? [] : rowsToObjects(snapResult[0]);
 
-  const data = rowsToObjects(result[0]);
-  console.log(`[getDailySummariesByMonth] 변환 후 데이터:`, data.length, '건', data.slice(0, 3));
-  return data;
+  return _mergeDailySummariesByMonth(live, snapshots);
+}
+
+/** 월별 입실할인 / 추가할인 합계 (원본 로그·이벤트 기준, 항상 최신) */
+export function getDiscountTotalsByMonth(yearMonth: string): {
+  entryDiscount: number;
+  additionalDiscount: number;
+  totalDiscount: number;
+} {
+  if (!db) throw new Error('Database not initialized');
+
+  const entryResult = db.exec(
+    `SELECT COALESCE(SUM(
+        CASE
+          WHEN option_type = 'discount' THEN COALESCE(option_amount, 0)
+          WHEN option_type = 'custom' AND COALESCE(option_amount, 0) < 0 THEN -option_amount
+          WHEN option_type = 'direct_price' AND COALESCE(option_amount, 0) < base_price
+            THEN base_price - option_amount
+          ELSE 0
+        END
+      ), 0) + COALESCE(SUM(COALESCE(long_term_discount, 0)), 0) as entry_discount
+     FROM locker_logs
+     WHERE business_day LIKE ? AND status != 'cancelled'`,
+    [yearMonth + '%']
+  );
+
+  const additionalResult = db.exec(
+    `SELECT COALESCE(SUM(COALESCE(discount_amount, 0)), 0) as additional_discount
+     FROM additional_fee_events
+     WHERE business_day LIKE ?`,
+    [yearMonth + '%']
+  );
+
+  const entryDiscount =
+    entryResult.length > 0 && entryResult[0].values.length > 0
+      ? Number(entryResult[0].values[0][0]) || 0
+      : 0;
+  const additionalDiscount =
+    additionalResult.length > 0 && additionalResult[0].values.length > 0
+      ? Number(additionalResult[0].values[0][0]) || 0
+      : 0;
+
+  return {
+    entryDiscount,
+    additionalDiscount,
+    totalDiscount: entryDiscount + additionalDiscount,
+  };
+}
+
+/** 월별 일 단위 입실할인 / 추가할인 내역 */
+export function getDailyDiscountBreakdownByMonth(yearMonth: string): Array<{
+  businessDay: string;
+  entryDiscount: number;
+  additionalDiscount: number;
+  totalDiscount: number;
+}> {
+  if (!db) throw new Error('Database not initialized');
+
+  const entryResult = db.exec(
+    `SELECT business_day,
+       COALESCE(SUM(
+         CASE
+           WHEN option_type = 'discount' THEN COALESCE(option_amount, 0)
+           WHEN option_type = 'custom' AND COALESCE(option_amount, 0) < 0 THEN -option_amount
+           WHEN option_type = 'direct_price' AND COALESCE(option_amount, 0) < base_price
+             THEN base_price - option_amount
+           ELSE 0
+         END
+       ), 0) + COALESCE(SUM(COALESCE(long_term_discount, 0)), 0) as entry_discount
+     FROM locker_logs
+     WHERE business_day LIKE ? AND status != 'cancelled'
+     GROUP BY business_day`,
+    [yearMonth + '%']
+  );
+
+  const additionalResult = db.exec(
+    `SELECT business_day,
+       COALESCE(SUM(COALESCE(discount_amount, 0)), 0) as additional_discount
+     FROM additional_fee_events
+     WHERE business_day LIKE ?
+     GROUP BY business_day`,
+    [yearMonth + '%']
+  );
+
+  const map = new Map<string, { entryDiscount: number; additionalDiscount: number }>();
+
+  if (entryResult.length > 0) {
+    for (const row of entryResult[0].values) {
+      const day = String(row[0]);
+      const entry = Number(row[1]) || 0;
+      const prev = map.get(day) || { entryDiscount: 0, additionalDiscount: 0 };
+      prev.entryDiscount = entry;
+      map.set(day, prev);
+    }
+  }
+
+  if (additionalResult.length > 0) {
+    for (const row of additionalResult[0].values) {
+      const day = String(row[0]);
+      const additional = Number(row[1]) || 0;
+      const prev = map.get(day) || { entryDiscount: 0, additionalDiscount: 0 };
+      prev.additionalDiscount = additional;
+      map.set(day, prev);
+    }
+  }
+
+  return Array.from(map.entries())
+    .map(([businessDay, v]) => ({
+      businessDay,
+      entryDiscount: v.entryDiscount,
+      additionalDiscount: v.additionalDiscount,
+      totalDiscount: v.entryDiscount + v.additionalDiscount,
+    }))
+    .filter((d) => d.totalDiscount > 0)
+    .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
 }
 
 // Get locker logs by business day for hourly analysis
@@ -2985,9 +3919,26 @@ export function getVisitorStatsByMonth(yearMonth: string) {
     [yearMonth + '%']
   );
 
-  if (result.length === 0) return [];
+  const live = result.length === 0 ? [] : rowsToObjects(result[0]);
+  const liveDays = new Set(live.map((v) => v.businessDay));
 
-  return rowsToObjects(result[0]);
+  const snapResult = db.exec(
+    `SELECT business_day, total_visitors, actual_visitors, cancelled_visitors, free_visitors
+     FROM report_daily_snapshots
+     WHERE business_day LIKE ?
+     ORDER BY business_day ASC`,
+    [yearMonth + '%']
+  );
+  const snapshots = snapResult.length === 0 ? [] : rowsToObjects(snapResult[0]);
+
+  const merged = [...live];
+  for (const row of snapshots) {
+    if (!liveDays.has(row.businessDay)) {
+      merged.push(row);
+    }
+  }
+  merged.sort((a, b) => String(a.businessDay).localeCompare(String(b.businessDay)));
+  return merged;
 }
 
 // Get daily payment breakdown by month (cash, card, transfer)
@@ -3144,7 +4095,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
       }
       
       // Convert boolean fields
-      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee' || col === 'is_cash_receipt' || col === 'is_outing' || col === 'is_staff') {
+      if (col === 'cancelled' || col === 'deferred_payment' || col === 'no_additional_fee' || col === 'is_cash_receipt' || col === 'is_outing' || col === 'is_staff' || col === 'is_long_term') {
         value = value === 1;
       }
       
@@ -3156,7 +4107,7 @@ function rowsToObjects(result: { columns: string[]; values: any[][] }): any[] {
 
 // Settings operations (using localStorage)
 export function getSettings() {
-  const isV2 = (import.meta as any).env?.VITE_SKIN === 'v2';
+  const skin = (import.meta as any).env?.VITE_SKIN || 'v1';
 
   const baseDefaults = {
     businessDayStartHour: 10,
@@ -3164,9 +4115,26 @@ export function getSettings() {
     nightPrice: 15000,
     discountAmount: 2000,
     foreignerPrice: 25000,
+    foreignerSeparateDayNight: false,
+    foreignerDayPrice: 25000,
+    foreignerNightPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
-    domesticAdditionalFeeMode: 'nextday' as 'nextday' | 'nightstart',
+    domesticAdditionalFeeMode: 'nextday' as 'nextday' | 'nightstart' | 'settlementCycle' | 'stagedHourly' | 'pending4',
+    nightstartFullNightMinHoursBeforeNight: 6,
+    settlementCycleFirstDelayHours: 0,
+    settlementCycleSecondDelayHours: 0,
+    settlementCycleFirstFeeAmount: undefined as number | undefined,
+    settlementCycleSecondFeeAmount: undefined as number | undefined,
+    stagedFirstDelayHours: 3,
+    stagedFirstFeeAmount: undefined as number | undefined,
+    stagedSecondEnabled: true,
+    stagedSecondApplyHour: 0,
+    stagedSecondFeeAmount: undefined as number | undefined,
+    stagedSecondMinHoursBeforeNight: 6,
+    stagedThirdApplyHour: 12,
+    stagedThirdHourOffset: 2,
+    stagedThirdUnitAmount: 1000,
     screenWakeLock: true,
     cardPaymentAppEnabled: false,
     cardPaymentAppPackage: 'com.tossplace.app.release',
@@ -3174,10 +4142,24 @@ export function getSettings() {
     nightStartTime: '19:00',
     enableDiscountOption: true,
     enableForeignerOption: true,
+    enableDirectPriceOption: true,
+    enableStaffOption: true,
+    enableFreeEntryOption: true,
+    enableLongTermOption: true,
     enableCashReceiptVat: false,
     enableCardVat: false,
     outingTimeLimitMinutes: 0,
     outingTimeLimitWeekendMinutes: 0,
+    /** 락카 옵션창 스택 기본값: true면 접기(마지막 선택만 펼침), false면 모두 펼침 */
+    lockerStackDefaultCollapsed: false,
+    /** 자동 아카이브: 오늘 달 포함 N개월만 남기고 이전은 폴더에 백업 후 삭제 */
+    autoArchiveEnabled: false,
+    autoArchiveKeepMonths: 2,
+    cctvAlwaysOn: false,
+    cctvRemoteEnabled: true,
+    cctvNotifyUrl: "https://discordapp.com/api/webhooks/1526625354842771619/9UTDKPU0tIR5gpjJYcUm4Cmb4-Ufi5yKg6nuQy6FseJNbIJdxFenrNdquotTuGUT8DLN",
+    cctvNotifyOnStart: true,
+    cctvFacingMode: "user" as "user" | "environment",
   };
 
   const v2Overrides = {
@@ -3192,7 +4174,19 @@ export function getSettings() {
     cardPaymentAppPackage: 'tosspos://main',
   };
 
-  const defaultSettings = isV2 ? { ...baseDefaults, ...v2Overrides } : baseDefaults;
+  const v3Overrides = {
+    businessDayStartHour: 9,
+    dayStartTime: '06:00',
+    nightStartTime: '18:00',
+    dayPrice: 10000,
+    nightPrice: 13000,
+    domesticAdditionalFeeMode: 'stagedHourly' as const,
+  };
+
+  const defaultSettings =
+    skin === 'v3' ? { ...baseDefaults, ...v3Overrides }
+    : skin === 'v2' ? { ...baseDefaults, ...v2Overrides }
+    : baseDefaults;
 
   const saved = localStorage.getItem('settings');
   if (!saved) return defaultSettings;
@@ -3220,6 +4214,7 @@ export function getTimeTypeWithSettings(date: Date = new Date()): '주간' | '�
 // Data management operations
 export function clearAllData() {
   if (!db) throw new Error('Database not initialized');
+  allowDatabaseShrink();
   
   // Delete all operational data (but keep locker groups, system metadata, and master data like additional_revenue_items)
   db.run('DELETE FROM locker_logs');
@@ -3234,26 +4229,325 @@ export function clearAllData() {
   saveDatabase();
 }
 
-export function deleteOldData(cutoffDate: string) {
+/** YYYY-MM-DD 형식 검사 */
+function _isBusinessDay(date: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date);
+}
+
+function _countSql(sql: string, params: any[] = []): number {
+  if (!db) return 0;
+  try {
+    const r = db.exec(sql, params);
+    if (!r.length || !r[0].values.length) return 0;
+    return Number(r[0].values[0][0] || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function _minmaxBusinessDay(): { oldest: string | null; newest: string | null } {
+  if (!db) return { oldest: null, newest: null };
+  const queries = [
+    `SELECT MIN(business_day), MAX(business_day) FROM locker_logs WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM locker_daily_summaries WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM additional_fee_events WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM rental_transactions WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM expenses WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM closing_days WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(business_day), MAX(business_day) FROM scan_logs WHERE business_day IS NOT NULL AND business_day != ''`,
+    `SELECT MIN(work_date), MAX(work_date) FROM staff_work_logs WHERE work_date IS NOT NULL AND work_date != ''`,
+    `SELECT MIN(rating_date), MAX(rating_date) FROM staff_ratings WHERE rating_date IS NOT NULL AND rating_date != ''`,
+  ];
+  let oldest: string | null = null;
+  let newest: string | null = null;
+  for (const q of queries) {
+    try {
+      const r = db.exec(q);
+      if (!r.length || !r[0].values.length) continue;
+      const lo = r[0].values[0][0] as string | null;
+      const hi = r[0].values[0][1] as string | null;
+      if (lo && (!oldest || lo < oldest)) oldest = lo;
+      if (hi && (!newest || hi > newest)) newest = hi;
+    } catch {
+      /* 테이블 없음 등 */
+    }
+  }
+  return { oldest, newest };
+}
+
+/** 운영 데이터 기간 요약 (설정·마스터 제외) */
+export function getOperationalDateRange(): {
+  oldest: string | null;
+  newest: string | null;
+} {
   if (!db) throw new Error('Database not initialized');
-  
-  // Delete entries older than cutoff date (1 year ago)
-  db.run('DELETE FROM locker_logs WHERE business_day < ?', [cutoffDate]);
-  db.run('DELETE FROM locker_daily_summaries WHERE business_day < ?', [cutoffDate]);
-  
-  saveDatabase();
+  return _minmaxBusinessDay();
 }
 
 export function getOldestEntryDate(): string | null {
+  return getOperationalDateRange().oldest;
+}
+
+/** throughDate(포함)까지 백업·삭제 대상 건수 미리보기. 입실중(in_use)은 삭제 제외 */
+export function previewArchivePurge(throughDate: string): {
+  throughDate: string;
+  oldest: string | null;
+  newest: string | null;
+  counts: Record<string, number>;
+  total: number;
+  protectedInUse: number;
+} {
   if (!db) throw new Error('Database not initialized');
-  
-  const result = db.exec('SELECT MIN(business_day) as oldest FROM locker_logs');
-  
-  if (result.length === 0 || result[0].values.length === 0 || !result[0].values[0][0]) {
-    return null;
+  if (!_isBusinessDay(throughDate)) {
+    throw new Error('날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)');
   }
-  
-  return result[0].values[0][0] as string;
+  const { oldest, newest } = _minmaxBusinessDay();
+  const counts: Record<string, number> = {
+    locker_logs: _countSql(
+      `SELECT COUNT(*) FROM locker_logs WHERE business_day <= ? AND status != 'in_use'`,
+      [throughDate]
+    ),
+    locker_daily_summaries: _countSql(
+      `SELECT COUNT(*) FROM locker_daily_summaries WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    additional_fee_events: _countSql(
+      `SELECT COUNT(*) FROM additional_fee_events WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    rental_transactions: _countSql(
+      `SELECT COUNT(*) FROM rental_transactions WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    expenses: _countSql(
+      `SELECT COUNT(*) FROM expenses WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    closing_days: _countSql(
+      `SELECT COUNT(*) FROM closing_days WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    scan_logs: _countSql(
+      `SELECT COUNT(*) FROM scan_logs WHERE business_day <= ?`,
+      [throughDate]
+    ),
+    staff_work_logs: _countSql(
+      `SELECT COUNT(*) FROM staff_work_logs WHERE work_date <= ?`,
+      [throughDate]
+    ),
+    staff_ratings: _countSql(
+      `SELECT COUNT(*) FROM staff_ratings WHERE rating_date <= ?`,
+      [throughDate]
+    ),
+  };
+  const protectedInUse = _countSql(
+    `SELECT COUNT(*) FROM locker_logs WHERE business_day <= ? AND status = 'in_use'`,
+    [throughDate]
+  );
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { throughDate, oldest, newest, counts, total, protectedInUse };
+}
+
+function _exportTableFiltered(tableName: string, whereSql: string, params: any[]): any[] {
+  if (!db) return [];
+  try {
+    const result = db.exec(`SELECT * FROM ${tableName} WHERE ${whereSql}`, params);
+    if (!result.length || !result[0].values.length) return [];
+    const columns = result[0].columns;
+    return result[0].values.map((row: any) => {
+      const obj: any = {};
+      columns.forEach((col, idx) => {
+        obj[col] = row[idx];
+      });
+      return obj;
+    });
+  } catch (error) {
+    console.warn(`Failed to export filtered ${tableName}:`, error);
+    return [];
+  }
+}
+
+function _minDateFromArchiveTables(tables: Record<string, any[]>): string | null {
+  let min: string | null = null;
+  const dateKeys = ['business_day', 'work_date', 'rating_date'];
+  for (const rows of Object.values(tables)) {
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      for (const key of dateKeys) {
+        const value = row?.[key];
+        if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+          if (!min || value < min) min = value;
+        }
+      }
+    }
+  }
+  return min;
+}
+
+/**
+ * throughDate(포함)까지의 운영 데이터만 JSON 백업.
+ * 입실중(in_use) 락커는 백업·삭제 대상에서 제외.
+ * 설정/마스터(락커그룹·요금옵션 등)는 포함하지 않음 — 보관용 아카이브.
+ */
+export function exportArchiveThrough(throughDate: string): {
+  success: boolean;
+  data?: string;
+  error?: string;
+  rowCount?: number;
+  archiveFrom?: string;
+  archiveThrough?: string;
+} {
+  if (!db) return { success: false, error: 'Database not initialized' };
+  if (!_isBusinessDay(throughDate)) {
+    return { success: false, error: '날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)' };
+  }
+
+  try {
+    const exportData: any = {
+      version: '1.0',
+      type: 'archive',
+      archiveThrough: throughDate,
+      archiveFrom: null as string | null,
+      exportDate: new Date().toISOString(),
+      appName: APP_SYSTEM_NAME,
+      tables: {} as Record<string, any[]>,
+    };
+
+    exportData.tables.locker_logs = _exportTableFiltered(
+      'locker_logs',
+      `business_day <= ? AND status != 'in_use'`,
+      [throughDate]
+    );
+    exportData.tables.locker_daily_summaries = _exportTableFiltered(
+      'locker_daily_summaries',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.additional_fee_events = _exportTableFiltered(
+      'additional_fee_events',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.rental_transactions = _exportTableFiltered(
+      'rental_transactions',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.expenses = _exportTableFiltered(
+      'expenses',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.closing_days = _exportTableFiltered(
+      'closing_days',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.scan_logs = _exportTableFiltered(
+      'scan_logs',
+      `business_day <= ?`,
+      [throughDate]
+    );
+    exportData.tables.staff_work_logs = _exportTableFiltered(
+      'staff_work_logs',
+      `work_date <= ?`,
+      [throughDate]
+    );
+    exportData.tables.staff_ratings = _exportTableFiltered(
+      'staff_ratings',
+      `rating_date <= ?`,
+      [throughDate]
+    );
+
+    let rowCount = 0;
+    for (const rows of Object.values(exportData.tables) as any[][]) {
+      rowCount += rows.length;
+    }
+
+    if (rowCount === 0) {
+      return { success: false, error: '해당 기간에 백업할 데이터가 없습니다.', rowCount: 0 };
+    }
+
+    exportData.archiveFrom = _minDateFromArchiveTables(exportData.tables);
+
+    return {
+      success: true,
+      data: JSON.stringify(exportData, null, 2),
+      rowCount,
+      archiveFrom: exportData.archiveFrom || undefined,
+      archiveThrough: throughDate,
+    };
+  } catch (error) {
+    console.error('Error exporting archive:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+/**
+ * throughDate(포함)까지 운영 데이터 삭제 후 VACUUM.
+ * 반드시 exportArchiveThrough 성공·파일 저장 후에 호출할 것.
+ * 입실중(in_use)은 삭제하지 않음.
+ */
+export function purgeDataThrough(throughDate: string): {
+  success: boolean;
+  deleted: number;
+  error?: string;
+} {
+  if (!db) return { success: false, deleted: 0, error: 'Database not initialized' };
+  if (!_isBusinessDay(throughDate)) {
+    return { success: false, deleted: 0, error: '날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)' };
+  }
+
+  try {
+    const preview = previewArchivePurge(throughDate);
+    if (preview.total === 0) {
+      return { success: false, deleted: 0, error: '삭제할 데이터가 없습니다.' };
+    }
+
+    const snapCount = snapshotReportDailyThrough(throughDate);
+    if (snapCount > 0) {
+      console.log(`[purge] 매출리포트용 일별 스냅샷 ${snapCount}건 저장`);
+    }
+
+    allowDatabaseShrink();
+
+    db.run(
+      `DELETE FROM locker_logs WHERE business_day <= ? AND status != 'in_use'`,
+      [throughDate]
+    );
+    db.run(`DELETE FROM locker_daily_summaries WHERE business_day <= ?`, [throughDate]);
+    db.run(`DELETE FROM additional_fee_events WHERE business_day <= ?`, [throughDate]);
+    db.run(`DELETE FROM rental_transactions WHERE business_day <= ?`, [throughDate]);
+    db.run(`DELETE FROM expenses WHERE business_day <= ?`, [throughDate]);
+    db.run(`DELETE FROM closing_days WHERE business_day <= ?`, [throughDate]);
+    db.run(`DELETE FROM scan_logs WHERE business_day <= ?`, [throughDate]);
+    try {
+      db.run(`DELETE FROM staff_work_logs WHERE work_date <= ?`, [throughDate]);
+    } catch {}
+    try {
+      db.run(`DELETE FROM staff_ratings WHERE rating_date <= ?`, [throughDate]);
+    } catch {}
+
+    db.run('VACUUM');
+    saveDatabase();
+
+    return { success: true, deleted: preview.total };
+  } catch (error) {
+    console.error('Error purging archive range:', error);
+    return { success: false, deleted: 0, error: String(error) };
+  }
+}
+
+/** @deprecated 호환용 — purgeDataThrough(하루 전)과 동일하지 않음. cutoff 미만 삭제 */
+export function deleteOldData(cutoffDate: string) {
+  if (!db) throw new Error('Database not initialized');
+  if (!_isBusinessDay(cutoffDate)) throw new Error('Invalid date');
+  // cutoffDate 미만만 삭제 (= throughDate = 전날 개념이 아님). 기존 시그니처 유지
+  const d = new Date(cutoffDate + 'T12:00:00');
+  d.setDate(d.getDate() - 1);
+  const through = d.toISOString().slice(0, 10);
+  const result = purgeDataThrough(through);
+  if (!result.success) throw new Error(result.error || 'deleteOldData failed');
 }
 
 // Test data generation for time-based features
@@ -3261,7 +4555,16 @@ export function createTestData() {
   if (!db) throw new Error('Database not initialized');
   
   const settings = getSettings();
-  const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod } = settings;
+  const {
+    dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice,
+    foreignerSeparateDayNight = false, foreignerDayPrice = foreignerPrice, foreignerNightPrice = foreignerPrice,
+    domesticCheckpointHour, foreignerAdditionalFeePeriod,
+    enableDiscountOption = true, enableForeignerOption = true,
+  } = settings;
+  const resolveForeignerFor = (timeType: string) =>
+    foreignerSeparateDayNight
+      ? (timeType === '주간' ? foreignerDayPrice : foreignerNightPrice)
+      : foreignerPrice;
   
   // Helper function to format date for business day
   const getBusinessDay = (date: Date): string => {
@@ -3294,7 +4597,9 @@ export function createTestData() {
   const usedLockers = new Set<number>();
   
   const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
-  const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
+  const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none'];
+  if (enableDiscountOption) optionTypes.push('discount');
+  if (enableForeignerOption) optionTypes.push('foreigner');
   
   // Helper: Get unused random locker number
   const getUnusedLocker = (): number | null => {
@@ -3342,8 +4647,8 @@ export function createTestData() {
       optionAmount = -discountAmount;
       finalPrice = basePrice - discountAmount;
     } else if (optionType === 'foreigner') {
-      optionAmount = foreignerPrice - basePrice;
-      finalPrice = foreignerPrice;
+      optionAmount = resolveForeignerFor(timeType) - basePrice;
+      finalPrice = resolveForeignerFor(timeType);
     }
     
     const paymentMethod = randomElement(paymentMethods);
@@ -3398,8 +4703,8 @@ export function createTestData() {
       optionAmount = -discountAmount;
       finalPrice = basePrice - discountAmount;
     } else if (optionType === 'foreigner') {
-      optionAmount = foreignerPrice - basePrice;
-      finalPrice = foreignerPrice;
+      optionAmount = resolveForeignerFor(timeType) - basePrice;
+      finalPrice = resolveForeignerFor(timeType);
     }
     
     const paymentMethod = randomElement(paymentMethods);
@@ -3469,8 +4774,8 @@ export function createTestData() {
       optionAmount = -discountAmount;
       finalPrice = basePrice - discountAmount;
     } else if (optionType === 'foreigner') {
-      optionAmount = foreignerPrice - basePrice;
-      finalPrice = foreignerPrice;
+      optionAmount = resolveForeignerFor(timeType) - basePrice;
+      finalPrice = resolveForeignerFor(timeType);
     }
     
     // Random payment method
@@ -3569,8 +4874,8 @@ export function createTestData() {
       optionAmount = -discountAmount;
       finalPrice = basePrice - discountAmount;
     } else if (optionType === 'foreigner') {
-      optionAmount = foreignerPrice - basePrice;
-      finalPrice = foreignerPrice;
+      optionAmount = resolveForeignerFor(timeType) - basePrice;
+      finalPrice = resolveForeignerFor(timeType);
     }
     
     // Random payment method
@@ -3785,14 +5090,45 @@ export function createTestData() {
 }
 
 // Create comprehensive test data with guaranteed same-business-day additional fee
-export async function createAdditionalFeeTestData() {
+export async function createAdditionalFeeTestData(settingsOverride?: any) {
   if (!db) throw new Error('Database not initialized');
   
   return new Promise<boolean>((resolve, reject) => {
     try {
+      if (settingsOverride) {
+        updateSettings(settingsOverride);
+      }
       const settings = getSettings();
-      const { dayPrice, nightPrice, businessDayStartHour, discountAmount, foreignerPrice, domesticCheckpointHour = 1, foreignerAdditionalFeePeriod = 24 } = settings;
-      
+      const {
+        dayPrice,
+        nightPrice,
+        businessDayStartHour,
+        discountAmount,
+        foreignerPrice,
+        foreignerSeparateDayNight = false,
+        foreignerDayPrice = foreignerPrice,
+        foreignerNightPrice = foreignerPrice,
+        domesticCheckpointHour = 1,
+        foreignerAdditionalFeePeriod = 24,
+        enableDiscountOption = true,
+        enableForeignerOption = true,
+        dayStartTime = '07:00',
+        nightStartTime = '19:00',
+        domesticAdditionalFeeMode = 'nextday',
+      } = settings;
+
+      const feeMode =
+        domesticAdditionalFeeMode === 'pending4' ? 'stagedHourly' : domesticAdditionalFeeMode;
+      const nightStartHour = parseInt(String(nightStartTime).split(':')[0], 10) || 19;
+      const settlementCycleOpts = getSettlementCycleOptions(settings as any);
+      const stagedHourlyOpts = getStagedHourlyOptions(settings as any);
+      const nightstartOpts = getNightstartOptions(settings as any);
+      const resolveForeignerFor = (timeType: string) => {
+        if (foreignerSeparateDayNight) {
+          return timeType === '주간' ? foreignerDayPrice : foreignerNightPrice;
+        }
+        return foreignerPrice;
+      };
       // Random helpers
       const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
       const randomElement = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
@@ -3803,13 +5139,38 @@ export async function createAdditionalFeeTestData() {
       db!.run('DELETE FROM locker_logs WHERE locker_number BETWEEN 1 AND 80');
       
       const paymentMethods: Array<'card' | 'cash' | 'transfer'> = ['card', 'cash', 'transfer'];
-      const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none', 'discount', 'foreigner'];
+      const optionTypes: Array<'none' | 'discount' | 'foreigner'> = ['none'];
+      if (enableDiscountOption) optionTypes.push('discount');
+      if (enableForeignerOption) optionTypes.push('foreigner');
       
       let totalGenerated = 0;
       console.log('=== 3일치 랜덤 테스트 데이터 생성 시작 ===');
+      console.log(`📍 추가요금 모드: ${feeMode}, 외국인분리: ${foreignerSeparateDayNight}`);
       
       // Get current business day range
       const now = new Date();
+      const calcFee = (
+        entryTime: Date,
+        timeType: '주간' | '야간',
+        isForeigner: boolean
+      ) =>
+        calculateAdditionalFee(
+          entryTime.toISOString(),
+          timeType,
+          dayPrice,
+          nightPrice,
+          now,
+          isForeigner,
+          resolveForeignerFor(timeType),
+          domesticCheckpointHour,
+          foreignerAdditionalFeePeriod,
+          false,
+          feeMode as any,
+          nightStartHour,
+          settlementCycleOpts,
+          stagedHourlyOpts,
+          nightstartOpts
+        );
       const currentBusinessDay = getBusinessDay(now, businessDayStartHour);
       const { start: currentBusinessDayStart } = getBusinessDayRange(now, businessDayStartHour);
       
@@ -3859,7 +5220,7 @@ export async function createAdditionalFeeTestData() {
           const previousBusinessDayStart = new Date(currentBusinessDayStart.getTime() - 24 * 60 * 60 * 1000);
           
           // 50% 외국인, 50% 내국인
-          const isForeigner = randomBoolean(0.5);
+          const isForeigner = enableForeignerOption && randomBoolean(0.5);
           let entryTime: Date;
           let validEntry = false;
           let attempts = 0;
@@ -3908,22 +5269,12 @@ export async function createAdditionalFeeTestData() {
             const businessDay = getBusinessDay(entryTime, businessDayStartHour);
             const timeType = getTimeTypeWithSettings(entryTime);
             
-            const { additionalFeeCount, additionalFee } = calculateAdditionalFee(
-              entryTime.toISOString(),
-              timeType,
-              dayPrice,
-              nightPrice,
-              now,
-              isForeigner,
-              foreignerPrice,
-              domesticCheckpointHour,
-              foreignerAdditionalFeePeriod
-            );
+            const { additionalFeeCount, additionalFee } = calcFee(entryTime, timeType, isForeigner);
             
             if (additionalFeeCount === 0) {
               validEntry = true;
               
-              const basePrice = isForeigner ? foreignerPrice : (timeType === '주간' ? dayPrice : nightPrice);
+              const basePrice = isForeigner ? resolveForeignerFor(timeType) : (timeType === '주간' ? dayPrice : nightPrice);
               const optionType = isForeigner ? 'foreigner' : 'none';
               const paymentMethod = randomElement(paymentMethods);
               
@@ -3974,7 +5325,7 @@ export async function createAdditionalFeeTestData() {
             attempts++;
             
             // 50% 외국인, 50% 내국인
-            const isForeigner = randomBoolean(0.5);
+            const isForeigner = enableForeignerOption && randomBoolean(0.5);
             optionType = isForeigner ? 'foreigner' : 'none';
             
             if (isForeigner) {
@@ -4011,17 +5362,7 @@ export async function createAdditionalFeeTestData() {
             basePrice = timeType === '주간' ? dayPrice : nightPrice;
             
             // Validate: Must have additional fee
-            const result = calculateAdditionalFee(
-              entryTime.toISOString(),
-              timeType,
-              dayPrice,
-              nightPrice,
-              now,
-              optionType === 'foreigner',
-              foreignerPrice,
-              domesticCheckpointHour,
-              foreignerAdditionalFeePeriod
-            );
+            const result = calcFee(entryTime, timeType, optionType === 'foreigner');
             
             if (result.additionalFee > 0) {
               validEntry = true;
@@ -4197,8 +5538,8 @@ export async function createAdditionalFeeTestData() {
           optionAmount = -discountAmount;
           finalPrice = basePrice - discountAmount;
         } else if (optionType === 'foreigner') {
-          optionAmount = foreignerPrice - basePrice;
-          finalPrice = foreignerPrice;
+          optionAmount = resolveForeignerFor(timeType) - basePrice;
+          finalPrice = resolveForeignerFor(timeType);
         }
         
         const paymentMethod = randomElement(paymentMethods);
@@ -4257,8 +5598,8 @@ export async function createAdditionalFeeTestData() {
             optionAmount = -discountAmount;
             finalPrice = basePrice - discountAmount;
           } else if (optionType === 'foreigner') {
-            optionAmount = foreignerPrice - basePrice;
-            finalPrice = foreignerPrice;
+            optionAmount = resolveForeignerFor(timeType) - basePrice;
+            finalPrice = resolveForeignerFor(timeType);
           }
           
           const paymentMethod = randomElement(paymentMethods);
@@ -4289,6 +5630,47 @@ export async function createAdditionalFeeTestData() {
         console.log(`  ${pastDays === 0 ? '오늘' : pastDays + '일 전'}: ${pastEntries}건 생성`);
       }
       
+      // ===== Mode 3/4: 정산 이전 입실 시나리오 (#3, #4) =====
+      if (feeMode === 'settlementCycle' || feeMode === 'stagedHourly') {
+        const dayStartHour = parseInt(String(dayStartTime).split(':')[0], 10) || 7;
+        if (dayStartHour < businessDayStartHour) {
+          const preSettlement = new Date(currentBusinessDayStart.getTime() - 60 * 60 * 1000);
+          preSettlement.setMinutes(0, 0, 0);
+          if (preSettlement.getTime() < now.getTime()) {
+            for (const [lockerNumber, entryTime, note] of [
+              [3, preSettlement, `${feeMode}검증(정산이전입실)`],
+              [4, new Date(preSettlement.getTime() - 3 * 60 * 60 * 1000), `${feeMode}검증(정산이전입실·장시간)`],
+            ] as Array<[number, Date, string]>) {
+              db!.run(`DELETE FROM locker_logs WHERE locker_number = ? AND status = 'in_use'`, [lockerNumber]);
+              const timeType = getTimeTypeWithSettings(entryTime);
+              const basePrice = timeType === '주간' ? dayPrice : nightPrice;
+              const paymentMethod = randomElement(paymentMethods);
+              const businessDay = getBusinessDay(entryTime, businessDayStartHour);
+              db!.run(
+                `INSERT INTO locker_logs
+                (id, locker_number, entry_time, exit_time, business_day, time_type, base_price,
+                 option_type, option_amount, final_price, status, cancelled, notes, payment_method,
+                 payment_cash, payment_card, payment_transfer, rental_items, additional_fees)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, 0)`,
+                [
+                  generateId(), lockerNumber, entryTime.toISOString(), null, businessDay, timeType,
+                  basePrice, 'none', 0, basePrice, note, paymentMethod,
+                  paymentMethod === 'cash' ? basePrice : 0,
+                  paymentMethod === 'card' ? basePrice : 0,
+                  paymentMethod === 'transfer' ? basePrice : 0,
+                  null,
+                ]
+              );
+              updateDailySummary(businessDay);
+              totalGenerated++;
+              console.log(`  ✅ 락커 #${lockerNumber}: ${note}`);
+            }
+          }
+        } else {
+          console.log(`  ⚠️ 정산 이전 시나리오 생략 (정산 ${businessDayStartHour}시, 주간시작 ${dayStartHour}시)`);
+        }
+      }
+
       saveDatabaseDebounced();
       
       // Verify additional fee pending lockers (in_use with expected fees)
@@ -4450,6 +5832,38 @@ export function getAdditionalFeeEventsByLockerLog(lockerLogId: string) {
     paymentMethod: row[6],
     createdAt: row[7],
   }));
+}
+
+/** 여러 락커 로그의 추가요금 이벤트를 일괄 조회 (N+1 방지) */
+export function getAdditionalFeeEventsForLockerLogs(lockerLogIds: string[]) {
+  if (!db) throw new Error('Database not initialized');
+  if (!lockerLogIds.length) return [] as ReturnType<typeof getAdditionalFeeEventsByLockerLog>;
+
+  const mapRow = (row: any) => ({
+    id: row[0],
+    lockerLogId: row[1] as string,
+    lockerNumber: row[2],
+    checkoutTime: row[3],
+    feeAmount: row[4],
+    businessDay: row[5],
+    paymentMethod: row[6],
+    createdAt: row[7],
+  });
+
+  const all: ReturnType<typeof getAdditionalFeeEventsByLockerLog> = [];
+  const CHUNK = 200;
+  for (let i = 0; i < lockerLogIds.length; i += CHUNK) {
+    const chunk = lockerLogIds.slice(i, i + CHUNK);
+    const placeholders = chunk.map(() => '?').join(',');
+    const result = db.exec(
+      `SELECT * FROM additional_fee_events WHERE locker_log_id IN (${placeholders}) ORDER BY created_at DESC`,
+      chunk
+    );
+    if (result.length > 0 && result[0].values.length > 0) {
+      all.push(...result[0].values.map(mapRow));
+    }
+  }
+  return all;
 }
 
 export function getTotalAdditionalFeesByBusinessDay(businessDay: string): number {
@@ -4719,11 +6133,13 @@ export function createRentalTransaction(rental: {
   paymentTransfer?: number;
   depositStatus: 'received' | 'refunded' | 'forfeited' | 'none';
   revenue: number;
+  quantity?: number;
 }): string {
   if (!db) throw new Error('Database not initialized');
   
   const id = generateId();
   const now = new Date().toISOString();
+  const quantity = Math.max(1, Math.floor(rental.quantity ?? 1));
   
   const rentalTimeStr = rental.rentalTime instanceof Date ? rental.rentalTime.toISOString() : rental.rentalTime;
   const returnTimeStr = rental.returnTime ? (rental.returnTime instanceof Date ? rental.returnTime.toISOString() : rental.returnTime) : null;
@@ -4732,8 +6148,8 @@ export function createRentalTransaction(rental: {
     `INSERT INTO rental_transactions 
      (id, locker_log_id, item_id, item_name, locker_number, rental_time, return_time, business_day,
       rental_fee, deposit_amount, payment_method, payment_cash, payment_card, payment_transfer, 
-      deposit_status, revenue, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      deposit_status, revenue, quantity, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       rental.lockerLogId,
@@ -4751,6 +6167,7 @@ export function createRentalTransaction(rental: {
       rental.paymentTransfer || null,
       rental.depositStatus,
       rental.revenue,
+      quantity,
       now,
       now
     ]
@@ -4770,6 +6187,8 @@ export function updateRentalTransaction(id: string, updates: {
   paymentTransfer?: number;
   revenue?: number;
   returnCompleted?: boolean;
+  rentalFee?: number;
+  quantity?: number;
 }) {
   if (!db) throw new Error('Database not initialized');
   
@@ -4782,7 +6201,7 @@ export function updateRentalTransaction(id: string, updates: {
   
   if (result.length === 0 || result[0].values.length === 0) return;
   
-  const rentalFee = result[0].values[0][0] as number;
+  const currentRentalFee = result[0].values[0][0] as number;
   const depositAmount = result[0].values[0][1] as number;
   const currentDepositStatus = result[0].values[0][2] as string;
   const currentReturnTime = result[0].values[0][3];
@@ -4794,6 +6213,7 @@ export function updateRentalTransaction(id: string, updates: {
   const rentalTime = result[0].values[0][9] as string;
   const itemName = result[0].values[0][10] as string;
   const lockerNumber = result[0].values[0][11] as number;
+  const rentalFee = updates.rentalFee !== undefined ? updates.rentalFee : currentRentalFee;
   
   // Determine final values
   const finalDepositStatus = updates.depositStatus || currentDepositStatus;
@@ -4891,24 +6311,29 @@ export function updateRentalTransaction(id: string, updates: {
   
   // Handle return_completed update
   const returnCompletedValue = updates.returnCompleted !== undefined ? (updates.returnCompleted ? 1 : 0) : null;
+  const quantityValue = updates.quantity !== undefined ? Math.max(1, Math.floor(updates.quantity)) : null;
   
   if (returnCompletedValue !== null) {
     db.run(
       `UPDATE rental_transactions 
        SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
-           payment_cash = ?, payment_card = ?, payment_transfer = ?, return_completed = ?, updated_at = ?
+           payment_cash = ?, payment_card = ?, payment_transfer = ?, return_completed = ?,
+           rental_fee = ?, quantity = COALESCE(?, quantity, 1), updated_at = ?
        WHERE id = ?`,
       [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
-       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, returnCompletedValue, new Date().toISOString(), id]
+       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, returnCompletedValue,
+       rentalFee, quantityValue, new Date().toISOString(), id]
     );
   } else {
     db.run(
       `UPDATE rental_transactions 
        SET deposit_status = ?, revenue = ?, return_time = ?, payment_method = ?, business_day = ?, 
-           payment_cash = ?, payment_card = ?, payment_transfer = ?, updated_at = ?
+           payment_cash = ?, payment_card = ?, payment_transfer = ?,
+           rental_fee = ?, quantity = COALESCE(?, quantity, 1), updated_at = ?
        WHERE id = ?`,
       [finalDepositStatus, revenue, finalReturnTime, finalPaymentMethod, finalBusinessDay, 
-       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer, new Date().toISOString(), id]
+       adjustedPaymentCash, adjustedPaymentCard, adjustedPaymentTransfer,
+       rentalFee, quantityValue, new Date().toISOString(), id]
     );
   }
   
@@ -6662,13 +8087,28 @@ export function updateLockerOuting(logId: string, isOuting: boolean): boolean {
 }
 
 // Update additional_fee_paid status and paid amount for a locker log
-export function updateLockerLogAdditionalFeePaid(logId: string, paid: boolean, paidAmount?: number): boolean {
+export function updateLockerLogAdditionalFeePaid(
+  logId: string,
+  paid: boolean,
+  paidAmount?: number,
+  discountAmount?: number
+): boolean {
   if (!db) throw new Error('Database not initialized');
   
-  if (paidAmount !== undefined) {
+  if (paidAmount !== undefined && discountAmount !== undefined) {
+    db.run(
+      `UPDATE locker_logs SET additional_fee_paid = ?, additional_fee_paid_amount = ?, additional_fee_discount = ? WHERE id = ?`,
+      [paid ? 1 : 0, paidAmount, Math.max(0, discountAmount), logId]
+    );
+  } else if (paidAmount !== undefined) {
     db.run(
       `UPDATE locker_logs SET additional_fee_paid = ?, additional_fee_paid_amount = ? WHERE id = ?`,
       [paid ? 1 : 0, paidAmount, logId]
+    );
+  } else if (discountAmount !== undefined) {
+    db.run(
+      `UPDATE locker_logs SET additional_fee_paid = ?, additional_fee_discount = ? WHERE id = ?`,
+      [paid ? 1 : 0, Math.max(0, discountAmount), logId]
     );
   } else {
     db.run(
@@ -6679,6 +8119,31 @@ export function updateLockerLogAdditionalFeePaid(logId: string, paid: boolean, p
   
   saveDatabaseDebounced();
   return true;
+}
+
+/** 추가요금 할인액만 저장 (수정저장 시 할인 UI 복원용) */
+export function updateLockerLogAdditionalFeeDiscount(logId: string, discountAmount: number): boolean {
+  if (!db) throw new Error('Database not initialized');
+  db.run(
+    `UPDATE locker_logs SET additional_fee_discount = ? WHERE id = ?`,
+    [Math.max(0, discountAmount || 0), logId]
+  );
+  saveDatabaseDebounced();
+  return true;
+}
+
+export function getLockerLogAdditionalFeeDiscount(logId: string): number {
+  if (!db) throw new Error('Database not initialized');
+  try {
+    const result = db.exec(
+      `SELECT additional_fee_discount FROM locker_logs WHERE id = ?`,
+      [logId]
+    );
+    if (result.length === 0 || result[0].values.length === 0) return 0;
+    return (result[0].values[0][0] as number) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 // Get additional_fee_paid status for a locker log (returns paid amount for comparison)
@@ -6875,13 +8340,26 @@ export function importDatabase(jsonString: string): {
     if (!importData.version || !importData.tables) {
       return { success: false, error: '유효하지 않은 백업 파일 형식입니다.' };
     }
+
+    if (importData.type === 'archive') {
+      return {
+        success: false,
+        error:
+          '이 파일은 구간 아카이브입니다. 「오래된 데이터 정리」의 "아카이브 불러오기"로 현재 데이터에 합쳐 주세요.',
+      };
+    }
     
-    const validAppNames = ['EQUUS Hotel Management System', 'HIZZ Hotel Management System'];
+    const validAppNames = [
+      'EQUUS Hotel Management System',
+      'HIZZ Hotel Management System',
+      'HOME24 Hotel Management System',
+    ];
     if (!validAppNames.includes(importData.appName)) {
       return { success: false, error: '이 파일은 호텔 관리 시스템 백업 파일이 아닙니다.' };
     }
     
     console.log(`Importing database backup from ${importData.exportDate}`);
+    allowDatabaseShrink();
     
     // Clear existing data from all tables (including user-defined settings)
     const tables = [
@@ -7090,6 +8568,184 @@ export function importDatabase(jsonString: string): {
     }
     
     return { success: false, error: `가져오기 실패: ${String(error)}` };
+  }
+}
+
+const ARCHIVE_MERGE_TABLES = [
+  'locker_logs',
+  'locker_daily_summaries',
+  'additional_fee_events',
+  'rental_transactions',
+  'expenses',
+  'closing_days',
+  'scan_logs',
+  'staff_work_logs',
+  'staff_ratings',
+] as const;
+
+function _parseArchivePayload(jsonString: string): {
+  ok: true;
+  data: any;
+} | {
+  ok: false;
+  error: string;
+} {
+  let importData: any;
+  try {
+    importData = JSON.parse(jsonString);
+  } catch {
+    return { ok: false, error: 'JSON 파일 형식이 올바르지 않습니다.' };
+  }
+
+  if (!importData?.version || !importData?.tables) {
+    return { ok: false, error: '유효하지 않은 백업 파일 형식입니다.' };
+  }
+
+  if (importData.type !== 'archive') {
+    return {
+      ok: false,
+      error:
+        '구간 아카이브 파일이 아닙니다. 전체 백업은 「데이터 가져오기」를 사용하세요.',
+    };
+  }
+
+  const validAppNames = [
+    'EQUUS Hotel Management System',
+    'HIZZ Hotel Management System',
+    'HOME24 Hotel Management System',
+  ];
+  if (!validAppNames.includes(importData.appName)) {
+    return { ok: false, error: '이 파일은 호텔 관리 시스템 아카이브가 아닙니다.' };
+  }
+
+  return { ok: true, data: importData };
+}
+
+/** 아카이브 병합 전 미리보기 (파일만 파싱, DB 변경 없음) */
+export function previewArchiveMerge(jsonString: string): {
+  success: boolean;
+  error?: string;
+  archiveThrough?: string;
+  archiveFrom?: string;
+  exportDate?: string;
+  counts?: Record<string, number>;
+  total?: number;
+} {
+  const parsed = _parseArchivePayload(jsonString);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const counts: Record<string, number> = {};
+  let total = 0;
+  for (const tableName of ARCHIVE_MERGE_TABLES) {
+    const rows = parsed.data.tables[tableName];
+    const n = Array.isArray(rows) ? rows.length : 0;
+    counts[tableName] = n;
+    total += n;
+  }
+
+  return {
+    success: true,
+    archiveThrough: parsed.data.archiveThrough,
+    archiveFrom: parsed.data.archiveFrom,
+    exportDate: parsed.data.exportDate,
+    counts,
+    total,
+  };
+}
+
+/**
+ * 구간 아카이브를 현재 DB에 합침 (기존 데이터 유지).
+ * 동일 PK가 있으면 건너뜀 (현재 데이터 우선).
+ */
+export function mergeArchiveDatabase(jsonString: string): {
+  success: boolean;
+  message?: string;
+  error?: string;
+  inserted?: number;
+  skipped?: number;
+} {
+  if (!db) {
+    return { success: false, error: 'Database not initialized' };
+  }
+
+  const parsed = _parseArchivePayload(jsonString);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const importData = parsed.data;
+
+  try {
+    let inserted = 0;
+    let skipped = 0;
+
+    const mergeTable = (tableName: string, data: any[]) => {
+      if (!data || data.length === 0) return;
+
+      let currentColumns: string[] = [];
+      try {
+        const schemaResult = db!.exec(`PRAGMA table_info(${tableName})`);
+        if (schemaResult.length > 0) {
+          currentColumns = schemaResult[0].values.map((row: any) => row[1] as string);
+        }
+      } catch (e) {
+        console.warn(`[Archive merge] schema ${tableName}:`, e);
+        return;
+      }
+
+      const backupColumns = Object.keys(data[0]);
+      const columns =
+        currentColumns.length > 0
+          ? backupColumns.filter((col) => currentColumns.includes(col))
+          : backupColumns;
+
+      if (columns.length === 0) {
+        console.warn(`[Archive merge] no columns for ${tableName}`);
+        return;
+      }
+
+      const placeholders = columns.map(() => '?').join(', ');
+      const columnNames = columns.join(', ');
+      const insertQuery = `INSERT OR IGNORE INTO ${tableName} (${columnNames}) VALUES (${placeholders})`;
+
+      for (const row of data) {
+        try {
+          const values = columns.map((col) => (row[col] !== undefined ? row[col] : null));
+          db!.run(insertQuery, values);
+          const ch = db!.exec('SELECT changes() as c');
+          const n = Number(ch[0]?.values?.[0]?.[0] ?? 0);
+          if (n > 0) inserted += 1;
+          else skipped += 1;
+        } catch (error) {
+          console.warn(`[Archive merge] row failed ${tableName}:`, error);
+          skipped += 1;
+        }
+      }
+    };
+
+    for (const tableName of ARCHIVE_MERGE_TABLES) {
+      if (importData.tables[tableName]) {
+        mergeTable(tableName, importData.tables[tableName]);
+      }
+    }
+
+    if (inserted === 0 && skipped === 0) {
+      return { success: false, error: '아카이브에 합칠 데이터가 없습니다.' };
+    }
+
+    // 병합은 용량이 커지므로 VACUUM 생략 (속도). 저장만 수행.
+    saveDatabase();
+
+    const through = importData.archiveThrough || '?';
+    return {
+      success: true,
+      inserted,
+      skipped,
+      message: `${through}까지 아카이브를 합쳤습니다. 추가 ${inserted.toLocaleString()}건` +
+        (skipped > 0 ? `, 이미 있어 건너뜀 ${skipped.toLocaleString()}건` : '') +
+        '. 정산·매출 화면에서 과거 기간을 확인할 수 있습니다.',
+    };
+  } catch (error) {
+    console.error('Error merging archive:', error);
+    return { success: false, error: `아카이브 병합 실패: ${String(error)}` };
   }
 }
 

@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Video } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Moon, Layers, FolderOpen } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CctvPanel } from "@/pages/CctvPage";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,13 +40,26 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { useTheme } from "@/hooks/useTheme";
 import PatternLockDialog, { checkBiometricSupport, registerBiometricCredential, authenticateWithBiometric } from "@/components/PatternLockDialog";
 import DeviceManagement from "@/components/DeviceManagement";
 import { unregisterDevice, useLicenseInfo } from "@/components/LicenseGate";
 import { isDemoMode } from "@/lib/demoMode";
 import * as localDb from "@/lib/localDb";
+import {
+  buildArchiveFilename,
+  canPickArchiveDirectory,
+  clampAutoArchiveKeepMonths,
+  clearAutoArchiveDirectory,
+  getAutoArchiveDirectoryName,
+  getAutoArchiveKeepRange,
+  getArchiveBackupPrefix,
+  pickAutoArchiveDirectory,
+  runAutoArchiveIfNeeded,
+} from "@/lib/autoArchive";
 import { getLockedRoutes, setLockedRoutes, MENU_ITEMS } from "@/lib/menuLock";
 import { validateLicenseKey } from "@/lib/licenseValidation";
+import { getAppSkin } from "@/lib/appMeta";
 
 interface Settings {
   businessDayStartHour: number;
@@ -53,17 +67,45 @@ interface Settings {
   nightPrice: number;
   discountAmount: number;
   foreignerPrice: number;
+  /** true면 외국인 주간/야간 요금 분리 */
+  foreignerSeparateDayNight: boolean;
+  foreignerDayPrice: number;
+  foreignerNightPrice: number;
   domesticCheckpointHour: number;
   foreignerAdditionalFeePeriod: number;
-  domesticAdditionalFeeMode: 'nextday' | 'nightstart';
+  domesticAdditionalFeeMode: DomesticAdditionalFeeMode;
+  /** 모드2: 야간전환 N시간 이전 입실 → 1회차 야간요금 전체 */
+  nightstartFullNightMinHoursBeforeNight: number;
+  settlementCycleFirstDelayHours: number;
+  settlementCycleSecondDelayHours: number;
+  settlementCycleFirstFeeAmount: number;
+  settlementCycleSecondFeeAmount: number;
+  stagedFirstDelayHours: number;
+  stagedFirstFeeAmount: number;
+  stagedSecondEnabled: boolean;
+  stagedSecondApplyHour: number;
+  stagedSecondFeeAmount: number;
+  /** 2차: 야간전환보다 최소 이 시간(시) 이전 주간 입실만 부과 */
+  stagedSecondMinHoursBeforeNight: number;
+  stagedThirdApplyHour: number;
+  stagedThirdHourOffset: number;
+  stagedThirdUnitAmount: number;
   dayStartTime: string;     // 주간 시작 시간 (HH:mm)
   nightStartTime: string;   // 야간 시작 시간 (HH:mm)
   enableDiscountOption: boolean;   // 기본할인 옵션 활성화
   enableForeignerOption: boolean;  // 외국인요금 옵션 활성화
+  enableDirectPriceOption: boolean; // 요금 직접 입력 옵션 활성화
+  enableStaffOption: boolean;      // 직원 입실 옵션 활성화
+  enableFreeEntryOption: boolean;  // 무료입장 옵션 활성화
+  enableLongTermOption: boolean;   // 장기투숙 옵션 활성화
   enableCashReceiptVat: boolean;   // 현금영수증 부가세 옵션
   enableCardVat: boolean;          // 카드결제 부가세 자동추가
   outingTimeLimitMinutes: number;         // 1회 외출 시간 제한 - 평일 (분, 0=비활성)
   outingTimeLimitWeekendMinutes: number;  // 1회 외출 시간 제한 - 휴일(금/토/일/공휴일) (분, 0=비활성)
+  /** true면 락카 스택 기본 접기(마지막 선택만 펼침), false면 모두 펼침 */
+  lockerStackDefaultCollapsed: boolean;
+  autoArchiveEnabled: boolean;
+  autoArchiveKeepMonths: number;
 }
 
 interface LockerGroup {
@@ -112,17 +154,41 @@ export default function Settings() {
     nightPrice: 15000,
     discountAmount: 2000,
     foreignerPrice: 25000,
+    foreignerSeparateDayNight: false,
+    foreignerDayPrice: 25000,
+    foreignerNightPrice: 25000,
     domesticCheckpointHour: 1,
     foreignerAdditionalFeePeriod: 24,
-    domesticAdditionalFeeMode: 'nextday' as 'nextday' | 'nightstart',
+    domesticAdditionalFeeMode: 'nextday' as DomesticAdditionalFeeMode,
+    nightstartFullNightMinHoursBeforeNight: 6,
+    settlementCycleFirstDelayHours: 0,
+    settlementCycleSecondDelayHours: 0,
+    settlementCycleFirstFeeAmount: 5000,
+    settlementCycleSecondFeeAmount: 10000,
+    stagedFirstDelayHours: 3,
+    stagedFirstFeeAmount: 3000,
+    stagedSecondEnabled: true,
+    stagedSecondApplyHour: 0,
+    stagedSecondFeeAmount: 10000,
+    stagedSecondMinHoursBeforeNight: 6,
+    stagedThirdApplyHour: 12,
+    stagedThirdHourOffset: 2,
+    stagedThirdUnitAmount: 1000,
     dayStartTime: '07:00',
     nightStartTime: '19:00',
     enableDiscountOption: true,
     enableForeignerOption: true,
+    enableDirectPriceOption: true,
+    enableStaffOption: true,
+    enableFreeEntryOption: true,
+    enableLongTermOption: true,
     enableCashReceiptVat: false,
     enableCardVat: false,
     outingTimeLimitMinutes: 0,
     outingTimeLimitWeekendMinutes: 0,
+    lockerStackDefaultCollapsed: false,
+    autoArchiveEnabled: false,
+    autoArchiveKeepMonths: 2,
   });
 
   // Locker group dialog states
@@ -224,6 +290,7 @@ export default function Settings() {
     const settings = localDb.getSettings();
     return settings.screenWakeLock !== false;
   });
+  const { isDark, setTheme } = useTheme();
 
   // Card payment app states
   const [isCardPaymentSectionOpen, setIsCardPaymentSectionOpen] = useState(false);
@@ -267,6 +334,23 @@ export default function Settings() {
   const [importFileData, setImportFileData] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 오래된 데이터 정리 (구간 백업 → 삭제)
+  const [archiveThroughDate, setArchiveThroughDate] = useState("");
+  const [archiveRange, setArchiveRange] = useState<{ oldest: string | null; newest: string | null }>({
+    oldest: null,
+    newest: null,
+  });
+  const [archivePreview, setArchivePreview] = useState<ReturnType<typeof localDb.previewArchivePurge> | null>(null);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [archiveMergeConfirmOpen, setArchiveMergeConfirmOpen] = useState(false);
+  const [archiveMergeFileData, setArchiveMergeFileData] = useState<string | null>(null);
+  const [archiveMergePreview, setArchiveMergePreview] = useState<ReturnType<typeof localDb.previewArchiveMerge> | null>(null);
+  const [isMergingArchive, setIsMergingArchive] = useState(false);
+  const archiveFileInputRef = useRef<HTMLInputElement>(null);
+  const [autoArchiveFolderName, setAutoArchiveFolderName] = useState<string | null>(null);
+  const [isAutoArchiving, setIsAutoArchiving] = useState(false);
+
   // RFID/Barcode export/import refs
   const rfidFileInputRef = useRef<HTMLInputElement>(null);
   const barcodeFileInputRef = useRef<HTMLInputElement>(null);
@@ -285,13 +369,56 @@ export default function Settings() {
   // Load settings and locker groups on mount
   useEffect(() => {
     const settings = localDb.getSettings();
-    setFormData(settings);
+    const dayP = settings.dayPrice ?? 10000;
+    const nightP = settings.nightPrice ?? 15000;
+    const foreignerP = settings.foreignerPrice ?? 25000;
+    setFormData({
+      ...settings,
+      foreignerPrice: foreignerP,
+      foreignerSeparateDayNight: settings.foreignerSeparateDayNight === true,
+      foreignerDayPrice: settings.foreignerDayPrice ?? foreignerP,
+      foreignerNightPrice: settings.foreignerNightPrice ?? foreignerP,
+      domesticAdditionalFeeMode: (
+        settings.domesticAdditionalFeeMode === 'pending4'
+          ? 'stagedHourly'
+          : (settings.domesticAdditionalFeeMode || 'nextday')
+      ) as DomesticAdditionalFeeMode,
+      nightstartFullNightMinHoursBeforeNight: settings.nightstartFullNightMinHoursBeforeNight ?? 6,
+      settlementCycleFirstDelayHours: settings.settlementCycleFirstDelayHours ?? 0,
+      settlementCycleSecondDelayHours: settings.settlementCycleSecondDelayHours ?? 0,
+      settlementCycleFirstFeeAmount:
+        settings.settlementCycleFirstFeeAmount ?? Math.max(0, nightP - dayP),
+      settlementCycleSecondFeeAmount:
+        settings.settlementCycleSecondFeeAmount ?? dayP,
+      stagedFirstDelayHours: settings.stagedFirstDelayHours ?? 3,
+      stagedFirstFeeAmount:
+        settings.stagedFirstFeeAmount ?? Math.max(0, nightP - dayP),
+      stagedSecondEnabled: settings.stagedSecondEnabled !== false,
+      stagedSecondApplyHour: settings.stagedSecondApplyHour ?? 0,
+      stagedSecondFeeAmount: settings.stagedSecondFeeAmount ?? dayP,
+      stagedSecondMinHoursBeforeNight: settings.stagedSecondMinHoursBeforeNight ?? 6,
+      stagedThirdApplyHour: settings.stagedThirdApplyHour ?? 12,
+      stagedThirdHourOffset: settings.stagedThirdHourOffset ?? 2,
+      stagedThirdUnitAmount: settings.stagedThirdUnitAmount ?? 1000,
+      enableDiscountOption: settings.enableDiscountOption !== false,
+      enableForeignerOption: settings.enableForeignerOption !== false,
+      enableDirectPriceOption: settings.enableDirectPriceOption !== false,
+      enableStaffOption: settings.enableStaffOption !== false,
+      enableFreeEntryOption: settings.enableFreeEntryOption !== false,
+      enableLongTermOption: settings.enableLongTermOption !== false,
+      lockerStackDefaultCollapsed: settings.lockerStackDefaultCollapsed === true,
+      autoArchiveEnabled: settings.autoArchiveEnabled === true,
+      autoArchiveKeepMonths: clampAutoArchiveKeepMonths(settings.autoArchiveKeepMonths),
+    });
     loadLockerGroups();
     loadRevenueItems();
     loadPricingOptions();
     loadBarcodeMappings();
     loadRfidMappings();
     setStaffList(localDb.getAllStaff());
+    void getAutoArchiveDirectoryName().then((name) => {
+      if (name) setAutoArchiveFolderName(name);
+    });
     
     // Check NFC support
     if ('NDEFReader' in window) {
@@ -727,10 +854,39 @@ export default function Settings() {
 
   const handleSave = () => {
     // Validate and clamp settings before saving
+    const foreignerSeparate = formData.foreignerSeparateDayNight === true;
+    const foreignerSame = Math.max(0, formData.foreignerPrice || 0);
+    const foreignerDay = foreignerSeparate
+      ? Math.max(0, formData.foreignerDayPrice || 0)
+      : foreignerSame;
+    const foreignerNight = foreignerSeparate
+      ? Math.max(0, formData.foreignerNightPrice || 0)
+      : foreignerSame;
     const validatedData = {
       ...formData,
       domesticCheckpointHour: Math.max(0, Math.min(23, formData.domesticCheckpointHour)),
       foreignerAdditionalFeePeriod: Math.max(1, formData.foreignerAdditionalFeePeriod),
+      foreignerSeparateDayNight: foreignerSeparate,
+      foreignerPrice: foreignerSeparate ? foreignerNight : foreignerSame, // 하위호환: 단일값은 야간(또는 동일값)
+      foreignerDayPrice: foreignerDay,
+      foreignerNightPrice: foreignerNight,
+      nightstartFullNightMinHoursBeforeNight: Math.max(0, formData.nightstartFullNightMinHoursBeforeNight || 0),
+      settlementCycleFirstDelayHours: Math.max(0, formData.settlementCycleFirstDelayHours || 0),
+      settlementCycleSecondDelayHours: Math.max(0, formData.settlementCycleSecondDelayHours || 0),
+      settlementCycleFirstFeeAmount: Math.max(0, formData.settlementCycleFirstFeeAmount || 0),
+      settlementCycleSecondFeeAmount: Math.max(0, formData.settlementCycleSecondFeeAmount || 0),
+      stagedFirstDelayHours: Math.max(0, formData.stagedFirstDelayHours || 0),
+      stagedFirstFeeAmount: Math.max(0, formData.stagedFirstFeeAmount || 0),
+      stagedSecondEnabled: formData.stagedSecondEnabled !== false,
+      stagedSecondApplyHour: Math.max(0, Math.min(23, formData.stagedSecondApplyHour || 0)),
+      stagedSecondFeeAmount: Math.max(0, formData.stagedSecondFeeAmount || 0),
+      stagedSecondMinHoursBeforeNight: Math.max(0, formData.stagedSecondMinHoursBeforeNight || 0),
+      stagedThirdApplyHour: Math.max(0, Math.min(23, formData.stagedThirdApplyHour ?? 12)),
+      stagedThirdHourOffset: Math.max(0, formData.stagedThirdHourOffset ?? 2),
+      stagedThirdUnitAmount: Math.max(0, formData.stagedThirdUnitAmount || 0),
+      lockerStackDefaultCollapsed: formData.lockerStackDefaultCollapsed === true,
+      autoArchiveEnabled: formData.autoArchiveEnabled === true,
+      autoArchiveKeepMonths: clampAutoArchiveKeepMonths(formData.autoArchiveKeepMonths),
     };
     
     localDb.updateSettings(validatedData);
@@ -1068,8 +1224,40 @@ export default function Settings() {
 
   const handleCreateTestData = async () => {
     try {
-      // Wait for test data to be created and saved
-      await localDb.createAdditionalFeeTestData();
+      // 샘플 생성 직전에 현재 폼 설정을 저장해야 요금/모드/추가요금 옵션이 반영됨
+      const validatedData = {
+        ...formData,
+        domesticCheckpointHour: Math.max(0, Math.min(23, formData.domesticCheckpointHour)),
+        foreignerAdditionalFeePeriod: Math.max(1, formData.foreignerAdditionalFeePeriod),
+        foreignerSeparateDayNight: formData.foreignerSeparateDayNight === true,
+        foreignerPrice: formData.foreignerSeparateDayNight
+          ? Math.max(0, formData.foreignerNightPrice || 0)
+          : Math.max(0, formData.foreignerPrice || 0),
+        foreignerDayPrice: formData.foreignerSeparateDayNight
+          ? Math.max(0, formData.foreignerDayPrice || 0)
+          : Math.max(0, formData.foreignerPrice || 0),
+        foreignerNightPrice: formData.foreignerSeparateDayNight
+          ? Math.max(0, formData.foreignerNightPrice || 0)
+          : Math.max(0, formData.foreignerPrice || 0),
+        nightstartFullNightMinHoursBeforeNight: Math.max(0, formData.nightstartFullNightMinHoursBeforeNight || 0),
+        settlementCycleFirstDelayHours: Math.max(0, formData.settlementCycleFirstDelayHours || 0),
+        settlementCycleSecondDelayHours: Math.max(0, formData.settlementCycleSecondDelayHours || 0),
+        settlementCycleFirstFeeAmount: Math.max(0, formData.settlementCycleFirstFeeAmount || 0),
+        settlementCycleSecondFeeAmount: Math.max(0, formData.settlementCycleSecondFeeAmount || 0),
+        stagedFirstDelayHours: Math.max(0, formData.stagedFirstDelayHours || 0),
+        stagedFirstFeeAmount: Math.max(0, formData.stagedFirstFeeAmount || 0),
+        stagedSecondEnabled: formData.stagedSecondEnabled !== false,
+        stagedSecondApplyHour: Math.max(0, Math.min(23, formData.stagedSecondApplyHour || 0)),
+        stagedSecondFeeAmount: Math.max(0, formData.stagedSecondFeeAmount || 0),
+        stagedSecondMinHoursBeforeNight: Math.max(0, formData.stagedSecondMinHoursBeforeNight || 0),
+        stagedThirdApplyHour: Math.max(0, Math.min(23, formData.stagedThirdApplyHour ?? 12)),
+        stagedThirdHourOffset: Math.max(0, formData.stagedThirdHourOffset ?? 2),
+        stagedThirdUnitAmount: Math.max(0, formData.stagedThirdUnitAmount || 0),
+      };
+      localDb.updateSettings(validatedData);
+      setFormData(validatedData);
+
+      await localDb.createAdditionalFeeTestData(validatedData);
       
       // 진단: 데이터베이스 상태 확인
       const dbStatus = localDb.debugDatabaseStatus();
@@ -1077,7 +1265,7 @@ export default function Settings() {
       
       toast({
         title: "테스트 데이터 생성 완료",
-        description: `락커 ${dbStatus.locker_logs?.total || 0}건, 요약 ${dbStatus.daily_summaries?.total || 0}건 생성됨. 콘솔에서 상세 확인 가능.`,
+        description: `현재 설정(요금·추가요금 모드) 반영. 락커 ${dbStatus.locker_logs?.total || 0}건 생성. 콘솔에서 상세 확인.`,
       });
       
       // Navigate to home instead of reloading (preserves business day context)
@@ -1127,7 +1315,7 @@ export default function Settings() {
   };
 
   const handleDeleteStaff = (id: string, name: string) => {
-    if (!confirm(`"${name}" 직원을 삭제하시겠습니까?\n모든 근무 기록과 성실도 평가도 함께 삭제됩니다.`)) return;
+    if (!confirm(`"${name}" 직원을 삭제하시겠습니까?\n모든 근무 기록도 함께 삭제됩니다.`)) return;
     localDb.deleteStaff(id);
     setStaffList(localDb.getAllStaff());
     toast({ title: "직원이 삭제되었습니다." });
@@ -1222,29 +1410,86 @@ export default function Settings() {
     }
   };
 
+  const refreshArchiveRange = () => {
+    try {
+      setArchiveRange(localDb.getOperationalDateRange());
+    } catch (e) {
+      console.warn('archive range', e);
+    }
+  };
+
+  const updateArchivePreview = (date: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setArchivePreview(null);
+      return;
+    }
+    try {
+      setArchivePreview(localDb.previewArchivePurge(date));
+    } catch {
+      setArchivePreview(null);
+    }
+  };
+
+  /** 저장 위치 선택(지원 브라우저) 또는 다운로드 폴더로 저장 */
+  const saveJsonFile = async (filename: string, content: string): Promise<boolean> => {
+    const anyWindow = window as Window & {
+      showSaveFilePicker?: (options?: any) => Promise<FileSystemFileHandle>;
+    };
+    if (typeof anyWindow.showSaveFilePicker === 'function') {
+      try {
+        const handle = await anyWindow.showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'JSON',
+              accept: { 'application/json': ['.json'] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        return true;
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return false;
+        console.warn('showSaveFilePicker failed, falling back to download', err);
+      }
+    }
+
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return true;
+  };
+
+  const getSkinBackupPrefix = () => localDb.BACKUP_PREFIX;
+
   // Export database to JSON file
-  const handleExportData = () => {
+  const handleExportData = async () => {
     setIsExporting(true);
     try {
       const result = localDb.exportDatabase();
-      
+
       if (!result.success || !result.data) {
         throw new Error(result.error || '데이터 내보내기 실패');
       }
-      
-      // Create download link
-      const blob = new Blob([result.data], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-      link.href = url;
-      const skinPrefix = import.meta.env.VITE_SKIN === 'v2' ? 'hizz' : 'equus';
-      link.download = `${skinPrefix}-backup-${timestamp}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
+      const saved = await saveJsonFile(
+        `${getSkinBackupPrefix()}-backup-${timestamp}.json`,
+        result.data
+      );
+      if (!saved) {
+        toast({ title: "저장 취소", description: "파일 저장이 취소되었습니다." });
+        return;
+      }
+
       toast({
         title: "데이터 내보내기 완료",
         description: "모든 데이터가 파일로 저장되었습니다. 다른 태블릿으로 전송하여 사용할 수 있습니다.",
@@ -1258,6 +1503,209 @@ export default function Settings() {
       });
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleOpenArchiveConfirm = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(archiveThroughDate)) {
+      toast({
+        title: "날짜를 선택하세요",
+        description: "백업 후 삭제할 마지막 영업일을 입력해 주세요.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const preview = localDb.previewArchivePurge(archiveThroughDate);
+    setArchivePreview(preview);
+    if (preview.total === 0) {
+      toast({
+        title: "대상 없음",
+        description: "해당 날짜까지 삭제할 데이터가 없습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setArchiveConfirmOpen(true);
+  };
+
+  const handleArchiveBackupAndPurge = async () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(archiveThroughDate)) return;
+    setIsArchiving(true);
+    try {
+      const exported = localDb.exportArchiveThrough(archiveThroughDate);
+      if (!exported.success || !exported.data) {
+        throw new Error(exported.error || '구간 백업 실패');
+      }
+
+      const filename = buildArchiveFilename(exported.archiveFrom, archiveThroughDate);
+      const saved = await saveJsonFile(filename, exported.data);
+      if (!saved) {
+        toast({
+          title: "백업 취소",
+          description: "파일 저장이 취소되어 삭제를 진행하지 않았습니다.",
+        });
+        return;
+      }
+
+      const purged = localDb.purgeDataThrough(archiveThroughDate);
+      if (!purged.success) {
+        throw new Error(
+          purged.error ||
+            '백업은 저장되었지만 삭제에 실패했습니다. 백업 파일을 확인한 뒤 다시 시도하세요.'
+        );
+      }
+
+      setArchiveConfirmOpen(false);
+      refreshArchiveRange();
+      updateArchivePreview(archiveThroughDate);
+      toast({
+        title: "구간 정리 완료",
+        description: `${archiveThroughDate}까지 ${purged.deleted.toLocaleString()}건을 백업한 뒤 삭제했습니다. 앱이 더 가볍게 동작합니다.`,
+      });
+      setTimeout(() => window.location.reload(), 1200);
+    } catch (error) {
+      console.error('Archive purge error:', error);
+      toast({
+        title: "정리 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const handlePickAutoArchiveFolder = async () => {
+    const result = await pickAutoArchiveDirectory();
+    if (!result.ok) {
+      if (result.error === 'cancelled') return;
+      toast({
+        title: "폴더 지정 실패",
+        description: result.error || "폴더를 지정하지 못했습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setAutoArchiveFolderName(result.name || '지정됨');
+    toast({
+      title: "자동 백업 폴더 지정",
+      description: result.name
+        ? `「${result.name}」 폴더에 자동 백업 파일을 저장합니다.`
+        : "선택한 폴더에 자동 백업 파일을 저장합니다.",
+    });
+  };
+
+  const handleClearAutoArchiveFolder = async () => {
+    await clearAutoArchiveDirectory();
+    setAutoArchiveFolderName(null);
+    toast({
+      title: "폴더 지정 해제",
+      description: "자동 백업 폴더를 해제했습니다. 다시 지정하기 전에는 자동 백업이 실행되지 않습니다.",
+    });
+  };
+
+  const handleRunAutoArchiveNow = async () => {
+    setIsAutoArchiving(true);
+    try {
+      localDb.updateSettings({
+        autoArchiveEnabled: formData.autoArchiveEnabled === true,
+        autoArchiveKeepMonths: clampAutoArchiveKeepMonths(formData.autoArchiveKeepMonths),
+      });
+      const result = await runAutoArchiveIfNeeded({ force: true });
+      if (result.status === 'purged') {
+        refreshArchiveRange();
+        toast({
+          title: "자동 백업 완료",
+          description: result.message,
+        });
+        setTimeout(() => window.location.reload(), 1200);
+        return;
+      }
+      if (result.status === 'nothing') {
+        toast({
+          title: "백업할 데이터 없음",
+          description: result.message || "남겨둘 기간 이전의 데이터가 없습니다.",
+        });
+        return;
+      }
+      toast({
+        title: result.status === 'skipped' ? "실행하지 않음" : "자동 백업 실패",
+        description: result.message || "자동 백업을 실행하지 못했습니다.",
+        variant: result.status === 'skipped' ? undefined : "destructive",
+      });
+    } finally {
+      setIsAutoArchiving(false);
+    }
+  };
+
+  const handleArchiveMergeFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      const preview = localDb.previewArchiveMerge(content);
+      if (!preview.success) {
+        toast({
+          title: "아카이브 파일 확인 실패",
+          description: preview.error || "올바른 구간 아카이브 JSON이 아닙니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!preview.total) {
+        toast({
+          title: "데이터 없음",
+          description: "아카이브에 합칠 기록이 없습니다.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setArchiveMergeFileData(content);
+      setArchiveMergePreview(preview);
+      setArchiveMergeConfirmOpen(true);
+    };
+    reader.onerror = () => {
+      toast({
+        title: "파일 읽기 실패",
+        description: "파일을 읽는 중 오류가 발생했습니다.",
+        variant: "destructive",
+      });
+    };
+    reader.readAsText(file);
+
+    if (archiveFileInputRef.current) {
+      archiveFileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmArchiveMerge = () => {
+    if (!archiveMergeFileData) return;
+    setIsMergingArchive(true);
+    try {
+      const result = localDb.mergeArchiveDatabase(archiveMergeFileData);
+      if (!result.success) {
+        throw new Error(result.error || '아카이브 병합 실패');
+      }
+      toast({
+        title: "아카이브 불러오기 완료",
+        description: result.message || "과거 데이터를 합쳤습니다.",
+      });
+      setArchiveMergeConfirmOpen(false);
+      setArchiveMergeFileData(null);
+      setArchiveMergePreview(null);
+      refreshArchiveRange();
+      setTimeout(() => window.location.reload(), 1000);
+    } catch (error) {
+      console.error('Archive merge error:', error);
+      toast({
+        title: "불러오기 실패",
+        description: String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setIsMergingArchive(false);
     }
   };
 
@@ -1625,7 +2073,7 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>기본 옵션</CardTitle>
               <CardDescription>
-                기본 할인 및 외국인 요금을 설정합니다. 필요에 따라 각 옵션을 켜거나 끌 수 있습니다.
+                락카옵션창에 표시할 요금 옵션을 켜거나 끌 수 있습니다. 꺼도 이미 해당 옵션으로 입실한 기록은 그대로 유지됩니다.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1675,18 +2123,174 @@ export default function Settings() {
                   />
                 </div>
                 {formData.enableForeignerOption && (
-                  <div className="space-y-2 pt-2 border-t">
-                    <Label htmlFor="foreignerPrice">외국인 요금</Label>
-                    <Input
-                      id="foreignerPrice"
-                      type="text"
-                      value={formData.foreignerPrice}
-                      onChange={(e) => setFormData({ ...formData, foreignerPrice: parseInt(e.target.value) || 0 })}
-                      data-testid="input-foreigner-price"
-                    />
-                    <p className="text-xs text-muted-foreground">외국인 손님에게 적용되는 고정 요금</p>
+                  <div className="space-y-3 pt-2 border-t">
+                    <div className="space-y-2">
+                      <Label className="text-sm">외국인 요금 방식</Label>
+                      <RadioGroup
+                        value={formData.foreignerSeparateDayNight ? 'separate' : 'same'}
+                        onValueChange={(v) => {
+                          const separate = v === 'separate';
+                          setFormData({
+                            ...formData,
+                            foreignerSeparateDayNight: separate,
+                            // 분리로 전환 시 기존 단일값을 주·야간 초기값으로 채움
+                            ...(separate
+                              ? {
+                                  foreignerDayPrice: formData.foreignerDayPrice || formData.foreignerPrice,
+                                  foreignerNightPrice: formData.foreignerNightPrice || formData.foreignerPrice,
+                                }
+                              : {
+                                  foreignerPrice:
+                                    formData.foreignerNightPrice ||
+                                    formData.foreignerDayPrice ||
+                                    formData.foreignerPrice,
+                                }),
+                          });
+                        }}
+                        className="grid grid-cols-2 gap-2"
+                      >
+                        <label
+                          htmlFor="foreigner-fee-same"
+                          className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm ${
+                            !formData.foreignerSeparateDayNight
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border'
+                          }`}
+                        >
+                          <RadioGroupItem value="same" id="foreigner-fee-same" />
+                          주야간 동일
+                        </label>
+                        <label
+                          htmlFor="foreigner-fee-separate"
+                          className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm ${
+                            formData.foreignerSeparateDayNight
+                              ? 'border-primary bg-primary/5'
+                              : 'border-border'
+                          }`}
+                        >
+                          <RadioGroupItem value="separate" id="foreigner-fee-separate" />
+                          주야간 분리
+                        </label>
+                      </RadioGroup>
+                    </div>
+
+                    {!formData.foreignerSeparateDayNight ? (
+                      <div className="space-y-2">
+                        <Label htmlFor="foreignerPrice">외국인 요금 (주·야간 동일)</Label>
+                        <Input
+                          id="foreignerPrice"
+                          type="text"
+                          inputMode="numeric"
+                          value={formData.foreignerPrice}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setFormData({
+                              ...formData,
+                              foreignerPrice: val,
+                              foreignerDayPrice: val,
+                              foreignerNightPrice: val,
+                            });
+                          }}
+                          data-testid="input-foreigner-price"
+                        />
+                        <p className="text-xs text-muted-foreground">예: 25,000원</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="foreignerDayPrice">외국인 주간 요금</Label>
+                          <Input
+                            id="foreignerDayPrice"
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.foreignerDayPrice}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                foreignerDayPrice: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            data-testid="input-foreigner-day-price"
+                          />
+                          <p className="text-xs text-muted-foreground">예: 20,000원</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="foreignerNightPrice">외국인 야간 요금</Label>
+                          <Input
+                            id="foreignerNightPrice"
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.foreignerNightPrice}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                foreignerNightPrice: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            data-testid="input-foreigner-night-price"
+                          />
+                          <p className="text-xs text-muted-foreground">예: 25,000원</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+              </div>
+
+              {/* 요금 직접 입력 */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="enableDirectPriceOption" className="text-sm font-medium">요금 직접 입력</Label>
+                  <p className="text-xs text-muted-foreground">입실 시 요금을 직접 입력하는 옵션을 표시합니다</p>
+                </div>
+                <Switch
+                  id="enableDirectPriceOption"
+                  checked={formData.enableDirectPriceOption}
+                  onCheckedChange={(checked) => setFormData({ ...formData, enableDirectPriceOption: checked })}
+                  data-testid="switch-enable-direct-price"
+                />
+              </div>
+
+              {/* 직원 */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="enableStaffOption" className="text-sm font-medium">직원 입실</Label>
+                  <p className="text-xs text-muted-foreground">신규 입실 시 직원(0원) 옵션을 표시합니다</p>
+                </div>
+                <Switch
+                  id="enableStaffOption"
+                  checked={formData.enableStaffOption}
+                  onCheckedChange={(checked) => setFormData({ ...formData, enableStaffOption: checked })}
+                  data-testid="switch-enable-staff"
+                />
+              </div>
+
+              {/* 무료입장 */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="enableFreeEntryOption" className="text-sm font-medium">무료입장</Label>
+                  <p className="text-xs text-muted-foreground">신규 입실 시 무료입장(0원) 옵션을 표시합니다</p>
+                </div>
+                <Switch
+                  id="enableFreeEntryOption"
+                  checked={formData.enableFreeEntryOption}
+                  onCheckedChange={(checked) => setFormData({ ...formData, enableFreeEntryOption: checked })}
+                  data-testid="switch-enable-free-entry"
+                />
+              </div>
+
+              {/* 장기투숙 */}
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div>
+                  <Label htmlFor="enableLongTermOption" className="text-sm font-medium">장기투숙</Label>
+                  <p className="text-xs text-muted-foreground">입실 시 장기투숙 옵션을 표시합니다</p>
+                </div>
+                <Switch
+                  id="enableLongTermOption"
+                  checked={formData.enableLongTermOption}
+                  onCheckedChange={(checked) => setFormData({ ...formData, enableLongTermOption: checked })}
+                  data-testid="switch-enable-long-term"
+                />
               </div>
             </CardContent>
           </Card>
@@ -1813,63 +2417,538 @@ export default function Settings() {
             <CardHeader>
               <CardTitle>추가요금 설정</CardTitle>
               <CardDescription>
-                내국인 및 외국인 추가요금 계산 기준을 설정합니다
+                4가지 부과 기준 중 하나만 선택합니다. 선택한 로직만 적용되고 나머지는 무시됩니다.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {/* 추가요금 체크포인트 방식 */}
-              <div className="space-y-3 p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label className="text-sm font-medium">야간전환 체크포인트 방식</Label>
-                    <p className="text-xs text-muted-foreground">
-                      OFF: 다음날 고정 시각(기본값) &nbsp;|&nbsp; ON: 당일/다음날 야간시작시각
-                    </p>
-                  </div>
-                  <Switch
-                    checked={formData.domesticAdditionalFeeMode === 'nightstart'}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, domesticAdditionalFeeMode: checked ? 'nightstart' : 'nextday' })
+            <CardContent className="space-y-5">
+              <RadioGroup
+                value={formData.domesticAdditionalFeeMode}
+                onValueChange={(value) => {
+                  const mode = value as DomesticAdditionalFeeMode;
+                  const next = { ...formData, domesticAdditionalFeeMode: mode };
+                  if (mode === 'nightstart') {
+                    if (next.nightstartFullNightMinHoursBeforeNight == null) {
+                      next.nightstartFullNightMinHoursBeforeNight = 6;
                     }
-                    data-testid="switch-additional-fee-mode"
-                  />
-                </div>
-                {formData.domesticAdditionalFeeMode === 'nightstart' ? (
-                  <p className="text-xs text-muted-foreground pt-1 border-t">
-                    주간 입실 → 당일 야간시작({formData.nightStartTime})에 차액(야간-주간) 추가요금<br />
-                    야간 입실 → 다음날 야간시작({formData.nightStartTime})에 야간요금 추가
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground pt-1 border-t">
-                    주간 입실 → 다음날 {String(formData.domesticCheckpointHour).padStart(2,'0')}:00에 차액 추가요금<br />
-                    야간 입실 → 영업일+2일 {String(formData.domesticCheckpointHour).padStart(2,'0')}:00에 야간요금 추가
-                  </p>
-                )}
-              </div>
+                  }
+                  if (mode === 'settlementCycle') {
+                    if (next.settlementCycleFirstFeeAmount == null) {
+                      next.settlementCycleFirstFeeAmount = Math.max(0, formData.nightPrice - formData.dayPrice);
+                    }
+                    if (next.settlementCycleSecondFeeAmount == null) {
+                      next.settlementCycleSecondFeeAmount = formData.dayPrice;
+                    }
+                  }
+                  if (mode === 'stagedHourly') {
+                    if (next.stagedFirstFeeAmount == null) {
+                      next.stagedFirstFeeAmount = Math.max(0, formData.nightPrice - formData.dayPrice);
+                    }
+                    if (next.stagedSecondFeeAmount == null) {
+                      next.stagedSecondFeeAmount = formData.dayPrice;
+                    }
+                    if (next.stagedSecondMinHoursBeforeNight == null) {
+                      next.stagedSecondMinHoursBeforeNight = 6;
+                    }
+                  }
+                  setFormData(next);
+                }}
+                className="space-y-3"
+                data-testid="radio-additional-fee-mode"
+              >
+                {/* 모드1: 다음날 고정시각 */}
+                <label
+                  htmlFor="fee-mode-nextday"
+                  className={`block cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                    formData.domesticAdditionalFeeMode === 'nextday'
+                      ? 'border-sky-500 bg-sky-50/80 dark:bg-sky-950/30'
+                      : 'border-border hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="nextday" id="fee-mode-nextday" className="mt-0.5" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-sky-600 px-1.5 text-[11px] font-bold text-white">1</span>
+                        <span className="text-sm font-semibold">다음날 고정시각</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        주간 입실 → 다음날 지정 시각에 차액(야간−주간) 부과<br />
+                        야간 입실 → 영업일+2일 지정 시각에 야간요금 부과 · 이후 24시간마다 반복
+                      </p>
+                      {formData.domesticAdditionalFeeMode === 'nextday' && (
+                        <div className="space-y-2 pt-2 border-t">
+                          <Label htmlFor="domesticCheckpointHour" className="text-xs">체크포인트 시간 (0–23시)</Label>
+                          <Input
+                            id="domesticCheckpointHour"
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.domesticCheckpointHour}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              setFormData({ ...formData, domesticCheckpointHour: isNaN(val) ? 0 : val });
+                            }}
+                            data-testid="input-domestic-checkpoint"
+                          />
+                          <p className="text-[11px] text-muted-foreground">
+                            예: 1 → 매일 01:00 (기본값)
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </label>
 
-              {/* 내국인 체크포인트 시각 (nextday 모드에서만 표시) */}
-              {formData.domesticAdditionalFeeMode !== 'nightstart' && (
-              <div className="space-y-2">
-                <Label htmlFor="domesticCheckpointHour">내국인 추가요금 체크포인트 시간 (0-23시)</Label>
-                <Input
-                  id="domesticCheckpointHour"
-                  type="text"
-                  min="0"
-                  max="23"
-                  value={formData.domesticCheckpointHour}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    setFormData({ ...formData, domesticCheckpointHour: isNaN(val) ? 0 : val });
-                  }}
-                  data-testid="input-domestic-checkpoint"
-                />
-                <p className="text-xs text-muted-foreground">
-                  예: 1시 = 매일 01:00에 내국인 추가요금 발생 (기본값: 1시)
-                </p>
-              </div>
-              )}
+                {/* 모드2: 야간전환 체크포인트 */}
+                <label
+                  htmlFor="fee-mode-nightstart"
+                  className={`block cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                    formData.domesticAdditionalFeeMode === 'nightstart'
+                      ? 'border-amber-500 bg-amber-50/80 dark:bg-amber-950/30'
+                      : 'border-border hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="nightstart" id="fee-mode-nightstart" className="mt-0.5" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-amber-600 px-1.5 text-[11px] font-bold text-white">2</span>
+                        <span className="text-sm font-semibold">야간전환 체크포인트</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        주간 입실 → 당일 야간시작({formData.nightStartTime})에 1회차 부과<br />
+                        · 야간전환보다 N시간 이전 입실 → <strong>야간요금 전체</strong><br />
+                        · 야간 직전(N시간 미만) 입실 → <strong>차액(야간−주간)</strong><br />
+                        야간 입실 → 다음날 야간시작에 야간요금 · 이후 24시간마다 야간요금 반복
+                      </p>
+                      {formData.domesticAdditionalFeeMode === 'nightstart' && (
+                        <div className="space-y-2 pt-2 border-t">
+                          <Label className="text-xs">야간요금 전체 부과 기준 (야간전환 N시간 이전, 시)</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={formData.nightstartFullNightMinHoursBeforeNight}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value);
+                              setFormData({
+                                ...formData,
+                                nightstartFullNightMinHoursBeforeNight: isNaN(val) ? 0 : Math.max(0, val),
+                              });
+                            }}
+                            data-testid="input-nightstart-full-night-hours"
+                          />
+                          <p className="text-[11px] text-muted-foreground leading-relaxed">
+                            주간 입실이 야간전환({formData.nightStartTime || '19:00'})보다 이 시간 이상 이전이면 1회차에 야간요금 전체를,
+                            그보다 늦게 들어오면 차액만 부과합니다.
+                            {(() => {
+                              const nightH = parseInt(String(formData.nightStartTime || '19:00').split(':')[0], 10) || 19;
+                              const n = formData.nightstartFullNightMinHoursBeforeNight || 0;
+                              const cutoff = (nightH - n + 24) % 24;
+                              return (
+                                <>
+                                  {' '}현재 설정: 대략 <strong>{cutoff}시 이전</strong> 주간 입실 → 야간요금 전체.
+                                </>
+                              );
+                            })()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </label>
+
+                {/* 모드3: 정산·야간 순환 */}
+                <label
+                  htmlFor="fee-mode-settlement"
+                  className={`block cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                    formData.domesticAdditionalFeeMode === 'settlementCycle'
+                      ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/30'
+                      : 'border-border hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="settlementCycle" id="fee-mode-settlement" className="mt-0.5" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-emerald-600 px-1.5 text-[11px] font-bold text-white">3</span>
+                        <span className="text-sm font-semibold">정산·야간 순환</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        1차(야간전환+N): 기본 야간−주간 차액 · 2차(정산+N): 기본 주간요금 · 이후 1↔2 무한 반복<br />
+                        정산 전 주간 입실 → 야간전환까지 무료, 야간전환 시 야간요금 1회 후 동일 순환
+                      </p>
+                      {formData.domesticAdditionalFeeMode === 'settlementCycle' && (
+                        <div className="space-y-4 pt-3 border-t">
+                          <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-background/60 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">1차 추가요금 (야간전환 기준)</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">적용 지연 (시간)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.settlementCycleFirstDelayHours}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      settlementCycleFirstDelayHours: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-settlement-first-delay"
+                                />
+                                <p className="text-[11px] text-muted-foreground">0 = 야간전환 직후</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">부과 금액 (원)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.settlementCycleFirstFeeAmount}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      settlementCycleFirstFeeAmount: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-settlement-first-fee"
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  권장: 야간−주간 = {(formData.nightPrice - formData.dayPrice).toLocaleString()}원
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="rounded-md border border-teal-200 dark:border-teal-800 bg-background/60 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-teal-800 dark:text-teal-300">2차 추가요금 (정산시간 기준)</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">적용 지연 (시간)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.settlementCycleSecondDelayHours}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      settlementCycleSecondDelayHours: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-settlement-second-delay"
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  0 = 정산({formData.businessDayStartHour}시) 직후
+                                </p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">부과 금액 (원)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.settlementCycleSecondFeeAmount}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      settlementCycleSecondFeeAmount: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-settlement-second-fee"
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  권장: 주간요금 = {formData.dayPrice.toLocaleString()}원
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setFormData({
+                                ...formData,
+                                settlementCycleFirstFeeAmount: Math.max(0, formData.nightPrice - formData.dayPrice),
+                                settlementCycleSecondFeeAmount: formData.dayPrice,
+                              });
+                            }}
+                          >
+                            권장 금액으로 맞추기 (야간−주간 / 주간요금)
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </label>
+
+                {/* 모드4: 단계별(1·2·3차) */}
+                <label
+                  htmlFor="fee-mode-staged"
+                  className={`block cursor-pointer rounded-lg border-2 p-4 transition-colors ${
+                    formData.domesticAdditionalFeeMode === 'stagedHourly'
+                      ? 'border-violet-500 bg-violet-50/80 dark:bg-violet-950/30'
+                      : 'border-border hover:border-muted-foreground/40'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <RadioGroupItem value="stagedHourly" id="fee-mode-staged" className="mt-0.5" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded bg-violet-600 px-1.5 text-[11px] font-bold text-white">4</span>
+                        <span className="text-sm font-semibold">단계별 1·2·3차 (시간당)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        1차: 야간전환+N · 2차: 지정 시각(ON/OFF, 주간·야간전환 N시간 이전 입실만) · 3차: 다음 정산 이후 기준시각부터 매시간 누적<br />
+                        <span className="text-muted-foreground">※ 3차가 시작되면 1·2차는 더하지 않고 3차만 적용됩니다.</span>
+                        정산 전 주간 입실 → 야간전환까지 무료, 야간전환 시 야간요금 후 동일 파이프라인
+                      </p>
+                      {formData.domesticAdditionalFeeMode === 'stagedHourly' && (
+                        <div className="space-y-4 pt-3 border-t">
+                          {/* 1차 */}
+                          <div className="rounded-md border border-violet-200 dark:border-violet-800 bg-background/60 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-violet-800 dark:text-violet-300">1차 추가요금 (야간전환 기준)</p>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">적용 지연 (시간)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.stagedFirstDelayHours}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      stagedFirstDelayHours: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-staged-first-delay"
+                                />
+                                <p className="text-[11px] text-muted-foreground">0 = 야간전환({formData.nightStartTime}) 직후</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">부과 금액 (원)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.stagedFirstFeeAmount}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      stagedFirstFeeAmount: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-staged-first-fee"
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                  권장: 야간−주간 = {(formData.nightPrice - formData.dayPrice).toLocaleString()}원
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 2차 */}
+                          <div className="rounded-md border border-fuchsia-200 dark:border-fuchsia-800 bg-background/60 p-3 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-fuchsia-800 dark:text-fuchsia-300">2차 추가요금 (지정 시각)</p>
+                              <div className="flex items-center gap-2">
+                                <Label className="text-xs text-muted-foreground">적용</Label>
+                                <Switch
+                                  checked={formData.stagedSecondEnabled}
+                                  onCheckedChange={(checked) =>
+                                    setFormData({ ...formData, stagedSecondEnabled: checked })
+                                  }
+                                  data-testid="switch-staged-second-enabled"
+                                />
+                              </div>
+                            </div>
+                            {formData.stagedSecondEnabled && (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">적용 시각 (0–23시)</Label>
+                                    <Input
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={formData.stagedSecondApplyHour}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value);
+                                        setFormData({
+                                          ...formData,
+                                          stagedSecondApplyHour: isNaN(val) ? 0 : Math.max(0, Math.min(23, val)),
+                                        });
+                                      }}
+                                      data-testid="input-staged-second-hour"
+                                    />
+                                    <p className="text-[11px] text-muted-foreground">예: 0 = 자정</p>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs">부과 금액 (원)</Label>
+                                    <Input
+                                      type="text"
+                                      inputMode="numeric"
+                                      value={formData.stagedSecondFeeAmount}
+                                      onChange={(e) => {
+                                        const val = parseInt(e.target.value);
+                                        setFormData({
+                                          ...formData,
+                                          stagedSecondFeeAmount: isNaN(val) ? 0 : Math.max(0, val),
+                                        });
+                                      }}
+                                      data-testid="input-staged-second-fee"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs">최소 입실 선행시간 (야간전환 기준, 시)</Label>
+                                  <Input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formData.stagedSecondMinHoursBeforeNight}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value);
+                                      setFormData({
+                                        ...formData,
+                                        stagedSecondMinHoursBeforeNight: isNaN(val) ? 0 : Math.max(0, val),
+                                      });
+                                    }}
+                                    data-testid="input-staged-second-min-hours"
+                                  />
+                                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                    주간 입실이 야간전환({formData.nightStartTime || '19:00'})보다
+                                    이 시간 이상 이전일 때만 2차 부과.
+                                    야간 직전 입실·야간 입실은 2차 면제.
+                                    {(() => {
+                                      const nightH = parseInt(String(formData.nightStartTime || '19:00').split(':')[0], 10) || 19;
+                                      const n = formData.stagedSecondMinHoursBeforeNight || 0;
+                                      const cutoff = (nightH - n + 24) % 24;
+                                      return (
+                                        <>
+                                          {' '}현재 설정: 대략 <strong>{cutoff}시 이전</strong> 주간 입실만 2차 대상.
+                                        </>
+                                      );
+                                    })()}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {!formData.stagedSecondEnabled && (
+                              <p className="text-[11px] text-muted-foreground">OFF — 2차 추가요금을 건너뜁니다</p>
+                            )}
+                          </div>
+
+                          {/* 3차 */}
+                          <div className="rounded-md border border-indigo-200 dark:border-indigo-800 bg-background/60 p-3 space-y-3">
+                            <p className="text-xs font-semibold text-indigo-800 dark:text-indigo-300">
+                              3차 추가요금 (다음 정산 이후 · 시간당)
+                            </p>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                              다음 정산({formData.businessDayStartHour}시) 이후, 기준 시각부터<br />
+                              <strong>(경과시간 + 가산시간) × 단위금액</strong> 으로 누적됩니다.
+                            </p>
+                            <div className="grid grid-cols-3 gap-3">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">기준 시각 (시)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.stagedThirdApplyHour}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      stagedThirdApplyHour: isNaN(val) ? 0 : Math.max(0, Math.min(23, val)),
+                                    });
+                                  }}
+                                  data-testid="input-staged-third-hour"
+                                />
+                                <p className="text-[11px] text-muted-foreground">예: 12 = 정오</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">가산시간 (+N)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.stagedThirdHourOffset}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      stagedThirdHourOffset: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-staged-third-offset"
+                                />
+                                <p className="text-[11px] text-muted-foreground">예: 2</p>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs">단위금액 (원)</Label>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formData.stagedThirdUnitAmount}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value);
+                                    setFormData({
+                                      ...formData,
+                                      stagedThirdUnitAmount: isNaN(val) ? 0 : Math.max(0, val),
+                                    });
+                                  }}
+                                  data-testid="input-staged-third-unit"
+                                />
+                                <p className="text-[11px] text-muted-foreground">예: 1000</p>
+                              </div>
+                            </div>
+                            <p className="text-[11px] rounded bg-indigo-50 dark:bg-indigo-950/40 px-2 py-1.5 text-indigo-900 dark:text-indigo-200">
+                              미리보기: 기준 시각 도래 시{' '}
+                              <strong>
+                                {(formData.stagedThirdHourOffset * formData.stagedThirdUnitAmount).toLocaleString()}원
+                              </strong>
+                              , 1시간 후{' '}
+                              <strong>
+                                {((formData.stagedThirdHourOffset + 1) * formData.stagedThirdUnitAmount).toLocaleString()}원
+                              </strong>
+                              {' '}(누적)
+                            </p>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full text-xs"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setFormData({
+                                ...formData,
+                                stagedFirstDelayHours: 3,
+                                stagedFirstFeeAmount: Math.max(0, formData.nightPrice - formData.dayPrice),
+                                stagedSecondEnabled: true,
+                                stagedSecondApplyHour: 0,
+                                stagedSecondFeeAmount: formData.dayPrice,
+                                stagedSecondMinHoursBeforeNight: 6,
+                                stagedThirdApplyHour: 12,
+                                stagedThirdHourOffset: 2,
+                                stagedThirdUnitAmount: 1000,
+                              });
+                            }}
+                          >
+                            예시값으로 맞추기 (야간+3h / 자정 / 정오·+2×1000)
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              </RadioGroup>
+
               {formData.enableForeignerOption && (
-              <div className="space-y-2">
+              <div className="space-y-2 pt-2 border-t">
                 <Label htmlFor="foreignerAdditionalFeePeriod">외국인 추가요금 주기 (시간 단위)</Label>
                 <Input
                   id="foreignerAdditionalFeePeriod"
@@ -1935,6 +3014,56 @@ export default function Settings() {
               </div>
               <p className="text-xs text-muted-foreground">
                 외출 버튼 클릭 후 설정된 시간이 초과되면 해당 락카버튼이 다크그레이↔레드로 점멸됩니다
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* 다중락카옵션모드 */}
+          <Card data-testid="card-locker-stack-mode">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-5 w-5" />
+                다중락카옵션모드
+              </CardTitle>
+              <CardDescription>
+                여러 락카를 연속 선택할 때 옵션창을 어떻게 쌓아 보여줄지 정합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RadioGroup
+                value={formData.lockerStackDefaultCollapsed ? "collapsed" : "expanded"}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    lockerStackDefaultCollapsed: value === "collapsed",
+                  })
+                }
+                className="grid gap-3"
+                data-testid="radio-locker-stack-default"
+              >
+                <div className="flex items-start space-x-3 rounded-lg border bg-muted/20 px-4 py-3">
+                  <RadioGroupItem value="expanded" id="locker-stack-expanded" className="mt-1" />
+                  <Label htmlFor="locker-stack-expanded" className="flex-1 cursor-pointer space-y-1 font-normal">
+                    <span className="block font-medium text-foreground">펼침모드</span>
+                    <span className="block text-sm text-muted-foreground">
+                      선택한 모든 락카 옵션창을 펼친 상태로 표시합니다. (기존과 동일)
+                    </span>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3 rounded-lg border bg-muted/20 px-4 py-3">
+                  <RadioGroupItem value="collapsed" id="locker-stack-collapsed" className="mt-1" />
+                  <Label htmlFor="locker-stack-collapsed" className="flex-1 cursor-pointer space-y-1 font-normal">
+                    <span className="block font-medium text-foreground">접힘모드</span>
+                    <span className="block text-sm text-muted-foreground">
+                      가장 나중에 선택한 락카만 펼치고, 이전에 선택한 락카는 접습니다.
+                      락카를 1개만 선택한 경우에도 해당 옵션창은 펼쳐집니다.
+                    </span>
+                  </Label>
+                </div>
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground">
+                변경 후 아래 <span className="font-medium text-foreground">저장</span> 버튼을 눌러야 적용됩니다.
+                처리중인 고객 창이 2개 이상일 때는 헤더의 일괄 펼치기/일괄 접기로도 조절할 수 있습니다.
               </p>
             </CardContent>
           </Card>
@@ -2587,7 +3716,7 @@ export default function Settings() {
                           화면 설정
                         </CardTitle>
                         <CardDescription className="mt-1">
-                          화면 잠금 방지 설정
+                          다크 모드 · 화면 잠금 방지
                         </CardDescription>
                       </div>
                     </div>
@@ -2598,6 +3727,22 @@ export default function Settings() {
               
               <CollapsibleContent>
                 <CardContent className="space-y-4 pt-0">
+                  <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-center gap-3">
+                      <Moon className={`h-6 w-6 ${isDark ? 'text-blue-400' : 'text-muted-foreground'}`} />
+                      <div>
+                        <p className="font-medium">다크 모드</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isDark ? "어두운 화면 (눈의 피로 완화)" : "밝은 화면"}
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={isDark}
+                      onCheckedChange={(enabled) => setTheme(enabled ? "dark" : "light")}
+                      data-testid="switch-dark-mode"
+                    />
+                  </div>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                     <div className="flex items-center gap-3">
                       <Smartphone className={`h-6 w-6 ${screenWakeLock ? 'text-green-500' : 'text-muted-foreground'}`} />
@@ -2652,20 +3797,7 @@ export default function Settings() {
               
               <CollapsibleContent>
                 <CardContent className="pt-0">
-                  <Tabs defaultValue="card-payment">
-                    <TabsList className="grid w-full grid-cols-2 mb-4">
-                      <TabsTrigger value="card-payment">
-                        <CreditCard className="h-4 w-4 mr-1.5" />
-                        카드결제 앱
-                      </TabsTrigger>
-                      <TabsTrigger value="cctv">
-                        <Video className="h-4 w-4 mr-1.5" />
-                        감시카메라
-                      </TabsTrigger>
-                    </TabsList>
-
-                    {/* 카드결제 앱 탭 */}
-                    <TabsContent value="card-payment" className="space-y-4 mt-0">
+                  <div className="space-y-4">
                       <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                         <div className="flex items-center gap-3">
                           <CreditCard className={`h-6 w-6 ${cardPaymentAppEnabled ? 'text-green-500' : 'text-muted-foreground'}`} />
@@ -2744,13 +3876,7 @@ export default function Settings() {
                         활성화하면 락커 옵션에서 카드 결제 선택 시 TossPOS 등의 결제 앱이 자동으로 실행됩니다.
                         Android 태블릿에서만 동작합니다.
                       </p>
-                    </TabsContent>
-
-                    {/* 감시카메라 탭 */}
-                    <TabsContent value="cctv" className="mt-0">
-                      <CctvPanel />
-                    </TabsContent>
-                  </Tabs>
+                  </div>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
@@ -3129,10 +4255,6 @@ export default function Settings() {
                           <span className="text-muted-foreground">라이선스 키</span>
                           <span className="font-mono">{licenseInfo.licenseKey}</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">기기 ID</span>
-                          <span className="font-mono text-xs">{licenseInfo.deviceId?.slice(0, 16)}...</span>
-                        </div>
                       </div>
                     </div>
                     
@@ -3140,13 +4262,13 @@ export default function Settings() {
                       <div className="flex items-start gap-3">
                         <LogOut className="h-5 w-5 text-orange-500 mt-0.5" />
                         <div className="flex-1">
-                          <h4 className="font-medium text-orange-600 dark:text-orange-400 mb-1">기기 등록 해제</h4>
+                          <h4 className="font-medium text-orange-600 dark:text-orange-400 mb-1">라이선스 삭제</h4>
                           <p className="text-sm text-muted-foreground mb-3">
-                            현재 기기의 라이선스 등록을 해제합니다.
+                            이 기기에 저장된 라이선스를 삭제합니다.
                             <br />
                             <span className="text-xs">
-                              • 새로운 기기에서 동일한 라이선스로 등록할 수 있습니다<br />
-                              • 해제 후 이 기기에서는 앱을 사용할 수 없습니다
+                              • 삭제 후 다시 키를 입력하면 사용할 수 있습니다<br />
+                              • 다른 기기에서도 같은 키로 사용할 수 있습니다
                             </span>
                           </p>
                           <Button
@@ -3157,7 +4279,7 @@ export default function Settings() {
                             data-testid="button-unregister-device"
                           >
                             <LogOut className="h-4 w-4 mr-2" />
-                            {isUnregistering ? "해제 중..." : "기기 등록 해제"}
+                            {isUnregistering ? "삭제 중..." : "라이선스 삭제"}
                           </Button>
                         </div>
                       </div>
@@ -3183,6 +4305,7 @@ export default function Settings() {
                         </div>
                       </div>
                     </div>
+
                   </CardContent>
                 </CollapsibleContent>
               </Collapsible>
@@ -3273,12 +4396,212 @@ export default function Settings() {
                   </div>
                 </div>
               </div>
+
+              <div className="p-4 border border-sky-500/50 rounded-lg bg-sky-500/5">
+                <div className="flex items-start gap-3">
+                  <FolderOpen className="h-5 w-5 text-sky-600 dark:text-sky-400 mt-0.5" />
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-sky-700 dark:text-sky-400 mb-1">자동 백업</h4>
+                      <p className="text-sm text-muted-foreground">
+                        앱을 켤 때, 오늘이 속한 달을 포함해 지정한 개월만 남기고 그 이전 데이터를
+                        지정 폴더에 아카이브한 뒤 삭제합니다. 파일은 「아카이브 불러오기」로 다시 합칠 수 있습니다.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium">자동 백업 사용</p>
+                        <p className="text-xs text-muted-foreground">폴더를 지정해야 실제로 실행됩니다</p>
+                      </div>
+                      <Switch
+                        checked={formData.autoArchiveEnabled}
+                        onCheckedChange={(checked) =>
+                          setFormData((prev) => ({ ...prev, autoArchiveEnabled: checked }))
+                        }
+                        data-testid="switch-auto-archive"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="auto-archive-keep-months">남겨둘 기간 (개월)</Label>
+                        <Input
+                          id="auto-archive-keep-months"
+                          type="number"
+                          min={1}
+                          max={24}
+                          value={formData.autoArchiveKeepMonths}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              autoArchiveKeepMonths: clampAutoArchiveKeepMonths(e.target.value),
+                            }))
+                          }
+                          className="w-[120px]"
+                          data-testid="input-auto-archive-keep-months"
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground pb-2">
+                        {(() => {
+                          const range = getAutoArchiveKeepRange(formData.autoArchiveKeepMonths);
+                          return `오늘 기준 ${range.keepFromYm} ~ ${range.keepToYm}만 남기고, ${range.throughDate} 이전은 백업 후 삭제합니다.`;
+                        })()}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handlePickAutoArchiveFolder}
+                        disabled={!canPickArchiveDirectory()}
+                        data-testid="button-pick-auto-archive-folder"
+                      >
+                        <FolderOpen className="h-4 w-4 mr-2" />
+                        백업 폴더 지정
+                      </Button>
+                      {autoArchiveFolderName && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={handleClearAutoArchiveFolder}
+                          data-testid="button-clear-auto-archive-folder"
+                        >
+                          지정 해제
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRunAutoArchiveNow}
+                        disabled={isAutoArchiving || !autoArchiveFolderName}
+                        data-testid="button-run-auto-archive-now"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {isAutoArchiving ? "처리 중..." : "지금 실행"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {canPickArchiveDirectory()
+                        ? autoArchiveFolderName
+                          ? `지정된 폴더: ${autoArchiveFolderName}`
+                          : "아직 폴더가 없습니다. Chrome/Edge에서 폴더를 지정하세요."
+                        : "이 브라우저는 폴더 지정을 지원하지 않습니다. PC Chrome/Edge에서 지정하세요."}
+                      <br />
+                      · 파일명 예: {getArchiveBackupPrefix()}-archive-2025-12-03-to-2026-06-30.json
+                      <br />
+                      · 위 설정을 저장해야 다음 실행부터 자동으로 적용됩니다
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border border-amber-500/50 rounded-lg bg-amber-500/5">
+                <div className="flex items-start gap-3">
+                  <Download className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-amber-700 dark:text-amber-400 mb-1">오래된 데이터 정리</h4>
+                      <p className="text-sm text-muted-foreground">
+                        선택한 영업일까지 데이터를 JSON으로 백업한 뒤, 같은 구간을 앱에서 삭제합니다.
+                        이후 날짜만 남겨 앱을 가볍게 유지할 수 있습니다.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        현재 데이터 기간:{" "}
+                        {archiveRange.oldest && archiveRange.newest
+                          ? `${archiveRange.oldest} ~ ${archiveRange.newest}`
+                          : "기록 없음"}
+                        <br />
+                        · 입실 중(사용 중) 락커는 삭제하지 않습니다
+                        <br />
+                        · PC Chrome/Edge에서는 저장 폴더를 고를 수 있고, 그 외에는 다운로드 폴더로 저장됩니다
+                        <br />
+                        · 아카이브는 아래 &quot;아카이브 불러오기&quot;로 현재 데이터에 다시 합칠 수 있습니다
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="archive-through-date">이 날짜까지 백업 후 삭제</Label>
+                        <Input
+                          id="archive-through-date"
+                          type="date"
+                          value={archiveThroughDate}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setArchiveThroughDate(v);
+                            updateArchivePreview(v);
+                          }}
+                          className="w-[180px]"
+                          data-testid="input-archive-through-date"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          refreshArchiveRange();
+                          updateArchivePreview(archiveThroughDate);
+                        }}
+                        data-testid="button-refresh-archive-preview"
+                      >
+                        건수 새로고침
+                      </Button>
+                      <Button
+                        type="button"
+                        className="bg-amber-600 hover:bg-amber-700 text-white"
+                        onClick={handleOpenArchiveConfirm}
+                        disabled={isArchiving || !archiveThroughDate}
+                        data-testid="button-archive-purge"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        {isArchiving ? "처리 중..." : "백업 후 삭제"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-amber-600 text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+                        onClick={() => archiveFileInputRef.current?.click()}
+                        disabled={isMergingArchive}
+                        data-testid="button-archive-merge"
+                      >
+                        <Upload className="h-4 w-4 mr-2" />
+                        {isMergingArchive ? "불러오는 중..." : "아카이브 불러오기"}
+                      </Button>
+                      <input
+                        ref={archiveFileInputRef}
+                        type="file"
+                        accept=".json"
+                        onChange={handleArchiveMergeFileSelect}
+                        className="hidden"
+                        data-testid="input-archive-merge-file"
+                      />
+                    </div>
+                    {archivePreview && (
+                      <p className="text-xs text-muted-foreground">
+                        대상 {archivePreview.total.toLocaleString()}건
+                        {archivePreview.protectedInUse > 0
+                          ? ` (입실 중 ${archivePreview.protectedInUse}건은 유지)`
+                          : ""}
+                        {archivePreview.total > 0
+                          ? ` · 삭제 후 ${archiveThroughDate} 다음 날부터의 기록만 남습니다`
+                          : ""}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
               
               <div className="p-4 border border-primary/50 rounded-lg bg-primary/5">
                 <div className="flex items-start gap-3">
                   <Database className="h-5 w-5 text-primary mt-0.5" />
                   <div className="flex-1">
                     <h4 className="font-medium text-primary mb-1">샘플 데이터 생성</h4>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      현재 화면의 요금·정산·추가요금 모드 설정을 저장한 뒤, 그 설정대로 테스트 락커 데이터를 생성합니다.
+                      (생성 전 별도 저장 버튼을 누르지 않아도 됩니다)
+                      <br />
+                      <span className="text-xs">
+                        3·4번 방식에서는 정산 이전 입실(예: 정산 9시 → 8시 입실, 야간전환 시 야간요금) 시나리오 락커(#3·#4)도 포함됩니다.
+                      </span>
+                    </p>
                     <p className="text-sm text-muted-foreground mb-3">
                       다양한 시나리오의 테스트 데이터를 자동으로 생성합니다.
                       <br />
@@ -3369,7 +4692,7 @@ export default function Settings() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                💡 참고: 1년 이상 된 데이터는 자동으로 삭제됩니다.
+                💡 팁: 데이터가 많아져 느려지면 위의 &quot;오래된 데이터 정리&quot;로 구간 백업 후 삭제하세요.
               </p>
                 </CardContent>
               </CollapsibleContent>
@@ -3809,6 +5132,122 @@ export default function Settings() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Archive backup + purge Confirmation */}
+      <AlertDialog open={archiveConfirmOpen} onOpenChange={(open) => !isArchiving && setArchiveConfirmOpen(open)}>
+        <AlertDialogContent data-testid="dialog-archive-purge-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              오래된 데이터 백업 후 삭제
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  <strong className="text-foreground">{archiveThroughDate}</strong>까지의 운영 데이터를
+                  먼저 파일로 저장한 뒤, 앱에서 삭제합니다.
+                </p>
+                {archivePreview && (
+                  <p>
+                    대상 약 <strong className="text-foreground">{archivePreview.total.toLocaleString()}</strong>건
+                    {archivePreview.protectedInUse > 0
+                      ? ` (입실 중 ${archivePreview.protectedInUse}건은 삭제하지 않음)`
+                      : ""}
+                  </p>
+                )}
+                <p>
+                  저장 위치를 묻는 창이 뜨면 원하는 폴더를 선택하세요.
+                  (지원되지 않으면 다운로드 폴더로 저장됩니다)
+                </p>
+                <p className="text-destructive font-medium">
+                  파일 저장을 취소하면 삭제도 진행되지 않습니다. 삭제 후에는 앱에 해당 구간 데이터가 남지 않습니다.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isArchiving}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleArchiveBackupAndPurge();
+              }}
+              disabled={isArchiving}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="button-archive-purge-confirm"
+            >
+              {isArchiving ? "처리 중..." : "백업 후 삭제 실행"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Archive merge Confirmation */}
+      <AlertDialog
+        open={archiveMergeConfirmOpen}
+        onOpenChange={(open) => {
+          if (isMergingArchive) return;
+          setArchiveMergeConfirmOpen(open);
+          if (!open) {
+            setArchiveMergeFileData(null);
+            setArchiveMergePreview(null);
+          }
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-archive-merge-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-amber-600" />
+              아카이브 불러오기 확인
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  구간 아카이브를 <strong className="text-foreground">현재 데이터에 합칩니다.</strong>
+                  지금 있는 입실·설정은 지우지 않습니다.
+                </p>
+                {archiveMergePreview?.success && (
+                  <>
+                    <p>
+                      구간:{" "}
+                      {archiveMergePreview.archiveFrom
+                        ? `${archiveMergePreview.archiveFrom} ~ ${archiveMergePreview.archiveThrough || "?"}`
+                        : `~${archiveMergePreview.archiveThrough || "?"}`}
+                      {archiveMergePreview.exportDate
+                        ? ` · 백업 시각 ${new Date(archiveMergePreview.exportDate).toLocaleString('ko-KR')}`
+                        : ""}
+                    </p>
+                    <p>
+                      파일 내 약{" "}
+                      <strong className="text-foreground">
+                        {(archiveMergePreview.total || 0).toLocaleString()}
+                      </strong>
+                      건 (이미 있는 동일 기록은 건너뜀)
+                    </p>
+                  </>
+                )}
+                <p className="text-amber-700 dark:text-amber-400">
+                  합치면 DB가 다시 커져 앱이 조금 느려질 수 있습니다. 확인 후 다시 &quot;백업 후 삭제&quot;로 가볍게 만들 수 있습니다.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMergingArchive}>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleConfirmArchiveMerge();
+              }}
+              disabled={isMergingArchive}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="button-archive-merge-confirm"
+            >
+              {isMergingArchive ? "불러오는 중..." : "합쳐서 불러오기"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Data Management Authentication Dialog */}
       <PatternLockDialog
         open={showDataManagementAuth}
@@ -3816,6 +5255,7 @@ export default function Settings() {
         onPatternCorrect={() => {
           setIsDataManagementOpen(true);
           setShowDataManagementAuth(false);
+          refreshArchiveRange();
         }}
         title="데이터 관리 잠금 해제"
         description="데이터 관리 기능을 사용하려면 인증이 필요합니다."
@@ -3843,7 +5283,11 @@ export default function Settings() {
           <div className="space-y-4 pt-2">
             <Input
               type="text"
-              placeholder="EQUS-XXXX-XXXX-XXXX"
+              placeholder={
+                getAppSkin() === "v3" ? "HOME-XXXX-XXXX-XXXX"
+                : getAppSkin() === "v2" ? "HIZZ-XXXX-XXXX-XXXX"
+                : "EQUS-XXXX-XXXX-XXXX"
+              }
               value={passwordResetLicenseInput}
               onChange={(e) => {
                 setPasswordResetLicenseInput(e.target.value);
@@ -4102,6 +5546,7 @@ export default function Settings() {
 
 // Simple Pattern Lock component for pattern change (no verification)
 function PatternLockForChange({ onPatternComplete }: { onPatternComplete: (pattern: number[]) => void }) {
+  const { isDark } = useTheme();
   const [pattern, setPattern] = useState<number[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   const [touchPosition, setTouchPosition] = useState<{ x: number; y: number } | null>(null);
@@ -4181,6 +5626,10 @@ function PatternLockForChange({ onPatternComplete }: { onPatternComplete: (patte
     
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    const idleStroke = isDark ? "#475569" : "hsl(var(--border))";
+    const activeStroke = isDark ? "#2563EB" : "hsl(var(--primary))";
+    const innerFill = isDark ? "#FFFFFF" : "hsl(var(--primary-foreground))";
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -4200,7 +5649,7 @@ function PatternLockForChange({ onPatternComplete }: { onPatternComplete: (patte
         ctx.lineTo(touchPosition.x - rect.left, touchPosition.y - rect.top);
       }
       
-      ctx.strokeStyle = "hsl(var(--primary))";
+      ctx.strokeStyle = activeStroke;
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
@@ -4216,24 +5665,27 @@ function PatternLockForChange({ onPatternComplete }: { onPatternComplete: (patte
       ctx.arc(pos.x, pos.y, dotSize / 2, 0, Math.PI * 2);
       
       if (isSelected) {
-        ctx.fillStyle = "hsl(var(--primary))";
+        ctx.fillStyle = activeStroke;
         ctx.fill();
       }
-      ctx.strokeStyle = isSelected ? "hsl(var(--primary))" : "hsl(var(--border))";
+      ctx.strokeStyle = isSelected ? activeStroke : idleStroke;
       ctx.lineWidth = 3;
       ctx.stroke();
       
       if (isSelected) {
         ctx.beginPath();
         ctx.arc(pos.x, pos.y, dotSize / 4, 0, Math.PI * 2);
-        ctx.fillStyle = "hsl(var(--primary-foreground))";
+        ctx.fillStyle = innerFill;
         ctx.fill();
       }
     }
-  }, [pattern, isDrawing, touchPosition]);
+  }, [pattern, isDrawing, touchPosition, isDark]);
   
   return (
-    <div className="relative" style={{ width: canvasSize, height: canvasSize }}>
+    <div
+      className={isDark ? "relative rounded-2xl bg-slate-100 p-3 shadow-inner" : "relative"}
+      style={{ width: canvasSize + (isDark ? 24 : 0), height: canvasSize + (isDark ? 24 : 0) }}
+    >
       <canvas
         ref={canvasRef}
         width={canvasSize}

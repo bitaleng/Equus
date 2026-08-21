@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactElement } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +14,8 @@ import {
   getDailyPaymentBreakdownByMonth,
   getClosingDays,
   getVisitorStatsByMonth,
+  getDiscountTotalsByMonth,
+  getDailyDiscountBreakdownByMonth,
 } from "@/lib/localDb";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths, startOfWeek, endOfWeek, subWeeks, parseISO, getHours, addDays, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -71,6 +73,13 @@ interface VisitorStats {
   freeVisitors: number;
 }
 
+interface DailyDiscount {
+  businessDay: string;
+  entryDiscount: number;
+  additionalDiscount: number;
+  totalDiscount: number;
+}
+
 // Helper to get current date in Korea timezone
 function getKoreaDate(): Date {
   return toZonedTime(new Date(), TIMEZONE);
@@ -84,6 +93,59 @@ function formatKoreaDate(date: Date): string {
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("ko-KR").format(amount);
+}
+
+/**
+ * Recharts ResponsiveContainer(width=100%)가 중첩 Tabs 안에서
+ * 부모 너비를 잘못 재측정하며 가로가 점점 줄어드는 문제를 막습니다.
+ * 부모의 실제 픽셀 너비를 측정해 고정폭으로 그립니다.
+ * touch-action: pan-y 로 차트 위에서도 세로 스크롤이 동작합니다.
+ */
+function ChartFrame({
+  children,
+  height = 300,
+}: {
+  children: ReactElement;
+  height?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const update = () => {
+      const next = Math.floor(el.getBoundingClientRect().width);
+      if (next > 0) {
+        setWidth((prev) => (prev === next ? prev : next));
+      }
+    };
+
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="w-full min-w-0"
+      style={{ height, touchAction: "pan-y" }}
+      data-testid="chart-frame"
+    >
+      {width > 0 ? (
+        <ResponsiveContainer width={width} height={height} debounce={50}>
+          {children}
+        </ResponsiveContainer>
+      ) : null}
+    </div>
+  );
 }
 
 function calculateCurrentBusinessDay(): string {
@@ -100,37 +162,45 @@ export default function SalesReportPage() {
   const [mainTab, setMainTab] = useState<"calendar" | "graph" | "visitors">("calendar");
 
   return (
-    <div className="p-4 max-w-7xl mx-auto" data-testid="page-sales-report">
-      <h1 className="text-2xl font-bold mb-4">매출리포트</h1>
+    <div className="h-full min-h-0 w-full flex flex-col" data-testid="page-sales-report">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+        <div className="w-full max-w-7xl mx-auto p-4 pb-10">
+          <h1 className="text-2xl font-bold mb-4">매출리포트</h1>
 
-      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "calendar" | "graph" | "visitors")}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="calendar" data-testid="tab-calendar">
-            <Calendar className="w-4 h-4 mr-2" />
-            매출달력
-          </TabsTrigger>
-          <TabsTrigger value="graph" data-testid="tab-graph">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            매출그래프
-          </TabsTrigger>
-          <TabsTrigger value="visitors" data-testid="tab-visitors">
-            <Users className="w-4 h-4 mr-2" />
-            방문인원
-          </TabsTrigger>
-        </TabsList>
+          <Tabs
+            value={mainTab}
+            onValueChange={(v) => setMainTab(v as "calendar" | "graph" | "visitors")}
+            className="w-full min-w-0"
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="calendar" data-testid="tab-calendar">
+                <Calendar className="w-4 h-4 mr-2" />
+                매출달력
+              </TabsTrigger>
+              <TabsTrigger value="graph" data-testid="tab-graph">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                매출그래프
+              </TabsTrigger>
+              <TabsTrigger value="visitors" data-testid="tab-visitors">
+                <Users className="w-4 h-4 mr-2" />
+                방문인원
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="calendar">
-          <SalesCalendar />
-        </TabsContent>
+            <TabsContent value="calendar" className="w-full min-w-0 mt-0">
+              <SalesCalendar />
+            </TabsContent>
 
-        <TabsContent value="graph">
-          <SalesGraph />
-        </TabsContent>
+            <TabsContent value="graph" className="w-full min-w-0 mt-0">
+              <SalesGraph />
+            </TabsContent>
 
-        <TabsContent value="visitors">
-          <VisitorGraph />
-        </TabsContent>
-      </Tabs>
+            <TabsContent value="visitors" className="w-full min-w-0 mt-0">
+              <VisitorGraph />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
     </div>
   );
 }
@@ -144,6 +214,12 @@ function SalesCalendar() {
   const [visitorStats, setVisitorStats] = useState<VisitorStats[]>([]);
   const [currentBusinessDay, setCurrentBusinessDay] = useState<string>("");
   const [viewType, setViewType] = useState<"sales" | "refund">("sales");
+  const [discountTotals, setDiscountTotals] = useState({
+    entryDiscount: 0,
+    additionalDiscount: 0,
+    totalDiscount: 0,
+  });
+  const [dailyDiscounts, setDailyDiscounts] = useState<DailyDiscount[]>([]);
 
   useEffect(() => {
     const yearMonth = format(currentMonth, "yyyy-MM");
@@ -161,6 +237,9 @@ function SalesCalendar() {
     
     const visitors = getVisitorStatsByMonth(yearMonth);
     setVisitorStats(visitors as VisitorStats[]);
+
+    setDiscountTotals(getDiscountTotalsByMonth(yearMonth));
+    setDailyDiscounts(getDailyDiscountBreakdownByMonth(yearMonth) as DailyDiscount[]);
     
     setCurrentBusinessDay(calculateCurrentBusinessDay());
   }, [currentMonth]);
@@ -195,6 +274,12 @@ function SalesCalendar() {
     return map;
   }, [visitorStats]);
 
+  const discountMap = useMemo(() => {
+    const map = new Map<string, DailyDiscount>();
+    dailyDiscounts.forEach((d) => map.set(d.businessDay, d));
+    return map;
+  }, [dailyDiscounts]);
+
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
@@ -226,6 +311,7 @@ function SalesCalendar() {
       const payment = paymentMap.get(dateStr);
       const closing = closingMap.get(dateStr);
       const visitor = visitorMap.get(dateStr);
+      const discount = discountMap.get(dateStr);
       return {
         total: acc.total + (data?.totalSales || 0),
         cash: acc.cash + (payment?.cash || 0),
@@ -237,8 +323,10 @@ function SalesCalendar() {
         actualVisitors: acc.actualVisitors + (visitor?.actualVisitors || 0),
         cancelledVisitors: acc.cancelledVisitors + (visitor?.cancelledVisitors || 0),
         freeVisitors: acc.freeVisitors + (visitor?.freeVisitors || 0),
+        entryDiscount: acc.entryDiscount + (discount?.entryDiscount || 0),
+        additionalDiscount: acc.additionalDiscount + (discount?.additionalDiscount || 0),
       };
-    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0 });
+    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0, entryDiscount: 0, additionalDiscount: 0 });
   });
 
   const exportToPDF = async () => {
@@ -291,6 +379,18 @@ function SalesCalendar() {
       const totalLabel = viewType === "sales" ? "실매출금액" : "취소금액";
       const totalValue = viewType === "sales" ? totalSales : totalCancelledAmount;
       doc.text(`총 ${totalLabel}: ${formatCurrency(totalValue)}원`, pageWidth - margin, margin + 12, { align: "right" });
+
+      if (viewType === "sales" && (discountTotals.entryDiscount > 0 || discountTotals.additionalDiscount > 0)) {
+        doc.setFontSize(11);
+        doc.setTextColor(80, 80, 80);
+        const discountLine = [
+          discountTotals.entryDiscount > 0 ? `입실할인 ${formatCurrency(discountTotals.entryDiscount)}원` : null,
+          discountTotals.additionalDiscount > 0 ? `추가할인 ${formatCurrency(discountTotals.additionalDiscount)}원` : null,
+          `할인합계 ${formatCurrency(discountTotals.totalDiscount)}원`,
+        ].filter(Boolean).join("  ·  ");
+        doc.text(discountLine, pageWidth - margin, margin + 20, { align: "right" });
+        doc.setTextColor(0, 0, 0);
+      }
 
       const tableStartY = margin + headerHeight;
       doc.setLineWidth(0.5);
@@ -345,6 +445,7 @@ function SalesCalendar() {
           const payment = paymentMap.get(dateStr);
           const visitor = visitorMap.get(dateStr);
           const closing = closingMap.get(dateStr);
+          const dayDiscount = discountMap.get(dateStr);
 
           const cellX = margin + dayIdx * colWidth;
           const cellY = rowY;
@@ -398,6 +499,20 @@ function SalesCalendar() {
               }
               if (payment.transfer > 0) {
                 doc.text(`이체 ${formatCurrency(payment.transfer)}`, cellX + padding, textY);
+                textY += 4;
+              }
+            }
+
+            if (dayDiscount && dayDiscount.totalDiscount > 0) {
+              doc.setFontSize(10);
+              if (dayDiscount.entryDiscount > 0) {
+                doc.setTextColor(225, 29, 72); // rose
+                doc.text(`입실할인 ${formatCurrency(dayDiscount.entryDiscount)}`, cellX + padding, textY);
+                textY += 4;
+              }
+              if (dayDiscount.additionalDiscount > 0) {
+                doc.setTextColor(234, 88, 12); // orange
+                doc.text(`추가할인 ${formatCurrency(dayDiscount.additionalDiscount)}`, cellX + padding, textY);
                 textY += 4;
               }
             }
@@ -460,6 +575,19 @@ function SalesCalendar() {
             doc.text(`이체 ${formatCurrency(weeklyTotal.transfer)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
             weeklyTextY += 4;
           }
+          if (weeklyTotal.entryDiscount > 0 || weeklyTotal.additionalDiscount > 0) {
+            if (weeklyTotal.entryDiscount > 0) {
+              doc.setTextColor(225, 29, 72);
+              doc.text(`입실할인 ${formatCurrency(weeklyTotal.entryDiscount)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+              weeklyTextY += 4;
+            }
+            if (weeklyTotal.additionalDiscount > 0) {
+              doc.setTextColor(234, 88, 12);
+              doc.text(`추가할인 ${formatCurrency(weeklyTotal.additionalDiscount)}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+              weeklyTextY += 4;
+            }
+            doc.setTextColor(80, 80, 80);
+          }
           // 은행입금 (항상 표시)
           if (weeklyTotal.hasClosing) {
             doc.setTextColor(22, 163, 74);
@@ -519,6 +647,23 @@ function SalesCalendar() {
                   {totalCash > 0 && <span>현금 {formatCurrency(totalCash)}원</span>}
                   {totalCard > 0 && <span>카드 {formatCurrency(totalCard)}원</span>}
                   {totalTransfer > 0 && <span>이체 {formatCurrency(totalTransfer)}원</span>}
+                </div>
+              )}
+              {viewType === "sales" && (discountTotals.entryDiscount > 0 || discountTotals.additionalDiscount > 0) && (
+                <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-sm" data-testid="text-discount-totals">
+                  {discountTotals.entryDiscount > 0 && (
+                    <span className="text-rose-600 dark:text-rose-400 font-medium">
+                      입실할인 {formatCurrency(discountTotals.entryDiscount)}원
+                    </span>
+                  )}
+                  {discountTotals.additionalDiscount > 0 && (
+                    <span className="text-orange-600 dark:text-orange-400 font-medium">
+                      추가할인 {formatCurrency(discountTotals.additionalDiscount)}원
+                    </span>
+                  )}
+                  <span className="text-fuchsia-700 dark:text-fuchsia-300 font-semibold">
+                    할인합계 {formatCurrency(discountTotals.totalDiscount)}원
+                  </span>
                 </div>
               )}
             </div>
@@ -581,6 +726,7 @@ function SalesCalendar() {
                 const isToday = formatKoreaDate(new Date()) === dateStr;
 
                 const payment = paymentMap.get(dateStr);
+                const dayDiscount = discountMap.get(dateStr);
 
                 return (
                   <div
@@ -609,6 +755,20 @@ function SalesCalendar() {
                             {payment.transfer > 0 && <div>이체 {formatCurrency(payment.transfer)}</div>}
                           </div>
                         )}
+                        {dayDiscount && dayDiscount.totalDiscount > 0 && (
+                          <div className="mt-1 text-[10px] leading-tight space-y-0.5">
+                            {dayDiscount.entryDiscount > 0 && (
+                              <div className="text-rose-600 dark:text-rose-400 font-medium">
+                                입실할인 {formatCurrency(dayDiscount.entryDiscount)}
+                              </div>
+                            )}
+                            {dayDiscount.additionalDiscount > 0 && (
+                              <div className="text-orange-600 dark:text-orange-400 font-medium">
+                                추가할인 {formatCurrency(dayDiscount.additionalDiscount)}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {(() => {
                           const closing = closingMap.get(dateStr);
                           const isCurrentDay = dateStr === currentBusinessDay;
@@ -625,6 +785,20 @@ function SalesCalendar() {
                           return null;
                         })()}
                       </>
+                    )}
+                    {viewType === "sales" && (!sales || sales <= 0) && dayDiscount && dayDiscount.totalDiscount > 0 && (
+                      <div className="mt-1 text-[10px] leading-tight space-y-0.5">
+                        {dayDiscount.entryDiscount > 0 && (
+                          <div className="text-rose-600 dark:text-rose-400 font-medium">
+                            입실할인 {formatCurrency(dayDiscount.entryDiscount)}
+                          </div>
+                        )}
+                        {dayDiscount.additionalDiscount > 0 && (
+                          <div className="text-orange-600 dark:text-orange-400 font-medium">
+                            추가할인 {formatCurrency(dayDiscount.additionalDiscount)}
+                          </div>
+                        )}
+                      </div>
                     )}
                     {viewType === "sales" && (() => {
                       const visitor = visitorMap.get(dateStr);
@@ -661,9 +835,37 @@ function SalesCalendar() {
                     {weeklyTotals[weekIdx].cash > 0 && <div>현금 {formatCurrency(weeklyTotals[weekIdx].cash)}</div>}
                     {weeklyTotals[weekIdx].card > 0 && <div>카드 {formatCurrency(weeklyTotals[weekIdx].card)}</div>}
                     {weeklyTotals[weekIdx].transfer > 0 && <div>이체 {formatCurrency(weeklyTotals[weekIdx].transfer)}</div>}
+                    {(weeklyTotals[weekIdx].entryDiscount > 0 || weeklyTotals[weekIdx].additionalDiscount > 0) && (
+                      <div className="space-y-0.5 pt-0.5 border-t border-muted mt-0.5">
+                        {weeklyTotals[weekIdx].entryDiscount > 0 && (
+                          <div className="text-rose-600 dark:text-rose-400 font-medium">
+                            입실할인 {formatCurrency(weeklyTotals[weekIdx].entryDiscount)}
+                          </div>
+                        )}
+                        {weeklyTotals[weekIdx].additionalDiscount > 0 && (
+                          <div className="text-orange-600 dark:text-orange-400 font-medium">
+                            추가할인 {formatCurrency(weeklyTotals[weekIdx].additionalDiscount)}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {weeklyTotals[weekIdx].hasClosing && (
                       <div className="text-green-600 dark:text-green-400 font-medium pt-0.5 border-t border-muted mt-0.5">
                         은행입금 {formatCurrency(weeklyTotals[weekIdx].bankDeposit)}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {viewType === "sales" && weeklyTotals[weekIdx].total <= 0 && (weeklyTotals[weekIdx].entryDiscount > 0 || weeklyTotals[weekIdx].additionalDiscount > 0) && (
+                  <div className="mt-1 text-[10px] leading-tight space-y-0.5 text-center">
+                    {weeklyTotals[weekIdx].entryDiscount > 0 && (
+                      <div className="text-rose-600 dark:text-rose-400 font-medium">
+                        입실할인 {formatCurrency(weeklyTotals[weekIdx].entryDiscount)}
+                      </div>
+                    )}
+                    {weeklyTotals[weekIdx].additionalDiscount > 0 && (
+                      <div className="text-orange-600 dark:text-orange-400 font-medium">
+                        추가할인 {formatCurrency(weeklyTotals[weekIdx].additionalDiscount)}
                       </div>
                     )}
                   </div>
@@ -692,14 +894,14 @@ function SalesGraph() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={handleRefresh} data-testid="button-refresh-graph">
           <RefreshCw className="w-4 h-4 mr-2" />
           새로고침
         </Button>
       </div>
-      <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)}>
+      <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)} className="w-full min-w-0">
         <TabsList>
           <TabsTrigger value="daily" data-testid="tab-graph-daily">일간</TabsTrigger>
           <TabsTrigger value="weekly" data-testid="tab-graph-weekly">주간</TabsTrigger>
@@ -707,16 +909,16 @@ function SalesGraph() {
           <TabsTrigger value="yearly" data-testid="tab-graph-yearly">연간</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="daily">
+        <TabsContent value="daily" className="w-full min-w-0">
           <DailyGraph key={`daily-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="weekly">
+        <TabsContent value="weekly" className="w-full min-w-0">
           <WeeklyGraph key={`weekly-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="monthly">
+        <TabsContent value="monthly" className="w-full min-w-0">
           <MonthlyGraph key={`monthly-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="yearly">
+        <TabsContent value="yearly" className="w-full min-w-0">
           <YearlyGraph key={`yearly-${refreshKey}`} />
         </TabsContent>
       </Tabs>
@@ -797,7 +999,7 @@ function DailyGraph() {
   const currentDaySales = dailyData.find(d => d.date === format(selectedDate, "yyyy-MM-dd"))?.sales || 0;
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">일별/시간별 매출</CardTitle>
@@ -831,16 +1033,15 @@ function DailyGraph() {
           </Card>
         </div>
 
-        <Tabs value={subTab} onValueChange={(v) => setSubTab(v as "daily" | "hourly")}>
+        <Tabs value={subTab} onValueChange={(v) => setSubTab(v as "daily" | "hourly")} className="w-full min-w-0">
           <TabsList>
             <TabsTrigger value="daily">일별</TabsTrigger>
             <TabsTrigger value="hourly">시간대별</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="daily" className="mt-4">
+          <TabsContent value="daily" className="mt-4 w-full min-w-0">
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <ChartFrame>
                 <BarChart data={dailyData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="label" />
@@ -848,11 +1049,10 @@ function DailyGraph() {
                   <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
                   <Bar dataKey="sales" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              </ChartFrame>
           </TabsContent>
 
-          <TabsContent value="hourly" className="mt-4">
+          <TabsContent value="hourly" className="mt-4 w-full min-w-0">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">영업일선택</span>
@@ -871,8 +1071,7 @@ function DailyGraph() {
               </div>
             </div>
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <ChartFrame>
                 <BarChart data={hourlyData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="hour" />
@@ -880,8 +1079,7 @@ function DailyGraph() {
                   <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
                   <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              </ChartFrame>
           </TabsContent>
         </Tabs>
       </CardContent>
@@ -944,7 +1142,7 @@ function WeeklyGraph() {
   const totalWeekSales = weeklyData.reduce((sum, w) => sum + w.sales, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">주간/요일별 매출</CardTitle>
@@ -971,15 +1169,14 @@ function WeeklyGraph() {
           </Card>
         </div>
 
-        <Tabs value={subTab} onValueChange={(v) => setSubTab(v as "weekly" | "dayOfWeek")}>
+        <Tabs value={subTab} onValueChange={(v) => setSubTab(v as "weekly" | "dayOfWeek")} className="w-full min-w-0">
           <TabsList>
             <TabsTrigger value="weekly">주별</TabsTrigger>
             <TabsTrigger value="dayOfWeek">요일별</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="weekly" className="mt-4">
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+          <TabsContent value="weekly" className="mt-4 w-full min-w-0">
+            <ChartFrame>
                 <LineChart data={weeklyData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="week" />
@@ -987,13 +1184,11 @@ function WeeklyGraph() {
                   <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
                   <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
                 </LineChart>
-              </ResponsiveContainer>
-            </div>
+              </ChartFrame>
           </TabsContent>
 
-          <TabsContent value="dayOfWeek" className="mt-4">
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+          <TabsContent value="dayOfWeek" className="mt-4 w-full min-w-0">
+            <ChartFrame>
                 <BarChart data={dayOfWeekData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" />
@@ -1001,8 +1196,7 @@ function WeeklyGraph() {
                   <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
                   <Bar dataKey="sales" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
-            </div>
+              </ChartFrame>
           </TabsContent>
         </Tabs>
       </CardContent>
@@ -1040,7 +1234,7 @@ function MonthlyGraph() {
   const totalYearSales = monthlyData.reduce((sum, m) => sum + m.sales, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">월별 매출</CardTitle>
@@ -1063,8 +1257,7 @@ function MonthlyGraph() {
           </CardContent>
         </Card>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <LineChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="month" />
@@ -1072,8 +1265,7 @@ function MonthlyGraph() {
               <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
               <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1111,7 +1303,7 @@ function YearlyGraph() {
   const totalSales = yearlyData.reduce((sum, y) => sum + y.sales, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <CardTitle className="text-lg">연도별 매출</CardTitle>
       </CardHeader>
@@ -1123,8 +1315,7 @@ function YearlyGraph() {
           </CardContent>
         </Card>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <LineChart data={yearlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="year" />
@@ -1132,8 +1323,7 @@ function YearlyGraph() {
               <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
               <Line type="monotone" dataKey="sales" stroke="#10b981" strokeWidth={2} dot={{ r: 6 }} />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1149,14 +1339,14 @@ function VisitorGraph() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full min-w-0 space-y-4">
       <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={handleRefresh} data-testid="button-refresh-visitor-graph">
           <RefreshCw className="w-4 h-4 mr-2" />
           새로고침
         </Button>
       </div>
-      <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)}>
+      <Tabs value={graphType} onValueChange={(v) => setGraphType(v as any)} className="w-full min-w-0">
         <TabsList>
           <TabsTrigger value="daily" data-testid="tab-visitor-daily">일간</TabsTrigger>
           <TabsTrigger value="weekly" data-testid="tab-visitor-weekly">주간</TabsTrigger>
@@ -1165,19 +1355,19 @@ function VisitorGraph() {
           <TabsTrigger value="hourly" data-testid="tab-visitor-hourly">시간대별</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="daily">
+        <TabsContent value="daily" className="w-full min-w-0">
           <DailyVisitorGraph key={`daily-visitor-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="weekly">
+        <TabsContent value="weekly" className="w-full min-w-0">
           <WeeklyVisitorGraph key={`weekly-visitor-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="monthly">
+        <TabsContent value="monthly" className="w-full min-w-0">
           <MonthlyVisitorGraph key={`monthly-visitor-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="yearly">
+        <TabsContent value="yearly" className="w-full min-w-0">
           <YearlyVisitorGraph key={`yearly-visitor-${refreshKey}`} />
         </TabsContent>
-        <TabsContent value="hourly">
+        <TabsContent value="hourly" className="w-full min-w-0">
           <HourlyVisitorGraph key={`hourly-visitor-${refreshKey}`} />
         </TabsContent>
       </Tabs>
@@ -1217,7 +1407,7 @@ function DailyVisitorGraph() {
   const currentDayData = dailyData.find(d => d.date === format(selectedDate, "yyyy-MM-dd"));
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">일별 방문인원</CardTitle>
@@ -1263,8 +1453,7 @@ function DailyVisitorGraph() {
           </Card>
         </div>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <BarChart data={dailyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" />
@@ -1283,8 +1472,7 @@ function DailyVisitorGraph() {
               <Bar dataKey="cancelled" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
               <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1329,7 +1517,7 @@ function WeeklyVisitorGraph() {
   const totalVisitors = weeklyData.reduce((sum, w) => sum + w.total, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">주간 방문인원</CardTitle>
@@ -1354,8 +1542,7 @@ function WeeklyVisitorGraph() {
           </CardContent>
         </Card>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <BarChart data={weeklyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" />
@@ -1372,8 +1559,7 @@ function WeeklyVisitorGraph() {
               <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
               <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1402,7 +1588,7 @@ function MonthlyVisitorGraph() {
   const totalVisitors = monthlyData.reduce((sum, m) => sum + m.total, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">월별 방문인원</CardTitle>
@@ -1425,8 +1611,7 @@ function MonthlyVisitorGraph() {
           </CardContent>
         </Card>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <BarChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" />
@@ -1443,8 +1628,7 @@ function MonthlyVisitorGraph() {
               <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
               <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1478,7 +1662,7 @@ function YearlyVisitorGraph() {
   const totalVisitors = yearlyData.reduce((sum, y) => sum + y.total, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <CardTitle className="text-lg">연도별 방문인원</CardTitle>
       </CardHeader>
@@ -1490,8 +1674,7 @@ function YearlyVisitorGraph() {
           </CardContent>
         </Card>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <LineChart data={yearlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" />
@@ -1508,8 +1691,7 @@ function YearlyVisitorGraph() {
               <Line type="monotone" dataKey="cancelled" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
               <Line type="monotone" dataKey="free" stroke="#a855f7" strokeWidth={2} dot={{ r: 4 }} />
             </LineChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );
@@ -1562,7 +1744,7 @@ function HourlyVisitorGraph() {
   const totalVisitors = hourlyData.reduce((sum, h) => sum + h.actual + h.cancelled + h.free, 0);
 
   return (
-    <Card>
+    <Card className="w-full min-w-0">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">시간대별 방문인원</CardTitle>
@@ -1593,8 +1775,7 @@ function HourlyVisitorGraph() {
           </div>
         </div>
 
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
+        <ChartFrame>
             <BarChart data={hourlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="hour" />
@@ -1611,8 +1792,7 @@ function HourlyVisitorGraph() {
               <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
               <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </div>
+          </ChartFrame>
       </CardContent>
     </Card>
   );

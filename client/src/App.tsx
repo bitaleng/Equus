@@ -18,25 +18,67 @@ import SalesReportPage from "@/pages/SalesReportPage";
 import CashRegisterPage from "@/pages/CashRegisterPage";
 import StaffLogPage from "@/pages/StaffLogPage";
 import AdminLicenses from "@/pages/AdminLicenses";
+import AdminCctv from "@/pages/AdminCctv";
 import CctvPage from "@/pages/CctvPage";
 import CctvViewPage from "@/pages/CctvViewPage";
+import CctvRemotePage from "@/pages/CctvRemotePage";
 import NotFound from "@/pages/not-found";
-import { initDatabase, getSettings } from "@/lib/localDb";
+import { initDatabase, getSettings, restoreSessionFromDatabase } from "@/lib/localDb";
 import { Menu, Lock } from "lucide-react";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import PatternLockDialog from "@/components/PatternLockDialog";
 import { useWakeLock } from "@/hooks/useWakeLock";
-import { isDemoMode, blockPwaInstall } from "@/lib/demoMode";
+import { isDemoMode, blockPwaInstall, DEMO_SITE_MARKER } from "@/lib/demoMode";
 import { isRouteLocked } from "@/lib/menuLock";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { CctvProvider } from "@/contexts/CctvContext";
+import { CctvInstallNotifier } from "@/components/CctvInstallNotifier";
+import ScreenViewPage from "@/pages/ScreenViewPage";
+import { runAutoArchiveIfNeeded } from "@/lib/autoArchive";
+import { useToast } from "@/hooks/use-toast";
+
+function AutoArchiveRunner() {
+  const { toast } = useToast();
+  const ranRef = useRef(false);
+
+  useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        const result = await runAutoArchiveIfNeeded();
+        if (result.status === "purged") {
+          toast({
+            title: "자동 백업 완료",
+            description: result.message,
+          });
+        } else if (result.status === "needs-permission" || result.status === "needs-folder") {
+          toast({
+            title: "자동 백업 대기",
+            description: result.message,
+          });
+        } else if (result.status === "error") {
+          toast({
+            title: "자동 백업 실패",
+            description: result.message,
+            variant: "destructive",
+          });
+        }
+      })();
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  return null;
+}
 
 function isAdminRoute(path: string): boolean {
   return path.startsWith("/admin");
 }
 
-function isCctvViewRoute(path: string): boolean {
-  return path.startsWith("/cctv/view");
+function isCctvPublicRoute(path: string): boolean {
+  return path.startsWith("/cctv/view") || path.startsWith("/cctv/remote") || path.startsWith("/screen/view");
 }
 
 function Router() {
@@ -53,6 +95,17 @@ function Router() {
       <Route path="/staff-logs" component={StaffLogPage} />
       <Route path="/cctv" component={CctvPage} />
       <Route path="/admin/licenses" component={AdminLicenses} />
+      <Route path="/admin/cctv" component={AdminCctv} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+function AdminRouter() {
+  return (
+    <Switch>
+      <Route path="/admin/licenses" component={AdminLicenses} />
+      <Route path="/admin/cctv" component={AdminCctv} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -134,7 +187,7 @@ function MainLayout() {
       <div className="flex w-full" style={{ height: 'var(--real-vh, 100dvh)' }}>
         <AppSidebar />
         <div className="flex flex-col flex-1 min-h-0">
-          <header className="flex items-center justify-start p-2 border-b shrink-0">
+          <header className="flex items-center justify-between p-2 border-b shrink-0 bg-background">
             <Button
               variant="ghost"
               size="icon"
@@ -143,6 +196,7 @@ function MainLayout() {
             >
               <Menu className="h-4 w-4" />
             </Button>
+            <ThemeToggle />
           </header>
           <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
             <RouteGuard>
@@ -159,17 +213,16 @@ function AppContent() {
   const [location] = useLocation();
 
   if (isAdminRoute(location)) {
-    return <AdminLicenses />;
+    return <AdminRouter />;
   }
 
-  if (isCctvViewRoute(location)) {
+  if (isCctvPublicRoute(location)) {
+    if (location.startsWith("/screen/view")) return <ScreenViewPage />;
+    if (location.startsWith("/cctv/remote")) return <CctvRemotePage />;
     return <CctvViewPage />;
   }
 
-  if (isDemoMode()) {
-    return <MainLayout />;
-  }
-
+  // 데모/정식 모두 LicenseGate 통과 — 데모는 로그인 후에도 서버 체험 재검증
   return (
     <LicenseGate>
       <MainLayout />
@@ -180,9 +233,31 @@ function AppContent() {
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [dbReady, setDbReady] = useState(false);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [wakeLockEnabled, setWakeLockEnabled] = useState(true);
 
   useWakeLock(wakeLockEnabled && isAuthenticated && dbReady);
+
+  // 상시 감시·원격 대기 중에는 화면 꺼짐 방지 강제
+  useEffect(() => {
+    if (!dbReady || !isAuthenticated) return;
+    const check = () => {
+      try {
+        const s = getSettings() as any;
+        const desired = localStorage.getItem("cctv_desired_streaming") === "1";
+        if (s.cctvAlwaysOn || desired) {
+          setWakeLockEnabled(true);
+        }
+      } catch {}
+    };
+    check();
+    window.addEventListener("cctv-settings-changed", check);
+    const iv = setInterval(check, 5000);
+    return () => {
+      window.removeEventListener("cctv-settings-changed", check);
+      clearInterval(iv);
+    };
+  }, [dbReady, isAuthenticated]);
 
   useEffect(() => {
     // --real-vh: JS로 정확한 뷰포트 높이 추적
@@ -202,22 +277,52 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isDemoMode()) {
-      blockPwaInstall();
-    }
+    let cancelled = false;
 
-    const authenticated = localStorage.getItem("authenticated");
-    if (authenticated === "true") {
-      setIsAuthenticated(true);
-    }
+    (async () => {
+      try {
+        // Chrome PWA: 저장소 영구화 요청 (자동 삭제 방지) — 체험판은 PWA 미지원
+        if (!isDemoMode() && navigator.storage?.persist) {
+          await navigator.storage.persist();
+        }
+      } catch {}
 
-    initDatabase().then(() => {
-      const settings = getSettings();
-      setWakeLockEnabled(settings.screenWakeLock !== false);
-      setDbReady(true);
-    }).catch((error) => {
-      console.error('Failed to initialize database:', error);
-    });
+      if (isDemoMode()) {
+        blockPwaInstall();
+        if (DEMO_SITE_MARKER) {
+          (window as unknown as { __IVANSAUNA_DEMO__?: string }).__IVANSAUNA_DEMO__ =
+            DEMO_SITE_MARKER;
+        }
+      }
+
+      try {
+        await initDatabase();
+        if (cancelled) return;
+        // DB(IndexedDB)에 남은 라이선스·로그인을 localStorage로 복구
+        restoreSessionFromDatabase();
+        if (cancelled) return;
+
+        if (localStorage.getItem("authenticated") === "true") {
+          setIsAuthenticated(true);
+        }
+        const settings = getSettings();
+        setWakeLockEnabled(settings.screenWakeLock !== false);
+        setDbReady(true);
+      } catch (error) {
+        console.error("Failed to initialize database:", error);
+        if (!cancelled) {
+          setDbError(
+            error instanceof Error
+              ? error.message
+              : "데이터베이스를 열 수 없습니다."
+          );
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -239,16 +344,39 @@ function App() {
     };
   }, [dbReady]);
 
-  // 뷰어 페이지는 앱 비밀번호 없이 접근 가능 (접속 코드로만 인증)
+  // 뷰어·원격제어·원격화면은 앱 비밀번호 없이 토큰만으로 접근
+  if (window.location.pathname.startsWith("/screen/view")) {
+    return <ScreenViewPage />;
+  }
   if (window.location.pathname.startsWith("/cctv/view")) {
     return <CctvViewPage />;
+  }
+  if (window.location.pathname.startsWith("/cctv/remote")) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <CctvRemotePage />
+          <Toaster />
+        </TooltipProvider>
+      </QueryClientProvider>
+    );
   }
 
   if (!dbReady) {
     return (
-      <div className="flex items-center justify-center" style={{ height: 'var(--real-vh, 100dvh)' }}>
-        <div className="text-center">
-          <p className="text-lg">데이터베이스 초기화 중...</p>
+      <div className="flex items-center justify-center p-6" style={{ height: 'var(--real-vh, 100dvh)' }}>
+        <div className="text-center max-w-md space-y-3">
+          {dbError ? (
+            <>
+              <p className="text-lg font-medium text-destructive">데이터 로드 실패</p>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{dbError}</p>
+              <Button type="button" onClick={() => window.location.reload()}>
+                다시 시도
+              </Button>
+            </>
+          ) : (
+            <p className="text-lg">데이터베이스 초기화 중...</p>
+          )}
         </div>
       </div>
     );
@@ -269,6 +397,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <CctvProvider>
+          <CctvInstallNotifier />
+          <AutoArchiveRunner />
           <AppContent />
           <Toaster />
           <UpdateBanner />

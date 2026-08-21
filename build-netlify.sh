@@ -1,130 +1,122 @@
 #!/usr/bin/env bash
 set -e
 
-# ─── zip 배포용 netlify.toml (빌드 명령 없음 - 이미 빌드된 파일을 배포) ───
-NETLIFY_TOML_COMMON='
-# SPA 라우팅 - license-generator.html은 정적 파일로 서빙
-[[redirects]]
-  from = "/license-generator.html"
-  to = "/license-generator.html"
-  status = 200
+# 사용법:
+#   ./build-netlify.sh              → v1+v2+v3 정식
+#   ./build-netlify.sh demo         → 통합 체험판 (netlify-demo.zip)
 
-# SPA 라우팅 - 모든 경로를 index.html로
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+STATIC_TOML="$ROOT/netlify-static.toml"
+FN_SRC="$ROOT/netlify/functions"
+TARGET="${1:-all}"
 
-# HTML - 캐시 없음 (항상 최신 버전)
-[[headers]]
-  for = "/"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
+prepare_netlify_bundle() {
+  local demo="$1"
+  if [ ! -f "$STATIC_TOML" ]; then
+    echo "ERROR: netlify-static.toml 없음"
+    exit 1
+  fi
+  cp "$STATIC_TOML" dist/public/netlify.toml
+  rm -rf dist/public/netlify/functions
+  if [ -d "$FN_SRC" ]; then
+    mkdir -p dist/public/netlify
+    cp -R "$FN_SRC" dist/public/netlify/functions
+    node "$ROOT/scripts/bundle-netlify-functions.mjs" dist/public/netlify/functions
+    echo "Netlify Functions 복사/번들 완료"
+  fi
 
-[[headers]]
-  for = "/*.html"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
+  if [ "$demo" = "1" ]; then
+    python3 "$ROOT/scripts/patch-demo-manifest.py" dist/public/manifest.json
+    rm -f dist/public/license-generator.html
+    cp client/public/icon-demo.png dist/public/icon-demo.png 2>/dev/null || true
+    echo "IVANSAUNA_DEMO_SITE" > dist/public/demo-build.txt
+    echo "데모 빌드: PWA 설치 비활성"
+  fi
+}
 
-# Service Worker - 캐시 방지 (업데이트 감지)
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
+verify_zip() {
+  local zip="$1"
+  local mode="$2"
+  local skin="$3"
+  python3 "$ROOT/scripts/verify-netlify-zip.py" "$zip" "$skin"
+  python3 "$ROOT/scripts/verify-demo-flag.py" "$zip" "$mode"
+}
 
-[[headers]]
-  for = "/workbox-*.js"
-  [headers.values]
-    Cache-Control = "public, max-age=0, must-revalidate"
+build_one() {
+  local skin="$1"
+  local zip_name license_key demo=0
 
-# Web App Manifest - 올바른 MIME 타입
-[[headers]]
-  for = "/manifest.json"
-  [headers.values]
-    Content-Type = "application/manifest+json"
+  if [ "$skin" = "demo" ]; then
+    demo=1
+    zip_name="netlify-demo.zip"
+    license_key="rest_hotel_license_demo"
+  elif [ "$skin" = "v1" ]; then
+    zip_name="netlify-v1.zip"
+    license_key="rest_hotel_license"
+  elif [ "$skin" = "v3" ]; then
+    zip_name="netlify-v3.zip"
+    license_key="rest_hotel_license_v3"
+  else
+    zip_name="netlify-v2.zip"
+    license_key="rest_hotel_license_v2"
+  fi
 
-[[headers]]
-  for = "/manifest.webmanifest"
-  [headers.values]
-    Content-Type = "application/manifest+json"
+  echo ""
+  echo "======================================"
+  echo "  $skin 빌드 ($( [ "$demo" = "1" ] && echo DEMO || echo PROD ))"
+  echo "======================================"
 
-# SQLite WASM - 장기 캐시
-[[headers]]
-  for = "/*.wasm"
-  [headers.values]
-    Content-Type = "application/wasm"
-    Cache-Control = "public, max-age=31536000, immutable"
+  unset VITE_APP_NAME VITE_APP_SHORT_NAME VITE_APP_DESCRIPTION || true
+  export VITE_SKIN="$skin"
+  export VITE_LICENSE_STORAGE_KEY="$license_key"
+  if [ "$demo" = "1" ]; then
+    export VITE_DEMO_BUILD=true
+  else
+    unset VITE_DEMO_BUILD || true
+  fi
 
-# 정적 에셋 - 파일명 해시로 캐시 버스팅
-[[headers]]
-  for = "/assets/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+  rm -rf dist/public
+  npx vite build
+  cp client/public/sw.js dist/public/sw.js
+  case "$skin" in
+    v1) sw_skin=equus ;;
+    v2) sw_skin=hizz ;;
+    v3) sw_skin=home24 ;;
+    demo) sw_skin=demo ;;
+    *) sw_skin=app ;;
+  esac
+  sw_cache="${sw_skin}-v37"
+  python3 -c "
+import pathlib, re
+p = pathlib.Path('dist/public/sw.js')
+t = p.read_text(encoding='utf-8')
+t = re.sub(r\"const CACHE_NAME = '[^']+'\", \"const CACHE_NAME = '$sw_cache'\", t, count=1)
+p.write_text(t, encoding='utf-8')
+print(f'SW CACHE_NAME = {\"$sw_cache\"}')
+"
+  for f in favicon.png favicon-light.png icon-192.png icon-192-light.png icon-512.png icon-512-light.png icon-1024.png icon-1024-light.png manifest.json; do
+    if [ -f "client/skins/$skin/$f" ]; then
+      cp "client/skins/$skin/$f" "dist/public/$f"
+    fi
+  done
 
-# 폰트 - 장기 캐시
-[[headers]]
-  for = "/*.woff2"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
-'
+  prepare_netlify_bundle "$demo"
+
+  rm -f "$zip_name"
+  python3 "$ROOT/scripts/pack-netlify-zip.py" dist/public "$zip_name"
+  verify_zip "$zip_name" "$( [ "$demo" = "1" ] && echo demo || echo prod )" "$skin"
+  echo "$zip_name 생성 완료"
+}
+
+if [ "$TARGET" = "demo" ]; then
+  build_one demo
+elif [ "$TARGET" = "all" ]; then
+  build_one v1
+  build_one v2
+  build_one v3
+else
+  build_one "$TARGET"
+fi
 
 echo ""
-echo "======================================"
-echo "  V1 에쿠스 빌드 시작"
-echo "======================================"
-VITE_SKIN=v1 \
-VITE_APP_NAME="LOCKER MANAGER" \
-VITE_APP_SHORT_NAME="LOCKER" \
-VITE_APP_DESCRIPTION="라이선스 키를 입력하여 시스템을 활성화하세요." \
-VITE_LICENSE_STORAGE_KEY="rest_hotel_license" \
-npx vite build
-
-echo "$NETLIFY_TOML_COMMON" > dist/public/netlify.toml
-
-echo ""
-echo "--- V1 아이콘 확인 ---"
-md5sum dist/public/favicon.png dist/public/icon-192.png dist/public/icon-512.png dist/public/icon-1024.png
-echo "--- V1 예상값 ---"
-md5sum client/skins/v1/favicon.png
-
-echo ""
-echo "--- V1 zip 생성 ---"
-rm -f netlify-v1.zip
-cd dist/public && zip -r ../../netlify-v1.zip . -x "*.DS_Store" && cd ../..
-echo "netlify-v1.zip 생성 완료: $(du -sh netlify-v1.zip | cut -f1)"
-
-echo ""
-echo "======================================"
-echo "  V2 히즈 빌드 시작"
-echo "======================================"
-VITE_SKIN=v2 \
-VITE_APP_NAME="He's 입실관리매니저" \
-VITE_APP_SHORT_NAME="He's" \
-VITE_APP_DESCRIPTION="라이선스 키를 입력하여 시스템을 활성화하세요." \
-VITE_LICENSE_STORAGE_KEY="rest_hotel_license_v2" \
-npx vite build
-
-echo "$NETLIFY_TOML_COMMON" > dist/public/netlify.toml
-
-echo ""
-echo "--- V2 아이콘 확인 ---"
-md5sum dist/public/favicon.png dist/public/icon-192.png dist/public/icon-512.png dist/public/icon-1024.png
-echo "--- V2 예상값 ---"
-md5sum client/skins/v2/favicon.png
-
-echo ""
-echo "--- V2 zip 생성 ---"
-rm -f netlify-v2.zip
-cd dist/public && zip -r ../../netlify-v2.zip . -x "*.DS_Store" && cd ../..
-echo "netlify-v2.zip 생성 완료: $(du -sh netlify-v2.zip | cut -f1)"
-
-echo ""
-echo "======================================"
-echo "  빌드 완료"
-echo "======================================"
-echo "netlify-v1.zip: $(du -sh netlify-v1.zip | cut -f1) (V1 에쿠스, EQUS- 라이선스)"
-echo "netlify-v2.zip: $(du -sh netlify-v2.zip | cut -f1) (V2 히즈, HIZZ- 라이선스)"
-echo ""
-echo "netlify.toml 내 빌드 명령 여부 확인:"
-echo "V1:" && (unzip -p netlify-v1.zip netlify.toml | grep -i "command" || echo "  command 없음 - 정상")
-echo "V2:" && (unzip -p netlify-v2.zip netlify.toml | grep -i "command" || echo "  command 없음 - 정상")
+echo "빌드 완료"

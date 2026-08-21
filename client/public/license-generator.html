@@ -75,6 +75,7 @@
     }
     .badge-v1 { background: rgba(74,222,128,0.15); color: #4ade80; }
     .badge-v2 { background: rgba(251,146,60,0.15); color: #fb923c; }
+    .badge-v3 { background: rgba(34,211,238,0.15); color: #22d3ee; }
 
     .form-group { margin-bottom: 20px; }
     .form-group label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; color: #c0c0c0; }
@@ -189,10 +190,13 @@
     <!-- 버전 선택 탭 -->
     <div class="version-tabs">
       <button class="tab-btn active" onclick="selectVersion('v1')">
-        V1 키 생성 <span class="version-badge badge-v1">기존</span>
+        V1 키 생성 <span class="version-badge badge-v1">에쿠스</span>
       </button>
       <button class="tab-btn" onclick="selectVersion('v2')">
-        V2 키 생성 <span class="version-badge badge-v2">신규</span>
+        V2 키 생성 <span class="version-badge badge-v2">히즈</span>
+      </button>
+      <button class="tab-btn" onclick="selectVersion('v3')">
+        V3 키 생성 <span class="version-badge badge-v3">홈</span>
       </button>
     </div>
 
@@ -249,6 +253,16 @@
           String.fromCharCode(76,99,75,114,51,116)
         ];
         return p.join('');
+      })(),
+      v3: (function() {
+        const p = [
+          String.fromCharCode(72,111,77,101),
+          "2025!",
+          String.fromCharCode(72,109,50,52,83),
+          "#HmKy@",
+          String.fromCharCode(83,99,82,116,51,116)
+        ];
+        return p.join('');
       })()
     };
 
@@ -258,10 +272,11 @@
     function selectVersion(ver) {
       currentVersion = ver;
       document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-        btn.classList.toggle('active', (i === 0 && ver === 'v1') || (i === 1 && ver === 'v2'));
+        const map = ['v1', 'v2', 'v3'];
+        btn.classList.toggle('active', map[i] === ver);
       });
-      document.getElementById('generateBtn').textContent =
-        ver === 'v1' ? 'V1 라이센스 생성' : 'V2 라이센스 생성';
+      const labels = { v1: 'V1 라이센스 생성', v2: 'V2 라이센스 생성', v3: 'V3 라이센스 생성' };
+      document.getElementById('generateBtn').textContent = labels[ver] || '라이센스 생성';
       document.getElementById('resultSection').classList.remove('show');
       renderHistory();
     }
@@ -290,7 +305,7 @@
       return Math.abs(hash).toString(36).toUpperCase().padStart(4,'0').substring(0,4);
     }
 
-    const LICENSE_PREFIXES = { v1: 'EQUS', v2: 'HIZZ' };
+    const LICENSE_PREFIXES = { v1: 'EQUS', v2: 'HIZZ', v3: 'HOME' };
 
     function generateLicenseKey(customerCode, expiryDate, version) {
       const encodedCustomer = encodeCustomerCode(customerCode);

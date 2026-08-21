@@ -33,11 +33,11 @@ export function isSalesTabLocked(): boolean {
 }
 
 export const MENU_ITEMS = [
-  { url: '/logs',         label: '상세 기록' },
-  { url: '/scan-logs',    label: '스캔정보' },
-  { url: '/closing',      label: '정산하기' },
+  { url: '/logs',          label: '상세 기록' },
+  { url: '/closing',       label: '정산하기' },
   { url: '/cash-register', label: '시재금관리' },
-  { url: '/expenses',     label: '지출관리' },
-  { url: '/sales-report', label: '매출리포트' },
-  { url: '/settings',     label: '시스템 설정' },
+  { url: '/expenses',      label: '지출관리' },
+  { url: '/sales-report',  label: '매출리포트' },
+  { url: '/settings',      label: '시스템 설정' },
+  { url: '/scan-logs',     label: '스캔정보' },
 ];

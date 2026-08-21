@@ -1,12 +1,14 @@
 {
-  "name": "He's 입실관리매니저",
-  "short_name": "He's",
-  "description": "태블릿 최적화 입실 관리 시스템",
+  "id": "/equus",
+  "name": "EQUUS LOCKER MANAGER",
+  "short_name": "LOCKER",
+  "description": "에쿠스 휴게텔 입실 관리 시스템",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1a1a",
-  "theme_color": "#cc44aa",
+  "background_color": "#ffffff",
+  "theme_color": "#0F172A",
   "orientation": "landscape",
+  "scope": "/",
   "icons": [
     {
       "src": "/icon-192.png",

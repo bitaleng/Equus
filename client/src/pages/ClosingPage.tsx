@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { ArrowLeft, Save, CheckCircle, Calculator, Calendar, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
+import { useState, useEffect, type ReactNode } from 'react';
+import { ArrowLeft, Save, CheckCircle, Calculator, Calendar as CalendarIcon, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
 import { Link } from 'wouter';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { ko } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -42,6 +46,9 @@ import {
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 import * as localDb from '@/lib/localDb';
+import { cn } from '@/lib/utils';
+import { toYmd, ymdToLocalDate } from '@/components/BusinessDayPicker';
+import { CashRegisterInput, calcCashRegisterTotal, loadCashRegister } from '@/components/CashRegisterInput';
 
 // Helper function to generate past business days
 function generatePastBusinessDays(count: number, businessDayStartHour: number): string[] {
@@ -58,6 +65,148 @@ function generatePastBusinessDays(count: number, businessDayStartHour: number): 
   }
   
   return days;
+}
+
+function ClosingRangeDatePicker({
+  id,
+  value,
+  placeholder,
+  onChange,
+  testId,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  onChange: (ymd: string) => void;
+  testId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? ymdToLocalDate(value) : undefined;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          className={cn(
+            "w-full justify-start text-left font-normal h-10",
+            !value && "text-muted-foreground"
+          )}
+          data-testid={testId}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {value || placeholder}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          locale={ko}
+          selected={selected}
+          defaultMonth={selected}
+          onSelect={(date) => {
+            if (!date) return;
+            onChange(toYmd(date));
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+type PayBreakdown = { cash: number; card: number; transfer: number; total: number };
+
+function PayTiles({
+  cash,
+  card,
+  transfer,
+  total,
+  emphasize = false,
+  tone = "default",
+  testIds,
+}: PayBreakdown & {
+  emphasize?: boolean;
+  tone?: "default" | "primary" | "danger";
+  testIds?: { cash?: string; card?: string; transfer?: string; total?: string };
+}) {
+  const items = [
+    { label: "현금", value: cash, testId: testIds?.cash },
+    { label: "카드", value: card, testId: testIds?.card },
+    { label: "이체", value: transfer, testId: testIds?.transfer },
+    { label: "합계", value: total, testId: testIds?.total, isTotal: true },
+  ];
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className={cn(
+            "rounded-lg border px-3 py-2.5 bg-background/90",
+            item.isTotal && tone === "primary" && "border-primary/40 bg-primary/10",
+            item.isTotal && tone === "danger" && "border-destructive/40 bg-destructive/10",
+            item.isTotal && tone === "default" && "border-primary/20 bg-primary/5"
+          )}
+        >
+          <p className="text-[11px] font-medium text-muted-foreground">{item.label}</p>
+          <p
+            data-testid={item.testId}
+            className={cn(
+              "mt-0.5 font-semibold tabular-nums leading-tight",
+              emphasize ? "text-lg" : "text-sm",
+              item.isTotal && tone === "danger" ? "text-destructive" : item.isTotal ? "text-primary" : "text-foreground"
+            )}
+          >
+            {formatKoreanCurrency(item.value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SalesGroup({
+  title,
+  total,
+  accent = "slate",
+  children,
+}: {
+  title: string;
+  total?: number;
+  accent?: "slate" | "blue" | "green" | "primary" | "orange";
+  children: ReactNode;
+}) {
+  const wrap = {
+    slate: "border-border bg-muted/20",
+    blue: "border-blue-200/80 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/20",
+    green: "border-border bg-muted/20",
+    primary: "border-blue-200/80 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/20",
+    orange: "border-blue-200/80 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/20",
+  }[accent];
+  const head = {
+    slate: "bg-zinc-500 text-white dark:bg-zinc-600 dark:text-white",
+    blue: "bg-blue-600 text-white dark:bg-blue-700",
+    green: "bg-zinc-500 text-white dark:bg-zinc-600 dark:text-white",
+    primary: "bg-blue-600 text-white dark:bg-blue-700",
+    orange: "bg-blue-600 text-white dark:bg-blue-700",
+  }[accent];
+  return (
+    <div className={cn("rounded-xl border overflow-hidden shadow-sm", wrap)}>
+      <div className={cn("flex items-center justify-between gap-3 px-4 py-2.5", head)}>
+        <h3 className="font-semibold text-sm tracking-tight">{title}</h3>
+        {total != null && (
+          <span className="text-sm font-bold tabular-nums opacity-95">{formatKoreanCurrency(total)}</span>
+        )}
+      </div>
+      <div className="p-3 sm:p-4 space-y-4">{children}</div>
+    </div>
+  );
+}
+
+function SalesSubLabel({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-semibold text-muted-foreground">{children}</p>;
 }
 
 export default function ClosingPage() {
@@ -197,22 +346,7 @@ export default function ClosingPage() {
       setEndTime(`${String(startHour).padStart(2, '0')}:00`);
 
       // Get opening float from cash register settings
-      const savedCashRegister = localStorage.getItem('cash_register');
-      let calculatedFloat = 0;
-      
-      if (savedCashRegister) {
-        try {
-          const cashRegister = JSON.parse(savedCashRegister);
-          calculatedFloat = (
-            (cashRegister.count50000 || 0) * 50000 +
-            (cashRegister.count10000 || 0) * 10000 +
-            (cashRegister.count5000 || 0) * 5000 +
-            (cashRegister.count1000 || 0) * 1000
-          );
-        } catch (error) {
-          console.error('Failed to load cash register:', error);
-        }
-      }
+      const calculatedFloat = calcCashRegisterTotal(loadCashRegister());
       
       // If cash register has value, use it; otherwise use previous closing
       if (calculatedFloat > 0) {
@@ -747,120 +881,128 @@ export default function ClosingPage() {
     <div className="h-full overflow-y-auto bg-background">
       <div className="container max-w-6xl mx-auto p-4 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="space-y-3">
           <div className="flex items-center gap-4">
             <Link href="/settings">
               <Button variant="ghost" size="icon" data-testid="button-back">
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             </Link>
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-3xl font-bold">정산하기</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {isConfirmed && <span className="text-green-600 font-semibold">✓ 확정완료</span>}
-                </p>
-              </div>
-              
-              {/* Business Day Selector - 년/월/일 분리 선택 */}
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-5 w-5 text-muted-foreground" />
-                
-                {/* 년 선택 */}
-                <Select value={selectedYear} onValueChange={handleYearChange}>
-                  <SelectTrigger className="w-[85px]" data-testid="select-year">
-                    <SelectValue placeholder="년" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableYears.map((year) => (
-                      <SelectItem key={year} value={year}>
-                        {year}년
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {/* 월 선택 */}
-                <Select value={selectedMonth} onValueChange={handleMonthChange}>
-                  <SelectTrigger className="w-[70px]" data-testid="select-month">
-                    <SelectValue placeholder="월" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableMonths.map((month) => (
-                      <SelectItem key={month} value={month}>
-                        {parseInt(month)}월
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {/* 일 선택 */}
-                <Select value={selectedDay} onValueChange={handleDayChange}>
-                  <SelectTrigger className="w-[70px]" data-testid="select-day">
-                    <SelectValue placeholder="일" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {parseInt(day)}일
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                
-                {/* 상태 배지 */}
-                {currentClosing?.isConfirmed ? (
-                  <Badge variant="secondary" className="text-xs whitespace-nowrap">확정</Badge>
-                ) : currentClosing ? (
-                  <Badge variant="outline" className="text-xs whitespace-nowrap">저장됨</Badge>
-                ) : (
-                  <Badge variant="destructive" className="text-xs whitespace-nowrap">미정산</Badge>
-                )}
-              </div>
-            </div>
+            <h1 className="text-3xl font-bold">정산하기</h1>
           </div>
 
-          <div className="flex gap-2">
-            <Button 
-              variant="outline"
-              onClick={handleExportExcel}
-              data-testid="button-export-excel"
-            >
-              <FileSpreadsheet className="h-4 w-4 mr-2" />
-              엑셀
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={handleExportPDF}
-              data-testid="button-export-pdf"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              PDF
-            </Button>
-            <Button 
-              variant="outline"
-              onClick={() => {
-                const bankDepositAmount = (parseInt(actualCash) || 0) - (parseInt(targetFloat) || 0);
-                toast({
-                  title: '은행입금액 계산',
-                  description: `입금할 금액: ${formatKoreanCurrency(bankDepositAmount)}`,
-                  duration: 5000,
-                });
-              }} 
-              disabled={!actualCash || isConfirmed} 
-              data-testid="button-calculate-bank-deposit"
-            >
-              <Calculator className="h-4 w-4 mr-2" />
-              은행입금액
-            </Button>
-            <Button onClick={handleSave} disabled={isConfirmed} data-testid="button-save-closing">
-              <Save className="h-4 w-4 mr-2" />
-              저장
-            </Button>
-            <Button onClick={handleConfirm} disabled={isConfirmed} data-testid="button-confirm-closing">
-              <CheckCircle className="h-4 w-4 mr-2" />
-              정산확정
-            </Button>
+          <div className="flex items-center justify-end gap-0.5 pl-14">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                  onClick={handleExportExcel}
+                  data-testid="button-export-excel"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  <span className="sr-only">엑셀로 내보내기</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>엑셀로 내보내기</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                  onClick={handleExportPDF}
+                  data-testid="button-export-pdf"
+                >
+                  <FileText className="h-4 w-4" />
+                  <span className="sr-only">PDF로 내보내기</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>PDF로 내보내기</TooltipContent>
+            </Tooltip>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pl-14">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+              <Select value={selectedYear} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-[85px]" data-testid="select-year">
+                  <SelectValue placeholder="년" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}년
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                <SelectTrigger className="w-[70px]" data-testid="select-month">
+                  <SelectValue placeholder="월" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableMonths.map((month) => (
+                    <SelectItem key={month} value={month}>
+                      {parseInt(month)}월
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={selectedDay} onValueChange={handleDayChange}>
+                <SelectTrigger className="w-[70px]" data-testid="select-day">
+                  <SelectValue placeholder="일" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableDays.map((day) => (
+                    <SelectItem key={day} value={day}>
+                      {parseInt(day)}일
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {currentClosing?.isConfirmed ? (
+                <Badge variant="secondary" className="text-xs whitespace-nowrap">확정</Badge>
+              ) : currentClosing ? (
+                <Badge variant="outline" className="text-xs whitespace-nowrap">저장됨</Badge>
+              ) : (
+                <Badge variant="destructive" className="text-xs whitespace-nowrap">미정산</Badge>
+              )}
+              {isConfirmed && (
+                <span className="text-sm text-green-600 font-semibold">✓ 확정완료</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  const bankDepositAmount = (parseInt(actualCash) || 0) - (parseInt(targetFloat) || 0);
+                  toast({
+                    title: '은행입금액 계산',
+                    description: `입금할 금액: ${formatKoreanCurrency(bankDepositAmount)}`,
+                    duration: 5000,
+                  });
+                }} 
+                disabled={!actualCash || isConfirmed} 
+                data-testid="button-calculate-bank-deposit"
+              >
+                <Calculator className="h-4 w-4 mr-2" />
+                은행입금액
+              </Button>
+              <Button onClick={handleSave} disabled={isConfirmed} data-testid="button-save-closing">
+                <Save className="h-4 w-4 mr-2" />
+                저장
+              </Button>
+              <Button onClick={handleConfirm} disabled={isConfirmed} data-testid="button-confirm-closing">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                정산확정
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -943,11 +1085,32 @@ export default function ClosingPage() {
           </CardContent>
         </Card>
 
+        {/* Cash Register Input */}
+        <Card>
+          <CardHeader>
+            <CardTitle>시재금 입력</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              지폐 단위별 매수를 입력하면 시재금·목표 시재금에 자동 반영됩니다. (시재금관리 메뉴와 동일)
+            </p>
+            <CashRegisterInput
+              disabled={isConfirmed}
+              onSaved={(total) => {
+                if (total > 0) {
+                  setOpeningFloat(total.toString());
+                  setTargetFloat((prev) => prev || total.toString());
+                }
+              }}
+            />
+          </CardContent>
+        </Card>
+
         {/* Range Query */}
         <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-              <Calendar className="h-5 w-5" />
+              <CalendarIcon className="h-5 w-5" />
               기간별 정산 조회
             </CardTitle>
           </CardHeader>
@@ -955,34 +1118,24 @@ export default function ClosingPage() {
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1 space-y-2">
                 <Label htmlFor="rangeStartBusinessDay">시작 영업일</Label>
-                <Select value={rangeStartBusinessDay} onValueChange={setRangeStartBusinessDay}>
-                  <SelectTrigger id="rangeStartBusinessDay" data-testid="select-range-start">
-                    <SelectValue placeholder="시작일 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableBusinessDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ClosingRangeDatePicker
+                  id="rangeStartBusinessDay"
+                  value={rangeStartBusinessDay}
+                  placeholder="시작일 선택"
+                  onChange={setRangeStartBusinessDay}
+                  testId="select-range-start"
+                />
               </div>
 
               <div className="flex-1 space-y-2">
                 <Label htmlFor="rangeEndBusinessDay">종료 영업일</Label>
-                <Select value={rangeEndBusinessDay} onValueChange={setRangeEndBusinessDay}>
-                  <SelectTrigger id="rangeEndBusinessDay" data-testid="select-range-end">
-                    <SelectValue placeholder="종료일 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableBusinessDays.map((day) => (
-                      <SelectItem key={day} value={day}>
-                        {day}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ClosingRangeDatePicker
+                  id="rangeEndBusinessDay"
+                  value={rangeEndBusinessDay}
+                  placeholder="종료일 선택"
+                  onChange={setRangeEndBusinessDay}
+                  testId="select-range-end"
+                />
               </div>
 
               <div className="flex items-end">
@@ -1003,98 +1156,19 @@ export default function ClosingPage() {
                 기간별 매출 합계 ({rangeStartBusinessDay} ~ {rangeEndBusinessDay})
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* 입실매출 */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg border-b pb-2">입실매출</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">현금</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.cash)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">카드</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.card)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">이체</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.entrySales.transfer)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">합계</p>
-                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.entrySales.total)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 추가요금 매출 */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg border-b pb-2">추가요금 매출</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">현금</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.cash)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">카드</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.card)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">이체</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.additionalSales.transfer)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">합계</p>
-                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.additionalSales.total)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 대여물품 매출 */}
-              <div className="space-y-3">
-                <h3 className="font-semibold text-lg border-b pb-2">대여물품 매출</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">현금</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.cash)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">카드</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.card)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">이체</p>
-                    <p className="text-lg font-semibold">{formatKoreanCurrency(rangeSalesData.rentalSales.transfer)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">합계</p>
-                    <p className="text-lg font-semibold text-primary">{formatKoreanCurrency(rangeSalesData.rentalSales.total)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* 총매출 */}
-              <div className="space-y-3 bg-primary/5 dark:bg-primary/10 p-4 rounded-lg border border-primary/20">
-                <h3 className="font-semibold text-lg border-b border-primary/20 pb-2">총 입실매출 (입실 + 추가요금)</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">현금</p>
-                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.cash)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">카드</p>
-                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.card)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">이체</p>
-                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.transfer)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">합계</p>
-                    <p className="text-xl font-bold text-primary">{formatKoreanCurrency(rangeSalesData.totalEntrySales.total)}</p>
-                  </div>
-                </div>
-              </div>
+            <CardContent className="space-y-4">
+              <SalesGroup title="입실매출" total={rangeSalesData.entrySales.total} accent="slate">
+                <PayTiles {...rangeSalesData.entrySales} />
+              </SalesGroup>
+              <SalesGroup title="추가요금 매출" total={rangeSalesData.additionalSales.total} accent="slate">
+                <PayTiles {...rangeSalesData.additionalSales} />
+              </SalesGroup>
+              <SalesGroup title="대여물품 매출" total={rangeSalesData.rentalSales.total} accent="slate">
+                <PayTiles {...rangeSalesData.rentalSales} />
+              </SalesGroup>
+              <SalesGroup title="총 입실매출 (입실 + 추가요금)" total={rangeSalesData.totalEntrySales.total} accent="blue">
+                <PayTiles {...rangeSalesData.totalEntrySales} emphasize tone="primary" />
+              </SalesGroup>
             </CardContent>
           </Card>
         )}
@@ -1104,192 +1178,71 @@ export default function ClosingPage() {
           <CardHeader>
             <CardTitle>매출 정보</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* 입실매출 */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg border-b pb-2">입실매출</h3>
-              
-              {/* ① 일반요금합계 */}
-              <div className="pl-4 space-y-1">
-                <p className="text-sm font-medium">① 일반요금합계</p>
-                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                  <div>
-                    <span className="text-muted-foreground">현금:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(baseEntrySales.cash)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">카드:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(baseEntrySales.card)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">이체:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(baseEntrySales.transfer)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">합계:</span>
-                    <span className="ml-1 font-semibold">{formatKoreanCurrency(baseEntrySales.total)}</span>
-                  </div>
-                </div>
+          <CardContent className="space-y-4">
+            <SalesGroup title="입실매출" total={entrySales.total} accent="slate">
+              <div className="space-y-2">
+                <SalesSubLabel>일반요금</SalesSubLabel>
+                <PayTiles {...baseEntrySales} />
               </div>
-
-              {/* ② 추가요금합계 */}
-              <div className="pl-4 space-y-1">
-                <p className="text-sm font-medium">② 추가요금합계</p>
-                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                  <div>
-                    <span className="text-muted-foreground">현금:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalFeeSales.cash)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">카드:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalFeeSales.card)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">이체:</span>
-                    <span className="ml-1 font-medium">{formatKoreanCurrency(additionalFeeSales.transfer)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">합계:</span>
-                    <span className="ml-1 font-semibold">{formatKoreanCurrency(additionalFeeSales.total)}</span>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <SalesSubLabel>추가요금</SalesSubLabel>
+                <PayTiles {...additionalFeeSales} />
               </div>
-
-              {/* ③ 입실매출 총합 */}
-              <div className="pl-4 space-y-1 bg-blue-50 dark:bg-blue-950 p-3 rounded">
-                <p className="text-sm font-semibold">③ 총합 (① + ②)</p>
-                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                  <div>
-                    <span className="text-muted-foreground">현금:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(entrySales.cash)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">카드:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(entrySales.card)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">이체:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(entrySales.transfer)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">합계:</span>
-                    <span className="ml-1 font-bold text-primary">{formatKoreanCurrency(entrySales.total)}</span>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-blue-200/70 dark:border-blue-800 bg-background/70 p-3 space-y-2">
+                <SalesSubLabel>입실 총합 (일반 + 추가)</SalesSubLabel>
+                <PayTiles {...entrySales} emphasize />
               </div>
-            </div>
+            </SalesGroup>
 
-            {/* 추가매출 (대여품목) */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg border-b pb-2">추가매출</h3>
-              
-              {/* 항목별 매출 */}
+            <SalesGroup title="추가매출" total={rentalSales.total} accent="slate">
               {Object.keys(rentalItemBreakdown).length > 0 ? (
-                <>
-                  {Object.entries(rentalItemBreakdown).map(([itemName, sales], index) => (
-                    <div key={itemName} className="pl-4 space-y-1 bg-green-50/50 dark:bg-green-950/50 p-2 rounded border-l-2 border-green-500">
-                      <p className="text-sm font-medium text-green-700 dark:text-green-300">• {itemName}</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                        <div>
-                          <span className="text-muted-foreground">현금:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.cash)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">카드:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.card)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">이체:</span>
-                          <span className="ml-1 font-medium">{formatKoreanCurrency(sales.transfer)}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">합계:</span>
-                          <span className="ml-1 font-semibold">{formatKoreanCurrency(sales.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </>
+                Object.entries(rentalItemBreakdown).map(([itemName, sales]) => (
+                  <div key={itemName} className="space-y-2">
+                    <SalesSubLabel>{itemName}</SalesSubLabel>
+                    <PayTiles cash={sales.cash} card={sales.card} transfer={sales.transfer} total={sales.total} />
+                  </div>
+                ))
               ) : (
-                <div className="pl-4 text-sm text-muted-foreground italic">
-                  해당 영업일에 추가매출 항목이 없습니다.
-                </div>
+                <p className="text-sm text-muted-foreground">해당 영업일에 추가매출 항목이 없습니다.</p>
               )}
-              
-              {/* ④ 대여품목 총합 (대여비 + 보증금) */}
-              <div className="pl-4 space-y-1 bg-green-50 dark:bg-green-950 p-3 rounded">
-                <p className="text-sm font-semibold">④ 총합 (대여비 + 보증금)</p>
-                <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                  <div>
-                    <span className="text-muted-foreground">현금:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(rentalSales.cash)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">카드:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(rentalSales.card)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">이체:</span>
-                    <span className="ml-1 font-bold">{formatKoreanCurrency(rentalSales.transfer)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">합계:</span>
-                    <span className="ml-1 font-bold text-primary">{formatKoreanCurrency(rentalSales.total)}</span>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-emerald-200/70 dark:border-emerald-800 bg-background/70 p-3 space-y-2">
+                <SalesSubLabel>추가매출 총합 (대여비 + 보증금)</SalesSubLabel>
+                <PayTiles {...rentalSales} emphasize />
               </div>
-            </div>
+            </SalesGroup>
 
-            {/* 총매출 */}
-            <div className="space-y-3">
-              <h3 className="font-semibold text-lg border-b pb-2">총매출</h3>
-              <div className="pl-4 space-y-1 bg-primary/10 p-4 rounded">
-                <p className="text-base font-bold">⑤ 총매출 (③ + ④)</p>
-                <div className="grid grid-cols-4 gap-2 text-base pl-2">
-                  <div>
-                    <span className="text-muted-foreground">현금:</span>
-                    <span className="ml-1 font-bold" data-testid="text-cash-sales">{formatKoreanCurrency(salesSummary.cashSales)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">카드:</span>
-                    <span className="ml-1 font-bold" data-testid="text-card-sales">{formatKoreanCurrency(salesSummary.cardSales)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">이체:</span>
-                    <span className="ml-1 font-bold" data-testid="text-transfer-sales">{formatKoreanCurrency(salesSummary.transferSales)}</span>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">합계:</span>
-                    <span className="ml-1 font-bold text-xl text-primary" data-testid="text-total-sales">{formatKoreanCurrency(salesSummary.totalSales)}</span>
-                  </div>
-                </div>
-              </div>
+            <SalesGroup title="총매출" total={salesSummary.totalSales} accent="blue">
+              <PayTiles
+                cash={salesSummary.cashSales}
+                card={salesSummary.cardSales}
+                transfer={salesSummary.transferSales}
+                total={salesSummary.totalSales}
+                emphasize
+                tone="primary"
+                testIds={{
+                  cash: "text-cash-sales",
+                  card: "text-card-sales",
+                  transfer: "text-transfer-sales",
+                  total: "text-total-sales",
+                }}
+              />
               {refundSummary.total > 0 && (
-                <div className="pl-4 space-y-1 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded">
-                  <p className="text-sm font-semibold text-red-700 dark:text-red-400">환불 차감 ({refundSummary.count}건)</p>
-                  <div className="grid grid-cols-4 gap-2 text-sm pl-2">
-                    <div className="col-span-3">
-                      <span className="text-muted-foreground">환불 합계:</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-red-600 dark:text-red-400" data-testid="text-refund-total">
-                        -{formatKoreanCurrency(refundSummary.total)}
-                      </span>
-                    </div>
+                <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50/80 dark:bg-red-950/40 p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <SalesSubLabel>환불 차감 ({refundSummary.count}건)</SalesSubLabel>
+                    <span className="text-sm font-bold text-red-600 dark:text-red-400 tabular-nums" data-testid="text-refund-total">
+                      -{formatKoreanCurrency(refundSummary.total)}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-sm pl-2 border-t border-red-200 dark:border-red-700 pt-1 mt-1">
-                    <div className="col-span-3">
-                      <span className="font-semibold">순 매출:</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-lg text-primary" data-testid="text-net-sales">
-                        {formatKoreanCurrency(Math.max(0, salesSummary.totalSales - refundSummary.total))}
-                      </span>
-                    </div>
+                  <div className="flex items-center justify-between border-t border-red-200 dark:border-red-800 pt-2">
+                    <span className="text-sm font-semibold">순 매출</span>
+                    <span className="text-lg font-bold text-primary tabular-nums" data-testid="text-net-sales">
+                      {formatKoreanCurrency(Math.max(0, salesSummary.totalSales - refundSummary.total))}
+                    </span>
                   </div>
                 </div>
               )}
-            </div>
+            </SalesGroup>
           </CardContent>
         </Card>
 
@@ -1299,32 +1252,20 @@ export default function ClosingPage() {
             <CardTitle>지출합계</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="pl-4 space-y-1 bg-destructive/10 p-4 rounded">
-              <p className="text-base font-bold">
-                {rentalBreakdown && Object.keys(rentalBreakdown.breakdown).length > 0
-                  ? `${String.fromCharCode(9311 + 5 + Object.keys(rentalBreakdown.breakdown).length * 2)} 지출총액`
-                  : "⑤ 지출총액"
-                }
-              </p>
-              <div className="grid grid-cols-4 gap-2 text-base pl-2">
-                <div>
-                  <span className="text-muted-foreground">현금:</span>
-                  <span className="ml-1 font-bold text-destructive" data-testid="text-cash-expenses">{formatKoreanCurrency(expenseSummary.cashExpenses)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">카드:</span>
-                  <span className="ml-1 font-bold text-destructive" data-testid="text-card-expenses">{formatKoreanCurrency(expenseSummary.cardExpenses)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">이체:</span>
-                  <span className="ml-1 font-bold text-destructive" data-testid="text-transfer-expenses">{formatKoreanCurrency(expenseSummary.transferExpenses)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">합계:</span>
-                  <span className="ml-1 font-bold text-xl text-destructive" data-testid="text-total-expenses">{formatKoreanCurrency(expenseSummary.totalExpenses)}</span>
-                </div>
-              </div>
-            </div>
+            <PayTiles
+              cash={expenseSummary.cashExpenses}
+              card={expenseSummary.cardExpenses}
+              transfer={expenseSummary.transferExpenses}
+              total={expenseSummary.totalExpenses}
+              emphasize
+              tone="danger"
+              testIds={{
+                cash: "text-cash-expenses",
+                card: "text-card-expenses",
+                transfer: "text-transfer-expenses",
+                total: "text-total-expenses",
+              }}
+            />
           </CardContent>
         </Card>
 

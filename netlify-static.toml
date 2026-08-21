@@ -1,3 +1,25 @@
+# Server-side CCTV installation notification relay
+[functions]
+  directory = "netlify/functions"
+
+# Keep the private recipient URL on Netlify, not in the PWA bundle
+[[redirects]]
+  from = "/api/cctv/register"
+  to = "/.netlify/functions/cctv-register"
+  status = 200
+
+# Demo trial: fingerprint-based start date / extension (survives site data clear)
+[[redirects]]
+  from = "/api/demo/trial"
+  to = "/.netlify/functions/demo-trial"
+  status = 200
+
+# Official license: 1-device binding
+[[redirects]]
+  from = "/api/license/bind"
+  to = "/.netlify/functions/license-bind"
+  status = 200
+
 # License generator - serve as static file (before SPA redirect)
 [[redirects]]
   from = "/license-generator.html"

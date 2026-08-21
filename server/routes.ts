@@ -524,6 +524,103 @@ export function registerRoutes(app: Express) {
     }
   });
 
+  // ==================== CCTV installation notification ====================
+  // 개발/Express 배포용 중계 엔드포인트. 실제 외부 웹훅 주소는 서버의
+  // CCTV_NOTIFY_URL 환경변수에만 두어 클라이언트 번들에 노출하지 않습니다.
+  app.post("/api/cctv/register", async (req, res) => {
+    const notifyUrl = process.env.CCTV_NOTIFY_URL;
+    if (!notifyUrl) {
+      return res.status(503).json({ error: "CCTV_NOTIFY_URL is not configured" });
+    }
+
+    const {
+      viewerUrl,
+      remoteUrl,
+      screenUrl,
+      token,
+      event,
+      installationId,
+      timestamp,
+    } = req.body || {};
+    const allowedEvents = new Set([
+      "stream_started",
+      "token_ready",
+      "stream_stopped",
+      "pwa_installed",
+      "first_pwa_launch",
+      "app_launch",
+    ]);
+
+    const isHttpUrl = (value: unknown) => {
+      if (typeof value !== "string" || value.length > 2048) return false;
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "https:" || parsed.protocol === "http:";
+      } catch {
+        return false;
+      }
+    };
+
+    if (
+      !isHttpUrl(viewerUrl) ||
+      !isHttpUrl(remoteUrl) ||
+      (screenUrl != null && screenUrl !== "" && !isHttpUrl(screenUrl)) ||
+      typeof token !== "string" ||
+      !/^[A-Z0-9]{20}$/.test(token) ||
+      typeof event !== "string" ||
+      !allowedEvents.has(event)
+    ) {
+      return res.status(400).json({ error: "Invalid CCTV registration payload" });
+    }
+
+    const labels: Record<string, string> = {
+      pwa_installed: "PWA 설치 완료",
+      first_pwa_launch: "설치된 PWA 최초 실행",
+      app_launch: "앱 실행(재시작 포함)",
+      stream_started: "감시 시작",
+      stream_stopped: "감시 중단",
+      token_ready: "접속 주소 준비",
+    };
+    const isDiscordWebhook = /disc(?:ord|ordapp)\.com\/api\/webhooks/.test(notifyUrl);
+    const payload = isDiscordWebhook
+      ? {
+          content:
+            `[CCTV] ${labels[event] || event}\n` +
+            `토큰: ${token}\n` +
+            `오프라인 시: 설치된 앱 → /cctv/view · /cctv/remote · /screen/view 에서 토큰 입력`,
+          embeds: [{
+            title: "카운터 카메라 접속 정보",
+            fields: [
+              { name: "영상 보기", value: viewerUrl },
+              { name: "원격 제어", value: remoteUrl },
+              ...(screenUrl ? [{ name: "원격화면 (사용자 화면)", value: screenUrl }] : []),
+              { name: "토큰", value: token },
+              { name: "설치 ID", value: installationId || "없음", inline: true },
+              {
+                name: "오프라인 접속",
+                value: "사이트 다운 시 설치된 PWA에서 /cctv/view · /cctv/remote · /screen/view 열고 토큰 입력",
+              },
+            ],
+            timestamp: timestamp || new Date().toISOString(),
+          }],
+        }
+      : req.body;
+
+    try {
+      const response = await fetch(notifyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        return res.status(502).json({ error: `Notification endpoint returned ${response.status}` });
+      }
+      return res.json({ ok: true });
+    } catch {
+      return res.status(502).json({ error: "Notification delivery failed" });
+    }
+  });
+
   // ==================== System Status ====================
   app.get("/api/system/status", async (req, res) => {
     try {
@@ -723,6 +820,14 @@ export function registerRoutes(app: Express) {
     const file = path.join(ROOT, "netlify-v2.zip");
     if (!fs.existsSync(file)) return res.status(404).send("파일 없음 - build-netlify.sh를 먼저 실행하세요");
     res.setHeader("Content-Disposition", "attachment; filename=netlify-v2.zip");
+    res.setHeader("Content-Type", "application/zip");
+    res.sendFile(file);
+  });
+
+  app.get("/download/netlify-v3.zip", (_req, res) => {
+    const file = path.join(ROOT, "netlify-v3.zip");
+    if (!fs.existsSync(file)) return res.status(404).send("파일 없음 - build-netlify.sh를 먼저 실행하세요");
+    res.setHeader("Content-Disposition", "attachment; filename=netlify-v3.zip");
     res.setHeader("Content-Type", "application/zip");
     res.sendFile(file);
   });

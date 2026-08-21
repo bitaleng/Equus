@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Wifi, WifiOff, AlertCircle, RefreshCw, Copy, Check } from "lucide-react";
+import { Wifi, WifiOff, AlertCircle, RefreshCw, Copy, Check, Volume2, VolumeX } from "lucide-react";
 
 type Status = "connecting" | "waiting" | "live" | "ended" | "error";
 
@@ -42,6 +42,8 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
   const [answerCode, setAnswerCode] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [connectedAt, setConnectedAt] = useState<Date | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [hasAudio, setHasAudio] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -53,7 +55,16 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
 
         pc.ontrack = (e) => {
           if (videoRef.current && e.streams[0]) {
-            videoRef.current.srcObject = e.streams[0];
+            const stream = e.streams[0];
+            videoRef.current.srcObject = stream;
+            const syncAudioFlag = () => {
+              setHasAudio(
+                stream.getAudioTracks().some((t) => t.readyState === "live") ||
+                  stream.getAudioTracks().length > 0
+              );
+            };
+            syncAudioFlag();
+            stream.addEventListener("addtrack", syncAudioFlag);
             videoRef.current.play().catch(() => {});
             setStatus("live");
             setConnectedAt(new Date());
@@ -107,6 +118,16 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
     }
   };
 
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (videoRef.current) {
+      videoRef.current.muted = !next;
+      videoRef.current.volume = 1;
+      void videoRef.current.play().catch(() => {});
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center px-4">
       <div className="relative w-full max-w-2xl">
@@ -116,7 +137,7 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
           style={{ display: status === "live" ? "block" : "none" }}
           playsInline
           autoPlay
-          muted
+          muted={!soundEnabled}
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           data-testid="cctv-lan-video"
         />
@@ -183,14 +204,27 @@ function LanViewer({ offerEncoded }: { offerEncoded: string }) {
         )}
 
         {status === "live" && (
-          <div className="absolute top-2 left-2 right-2 flex items-center justify-between px-3 py-1.5 bg-black/60 rounded">
+          <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2 px-3 py-1.5 bg-black/60 rounded">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               <span className="text-white text-xs font-bold tracking-wider">LAN LIVE</span>
             </div>
-            {connectedAt && (
-              <span className="text-gray-300 text-xs">{connectedAt.toLocaleTimeString("ko-KR")} 연결</span>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className="flex items-center gap-1 rounded bg-white/15 px-2 py-1 text-xs text-white"
+                data-testid="button-cctv-lan-sound"
+                title={hasAudio ? undefined : "마이크 트랙이 아직 없거나 태블릿 마이크 권한이 없을 수 있습니다"}
+              >
+                {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                {soundEnabled ? "소리 끄기" : "소리 켜기"}
+                {!hasAudio && <span className="opacity-70">(무음)</span>}
+              </button>
+              {connectedAt && (
+                <span className="text-gray-300 text-xs">{connectedAt.toLocaleTimeString("ko-KR")} 연결</span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -211,6 +245,8 @@ function PeerViewer({ token }: { token: string }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [connectedAt, setConnectedAt] = useState<Date | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [hasAudio, setHasAudio] = useState(false);
 
   function cleanupCurrent() {
     connectingRef.current = false;
@@ -252,20 +288,33 @@ function PeerViewer({ token }: { token: string }) {
     peer.on("open", () => {
       clearTimeout(openTimeout);
 
-      // 비디오 트랙을 포함한 더미 스트림 필수:
-      // 오디오 전용 스트림으로 call하면 SDP에 video 섹션이 없어
-      // 방송자의 영상을 수신할 수 없음 → canvas로 1×1 더미 비디오 트랙 생성
+      // 더미 스트림에 video+audio 트랙이 모두 있어야 함.
+      // 오디오 트랙이 없으면 offer SDP에 audio m-line이 빠져
+      // 방송자의 마이크 소리를 수신할 수 없음.
       let dummyStream: MediaStream;
       try {
         const canvas = document.createElement("canvas");
         canvas.width = 2; canvas.height = 2;
         canvas.getContext("2d")?.fillRect(0, 0, 2, 2);
-        dummyStream = (canvas as any).captureStream(1);
+        dummyStream = (canvas as any).captureStream(1) as MediaStream;
       } catch {
-        try {
-          const audioCtx = new AudioContext();
-          dummyStream = audioCtx.createMediaStreamDestination().stream;
-        } catch { dummyStream = new MediaStream(); }
+        dummyStream = new MediaStream();
+      }
+      try {
+        const audioCtx = new AudioContext();
+        const dest = audioCtx.createMediaStreamDestination();
+        // 무음 오실레이터로 live 오디오 트랙 확보 (실제 마이크는 쓰지 않음)
+        const osc = audioCtx.createOscillator();
+        const silent = audioCtx.createGain();
+        silent.gain.value = 0;
+        osc.connect(silent);
+        silent.connect(dest);
+        osc.start();
+        dest.stream.getAudioTracks().forEach((t) => dummyStream.addTrack(t));
+        (dummyStream as any).__audioCtx = audioCtx;
+        (dummyStream as any).__silentOsc = osc;
+      } catch {
+        // 오디오 더미 생성 실패 시에도 영상 연결은 시도
       }
 
       const call = peer.call(token, dummyStream);
@@ -287,6 +336,14 @@ function PeerViewer({ token }: { token: string }) {
       call.on("stream", (remoteStream: MediaStream) => {
         clearTimeout(streamTimeout);
         connectingRef.current = false;
+        const syncAudioFlag = () => {
+          const live =
+            remoteStream.getAudioTracks().some((t) => t.readyState === "live") ||
+            remoteStream.getAudioTracks().length > 0;
+          setHasAudio(live);
+        };
+        syncAudioFlag();
+        remoteStream.addEventListener("addtrack", syncAudioFlag);
         if (videoRef.current) {
           videoRef.current.srcObject = remoteStream;
           videoRef.current.play().catch(() => {});
@@ -343,6 +400,16 @@ function PeerViewer({ token }: { token: string }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (videoRef.current) {
+      videoRef.current.muted = !next;
+      videoRef.current.volume = 1;
+      void videoRef.current.play().catch(() => {});
+    }
+  };
+
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center">
       <div className="relative w-full max-w-2xl">
@@ -352,7 +419,7 @@ function PeerViewer({ token }: { token: string }) {
           style={{ display: status === "live" ? "block" : "none" }}
           playsInline
           autoPlay
-          muted
+          muted={!soundEnabled}
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           data-testid="cctv-view-video"
         />
@@ -365,7 +432,7 @@ function PeerViewer({ token }: { token: string }) {
               <>
                 <Wifi className="h-12 w-12 text-yellow-400 animate-pulse" />
                 <p className="text-white font-medium">방송 대기 중</p>
-                <p className="text-gray-400 text-sm">태블릿에서 감시 시작 버튼을 눌러주세요</p>
+                <p className="text-gray-400 text-sm">태블릿에서 감시 시작 버튼을 누르거나, 원격 제어에서 시작하세요</p>
                 <p className="text-gray-500 text-xs">
                   {retryCount > 0 ? `자동 재시도 중 (${retryCount}회)...` : "잠시 후 자동으로 재시도합니다"}
                 </p>
@@ -393,14 +460,27 @@ function PeerViewer({ token }: { token: string }) {
           </div>
         )}
         {status === "live" && (
-          <div className="absolute top-2 left-2 right-2 flex items-center justify-between px-3 py-1.5 bg-black/60 rounded">
+          <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-2 px-3 py-1.5 bg-black/60 rounded">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
               <span className="text-white text-xs font-bold tracking-wider">LIVE</span>
             </div>
-            {connectedAt && (
-              <span className="text-gray-300 text-xs">{connectedAt.toLocaleTimeString("ko-KR")} 연결</span>
-            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className="flex items-center gap-1 rounded bg-white/15 px-2 py-1 text-xs text-white"
+                data-testid="button-cctv-sound"
+                title={hasAudio ? undefined : "마이크 트랙이 아직 없거나 태블릿 마이크 권한이 없을 수 있습니다"}
+              >
+                {soundEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                {soundEnabled ? "소리 끄기" : "소리 켜기"}
+                {!hasAudio && <span className="opacity-70">(무음)</span>}
+              </button>
+              {connectedAt && (
+                <span className="text-gray-300 text-xs">{connectedAt.toLocaleTimeString("ko-KR")} 연결</span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -409,10 +489,52 @@ function PeerViewer({ token }: { token: string }) {
 }
 
 // ─── 라우터 진입점 ────────────────────────────────────────────────
+function TokenEntryForm({
+  mode,
+  onSubmit,
+}: {
+  mode: "view" | "remote";
+  onSubmit: (token: string) => void;
+}) {
+  const [value, setValue] = useState("");
+
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-4 text-center">
+        <AlertCircle className="h-10 w-10 text-yellow-400 mx-auto" />
+        <p className="text-white font-medium">
+          {mode === "view" ? "영상 보기 — 접속 코드 입력" : "원격 제어 — 접속 코드 입력"}
+        </p>
+        <p className="text-gray-400 text-sm leading-relaxed">
+          사이트 링크가 열리지 않을 때, 설치된 앱에서 이 화면을 연 뒤 Discord에 온{" "}
+          <span className="text-gray-200">토큰</span>을 붙여넣으면 캐시된 페이지로 접속할 수 있습니다.
+        </p>
+        <input
+          value={value}
+          onChange={(e) => setValue(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
+          placeholder="20자리 토큰"
+          maxLength={20}
+          className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-center font-mono text-sm text-white tracking-wider"
+          data-testid="input-cctv-offline-token"
+        />
+        <button
+          type="button"
+          disabled={value.length < 16}
+          onClick={() => onSubmit(value)}
+          className="w-full rounded-md bg-emerald-600 py-2.5 text-sm font-medium text-white disabled:opacity-40"
+          data-testid="button-cctv-offline-token-go"
+        >
+          접속
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function CctvViewPage() {
   const params = new URLSearchParams(window.location.search);
   const lanOffer = params.get("lan");
-  const token = params.get("token");
+  const [token, setToken] = useState(() => (params.get("token") || "").trim().toUpperCase());
 
   if (lanOffer) {
     return <LanViewer offerEncoded={lanOffer} />;
@@ -420,13 +542,14 @@ export default function CctvViewPage() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center px-6">
-          <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-          <p className="text-white font-medium">잘못된 접속 링크</p>
-          <p className="text-gray-400 text-sm mt-2">태블릿 앱에서 올바른 링크를 복사해 주세요.</p>
-        </div>
-      </div>
+      <TokenEntryForm
+        mode="view"
+        onSubmit={(t) => {
+          const next = t.trim().toUpperCase();
+          window.history.replaceState(null, "", `/cctv/view?token=${next}`);
+          setToken(next);
+        }}
+      />
     );
   }
 

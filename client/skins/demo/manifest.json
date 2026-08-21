@@ -1,0 +1,13 @@
+{
+  "id": "/demo",
+  "name": "입실관리 체험판",
+  "short_name": "체험",
+  "description": "10일 체험판 — 홈 화면 설치 미지원",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#1a1a1a",
+  "theme_color": "#2d2d2d",
+  "orientation": "landscape",
+  "scope": "/",
+  "icons": []
+}

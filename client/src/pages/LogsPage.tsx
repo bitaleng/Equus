@@ -1,15 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -20,8 +13,11 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ArrowLeft, Calendar, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap, MessageSquare, RotateCcw } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FileText, Filter, ChevronDown, ChevronUp, Zap, MessageSquare, RotateCcw, Hash } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { LogsToolWorkspace } from "@/components/LogsToolWorkspace";
+import { LockerNumberLookupDialog } from "@/components/LockerNumberLookupDialog";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import * as XLSX from 'xlsx';
@@ -30,66 +26,20 @@ import autoTable from 'jspdf-autotable';
 import * as localDb from "@/lib/localDb";
 import { formatPaymentMethod } from "@/lib/utils";
 import { getBusinessDay, getBusinessDayRange } from "@shared/businessDay";
+import { FilterChip } from "@/components/FilterChip";
+import { BusinessDayPicker } from "@/components/BusinessDayPicker";
 
-/**
- * 영업일 입력 파싱 함수
- * 예: "25-27" → [25, 26, 27]
- * 예: "25, 27" → [25, 27]
- * 예: "25-27, 29" → [25, 26, 27, 29]
- * 예: "25" → [25]
- */
-function parseBusinessDaysInput(input: string): number[] {
-  if (!input.trim()) return [];
-  
-  const days = new Set<number>();
-  const parts = input.split(',').map(p => p.trim());
-  
-  for (const part of parts) {
-    if (part.includes('-')) {
-      // 범위: "25-27"
-      const [startStr, endStr] = part.split('-').map(s => s.trim());
-      const start = parseInt(startStr, 10);
-      const end = parseInt(endStr, 10);
-      
-      if (!isNaN(start) && !isNaN(end) && start <= end && start >= 1 && end <= 31) {
-        for (let d = start; d <= end; d++) {
-          days.add(d);
-        }
-      }
-    } else {
-      // 단일 일자: "25"
-      const day = parseInt(part, 10);
-      if (!isNaN(day) && day >= 1 && day <= 31) {
-        days.add(day);
-      }
-    }
-  }
-  
-  return Array.from(days).sort((a, b) => a - b);
+/** YYYY-MM-DD */
+function formatDateInput(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/**
- * 영업일 배열을 시작/종료 시간 범위 배열로 변환
- * @param days 일자 배열 (예: [25, 26, 27])
- * @param yearMonth 연월 문자열 (예: "2025-11")
- * @param businessDayStartHour 영업일 시작 시각 (기본값: 10)
- * @returns 시작/종료 시간 범위 배열
- */
-function getBusinessDayRangesForDays(
-  days: number[],
-  yearMonth: string,
-  businessDayStartHour: number = 10
-): { start: Date; end: Date; businessDay: string }[] {
-  if (days.length === 0 || !yearMonth) return [];
-  
-  const [year, month] = yearMonth.split('-').map(Number);
-  if (isNaN(year) || isNaN(month)) return [];
-  
-  return days.map(day => {
-    // 해당 영업일의 시작 시간 생성 (KST 기준)
-    const businessDayDate = new Date(year, month - 1, day, businessDayStartHour + 1, 0, 0);
-    return getBusinessDayRange(businessDayDate, businessDayStartHour);
-  });
+/** 상세기록 기본 조회: 최근 7일 (전체 누적 로드로 인한 태블릿 지연 방지) */
+function getDefaultLogsDateRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 6);
+  return { start: formatDateInput(start), end: formatDateInput(end) };
 }
 
 interface LogEntry {
@@ -150,6 +100,8 @@ interface RentalTransaction {
   paymentCard?: number;
   paymentTransfer?: number;
   revenue: number;
+  quantity?: number;
+  returnCompleted?: number;
 }
 
 export default function LogsPage() {
@@ -158,30 +110,41 @@ export default function LogsPage() {
   const settings = localDb.getSettings();
   const businessDayStartHour = settings.businessDayStartHour;
   
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [useTimeFilter, setUseTimeFilter] = useState(false);
-  const [showDateFilter, setShowDateFilter] = useState(false);
+  const defaultRange = getDefaultLogsDateRange();
+  const [startDate, setStartDate] = useState<string>(defaultRange.start);
+  const [endDate, setEndDate] = useState<string>(defaultRange.end);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [additionalFeeEvents, setAdditionalFeeEvents] = useState<AdditionalFeeEvent[]>([]);
   const [rentalTransactions, setRentalTransactions] = useState<RentalTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
+  const [showLockerNumberDialog, setShowLockerNumberDialog] = useState(false);
   const [cancelledFilter, setCancelledFilter] = useState<string>("all");
   const [timeTypeFilter, setTimeTypeFilter] = useState<string>("all");
   const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>("all");
   const [additionalFeeFilter, setAdditionalFeeFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("exitTime");
+  const [sortBy, setSortBy] = useState<'exitTime' | 'entryTime'>("entryTime");
+  const [lockerNumberFilter, setLockerNumberFilter] = useState<number[]>([]);
+  const lockerGroups = useMemo(() => {
+    try {
+      return localDb.getLockerGroups() as Array<{ id: string; name: string; startNumber: number; endNumber: number; sortOrder: number }>;
+    } catch {
+      return [];
+    }
+  }, []);
+  const lockerNumbers = useMemo(() => {
+    const nums: number[] = [];
+    for (const group of lockerGroups) {
+      for (let n = group.startNumber; n <= group.endNumber; n++) {
+        if (!nums.includes(n)) nums.push(n);
+      }
+    }
+    return nums.length > 0 ? nums : Array.from({ length: 80 }, (_, i) => i + 1);
+  }, [lockerGroups]);
   
   // 영업일 자동 조회
   const [showBusinessDayFilter, setShowBusinessDayFilter] = useState(false);
-  const [businessDayYearMonth, setBusinessDayYearMonth] = useState<string>(() => {
-    // 기본값: 현재 연월
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [businessDayInput, setBusinessDayInput] = useState<string>("");
-  const [activeBusinessDays, setActiveBusinessDays] = useState<string[]>([]); // 현재 조회 중인 영업일들
+  const [activeBusinessDays, setActiveBusinessDays] = useState<string[]>([]);
   
   // Rental transaction filters
   const [showRentalFilters, setShowRentalFilters] = useState(false);
@@ -193,14 +156,15 @@ export default function LogsPage() {
   const [rentalEndDate, setRentalEndDate] = useState<string>("");
   const [rentalUseTimeFilter, setRentalUseTimeFilter] = useState(false);
   const [isRentalSectionOpen, setIsRentalSectionOpen] = useState(false);
+  const [revenueItemOptions, setRevenueItemOptions] = useState<Array<{
+    id: string;
+    name: string;
+    billingType?: 'rental' | 'simple';
+    depositAmount?: number;
+  }>>([]);
   
   // 추가매출 영업일 자동 조회
   const [showRentalBusinessDayFilter, setShowRentalBusinessDayFilter] = useState(false);
-  const [rentalBusinessDayYearMonth, setRentalBusinessDayYearMonth] = useState<string>(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [rentalBusinessDayInput, setRentalBusinessDayInput] = useState<string>("");
   const [activeRentalBusinessDays, setActiveRentalBusinessDays] = useState<string[]>([]);
   // 소급 환불 다이얼로그 state
   const [retroRefundDialogOpen, setRetroRefundDialogOpen] = useState(false);
@@ -212,12 +176,32 @@ export default function LogsPage() {
   // Load data on mount and when filters change
   useEffect(() => {
     loadLogs();
-  }, [startDate, endDate, useTimeFilter, activeBusinessDays]);
+  }, [startDate, endDate, activeBusinessDays]);
   
+  const loadRevenueItemOptions = () => {
+    try {
+      const items = localDb.getAdditionalRevenueItems();
+      setRevenueItemOptions(
+        items.map((item: {
+          id: string;
+          name: string;
+          billingType?: 'rental' | 'simple';
+          depositAmount?: number;
+        }) => ({
+          id: item.id,
+          name: item.name,
+          billingType: item.billingType,
+          depositAmount: item.depositAmount,
+        }))
+      );
+    } catch {
+      setRevenueItemOptions([]);
+    }
+  };
+
   // Auto-refresh when component mounts (navigating to this page)
   useEffect(() => {
-    // Refresh data every time this page is shown
-    loadLogs();
+    loadRevenueItemOptions();
   }, []);
   
   // Auto-refresh when page becomes visible (browser tab focus)
@@ -225,12 +209,22 @@ export default function LogsPage() {
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         loadLogs();
+        loadRevenueItemOptions();
       }
     };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
+
+  // 시스템설정에서 삭제한 항목이 필터에 남아 있으면 전체로 초기화
+  useEffect(() => {
+    if (rentalItemFilter === "all") return;
+    const stillExists = revenueItemOptions.some((item) => item.name === rentalItemFilter);
+    if (!stillExists) {
+      setRentalItemFilter("all");
+    }
+  }, [revenueItemOptions, rentalItemFilter]);
 
   const handleRetroRefund = () => {
     if (!retroRefundLogId) return;
@@ -292,53 +286,6 @@ export default function LogsPage() {
         result = uniqueResults;
         feeEvents = uniqueFeeEvents;
         rentalTxns = uniqueRentalTxns;
-      } else if (useTimeFilter && startDate && endDate) {
-        // Time-based filtering: Convert datetime-local to ISO strings for UTC comparison
-        console.log('[LogsPage] DateTime filter inputs:', { startDate, endDate, useTimeFilter });
-        
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        
-        console.log('[LogsPage] Parsed dates:', { 
-          start: start.toString(), 
-          end: end.toString(),
-          startValid: !isNaN(start.getTime()),
-          endValid: !isNaN(end.getTime())
-        });
-        
-        // Validate dates before converting to ISO
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-          console.error('[LogsPage] Invalid datetime format:', { startDate, endDate });
-          result = [];
-          feeEvents = [];
-          rentalTxns = [];
-        } else {
-          const startISO = start.toISOString();
-          const endISO = end.toISOString();
-          console.log('[LogsPage] ISO strings:', { startISO, endISO });
-          result = localDb.getEntriesByDateTimeRange(startISO, endISO);
-          feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
-          rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
-        }
-      } else if (useTimeFilter && startDate) {
-        // Single datetime point - convert to ISO and set end of day
-        const start = new Date(startDate);
-        
-        // Validate date before converting to ISO
-        if (isNaN(start.getTime())) {
-          console.error('Invalid datetime format:', { startDate });
-          result = [];
-          feeEvents = [];
-          rentalTxns = [];
-        } else {
-          const startISO = start.toISOString();
-          const endOfDay = new Date(start);
-          endOfDay.setHours(23, 59, 59, 999);
-          const endISO = endOfDay.toISOString();
-          result = localDb.getEntriesByDateTimeRange(startISO, endISO);
-          feeEvents = localDb.getAdditionalFeeEventsByDateTimeRange(startISO, endISO);
-          rentalTxns = localDb.getRentalTransactionsByDateTimeRange(startISO, endISO);
-        }
       } else if (startDate && endDate) {
         // Date-based filtering (YYYY-MM-DD format)
         result = localDb.getEntriesByDateRange(startDate, endDate);
@@ -355,11 +302,18 @@ export default function LogsPage() {
         rentalTxns = localDb.getAllRentalTransactions();
       }
       
-      // Attach additional fees for each log entry
+      // Attach additional fees for each log entry (일괄 조회로 N+1 방지)
       // Combine same-business-day fees (stored in locker_logs.additional_fees column)
       // with different-business-day fees (stored in additional_fee_events table)
+      const feeEventsForLogs = localDb.getAdditionalFeeEventsForLockerLogs(result.map((l) => l.id));
+      const feesByLogId = new Map<string, typeof feeEventsForLogs>();
+      for (const event of feeEventsForLogs) {
+        const list = feesByLogId.get(event.lockerLogId) || [];
+        list.push(event);
+        feesByLogId.set(event.lockerLogId, list);
+      }
       const logsWithFees = result.map(log => {
-        const additionalFeeEvents = localDb.getAdditionalFeeEventsByLockerLog(log.id);
+        const additionalFeeEvents = feesByLogId.get(log.id) || [];
         const totalAdditionalFees = additionalFeeEvents.reduce((sum, event) => sum + event.feeAmount, 0);
         // Map businessDay field from database (business_day column)
         const businessDay = (log as any).businessDay || 
@@ -423,11 +377,6 @@ export default function LogsPage() {
     }
   };
 
-  const clearDateFilter = () => {
-    setStartDate("");
-    setEndDate("");
-  };
-
   const clearAllFilters = () => {
     setCancelledFilter("all");
     setTimeTypeFilter("all");
@@ -435,7 +384,8 @@ export default function LogsPage() {
     setAdditionalFeeFilter("all");
   };
 
-  const hasActiveFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all" || additionalFeeFilter !== "all";
+  const hasChipFilters = cancelledFilter !== "all" || timeTypeFilter !== "all" || paymentMethodFilter !== "all" || additionalFeeFilter !== "all";
+  const hasActiveFilters = hasChipFilters || lockerNumberFilter.length > 0;
 
   // Apply filters to logs
   let displayedLogs = [...logs];
@@ -474,6 +424,10 @@ export default function LogsPage() {
     displayedLogs = displayedLogs.filter(log => 
       (log as any).additionalFeeOnly !== true && (!log.additionalFees || log.additionalFees === 0)
     );
+  }
+
+  if (lockerNumberFilter.length > 0) {
+    displayedLogs = displayedLogs.filter(log => lockerNumberFilter.includes(log.lockerNumber));
   }
 
   // Sort entries based on sortBy option
@@ -644,359 +598,144 @@ export default function LogsPage() {
   return (
     <div className="h-full w-full flex flex-col bg-background">
       {/* Header */}
-      <div className="border-b p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="ghost" size="icon" data-testid="button-back">
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-xl font-semibold">입출 기록 로그</h1>
-              <p className="text-xs text-muted-foreground mt-1">
-                {activeBusinessDays.length > 0
-                  ? `영업일 ${activeBusinessDays.map(d => d.split('-')[2]).join(', ')}일 - ${logs.length}건`
-                  : startDate && endDate
-                  ? `${startDate} ~ ${endDate} 매출 - ${logs.length}건`
-                  : startDate
-                  ? `${startDate} 매출 - ${logs.length}건`
-                  : `전체 누적 데이터 (${logs.length}건)`
-                }
-              </p>
+      <div className="border-b shrink-0 flex flex-col min-h-0">
+        <div className="p-6 pb-4 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="ghost" size="icon" data-testid="button-back">
+                  <ArrowLeft className="h-5 w-5" />
+                </Button>
+              </Link>
+              <div>
+                <h1 className="text-xl font-semibold">입출 기록 로그</h1>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {activeBusinessDays.length > 0
+                    ? `영업일 ${activeBusinessDays.length <= 3 ? activeBusinessDays.join(', ') : `${activeBusinessDays[0]} 외 ${activeBusinessDays.length - 1}일`} · ${logs.length}건`
+                    : startDate && endDate
+                    ? `${startDate} ~ ${endDate} 매출 - ${logs.length}건`
+                    : startDate
+                    ? `${startDate} 매출 - ${logs.length}건`
+                    : `전체 누적 데이터 (${logs.length}건)`
+                  }
+                </p>
+              </div>
             </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-            {logs.length > 0 && (
-              <>
-                <Button 
-                  variant="outline" 
-                  onClick={exportToExcel}
-                  data-testid="button-export-excel"
-                >
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  엑셀 내보내기
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={exportToPDF}
-                  data-testid="button-export-pdf"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  PDF 내보내기
-                </Button>
-              </>
-            )}
-            
+
+            <div className="flex items-center gap-3">
             <Button 
-              variant={showFilters || hasActiveFilters ? "default" : "outline"}
-              onClick={() => setShowFilters(!showFilters)}
+              variant={showFilters || hasChipFilters ? "default" : "outline"}
+              className="h-12 px-5 rounded-xl text-base font-semibold"
+              onClick={() => setShowFilters((open) => !open)}
               data-testid="button-toggle-filters"
             >
-              <Filter className="h-4 w-4 mr-2" />
+              <Filter className="h-5 w-5 mr-2" />
               필터
             </Button>
 
-            {/* 영업일 자동 조회 버튼 */}
-            {!showBusinessDayFilter ? (
-              <Button 
-                variant={activeBusinessDays.length > 0 ? "default" : "outline"}
-                onClick={() => {
-                  setShowBusinessDayFilter(true);
-                  setShowDateFilter(false);
-                }}
-                data-testid="button-show-business-day-filter"
-              >
-                <Zap className="h-4 w-4 mr-2" />
-                영업일 조회
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Input
-                  type="month"
-                  value={businessDayYearMonth}
-                  onChange={(e) => setBusinessDayYearMonth(e.target.value)}
-                  className="w-36"
-                  data-testid="input-business-day-month"
-                />
-                <Input
-                  type="text"
-                  value={businessDayInput}
-                  onChange={(e) => setBusinessDayInput(e.target.value)}
-                  placeholder="예: 25-27 또는 25, 27"
-                  className="w-40"
-                  data-testid="input-business-day"
-                />
+            <Button 
+              variant={showBusinessDayFilter || activeBusinessDays.length > 0 ? "default" : "outline"}
+              className="h-12 px-5 rounded-xl text-base font-semibold"
+              onClick={() => setShowBusinessDayFilter((open) => !open)}
+              data-testid="button-show-business-day-filter"
+            >
+              <Zap className="h-5 w-5 mr-2" />
+              영업일 조회
+            </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* 총합계 + 락카번호 조회 + 내보내기 */}
+        <div className="px-6 pb-4 pt-0 border-t mx-6">
+          <div className="flex items-center justify-between gap-3 pt-4 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap min-w-0">
+              {logs.length > 0 && (
+                <div className="flex items-center gap-2" data-testid="text-overall-total">
+                  <span className="text-sm text-muted-foreground">총합계 (취소건 제외):</span>
+                  <span className="text-base font-bold">{overallTotalCount}건</span>
+                  <span className="text-sm text-muted-foreground">|</span>
+                  <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
                 <Button
+                  type="button"
+                  variant={lockerNumberFilter.length > 0 ? "default" : "outline"}
                   size="sm"
-                  onClick={() => {
-                    const days = parseBusinessDaysInput(businessDayInput);
-                    if (days.length > 0 && businessDayYearMonth) {
-                      const businessDays = days.map(d => 
-                        `${businessDayYearMonth}-${String(d).padStart(2, '0')}`
-                      );
-                      setActiveBusinessDays(businessDays);
-                      setStartDate("");
-                      setEndDate("");
-                    }
-                  }}
-                  data-testid="button-apply-business-day"
+                  className="h-8 rounded-lg"
+                  onClick={() => setShowLockerNumberDialog(true)}
+                  data-testid="button-locker-number-lookup"
                 >
-                  조회
+                  <Hash className="h-3.5 w-3.5 mr-1" />
+                  {lockerNumberFilter.length === 0
+                    ? "락카번호 조회"
+                    : lockerNumberFilter.length === 1
+                      ? `${lockerNumberFilter[0]}번`
+                      : lockerNumberFilter.length <= 3
+                        ? `${lockerNumberFilter.slice().sort((a, b) => a - b).join(", ")}번`
+                        : `${[...lockerNumberFilter].sort((a, b) => a - b).slice(0, 2).join(", ")}번 외 ${lockerNumberFilter.length - 2}개`}
                 </Button>
-                {activeBusinessDays.length > 0 && (
-                  <Button 
-                    variant="ghost" 
+                {lockerNumberFilter.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setActiveBusinessDays([]);
-                      setBusinessDayInput("");
-                    }}
-                    data-testid="button-clear-business-day"
+                    className="h-8 rounded-lg"
+                    onClick={() => setLockerNumberFilter([])}
+                    data-testid="button-clear-locker-number-filter"
                   >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
                     초기화
                   </Button>
                 )}
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    setShowBusinessDayFilter(false);
-                  }}
-                  data-testid="button-hide-business-day-filter"
-                >
-                  닫기
-                </Button>
               </div>
-            )}
-
-            {!showDateFilter ? (
-              <Button 
-                variant="outline" 
-                onClick={() => {
-                  setShowDateFilter(true);
-                  setShowBusinessDayFilter(false);
-                }}
-                data-testid="button-show-date-filter"
-              >
-                <Calendar className="h-4 w-4 mr-2" />
-                기간 조회
-              </Button>
-            ) : (
-              <div className="flex items-center gap-3">
-                <Button
-                  variant={useTimeFilter ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => {
-                    setUseTimeFilter(!useTimeFilter);
-                    setStartDate("");
-                    setEndDate("");
-                  }}
-                  data-testid="button-toggle-time-filter"
-                >
-                  {useTimeFilter ? "날짜+시간" : "날짜만"}
-                </Button>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="start-date" className="text-sm whitespace-nowrap">
-                    {useTimeFilter ? "시작" : "시작일"}
-                  </Label>
-                  <Input
-                    id="start-date"
-                    type={useTimeFilter ? "datetime-local" : "date"}
-                    value={startDate}
-                    onChange={(e) => {
-                      setStartDate(e.target.value);
-                      setActiveBusinessDays([]); // 기간 조회 시 영업일 조회 해제
-                    }}
-                    className={useTimeFilter ? "w-52" : "w-40"}
-                    data-testid="input-start-date"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="end-date" className="text-sm whitespace-nowrap">
-                    {useTimeFilter ? "종료" : "종료일"}
-                  </Label>
-                  <Input
-                    id="end-date"
-                    type={useTimeFilter ? "datetime-local" : "date"}
-                    value={endDate}
-                    onChange={(e) => {
-                      setEndDate(e.target.value);
-                      setActiveBusinessDays([]); // 기간 조회 시 영업일 조회 해제
-                    }}
-                    className={useTimeFilter ? "w-52" : "w-40"}
-                    data-testid="input-end-date"
-                  />
-                </div>
-                {(startDate || endDate) && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={clearDateFilter}
-                    data-testid="button-clear-date"
-                  >
-                    전체보기
-                  </Button>
-                )}
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    setShowDateFilter(false);
-                    clearDateFilter();
-                  }}
-                  data-testid="button-hide-date-filter"
-                >
-                  닫기
-                </Button>
+            </div>
+            {logs.length > 0 && (
+              <div className="flex items-center gap-0.5 ml-auto">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                      onClick={exportToExcel}
+                      data-testid="button-export-excel"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      <span className="sr-only">엑셀로 내보내기</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>엑셀로 내보내기</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                      onClick={exportToPDF}
+                      data-testid="button-export-pdf"
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="sr-only">PDF로 내보내기</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>PDF로 내보내기</TooltipContent>
+                </Tooltip>
               </div>
             )}
           </div>
         </div>
-        
-        {/* 총합계 표시 (필터 없을 때 또는 항상 표시) */}
-        {!hasActiveFilters && logs.length > 0 && (
-          <div className="mt-4 pt-4 border-t">
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2" data-testid="text-overall-total">
-                <span className="text-sm text-muted-foreground">총합계 (취소건 제외):</span>
-                <span className="text-base font-bold">{overallTotalCount}건</span>
-                <span className="text-sm text-muted-foreground">|</span>
-                <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        {/* 필터 옵션 */}
-        {showFilters && (
-          <div className="px-6 pb-4 space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="active">정상건</SelectItem>
-                  <SelectItem value="cancelled">취소건</SelectItem>
-                  <SelectItem value="free">무료입장</SelectItem>
-                  <SelectItem value="staff">직원</SelectItem>
-                  <SelectItem value="refunded">환불</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="day">주간</SelectItem>
-                  <SelectItem value="night">야간</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="card">카드</SelectItem>
-                  <SelectItem value="cash">현금</SelectItem>
-                  <SelectItem value="transfer">이체</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={additionalFeeFilter} onValueChange={setAdditionalFeeFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-additional-fee-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="with_fee">추가요금 있음</SelectItem>
-                  <SelectItem value="without_fee">추가요금 없음</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'exitTime' | 'entryTime')}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-sort-by">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="exitTime">퇴실시간순</SelectItem>
-                  <SelectItem value="entryTime">입실시간순</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              {hasActiveFilters && (
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={clearAllFilters}
-                  data-testid="button-clear-all-filters"
-                >
-                  필터 초기화
-                </Button>
-              )}
-            </div>
-            
-            {/* 필터 결과 통계 */}
-            {hasActiveFilters && (
-              <div className="flex items-center gap-4 text-xs">
-                {cancelledFilter !== "all" && (
-                  <div className="flex items-center gap-2" data-testid="text-cancelled-filter-count">
-                    <span className="text-muted-foreground">
-                      {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : cancelledFilter === "staff" ? "직원" : cancelledFilter === "refunded" ? "환불" : "정상건"}:
-                    </span>
-                    <span className="font-semibold">{displayedLogs.length}건</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
-                  </div>
-                )}
-                {timeTypeFilter !== "all" && (
-                  <div className="flex items-center gap-2" data-testid="text-timetype-filter-count">
-                    <span className="text-muted-foreground">
-                      {timeTypeFilter === "day" ? "주간" : "야간"}:
-                    </span>
-                    <span className="font-semibold">{displayedLogs.length}건</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
-                  </div>
-                )}
-                {paymentMethodFilter !== "all" && (
-                  <div className="flex items-center gap-2" data-testid="text-payment-filter-count">
-                    <span className="text-muted-foreground">
-                      {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}:
-                    </span>
-                    <span className="font-semibold">{displayedLogs.length}건</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
-                  </div>
-                )}
-                {additionalFeeFilter !== "all" && (
-                  <div className="flex items-center gap-2" data-testid="text-additional-fee-filter-count">
-                    <span className="text-muted-foreground">
-                      {additionalFeeFilter === "with_fee" ? "추가요금 있음" : "추가요금 없음"}:
-                    </span>
-                    <span className="font-semibold">{displayedLogs.length}건</span>
-                    <span className="text-muted-foreground">|</span>
-                    <span className="font-bold text-primary">{filteredTotalAmount.toLocaleString()}원</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
-      {/* Log Table */}
-      <div className="flex-1 overflow-hidden p-6">
-        <ScrollArea className="h-full">
+      {/* Log Table + 추가매출 (동일 스크롤 영역) */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-6">
+        <div className="min-h-0">
           <Table>
-            <TableHeader className="sticky top-0 bg-muted/50">
+            <TableHeader className="sticky top-0 bg-muted/50 z-10">
               <TableRow>
                 <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커번호</TableHead>
                 <TableHead className="w-24 text-sm font-bold whitespace-nowrap">입실날짜</TableHead>
@@ -1195,8 +934,7 @@ export default function LogsPage() {
               )}
             </TableBody>
           </Table>
-        </ScrollArea>
-      </div>
+        </div>
 
       {/* Rental Transactions Section - 추가매출 */}
       {(() => {
@@ -1260,16 +998,14 @@ export default function LogsPage() {
         if (rentalPaymentFilter !== "all") {
           filteredRentals = filteredRentals.filter(txn => txn.paymentMethod === rentalPaymentFilter);
         }
-        
-        if (rentalDepositFilter === "received") {
-          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'received');
-        } else if (rentalDepositFilter === "refunded") {
-          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'refunded');
-        } else if (rentalDepositFilter === "forfeited") {
-          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'forfeited');
-        } else if (rentalDepositFilter === "none") {
-          filteredRentals = filteredRentals.filter(txn => txn.depositStatus === 'none');
-        }
+
+        const isSimpleSaleTxn = (txn: RentalTransaction) => {
+          const meta = revenueItemOptions.find((i) => i.id === txn.itemId)
+            || revenueItemOptions.find((i) => i.name === txn.itemName);
+          if (meta?.billingType === 'simple') return true;
+          if (meta?.billingType === 'rental') return false;
+          return (txn.depositAmount || 0) === 0;
+        };
         
         // Locker number filter
         if (rentalLockerNumberFilter) {
@@ -1278,9 +1014,27 @@ export default function LogsPage() {
             filteredRentals = filteredRentals.filter(txn => txn.lockerNumber === lockerNum);
           }
         }
+
+        const simpleSales = filteredRentals.filter((txn) => isSimpleSaleTxn(txn));
+        let rentalOnly = filteredRentals.filter((txn) => !isSimpleSaleTxn(txn));
+
+        // 보증금 필터는 대여 건에만 적용
+        if (rentalDepositFilter === "received") {
+          rentalOnly = rentalOnly.filter(txn => txn.depositStatus === 'received');
+        } else if (rentalDepositFilter === "refunded") {
+          rentalOnly = rentalOnly.filter(txn => txn.depositStatus === 'refunded');
+        } else if (rentalDepositFilter === "forfeited") {
+          rentalOnly = rentalOnly.filter(txn => txn.depositStatus === 'forfeited');
+        } else if (rentalDepositFilter === "none") {
+          rentalOnly = rentalOnly.filter(txn => txn.depositStatus === 'none');
+        }
         
         // Calculate cash totals
-        const cashRentals = filteredRentals.filter(txn => txn.paymentMethod === 'cash');
+        const cashSimple = simpleSales.filter(txn => txn.paymentMethod === 'cash');
+        const cashSimpleTotal = cashSimple.reduce((sum, txn) => sum + (txn.rentalFee || 0), 0);
+        const cashSimpleQty = cashSimple.reduce((sum, txn) => sum + Math.max(1, txn.quantity || 1), 0);
+
+        const cashRentals = rentalOnly.filter(txn => txn.paymentMethod === 'cash');
         const cashRentalFeeTotal = cashRentals.reduce((sum, txn) => sum + txn.rentalFee, 0);
         const cashDepositTotal = cashRentals.reduce((sum, txn) => {
           // Only count deposit as revenue if status is 'received' or 'forfeited'
@@ -1299,13 +1053,20 @@ export default function LogsPage() {
               data-testid="button-toggle-rental-section"
             >
               <div>
-                <h2 className="text-lg font-semibold">추가매출 (대여 물품)</h2>
+                <h2 className="text-lg font-semibold">추가매출</h2>
                 <p className="text-xs text-muted-foreground mt-1">
-                  담요/롱타올 대여 거래 - {filteredRentals.length}건
+                  단순판매 {simpleSales.length}건 · 대여 {rentalOnly.length}건
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right space-y-1">
+                  <div>
+                    <p className="text-xs text-muted-foreground">현금 판매</p>
+                    <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                      {cashSimpleTotal.toLocaleString()}원
+                      <span className="ml-1 text-[11px] font-normal text-muted-foreground">({cashSimpleQty}개)</span>
+                    </p>
+                  </div>
                   <div>
                     <p className="text-xs text-muted-foreground">현금 대여금</p>
                     <p className="text-sm font-bold text-green-600 dark:text-green-400">
@@ -1323,149 +1084,106 @@ export default function LogsPage() {
               </div>
             </CollapsibleTrigger>
             
-            <CollapsibleContent className="border rounded-lg p-6 bg-card mt-2">
+            <CollapsibleContent className="border rounded-lg p-6 bg-card mt-2 space-y-8">
               {/* Rental Filters */}
-            <div className="mb-4 space-y-3">
+            <div className="mb-0 space-y-3">
               <div className="flex items-center gap-3 flex-wrap">
                 <Button 
                   variant={showRentalFilters ? "default" : "outline"}
-                  size="sm"
+                  className="h-11 px-4 rounded-xl font-semibold"
                   onClick={() => setShowRentalFilters(!showRentalFilters)}
                   data-testid="button-toggle-rental-filters"
                 >
-                  <Filter className="h-3 w-3 mr-2" />
+                  <Filter className="h-4 w-4 mr-2" />
                   필터
                 </Button>
                 
-                {/* 추가매출 영업일 자동 조회 */}
-                {!showRentalBusinessDayFilter ? (
-                  <Button 
-                    variant={activeRentalBusinessDays.length > 0 ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setShowRentalBusinessDayFilter(true)}
-                    data-testid="button-show-rental-business-day-filter"
-                  >
-                    <Zap className="h-3 w-3 mr-2" />
-                    영업일 조회
-                  </Button>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="month"
-                      value={rentalBusinessDayYearMonth}
-                      onChange={(e) => setRentalBusinessDayYearMonth(e.target.value)}
-                      className="w-32 h-8"
-                      data-testid="input-rental-business-day-month"
-                    />
-                    <Input
-                      type="text"
-                      value={rentalBusinessDayInput}
-                      onChange={(e) => setRentalBusinessDayInput(e.target.value)}
-                      placeholder="예: 25-27"
-                      className="w-28 h-8"
-                      data-testid="input-rental-business-day"
-                    />
-                    <Button
-                      size="sm"
-                      className="h-8"
-                      onClick={() => {
-                        const days = parseBusinessDaysInput(rentalBusinessDayInput);
-                        if (days.length > 0 && rentalBusinessDayYearMonth) {
-                          const businessDays = days.map(d => 
-                            `${rentalBusinessDayYearMonth}-${String(d).padStart(2, '0')}`
-                          );
-                          setActiveRentalBusinessDays(businessDays);
-                          setRentalStartDate("");
-                          setRentalEndDate("");
-                        }
-                      }}
-                      data-testid="button-apply-rental-business-day"
-                    >
-                      조회
-                    </Button>
-                    {activeRentalBusinessDays.length > 0 && (
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
-                          setActiveRentalBusinessDays([]);
-                          setRentalBusinessDayInput("");
-                        }}
-                        data-testid="button-clear-rental-business-day"
-                      >
-                        초기화
-                      </Button>
-                    )}
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setShowRentalBusinessDayFilter(false)}
-                      data-testid="button-hide-rental-business-day-filter"
-                    >
-                      닫기
-                    </Button>
-                  </div>
-                )}
+                <Button 
+                  variant={showRentalBusinessDayFilter || activeRentalBusinessDays.length > 0 ? "default" : "outline"}
+                  className="h-11 px-4 rounded-xl font-semibold"
+                  onClick={() => setShowRentalBusinessDayFilter((open) => !open)}
+                  data-testid="button-show-rental-business-day-filter"
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  영업일 조회
+                </Button>
+              </div>
+
+              {showRentalBusinessDayFilter && (
+                <BusinessDayPicker
+                  selectedYmds={activeRentalBusinessDays}
+                  onApply={(ymds) => {
+                    setActiveRentalBusinessDays(ymds);
+                    setRentalStartDate("");
+                    setRentalEndDate("");
+                  }}
+                  onClear={() => setActiveRentalBusinessDays([])}
+                  onClose={() => setShowRentalBusinessDayFilter(false)}
+                />
+              )}
                 
                 {showRentalFilters && (
-                  <>
-                    <Select value={rentalItemFilter} onValueChange={setRentalItemFilter}>
-                      <SelectTrigger className="w-36 h-8" data-testid="select-rental-item-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">전체 항목</SelectItem>
-                        <SelectItem value="담요">담요</SelectItem>
-                        <SelectItem value="롱타올">롱타올</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={rentalPaymentFilter} onValueChange={setRentalPaymentFilter}>
-                      <SelectTrigger className="w-28 h-8" data-testid="select-rental-payment-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">전체</SelectItem>
-                        <SelectItem value="cash">현금</SelectItem>
-                        <SelectItem value="card">카드</SelectItem>
-                        <SelectItem value="transfer">이체</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <Select value={rentalDepositFilter} onValueChange={setRentalDepositFilter}>
-                      <SelectTrigger className="w-36 h-8" data-testid="select-rental-deposit-filter">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">전체</SelectItem>
-                        <SelectItem value="received">보증금 받음</SelectItem>
-                        <SelectItem value="refunded">보증금 환급</SelectItem>
-                        <SelectItem value="forfeited">보증금 몰수</SelectItem>
-                        <SelectItem value="none">보증금 없음</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="rental-locker-number" className="text-sm whitespace-nowrap">락커번호</Label>
-                      <Input
-                        id="rental-locker-number"
-                        type="text"
-                        min="1"
-                        max="999"
-                        value={rentalLockerNumberFilter}
-                        onChange={(e) => setRentalLockerNumberFilter(e.target.value)}
-                        placeholder="번호 입력"
-                        className="w-28 h-8"
-                        data-testid="input-rental-locker-number"
-                      />
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground">항목</p>
+                      <div className="flex flex-wrap gap-2">
+                        <FilterChip selected={rentalItemFilter === "all"} onClick={() => setRentalItemFilter("all")}>전체</FilterChip>
+                        {revenueItemOptions.map((item) => (
+                          <FilterChip
+                            key={item.id}
+                            selected={rentalItemFilter === item.name}
+                            onClick={() => setRentalItemFilter(item.name)}
+                          >
+                            {item.name}
+                          </FilterChip>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground">결제</p>
+                      <div className="flex flex-wrap gap-2">
+                        <FilterChip selected={rentalPaymentFilter === "all"} onClick={() => setRentalPaymentFilter("all")}>전체</FilterChip>
+                        <FilterChip selected={rentalPaymentFilter === "cash"} onClick={() => setRentalPaymentFilter("cash")}>현금</FilterChip>
+                        <FilterChip selected={rentalPaymentFilter === "card"} onClick={() => setRentalPaymentFilter("card")}>카드</FilterChip>
+                        <FilterChip selected={rentalPaymentFilter === "transfer"} onClick={() => setRentalPaymentFilter("transfer")}>이체</FilterChip>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground">보증금</p>
+                      <div className="flex flex-wrap gap-2">
+                        <FilterChip selected={rentalDepositFilter === "all"} onClick={() => setRentalDepositFilter("all")}>전체</FilterChip>
+                        <FilterChip selected={rentalDepositFilter === "received"} onClick={() => setRentalDepositFilter("received")}>받음</FilterChip>
+                        <FilterChip selected={rentalDepositFilter === "refunded"} onClick={() => setRentalDepositFilter("refunded")}>환급</FilterChip>
+                        <FilterChip selected={rentalDepositFilter === "forfeited"} onClick={() => setRentalDepositFilter("forfeited")}>몰수</FilterChip>
+                        <FilterChip selected={rentalDepositFilter === "none"} onClick={() => setRentalDepositFilter("none")}>없음</FilterChip>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground">락카번호</p>
+                      <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pr-1">
+                        <FilterChip
+                          selected={rentalLockerNumberFilter === ""}
+                          onClick={() => setRentalLockerNumberFilter("")}
+                        >
+                          전체
+                        </FilterChip>
+                        {lockerNumbers.map((num) => (
+                          <FilterChip
+                            key={num}
+                            selected={rentalLockerNumberFilter === String(num)}
+                            onClick={() => setRentalLockerNumberFilter(rentalLockerNumberFilter === String(num) ? "" : String(num))}
+                            className="min-w-[2.75rem] px-3"
+                          >
+                            {num}
+                          </FilterChip>
+                        ))}
+                      </div>
                     </div>
                     
                     {hasRentalFilters && (
                       <Button 
                         variant="ghost" 
-                        size="sm"
+                        className="h-11 px-5 rounded-xl"
                         onClick={() => {
                           setRentalItemFilter("all");
                           setRentalPaymentFilter("all");
@@ -1475,14 +1193,13 @@ export default function LogsPage() {
                           setRentalEndDate("");
                           setRentalUseTimeFilter(false);
                           setActiveRentalBusinessDays([]);
-                          setRentalBusinessDayInput("");
                         }}
                         data-testid="button-clear-rental-filters"
                       >
                         필터 초기화
                       </Button>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
               
@@ -1529,98 +1246,161 @@ export default function LogsPage() {
                   )}
                 </div>
               )}
+
+            {/* 단순판매 테이블 */}
+            <div className="space-y-3">
+              <div className="border-b pb-2">
+                <h3 className="text-base font-semibold">단순판매</h3>
+                <p className="text-xs text-muted-foreground">음료 등 판매 기록 · {simpleSales.length}건</p>
+              </div>
+              <ScrollArea className="h-[min(280px,40vh)]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">판매날짜</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">판매시간</TableHead>
+                      <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">판매개수</TableHead>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">판매금액</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {simpleSales.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                          단순판매 기록이 없습니다
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      simpleSales.map((txn) => {
+                        const qty = Math.max(1, txn.quantity || 1);
+                        const lineTotal = txn.rentalFee || 0;
+                        const unitPrice = Math.round(lineTotal / qty);
+                        return (
+                          <TableRow key={txn.id} data-testid={`row-simple-sale-${txn.id}`}>
+                            <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
+                            <TableCell className="text-sm">
+                              {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </TableCell>
+                            <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
+                            <TableCell className="text-sm tabular-nums">{qty}개</TableCell>
+                            <TableCell className="text-sm tabular-nums">{unitPrice.toLocaleString()}원</TableCell>
+                            <TableCell className="text-sm">
+                              {formatPaymentMethod(txn.paymentMethod, txn.paymentCash, txn.paymentCard, txn.paymentTransfer)}
+                            </TableCell>
+                            <TableCell className="font-bold text-base text-emerald-600 dark:text-emerald-400 tabular-nums">
+                              {(unitPrice * qty).toLocaleString()}원
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
             </div>
 
-            <ScrollArea className="h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
-                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여날짜</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
-                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납날짜</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
-                    <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여금액</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금액</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
-                    <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금처리</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금매출</TableHead>
-                    <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRentals.length === 0 ? (
+            {/* 대여 테이블 */}
+            <div className="space-y-3">
+              <div className="border-b pb-2">
+                <h3 className="text-base font-semibold">대여</h3>
+                <p className="text-xs text-muted-foreground">담요/롱타올 등 대여 기록 · {rentalOnly.length}건</p>
+              </div>
+              <ScrollArea className="h-[min(360px,50vh)]">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                        대여 거래가 없습니다
-                      </TableCell>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여날짜</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납날짜</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
+                      <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여금액</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금액</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
+                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금처리</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금매출</TableHead>
+                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
                     </TableRow>
-                  ) : (
-                    filteredRentals.map((txn) => {
-                      // Calculate deposit revenue: only if 'received' or 'forfeited'
-                      const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
-                        ? txn.depositAmount 
-                        : 0;
-                      
-                      // Calculate total: rental fee + deposit revenue
-                      const total = txn.rentalFee + depositRevenue;
-                      
-                      return (
-                        <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
-                          <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {txn.returnTime 
-                              ? new Date(txn.returnTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
-                              : '-'}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {txn.returnTime 
-                              ? new Date(txn.returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-                              : '-'}
-                          </TableCell>
-                          <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
-                          <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
-                          <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
-                          <TableCell className="text-sm">
-                            {formatPaymentMethod(txn.paymentMethod, txn.paymentCash, txn.paymentCard, txn.paymentTransfer)}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <span className={`px-2 py-1 rounded text-xs ${
-                              txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
-                              txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
-                              txn.depositStatus === 'forfeited' ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' :
-                              'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-                            }`}>
-                              {txn.depositStatus === 'received' ? '받음' : 
-                               txn.depositStatus === 'refunded' ? '환급' : 
-                               txn.depositStatus === 'forfeited' ? '몰수' : 
-                               '없음'}
-                            </span>
-                          </TableCell>
-                          <TableCell className="font-semibold text-base text-primary">
-                            {depositRevenue.toLocaleString()}원
-                          </TableCell>
-                          <TableCell className="font-bold text-base text-green-600 dark:text-green-400">
-                            {total.toLocaleString()}원
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </ScrollArea>
+                  </TableHeader>
+                  <TableBody>
+                    {rentalOnly.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                          대여 거래가 없습니다
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      rentalOnly.map((txn) => {
+                        const depositRevenue = (txn.depositStatus === 'received' || txn.depositStatus === 'forfeited') 
+                          ? txn.depositAmount 
+                          : 0;
+                        const total = txn.rentalFee + depositRevenue;
+                        
+                        return (
+                          <TableRow key={txn.id} data-testid={`row-rental-${txn.id}`}>
+                            <TableCell className="text-sm font-medium">{txn.itemName}</TableCell>
+                            <TableCell className="text-sm">
+                              {new Date(txn.rentalTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {new Date(txn.rentalTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {txn.returnTime 
+                                ? new Date(txn.returnTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {txn.returnTime 
+                                ? new Date(txn.returnTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+                                : '-'}
+                            </TableCell>
+                            <TableCell className="font-semibold text-base">{txn.lockerNumber}</TableCell>
+                            <TableCell className="text-sm">{txn.rentalFee.toLocaleString()}원</TableCell>
+                            <TableCell className="text-sm">{txn.depositAmount.toLocaleString()}원</TableCell>
+                            <TableCell className="text-sm">
+                              {formatPaymentMethod(txn.paymentMethod, txn.paymentCash, txn.paymentCard, txn.paymentTransfer)}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
+                                txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
+                                txn.depositStatus === 'forfeited' ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' :
+                                'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                              }`}>
+                                {txn.depositStatus === 'received' ? '받음' : 
+                                 txn.depositStatus === 'refunded' ? '환급' : 
+                                 txn.depositStatus === 'forfeited' ? '몰수' : 
+                                 '없음'}
+                              </span>
+                            </TableCell>
+                            <TableCell className="font-semibold text-base text-primary">
+                              {depositRevenue.toLocaleString()}원
+                            </TableCell>
+                            <TableCell className="font-bold text-base text-green-600 dark:text-green-400">
+                              {total.toLocaleString()}원
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollArea>
+            </div>
             </CollapsibleContent>
           </Collapsible>
         );
       })()}
+      </div>
 
       {/* 소급 환불 다이얼로그 */}
       <AlertDialog open={retroRefundDialogOpen} onOpenChange={setRetroRefundDialogOpen}>
@@ -1686,6 +1466,124 @@ export default function LogsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LogsToolWorkspace
+        panels={[
+          ...(showBusinessDayFilter ? [{
+            id: "businessDay",
+            title: "영업일 조회",
+            content: (
+              <BusinessDayPicker
+                embedded
+                selectedYmds={activeBusinessDays}
+                onApply={(ymds) => {
+                  setActiveBusinessDays(ymds);
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                onClear={() => setActiveBusinessDays([])}
+                onClose={() => setShowBusinessDayFilter(false)}
+              />
+            ),
+          }] : []),
+          ...(showFilters ? [{
+            id: "filter",
+            title: "필터",
+            content: (
+              <div className="space-y-4 w-full">
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">구분</p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip selected={cancelledFilter === "all"} onClick={() => setCancelledFilter("all")}>전체</FilterChip>
+                    <FilterChip selected={cancelledFilter === "active"} onClick={() => setCancelledFilter("active")} testId="chip-cancelled-active">정상</FilterChip>
+                    <FilterChip selected={cancelledFilter === "cancelled"} onClick={() => setCancelledFilter("cancelled")} testId="chip-cancelled-cancelled">취소</FilterChip>
+                    <FilterChip selected={cancelledFilter === "free"} onClick={() => setCancelledFilter("free")} testId="chip-cancelled-free">무료입장</FilterChip>
+                    <FilterChip selected={cancelledFilter === "staff"} onClick={() => setCancelledFilter("staff")} testId="chip-cancelled-staff">직원</FilterChip>
+                    <FilterChip selected={cancelledFilter === "refunded"} onClick={() => setCancelledFilter("refunded")} testId="chip-cancelled-refunded">환불</FilterChip>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">주야</p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip selected={timeTypeFilter === "all"} onClick={() => setTimeTypeFilter("all")}>전체</FilterChip>
+                    <FilterChip selected={timeTypeFilter === "day"} onClick={() => setTimeTypeFilter("day")} testId="chip-timetype-day">주간</FilterChip>
+                    <FilterChip selected={timeTypeFilter === "night"} onClick={() => setTimeTypeFilter("night")} testId="chip-timetype-night">야간</FilterChip>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">결제</p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip selected={paymentMethodFilter === "all"} onClick={() => setPaymentMethodFilter("all")}>전체</FilterChip>
+                    <FilterChip selected={paymentMethodFilter === "card"} onClick={() => setPaymentMethodFilter("card")} testId="chip-payment-card">카드</FilterChip>
+                    <FilterChip selected={paymentMethodFilter === "cash"} onClick={() => setPaymentMethodFilter("cash")} testId="chip-payment-cash">현금</FilterChip>
+                    <FilterChip selected={paymentMethodFilter === "transfer"} onClick={() => setPaymentMethodFilter("transfer")} testId="chip-payment-transfer">이체</FilterChip>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">추가요금</p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip selected={additionalFeeFilter === "all"} onClick={() => setAdditionalFeeFilter("all")}>전체</FilterChip>
+                    <FilterChip selected={additionalFeeFilter === "with_fee"} onClick={() => setAdditionalFeeFilter("with_fee")} testId="chip-fee-with">있음</FilterChip>
+                    <FilterChip selected={additionalFeeFilter === "without_fee"} onClick={() => setAdditionalFeeFilter("without_fee")} testId="chip-fee-without">없음</FilterChip>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">정렬</p>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterChip selected={sortBy === "entryTime"} onClick={() => setSortBy("entryTime")} testId="chip-sort-entry">입실시간순</FilterChip>
+                    <FilterChip selected={sortBy === "exitTime"} onClick={() => setSortBy("exitTime")} testId="chip-sort-exit">퇴실시간순</FilterChip>
+                  </div>
+                </div>
+                {hasChipFilters && (
+                  <div className="text-xs text-muted-foreground">
+                    결과 {displayedLogs.length}건 · {filteredTotalAmount.toLocaleString()}원
+                  </div>
+                )}
+                <div className="flex flex-wrap justify-end gap-2 pt-4 border-t">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-10 px-4 rounded-xl"
+                    onClick={() => setShowFilters(false)}
+                    data-testid="button-close-filters"
+                  >
+                    닫기
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 px-4 rounded-xl"
+                    onClick={clearAllFilters}
+                    data-testid="button-clear-all-filters"
+                  >
+                    초기화
+                  </Button>
+                </div>
+              </div>
+            ),
+          }] : []),
+        ]}
+        onClosePanel={(id) => {
+          if (id === "businessDay") setShowBusinessDayFilter(false);
+          if (id === "filter") setShowFilters(false);
+        }}
+        onCloseAll={() => {
+          setShowBusinessDayFilter(false);
+          setShowFilters(false);
+        }}
+      />
+
+      <LockerNumberLookupDialog
+        open={showLockerNumberDialog}
+        onOpenChange={setShowLockerNumberDialog}
+        lockerGroups={lockerGroups}
+        lockerNumbers={lockerNumbers}
+        selected={lockerNumberFilter}
+        onApply={(nums) => {
+          setLockerNumberFilter(nums);
+          setShowLockerNumberDialog(false);
+        }}
+      />
 
     </div>
   );

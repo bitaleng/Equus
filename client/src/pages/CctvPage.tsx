@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Camera, CameraOff, Copy, Check, Eye, EyeOff, RefreshCw,
+  Camera, CameraOff, Copy, Check, Eye, EyeOff,
   Video, Wifi, WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,16 @@ import { useCctv, type CctvMode } from "@/contexts/CctvContext";
 // ── P2P 모드 패널 ─────────────────────────────────────────────
 function PeerJsPanel() {
   const { toast } = useToast();
-  const { token, isStreaming, viewerCount, peerStatus, startStream, stopStream, resetToken } = useCctv();
+  const {
+    token, isStreaming, viewerCount, peerStatus, startStream, stopStream,
+    controlReady, lastNotifyStatus, notifyNow, desiredStreaming,
+  } = useCctv();
   const [copied, setCopied] = useState(false);
+  const [copiedRemote, setCopiedRemote] = useState(false);
   const [showToken, setShowToken] = useState(false);
 
   const viewerUrl = `${window.location.origin}/cctv/view?token=${token}`;
+  const remoteUrl = `${window.location.origin}/cctv/remote?token=${token}`;
 
   const handleCopy = async () => {
     try {
@@ -28,20 +33,34 @@ function PeerJsPanel() {
     }
   };
 
-  const handleReset = () => {
-    if (isStreaming) {
-      toast({ title: "감시 중단 후 코드를 변경할 수 있습니다.", variant: "destructive" });
-      return;
+  const handleCopyRemote = async () => {
+    try {
+      await navigator.clipboard.writeText(remoteUrl);
+      setCopiedRemote(true);
+      setTimeout(() => setCopiedRemote(false), 2000);
+    } catch {
+      toast({ title: "복사 실패", variant: "destructive" });
     }
-    resetToken();
-    toast({ title: "접속 코드가 변경되었습니다", description: "기존 뷰어 링크는 더 이상 작동하지 않습니다." });
+  };
+
+  const handleNotify = async () => {
+    await notifyNow();
+    toast({ title: "외부 주소로 토큰 전송을 시도했습니다" });
   };
 
   return (
     <div className="space-y-3">
-      {peerStatus === "disconnected" && isStreaming && (
+      {(peerStatus === "disconnected" || (desiredStreaming && !isStreaming && peerStatus !== "connecting")) && (
         <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-700 dark:text-yellow-400">
-          P2P 서버 연결이 끊겼습니다. 자동 재연결 중...
+          {peerStatus === "disconnected"
+            ? "P2P 연결이 끊겼습니다. 자동 재연결 중..."
+            : "상시/원격 모드 — 감시 복구 대기 중..."}
+        </div>
+      )}
+
+      {controlReady && !isStreaming && (
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+          원격 제어 채널 대기 중 — 외부에서 감시 시작 가능
         </div>
       )}
 
@@ -51,14 +70,14 @@ function PeerJsPanel() {
           {peerStatus === "connecting" ? "P2P 서버 연결 중..." : "감시 시작 (인터넷 필요)"}
         </Button>
       ) : (
-        <Button onClick={stopStream} variant="destructive" className="w-full" data-testid="button-stop-stream">
+        <Button onClick={() => stopStream()} variant="destructive" className="w-full" data-testid="button-stop-stream">
           <CameraOff className="h-4 w-4 mr-2" />
           감시 중단
         </Button>
       )}
 
       <div className="space-y-2 p-3 border rounded-lg bg-muted/30">
-        <p className="text-xs font-medium text-muted-foreground">스마트폰 접속 주소</p>
+        <p className="text-xs font-medium text-muted-foreground">스마트폰 접속 주소 (뷰어)</p>
         <div className="flex items-center gap-2">
           <code className="flex-1 text-xs bg-background rounded px-2 py-1.5 break-all select-all border">
             {showToken ? viewerUrl : viewerUrl.replace(token, "●".repeat(Math.min(token.length, 10)))}
@@ -70,16 +89,29 @@ function PeerJsPanel() {
             {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">시청자: {viewerCount}명</span>
-          <Button size="sm" variant="ghost" onClick={handleReset} className="h-6 text-xs gap-1 px-2" data-testid="button-reset-token">
-            <RefreshCw className="h-3 w-3" />
-            코드 변경
+
+        <p className="text-xs font-medium text-muted-foreground pt-1">원격 제어 주소</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs bg-background rounded px-2 py-1.5 break-all select-all border">
+            {showToken ? remoteUrl : remoteUrl.replace(token, "●".repeat(Math.min(token.length, 10)))}
+          </code>
+          <Button size="icon" variant="ghost" onClick={handleCopyRemote} data-testid="button-copy-remote-url">
+            {copiedRemote ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
         </div>
+
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">시청자: {viewerCount}명</span>
+          <Button size="sm" variant="ghost" onClick={handleNotify} className="h-6 text-xs gap-1 px-2" data-testid="button-notify-token">
+            외부 전송
+          </Button>
+        </div>
+        {lastNotifyStatus && (
+          <p className="text-[11px] text-muted-foreground">{lastNotifyStatus}</p>
+        )}
         <div className="text-xs text-muted-foreground pt-1 border-t space-y-0.5">
-          <p>① 위 주소를 복사해 스마트폰 카카오톡 등으로 전송</p>
-          <p>② 같은 와이파이·외부망 모두 접속 가능합니다 (P2P 자동)</p>
+          <p>① 뷰어 주소로 영상을 보고, 원격 제어 주소로 시작/중단합니다</p>
+          <p>② 관리자 전용 페이지에서 자동 전송·상시 연결을 설정할 수 있습니다</p>
         </div>
       </div>
     </div>
@@ -141,7 +173,7 @@ function LanPanel() {
           {peerStatus === "connecting" ? "준비 중..." : "LAN 감시 시작"}
         </Button>
       ) : (
-        <Button onClick={stopStream} variant="destructive" className="w-full" data-testid="button-stop-lan">
+        <Button onClick={() => stopStream()} variant="destructive" className="w-full" data-testid="button-stop-lan">
           <WifiOff className="h-4 w-4 mr-2" />
           감시 중단
         </Button>
@@ -191,7 +223,7 @@ function LanPanel() {
 
 // ── 공통 카메라 미리보기 + 오류 + 탭 UI ──────────────────────────
 export function CctvPanel() {
-  const { isStreaming, cameraError, streamRef, mode } = useCctv();
+  const { deviceRole, isStreaming, cameraError, streamRef, mode, micActive } = useCctv();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [activeMode, setActiveMode] = useState<CctvMode>("peerjs");
 
@@ -207,6 +239,28 @@ export function CctvPanel() {
       videoRef.current.play().catch(() => {});
     }
   });
+
+  if (deviceRole === "viewer") {
+    return (
+      <div className="space-y-4 text-center py-8">
+        <Wifi className="h-10 w-10 mx-auto text-muted-foreground" />
+        <div>
+          <p className="font-medium">스마트폰 뷰어 기기</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            스마트폰에서는 송출 토큰을 만들거나 카메라를 방송하지 않습니다.
+          </p>
+        </div>
+        <div className="flex justify-center gap-2">
+          <a href="/cctv/view">
+            <Button variant="outline">영상 보기</Button>
+          </a>
+          <a href="/cctv/remote">
+            <Button variant="outline">원격 제어</Button>
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -224,7 +278,7 @@ export function CctvPanel() {
         )}
       </div>
 
-      {/* 카메라 미리보기 */}
+      {/* 카메라 미리보기 — 태블릿은 하울링 방지로 항상 음소거 (소리 듣기/켜기는 스마트폰 뷰어에서) */}
       <div className="relative bg-black rounded-md overflow-hidden aspect-video flex items-center justify-center">
         <video
           ref={videoRef}
@@ -237,6 +291,16 @@ export function CctvPanel() {
           <div className="flex flex-col items-center gap-2 text-muted-foreground">
             <CameraOff className="h-8 w-8" />
             <span className="text-xs">카메라 꺼짐</span>
+          </div>
+        )}
+        {isStreaming && (
+          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-2">
+            <span className="rounded bg-black/60 px-2 py-1 text-[11px] text-white">
+              {micActive ? "마이크 송출 중" : "마이크 미포함 (영상만)"}
+            </span>
+            <span className="rounded bg-black/60 px-2 py-1 text-[11px] text-white/80">
+              이 화면은 음소거 · 소리는 영상보기에서
+            </span>
           </div>
         )}
       </div>
@@ -271,7 +335,7 @@ export function CctvPanel() {
 
 export default function CctvPage() {
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="h-full overflow-y-auto p-4 max-w-2xl mx-auto">
       <CctvPanel />
     </div>
   );
