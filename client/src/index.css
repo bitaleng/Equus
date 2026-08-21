@@ -695,6 +695,15 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 0.625rem;
   }
+  /* 분리결제 금액 입력란 — 흰 카드 배경 위에서도 구분되도록 옅은 회색 배경 + 테두리 */
+  .locker-opt-split-grid input {
+    background: hsl(220 14% 96%) !important;
+    box-shadow: inset 0 0 0 1px hsl(220 13% 85%) !important;
+  }
+  .dark .locker-opt-split-grid input {
+    background: hsl(210 10% 22% / 0.55) !important;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 0.06) !important;
+  }
   .locker-options-container input:not([type="checkbox"]):not([type="datetime-local"]),
   .locker-options-container textarea:not(.locker-opt-memo-input) {
     border-radius: 0.75rem;
@@ -1097,52 +1106,17 @@
   margin-bottom: 0.875rem;
 }
 
-.locker-btn-empty {
-  box-shadow:
-    inset 0 1px 2px hsl(215 20% 20% / 0.04),
-    0 1px 2px hsl(215 20% 20% / 0.03);
-}
-
-.dark .locker-btn-empty {
-  box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.06),
-    0 1px 3px hsl(0 0% 0% / 0.35);
-}
-
-.locker-btn-occupied {
-  box-shadow:
-    0 2px 6px -1px hsl(215 25% 15% / 0.18),
-    0 1px 2px hsl(215 25% 15% / 0.08),
-    inset 0 1px 0 hsl(0 0% 100% / 0.22);
-}
-
-.dark .locker-btn-occupied {
-  box-shadow:
-    0 2px 8px -1px hsl(0 0% 0% / 0.45),
-    0 1px 2px hsl(0 0% 0% / 0.3),
-    inset 0 1px 0 hsl(0 0% 100% / 0.18);
-}
-
+/* 락카 타일 그림자 — 실제 값은 .btn-ios-shell 아래(파일 끝 쪽)에서 재정의된다.
+   (같은 우선순위의 box-shadow 규칙은 나중에 나오는 쪽이 이기므로, .btn-ios-shell보다
+   뒤에 있어야 이 클래스가 실제로 적용된다) */
 .locker-btn-occupied:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow:
-    0 6px 14px -3px hsl(215 25% 15% / 0.22),
-    0 2px 4px hsl(215 25% 15% / 0.1),
-    inset 0 1px 0 hsl(0 0% 100% / 0.25);
 }
-
 .locker-btn-empty:hover:not(:disabled) {
   border-color: hsl(var(--primary) / 0.35) !important;
-  box-shadow:
-    0 0 0 3px hsl(var(--primary) / 0.08),
-    0 2px 8px -2px hsl(215 25% 15% / 0.1);
 }
-
 .dark .locker-btn-empty:hover:not(:disabled) {
   border-color: hsl(var(--primary) / 0.55) !important;
-  box-shadow:
-    0 0 0 3px hsl(var(--primary) / 0.18),
-    0 2px 10px -2px hsl(0 0% 0% / 0.4);
 }
 
 /* 손님메모 입력 시 — 핑크 + 레몬옐로우 라이브 그라데이션 */
@@ -1179,17 +1153,17 @@
   background:
     linear-gradient(135deg,
       #f472b6 0%,
-      #fde047 25%,
+      #5da7f8 25%,
       #f472b6 50%,
-      #fde047 75%,
+      #5da7f8 75%,
       #f472b6 100%
     ),
     linear-gradient(45deg,
-      #fde047 0%,
+      #5da7f8 0%,
       #f472b6 25%,
-      #fde047 50%,
+      #5da7f8 50%,
       #f472b6 75%,
-      #fde047 100%
+      #5da7f8 100%
     );
   background-size: 300% 300%, 300% 300%;
   background-blend-mode: overlay;
@@ -1199,7 +1173,32 @@
   border: none !important;
   box-shadow:
     0 8px 24px -10px hsl(330 80% 55% / 0.28),
-    0 2px 8px -4px hsl(52 90% 50% / 0.2);
+    0 2px 8px -4px hsl(210 80% 50% / 0.2);
+}
+
+.dark .animate-memo-gradient {
+  background:
+    linear-gradient(135deg,
+      #3a3d44 0%,
+      #52565f 25%,
+      #3a3d44 50%,
+      #52565f 75%,
+      #3a3d44 100%
+    ),
+    linear-gradient(45deg,
+      #52565f 0%,
+      #3a3d44 25%,
+      #52565f 50%,
+      #3a3d44 75%,
+      #52565f 100%
+    );
+  background-size: 400% 400%, 400% 400%;
+  animation:
+    memo-wave-flow 2.4s ease-in-out infinite,
+    memo-pulse 2s ease-in-out infinite;
+  box-shadow:
+    0 8px 24px -10px hsl(220 10% 0% / 0.5),
+    0 2px 8px -4px hsl(220 10% 0% / 0.35);
 }
 
 .locker-opt-memo-filled {
@@ -1208,4 +1207,120 @@
   box-shadow:
     0 8px 24px -10px hsl(210 90% 45% / 0.28),
     0 2px 8px -4px hsl(210 80% 50% / 0.15);
+}
+
+/* ── iOS 클래식 버튼 시스템 (플랫 컬러 + 은은한 베벨 + 음각 텍스트) ──
+   배경색은 절대 여기서 지정하지 않는다 — Tailwind bg-* 유틸리티가 담당해야
+   locker 버튼처럼 색을 덮어쓰는 컴포넌트가 정상 작동한다(tailwind-merge 충돌 방지). */
+.btn-ios-shell {
+  /* 광택 레이어: background-image라 background-color(Tailwind bg-* 유틸리티)와 절대 충돌하지 않는다 */
+  background-image: linear-gradient(180deg, hsl(0 0% 100% / 0.32), hsl(0 0% 100% / 0.02) 42%, hsl(0 0% 0% / 0.05));
+  /* 하단 안쪽 라인도 밝게(white) — 면이 아래로 어두워지는 것과 만나 테두리가 뭉개져 보이는 걸 방지 */
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.65), inset 0 -1px 0 hsl(0 0% 100% / 0.28), 0 1px 2px hsl(215 20% 12% / 0.14);
+  transition: transform 110ms cubic-bezier(.2,.8,.3,1), box-shadow 110ms ease, filter 110ms ease;
+}
+.dark .btn-ios-shell {
+  background-image: linear-gradient(180deg, hsl(0 0% 100% / 0.1), hsl(0 0% 100% / 0.01) 42%, hsl(0 0% 0% / 0.12));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.14), inset 0 -1px 0 hsl(0 0% 100% / 0.08);
+}
+.btn-ios-shell:hover:not(:disabled) { filter: brightness(1.04); }
+.dark .btn-ios-shell:hover:not(:disabled) { filter: brightness(1.14); }
+.btn-ios-shell:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.95);
+  box-shadow: inset 0 1px 2px hsl(0 0% 0% / 0.16), 0 1px 1px hsl(215 20% 12% / 0.08);
+}
+
+/* 흰/밝은 글자 — 살짝 눌려 새겨진 느낌 (아래로 그림자가 아니라 위쪽에 어두운 라인) */
+.btn-ios-oncolor { text-shadow: 0 -1px 0 hsl(0 0% 0% / 0.22); }
+/* 어두운 글자(밝은 배경 버튼) — 글자 바로 아래 밝은 하이라이트로 각인된 느낌 */
+.btn-ios-onlight { text-shadow: 0 1px 0 hsl(0 0% 100% / 0.75); }
+.dark .btn-ios-onlight { text-shadow: 0 1px 0 hsl(0 0% 100% / 0.05); }
+
+/* 컬러 버튼(정산확정 등) 전용 — 진한 색 그라데이션 광택.
+   background-image로만 얹어서 bg-* 유틸리티(background-color)와 절대 충돌하지 않는다.
+   LockerButton은 variant="tile"을 써서 이 클래스 자체가 안 붙으므로 락카 타일엔 번지지 않는다. */
+.btn-ios-primary {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(var(--primary)) 58%, white 42%) 0%,
+    color-mix(in srgb, hsl(var(--primary)) 92%, white 8%) 45%,
+    transparent 78%
+  );
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.55), inset 0 -1px 0 hsl(0 0% 0% / 0.1), 0 4px 14px -3px hsl(var(--primary) / 0.6);
+}
+.btn-ios-primary:active:not(:disabled) {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(var(--primary)) 80%, white 20%) 0%,
+    transparent 70%
+  );
+  box-shadow: inset 0 1px 4px hsl(0 0% 0% / 0.25), 0 1px 4px -1px hsl(var(--primary) / 0.55);
+}
+
+.btn-ios-destructive {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(var(--destructive)) 58%, white 42%) 0%,
+    color-mix(in srgb, hsl(var(--destructive)) 92%, white 8%) 45%,
+    transparent 78%
+  );
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.5), inset 0 -1px 0 hsl(0 0% 0% / 0.1), 0 4px 14px -3px hsl(var(--destructive) / 0.6);
+}
+.btn-ios-destructive:active:not(:disabled) {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, hsl(var(--destructive)) 80%, white 20%) 0%,
+    transparent 70%
+  );
+  box-shadow: inset 0 1px 4px hsl(0 0% 0% / 0.25), 0 1px 4px -1px hsl(var(--destructive) / 0.55);
+}
+
+.btn-ios-ghost {
+  box-shadow: none !important;
+}
+.btn-ios-ghost:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.6);
+  filter: none;
+}
+.btn-ios-ghost:active:not(:disabled) {
+  background: hsl(var(--accent) / 0.85);
+  filter: none;
+}
+
+/* ── 락카 타일 그림자 — A안: 테두리 중심 (그림자 없이 상단 하이라이트 + 얇은 테두리로만 입체감) ──
+   면(.btn-ios-shell의 배경 그라데이션)은 위→아래로 어두워지는데, 테두리는 단색이라
+   아래쪽에서 어두운 면과 만나 뭉개져 보인다. 그래서 하단 안쪽 라인도 어둡게(black) 대신
+   밝게(white) 넣어서 — 면 그라데이션과 반대 방향으로 — 테두리가 아래에서도 또렷하게 보이게 한다. */
+.locker-btn-empty,
+.locker-btn-occupied {
+  box-shadow: inset 0 1.5px 0 hsl(0 0% 100% / 0.65), inset 0 -1.5px 0 hsl(0 0% 100% / 0.3);
+}
+.dark .locker-btn-occupied {
+  box-shadow: inset 0 1.5px 0 hsl(0 0% 100% / 0.18), inset 0 -1.5px 0 hsl(0 0% 100% / 0.1);
+}
+/* 빈 락카는 하이라이트 색상이 테두리 색상과 명도 차이가 크지 않아, 하이라이트가 아니라
+   위/아래 테두리만 두꺼워 보이는 부작용이 있었다 — 아예 없애고 테두리만으로 표현한다. */
+.dark .locker-btn-empty {
+  box-shadow: none;
+}
+
+/* 테이블 상태 배지 — 필(pill). 배경·글자색 유틸리티 클래스는 그대로 두고
+   모양과 굵기만 여기서 통일한다. */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+/* ── 데이터 테이블 헤더 — 작은 대문자 스타일 라벨로 좀 더 정제된 느낌 ── */
+.data-table-head {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
 }

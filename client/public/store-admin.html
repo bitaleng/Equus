@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>매장 관리자 도구</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 32px 20px;
+      color: #e0e0e0;
+    }
+    .container { max-width: 640px; width: 100%; }
+    .card {
+      background: rgba(255,255,255,0.05);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .header { text-align: center; margin-bottom: 24px; }
+    .header h1 { font-size: 24px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+    .header p { color: #a0a0a0; font-size: 14px; }
+    .warning {
+      background: rgba(255,193,7,0.1);
+      border: 1px solid rgba(255,193,7,0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+      color: #ffc107;
+    }
+    h2 { font-size: 16px; color: #fff; margin-bottom: 16px; }
+    .form-group { margin-bottom: 16px; }
+    .form-row { display: flex; gap: 12px; }
+    .form-row .form-group { flex: 1; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 13px; color: #c0c0c0; }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 14px;
+    }
+    .form-group input[type="color"] { padding: 4px; height: 40px; }
+    .form-group input::placeholder { color: #707070; }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: #4a9eff;
+      box-shadow: 0 0 0 3px rgba(74,158,255,0.2);
+    }
+    .icon-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .icon-grid .form-group input[type="file"] { padding: 8px; font-size: 12px; }
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: linear-gradient(135deg, #4a9eff 0%, #3b82f6 100%);
+      color: #fff;
+    }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(74,158,255,0.4); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+    .btn-block { width: 100%; }
+    .status { margin-top: 12px; font-size: 13px; padding: 10px 14px; border-radius: 8px; display: none; }
+    .status.show { display: block; }
+    .status.ok { background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+    .status.err { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; }
+    .hint { font-size: 12px; color: #808080; margin-top: 4px; }
+    .code-box {
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.3);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      color: #4ade80;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .list-item {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .list-item .name { color: #fff; font-weight: 600; }
+    .list-item .id { color: #4a9eff; font-family: 'Monaco','Menlo',monospace; font-size: 12px; }
+    .list-item .inactive { color: #ef4444; }
+    .empty { color: #606060; text-align: center; padding: 16px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <h1>매장 관리자 도구</h1>
+        <p>코드 빌드 없이 매장 프로필과 라이선스를 등록합니다</p>
+      </div>
+      <div class="warning">
+        이 파일은 관리자 전용입니다. 관리자 키를 아무에게나 공유하지 마세요.
+      </div>
+      <div class="form-group">
+        <label for="adminKey">관리자 키 (STORE_ADMIN_KEY)</label>
+        <input type="password" id="adminKey" placeholder="Netlify 사이트에 설정한 관리자 키" />
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>1. 매장 프로필</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="storeId">storeId (슬러그)</label>
+          <input type="text" id="storeId" placeholder="예: gangnam-sauna" />
+          <div class="hint">영소문자/숫자/하이픈, 2~40자</div>
+        </div>
+        <div class="form-group">
+          <label for="shortName">짧은 이름</label>
+          <input type="text" id="shortName" placeholder="예: 강남점" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="displayName">앱 이름 (매장명)</label>
+        <input type="text" id="displayName" placeholder="예: 강남사우나 입실관리매니저" />
+      </div>
+      <div class="form-group">
+        <label for="description">설명</label>
+        <input type="text" id="description" placeholder="예: 락카 입실 현황을 실시간으로 관리합니다." />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="themeColor">테마 색상</label>
+          <input type="color" id="themeColor" value="#0F172A" />
+        </div>
+        <div class="form-group">
+          <label for="backgroundColor">배경 색상</label>
+          <input type="color" id="backgroundColor" value="#ffffff" />
+        </div>
+      </div>
+      <button class="btn btn-block" id="saveProfileBtn">프로필 저장</button>
+      <div class="status" id="profileStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. 아이콘 업로드 (PNG, storeId 먼저 저장 후 진행)</h2>
+      <div class="icon-grid">
+        <div class="form-group">
+          <label>favicon</label>
+          <input type="file" accept="image/png" data-variant="favicon" class="icon-input" />
+        </div>
+        <div class="form-group">
+          <label>192×192</label>
+          <input type="file" accept="image/png" data-variant="icon-192" class="icon-input" />
+        </div>
+        <div class="form-group">
+          <label>512×512</label>
+          <input type="file" accept="image/png" data-variant="icon-512" class="icon-input" />
+        </div>
+        <div class="form-group">
+          <label>1024×1024</label>
+          <input type="file" accept="image/png" data-variant="icon-1024" class="icon-input" />
+        </div>
+        <div class="form-group">
+          <label>앱 내 로고</label>
+          <input type="file" accept="image/png" data-variant="logo" class="icon-input" />
+        </div>
+      </div>
+      <button class="btn btn-block" id="uploadIconsBtn">선택한 아이콘 업로드</button>
+      <div class="status" id="iconStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>3. 라이선스 연결</h2>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="prefix">라이선스 종류</label>
+          <select id="prefix">
+            <option value="EQUS">EQUS (v1)</option>
+            <option value="HIZZ">HIZZ (v2)</option>
+            <option value="HOME">HOME (v3)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="customerCode">고객 코드</label>
+          <input type="text" id="customerCode" placeholder="license-generator.html에 입력했던 고객 코드와 동일하게" />
+        </div>
+      </div>
+      <div class="hint" id="encodedCodeHint"></div>
+      <button class="btn btn-block" id="mapLicenseBtn" style="margin-top:12px;">이 매장에 라이선스 연결</button>
+      <div class="status" id="mapStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>등록된 매장 목록</h2>
+      <button class="btn" id="refreshListBtn">새로고침</button>
+      <div id="profileList" style="margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_KEY_STORAGE = 'store_admin_key';
+    const adminKeyInput = document.getElementById('adminKey');
+    adminKeyInput.value = localStorage.getItem(ADMIN_KEY_STORAGE) || '';
+    adminKeyInput.addEventListener('change', () => {
+      localStorage.setItem(ADMIN_KEY_STORAGE, adminKeyInput.value);
+    });
+
+    function showStatus(el, ok, message) {
+      el.textContent = message;
+      el.className = 'status show ' + (ok ? 'ok' : 'err');
+    }
+
+    async function callAdmin(body) {
+      const res = await fetch('/api/store/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKeyInput.value },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      return { httpOk: res.ok, data };
+    }
+
+    // license-generator.html과 동일한 고객코드 인코딩 — 반드시 그 파일과 알고리즘이 일치해야 한다.
+    function encodeCustomerCode(code) {
+      let hash = 0;
+      for (let i = 0; i < code.length; i++) {
+        const char = code.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(36).toUpperCase().padStart(4, '0').substring(0, 4);
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result;
+          const base64 = String(result).split(',')[1] || '';
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById('saveProfileBtn').addEventListener('click', async () => {
+      const el = document.getElementById('profileStatus');
+      const storeId = document.getElementById('storeId').value.trim();
+      const displayName = document.getElementById('displayName').value.trim();
+      const shortName = document.getElementById('shortName').value.trim();
+      const description = document.getElementById('description').value.trim();
+      const themeColor = document.getElementById('themeColor').value;
+      const backgroundColor = document.getElementById('backgroundColor').value;
+      if (!storeId || !displayName || !shortName) {
+        showStatus(el, false, 'storeId, 앱 이름, 짧은 이름은 필수입니다.');
+        return;
+      }
+      const { httpOk, data } = await callAdmin({
+        action: 'upsert-profile',
+        profile: { storeId, displayName, shortName, description, themeColor, backgroundColor },
+      });
+      if (httpOk && data.ok) {
+        showStatus(el, true, '프로필이 저장되었습니다.');
+      } else {
+        showStatus(el, false, data.error || '저장에 실패했습니다.');
+      }
+    });
+
+    document.getElementById('uploadIconsBtn').addEventListener('click', async () => {
+      const el = document.getElementById('iconStatus');
+      const storeId = document.getElementById('storeId').value.trim();
+      if (!storeId) {
+        showStatus(el, false, '먼저 storeId를 입력하고 프로필을 저장하세요.');
+        return;
+      }
+      const inputs = Array.from(document.querySelectorAll('.icon-input')).filter((i) => i.files && i.files[0]);
+      if (inputs.length === 0) {
+        showStatus(el, false, '업로드할 파일을 선택하세요.');
+        return;
+      }
+      let okCount = 0;
+      for (const input of inputs) {
+        const variant = input.getAttribute('data-variant');
+        const base64Png = await fileToBase64(input.files[0]);
+        const { httpOk, data } = await callAdmin({ action: 'upload-icon', storeId, variant, base64Png });
+        if (httpOk && data.ok) okCount++;
+      }
+      if (okCount === inputs.length) {
+        showStatus(el, true, `${okCount}개 아이콘을 업로드했습니다.`);
+      } else {
+        showStatus(el, false, `${okCount}/${inputs.length}개만 업로드에 성공했습니다.`);
+      }
+    });
+
+    document.getElementById('customerCode').addEventListener('input', (e) => {
+      const hint = document.getElementById('encodedCodeHint');
+      const value = e.target.value.trim();
+      hint.textContent = value ? `인코딩된 코드: ${encodeCustomerCode(value)}` : '';
+    });
+
+    document.getElementById('mapLicenseBtn').addEventListener('click', async () => {
+      const el = document.getElementById('mapStatus');
+      const storeId = document.getElementById('storeId').value.trim();
+      const prefix = document.getElementById('prefix').value;
+      const customerCodeRaw = document.getElementById('customerCode').value.trim();
+      if (!storeId || !customerCodeRaw) {
+        showStatus(el, false, 'storeId와 고객 코드를 입력하세요.');
+        return;
+      }
+      const customerCode = encodeCustomerCode(customerCodeRaw);
+      const { httpOk, data } = await callAdmin({ action: 'map-license', prefix, customerCode, storeId });
+      if (httpOk && data.ok) {
+        showStatus(el, true, `연결 완료 (${prefix}-${customerCode})`);
+      } else if (data && data.existingStoreId) {
+        const confirmed = confirm(`이미 ${data.existingStoreId} 매장에 연결되어 있습니다. 덮어쓸까요?`);
+        if (confirmed) {
+          const retry = await callAdmin({ action: 'map-license', prefix, customerCode, storeId, force: true });
+          if (retry.httpOk && retry.data.ok) {
+            showStatus(el, true, `연결 완료 (${prefix}-${customerCode})`);
+          } else {
+            showStatus(el, false, retry.data.error || '연결에 실패했습니다.');
+          }
+        }
+      } else {
+        showStatus(el, false, (data && data.error) || '연결에 실패했습니다.');
+      }
+    });
+
+    async function refreshList() {
+      const container = document.getElementById('profileList');
+      const { httpOk, data } = await callAdmin({ action: 'list-profiles' });
+      if (!httpOk || !data.ok) {
+        container.innerHTML = `<div class="empty">${(data && data.error) || '목록을 불러오지 못했습니다.'}</div>`;
+        return;
+      }
+      const profiles = data.profiles || [];
+      if (profiles.length === 0) {
+        container.innerHTML = '<div class="empty">등록된 매장이 없습니다.</div>';
+        return;
+      }
+      container.innerHTML = profiles.map((p) => `
+        <div class="list-item">
+          <div class="name">${p.displayName} ${p.active ? '' : '<span class="inactive">(비활성)</span>'}</div>
+          <div class="id">${p.storeId}</div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('refreshListBtn').addEventListener('click', refreshList);
+  </script>
+</body>
+</html>

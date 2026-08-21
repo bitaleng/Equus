@@ -49,17 +49,20 @@ import * as localDb from "@/lib/localDb";
 import {
   buildArchiveFilename,
   canPickArchiveDirectory,
+  canPickClosingBackupFile,
   clampAutoArchiveKeepMonths,
   clearAutoArchiveDirectory,
+  clearClosingBackupFile,
   getAutoArchiveDirectoryName,
   getAutoArchiveKeepRange,
   getArchiveBackupPrefix,
+  getClosingBackupFileName,
   pickAutoArchiveDirectory,
+  pickClosingBackupFile,
   runAutoArchiveIfNeeded,
 } from "@/lib/autoArchive";
 import { getLockedRoutes, setLockedRoutes, MENU_ITEMS } from "@/lib/menuLock";
 import { validateLicenseKey } from "@/lib/licenseValidation";
-import { getAppSkin } from "@/lib/appMeta";
 
 interface Settings {
   businessDayStartHour: number;
@@ -350,6 +353,7 @@ export default function Settings() {
   const archiveFileInputRef = useRef<HTMLInputElement>(null);
   const [autoArchiveFolderName, setAutoArchiveFolderName] = useState<string | null>(null);
   const [isAutoArchiving, setIsAutoArchiving] = useState(false);
+  const [closingBackupFileName, setClosingBackupFileName] = useState<string | null>(null);
 
   // RFID/Barcode export/import refs
   const rfidFileInputRef = useRef<HTMLInputElement>(null);
@@ -418,6 +422,9 @@ export default function Settings() {
     setStaffList(localDb.getAllStaff());
     void getAutoArchiveDirectoryName().then((name) => {
       if (name) setAutoArchiveFolderName(name);
+    });
+    void getClosingBackupFileName().then((name) => {
+      if (name) setClosingBackupFileName(name);
     });
     
     // Check NFC support
@@ -1601,6 +1608,35 @@ export default function Settings() {
     toast({
       title: "폴더 지정 해제",
       description: "자동 백업 폴더를 해제했습니다. 다시 지정하기 전에는 자동 백업이 실행되지 않습니다.",
+    });
+  };
+
+  const handlePickClosingBackupFile = async () => {
+    const result = await pickClosingBackupFile();
+    if (!result.ok) {
+      if (result.error === 'cancelled') return;
+      toast({
+        title: "파일 지정 실패",
+        description: result.error || "파일을 지정하지 못했습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setClosingBackupFileName(result.name || '지정됨');
+    toast({
+      title: "마감 백업 파일 지정",
+      description: result.name
+        ? `앞으로 마감 확정 시 「${result.name}」 파일 하나를 계속 덮어씁니다.`
+        : "지정한 파일을 마감마다 덮어씁니다.",
+    });
+  };
+
+  const handleClearClosingBackupFile = async () => {
+    await clearClosingBackupFile();
+    setClosingBackupFileName(null);
+    toast({
+      title: "마감 백업 파일 지정 해제",
+      description: "이제부터 마감 확정 시 영업일자가 포함된 새 파일로 다운로드됩니다.",
     });
   };
 
@@ -4494,6 +4530,59 @@ export default function Settings() {
                 </div>
               </div>
 
+              <div className="p-4 border border-emerald-500/50 rounded-lg bg-emerald-500/5">
+                <div className="flex items-start gap-3">
+                  <FolderOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <h4 className="font-medium text-emerald-700 dark:text-emerald-400 mb-1">
+                        마감 백업 파일 위치 (선택)
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        마감을 확정할 때마다 전체 데이터를 자동으로 백업합니다. 아래에서 파일을 하나
+                        지정해두면 마감마다 그 파일 하나를 계속 덮어써서 용량이 쌓이지 않습니다.
+                        지정하지 않으면(또는 지원하지 않는 기기라면) 영업일자가 들어간 새 파일로
+                        매번 다운로드 폴더에 저장됩니다.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handlePickClosingBackupFile}
+                        disabled={!canPickClosingBackupFile()}
+                        data-testid="button-pick-closing-backup-file"
+                      >
+                        <FolderOpen className="h-4 w-4 mr-2" />
+                        덮어쓸 파일 지정
+                      </Button>
+                      {closingBackupFileName && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={handleClearClosingBackupFile}
+                          data-testid="button-clear-closing-backup-file"
+                        >
+                          지정 해제
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {canPickClosingBackupFile()
+                        ? closingBackupFileName
+                          ? `지정된 파일: ${closingBackupFileName} (마감마다 덮어씀)`
+                          : "아직 지정된 파일이 없습니다. 지정하기 전까지는 마감마다 새 파일로 다운로드됩니다."
+                        : "이 브라우저(안드로이드 태블릿 등)는 파일 지정을 지원하지 않아, 마감마다 새 파일로 다운로드됩니다. PC Chrome/Edge에서는 지정할 수 있습니다."}
+                    </p>
+                    <p className="text-xs text-muted-foreground border-t pt-2 mt-1">
+                      💡 클라우드에도 이중 백업하려면: PC는 「구글 드라이브 데스크톱」을 설치한 뒤 위
+                      파일을 그 동기화 폴더 안으로 지정하면 구글이 자동으로 업로드합니다. 안드로이드는
+                      구글 드라이브 앱의 폴더 자동 업로드 기능을 다운로드 폴더에 연결해두면 됩니다.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div className="p-4 border border-amber-500/50 rounded-lg bg-amber-500/5">
                 <div className="flex items-start gap-3">
                   <Download className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
@@ -5283,11 +5372,7 @@ export default function Settings() {
           <div className="space-y-4 pt-2">
             <Input
               type="text"
-              placeholder={
-                getAppSkin() === "v3" ? "HOME-XXXX-XXXX-XXXX"
-                : getAppSkin() === "v2" ? "HIZZ-XXXX-XXXX-XXXX"
-                : "EQUS-XXXX-XXXX-XXXX"
-              }
+              placeholder="XXXX-XXXX-XXXX-XXXX"
               value={passwordResetLicenseInput}
               onChange={(e) => {
                 setPasswordResetLicenseInput(e.target.value);

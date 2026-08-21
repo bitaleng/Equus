@@ -43,7 +43,7 @@ def main() -> int:
         (bool(js_assets), "no JS files in assets/"),
         (has_wasm, "no wasm (assets/ or zip root)"),
         ("sw.js" in names, "sw.js missing"),
-        ("hugaetel-v36" in sw, "sw.js is not v36"),
+        ("hugaetel-v37" in sw, "sw.js is not v37"),
         ("/cctv/view" in sw and "/cctv/remote" in sw and "/screen/view" in sw, "cctv/screen routes missing in sw.js"),
         ("sw-precache.json" in names, "sw-precache.json missing"),
         (

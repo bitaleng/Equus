@@ -26,6 +26,30 @@
   to = "/license-generator.html"
   status = 200
 
+# Store admin tool - serve as static file (before SPA redirect)
+[[redirects]]
+  from = "/store-admin.html"
+  to = "/store-admin.html"
+  status = 200
+
+# Store profile admin: register/update per-store branding + license mapping (no code build)
+[[redirects]]
+  from = "/api/store/admin"
+  to = "/.netlify/functions/store-profile-admin"
+  status = 200
+
+# Per-store dynamic PWA manifest
+[[redirects]]
+  from = "/store/:storeId/manifest.webmanifest"
+  to = "/.netlify/functions/store-manifest?store=:storeId"
+  status = 200
+
+# Per-store dynamic icon
+[[redirects]]
+  from = "/store/:storeId/icon/:variant"
+  to = "/.netlify/functions/store-icon?store=:storeId&variant=:variant"
+  status = 200
+
 # SPA routing - redirect all routes to index.html
 [[redirects]]
   from = "/*"

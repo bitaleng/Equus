@@ -10,7 +10,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { getAppName, getAppSkin } from "@/lib/appMeta";
+import { getAppName } from "@/lib/appMeta";
+import { getCurrentLicensePool } from "@/lib/licenseValidation";
+import { getCachedStoreProfile, storeIconUrl } from "@/lib/storeProfile";
 import { useTheme } from "@/hooks/useTheme";
 
 const items = [
@@ -25,17 +27,16 @@ const items = [
   { title: "스캔정보",    url: "/scan-logs",        icon: ScanBarcode },
 ];
 
-const skin = getAppSkin();
 const appName = getAppName();
 
-const SKIN_LOGO: Record<string, string> = {
+/** 기존 3개 매장(v1/v2/v3 prefix 풀) 하위호환용 기본 로고 — 새 매장은 프로필의 logo 아이콘을 우선한다. */
+const POOL_LOGO: Record<string, string> = {
   v1: "/icon-v1.png",
   v2: "/icon-v2.png",
   v3: "/icon-v3.png",
-  demo: "/icon-demo.png",
 };
 
-/** V2만 라이트/다크 아이콘 분리 */
+/** v2 풀만 라이트/다크 아이콘 분리 */
 const V2_LOGO = {
   light: "/icon-v2-light.png",
   dark: "/icon-v2.png",
@@ -45,10 +46,14 @@ export function AppSidebar() {
   const [location] = useLocation();
   const { isDark } = useTheme();
 
-  const logoSrc =
-    skin === "v2"
+  const profile = getCachedStoreProfile();
+  const pool = getCurrentLicensePool();
+
+  const logoSrc = profile?.icons.logo
+    ? storeIconUrl(profile, "logo")
+    : pool === "v2"
       ? (isDark ? V2_LOGO.dark : V2_LOGO.light)
-      : (SKIN_LOGO[skin] ?? SKIN_LOGO.v1);
+      : (pool ? POOL_LOGO[pool] : undefined) ?? "/icon-demo.png";
 
   return (
     <Sidebar>

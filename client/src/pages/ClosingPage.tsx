@@ -3,7 +3,7 @@ import { ArrowLeft, Save, CheckCircle, Calculator, Calendar as CalendarIcon, Ale
 import { Link } from 'wouter';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { ko } from 'date-fns/locale';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +46,7 @@ import {
 } from '@/lib/localDb';
 import { getBusinessDay, formatKoreanCurrency } from '@shared/businessDay';
 import * as localDb from '@/lib/localDb';
+import { downloadClosingBackup } from '@/lib/autoArchive';
 import { cn } from '@/lib/utils';
 import { toYmd, ymdToLocalDate } from '@/components/BusinessDayPicker';
 import { CashRegisterInput, calcCashRegisterTotal, loadCashRegister } from '@/components/CashRegisterInput';
@@ -604,10 +605,10 @@ export default function ClosingPage() {
     setConfirmDialogOpen(true);
   };
 
-  const confirmClosing = () => {
+  const confirmClosing = async () => {
     handleSave(); // Save first
     confirmClosingDay(businessDay);
-    
+
     // Clear daily memo from localStorage after closing is confirmed
     localStorage.removeItem('daily_memo');
 
@@ -615,6 +616,16 @@ export default function ClosingPage() {
       title: '정산 확정 완료',
       description: '정산이 확정되었습니다. 수정이 불가능합니다.',
     });
+
+    // 마감 확정 시 전체 데이터를 자동 백업 (지정 파일이 있으면 덮어쓰기, 없으면 다운로드)
+    const backup = await downloadClosingBackup(businessDay);
+    if (!backup.success && backup.message) {
+      toast({
+        title: '자동 백업 실패',
+        description: `${backup.message} 설정 메뉴에서 수동으로 내보내기 해주세요.`,
+        variant: 'destructive',
+      });
+    }
 
     setConfirmDialogOpen(false);
     loadClosingData(businessDay);
@@ -789,7 +800,7 @@ export default function ClosingPage() {
       ['Total Sales', totalEntrySales.cash.toLocaleString(), totalEntrySales.card.toLocaleString(), totalEntrySales.transfer.toLocaleString(), totalEntrySales.total.toLocaleString()],
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Category', 'Cash', 'Card', 'Transfer', 'Total']],
       body: salesData,
       startY: 40,
@@ -807,7 +818,7 @@ export default function ClosingPage() {
       ['Total', expenseSummary.totalExpenses.toLocaleString()],
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Expenses', 'Amount']],
       body: expenseData,
       startY: finalY1 + 10,
@@ -827,7 +838,7 @@ export default function ClosingPage() {
       ['Bank Deposit', (parseInt(bankDeposit) || 0).toLocaleString()],
     ];
 
-    (doc as any).autoTable({
+    autoTable(doc, {
       head: [['Cash Register', 'Amount']],
       body: cashData,
       startY: finalY2 + 10,
@@ -852,7 +863,7 @@ export default function ClosingPage() {
         memoData.push(['Settlement Notes', notes.substring(0, 100) + (notes.length > 100 ? '...' : '')]);
       }
       
-      (doc as any).autoTable({
+      autoTable(doc, {
         head: [['Type', 'Content']],
         body: memoData,
         startY: finalY,

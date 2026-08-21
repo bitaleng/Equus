@@ -1,38 +1,48 @@
 ---
-description: V1/V2/V3 스킨은 개별 브랜딩·설정을 유지하고 기능 소스는 공유한다
+description: 매장 구분은 빌드타임 스킨이 아니라 런타임 매장 프로필로 결정된다
 alwaysApply: true
 ---
 
-# 앱 스킨 (V1 에쿠스 / V2 히즈 / V3 홈)
+# 매장별 브랜딩/설정 (런타임 프로필)
 
-기능 업데이트는 **공통 소스**(`client/src`, `shared`, `server` 등)에 한 번만 적용한다.  
-아래만 스킨별로 **개별 유지**한다. 하드코딩으로 한 버전에만 넣지 말 것.
+앱은 매장 구분 없는 **단일 공통 빌드**다. `VITE_SKIN`, `client/skins/*`, `npm run dev:v1|v2|v3` 같은
+빌드타임 스킨 분기는 더 이상 존재하지 않는다 (과거 유물이니 되살리지 말 것).
 
-## 스킨별 개별 항목
+매장별 이름·아이콘·기본 설정값은 라이선스 키를 서버(`netlify/functions/license-bind.ts`)에
+활성화/동기화할 때 **서버가 응답에 함께 내려주는 프로필**로 결정된다.
 
-| 항목 | 위치 |
-|------|------|
-| 아이콘·manifest | `client/skins/{v1\|v2\|v3\|demo}/` |
-| 사이드바 로고 | `client/public/icon-v{1\|2\|3}.png` 또는 체험 `icon-demo.png` + `app-sidebar.tsx` |
-| 앱 제목·설명 | `client/src/lib/appMeta.ts`, `vite.config.ts` `skinMeta` |
-| 시스템설정 기본값 | `localDb.ts` `getSettings()` 의 `v2Overrides` / `v3Overrides` |
-| 라이선스 접두어·시크릿·스토리지키 | `licenseValidation.ts`, `license-generator.html` |
-| 정식 1기기 바인딩 | (제거됨 — 로컬 라이선스만 검증, 세션은 SQLite/IDB에 저장) |
-| 체험판 시크릿 | `demo-trial.ts`, `demo-extension-generator.html` |
-| 백업 접두어·시스템명 | `localDb.ts` `APP_SYSTEM_NAME` / `BACKUP_PREFIX` |
-| Netlify zip | `build-netlify.ps1` — 정식 `-Skin v1\|v2\|v3`, 체험 `-Skin demo` → `netlify-demo.zip` |
+## 데이터 흐름
+
+1. 매장 프로필은 Netlify Blobs `store-profiles`(JSON)/`store-icons`(PNG 바이너리)에 저장된다.
+   스키마는 `netlify/functions/lib/storeProfile.ts`.
+2. 관리자가 코드 빌드 없이 `client/public/store-admin.html`(오프라인 실행 가능한 관리자 도구,
+   `STORE_ADMIN_KEY` 환경변수로 인증)로 매장 프로필을 등록하고, 라이선스 키의
+   prefix+고객코드를 그 매장의 storeId에 매핑한다.
+3. 라이선스가 활성화/동기화되면 `netlify/functions/license-bind.ts`가 그 매핑으로
+   프로필을 찾아 응답에 `storeProfile` 필드로 얹는다.
+4. 클라이언트 `client/src/lib/storeProfile.ts`가 그 프로필을 localStorage에 캐싱하고
+   `document.title`/파비콘/PWA manifest 링크를 갱신한다. `client/src/lib/appMeta.ts`,
+   `db/core.ts`의 `APP_SYSTEM_NAME`, `app-sidebar.tsx`의 로고 등은 모두 이 캐시를 읽는다.
+5. 매장의 기본 설정값(가격 등)은 **최초 활성화 때만** `localStorage['settings']`에
+   시딩된다(`seedSettingsFromProfileIfNeeded`) — 이후 매장 주인이 직접 바꾼 값을
+   주기적 sync가 덮어쓰지 않는다.
+
+## 라이선스 prefix 풀
+
+`license-generator.html`(오프라인 발급 도구)을 고치지 않는 한 새 prefix 풀은 만들 수 없다 —
+`EQUS`/`HIZZ`/`HOME` 3개뿐이다. 새 매장도 이 중 하나를 재사용하고, 실제 매장 구분은
+`keymap:<prefix>:<customerCode>` → `storeId` 매핑이 담당한다.
 
 ## 로컬 실행
 
 ```bash
-npm run dev:v1   # 에쿠스
-npm run dev:v2   # 히즈
-npm run dev:v3   # 홈 (home24시)
-npm run dev:demo # 통합 체험판 (PWA 설치 불가)
+npm run dev        # 정식 (라이선스 검증은 dev 모드에서 자동 우회됨 — LicenseGate.tsx 참고)
+npm run dev:demo   # 통합 체험판
 ```
 
 ## 새 기능 추가 시
 
-- UI·요금 로직·DB 스키마는 공통 코드에만 수정 → 세 버전 동시 반영
-- 기본값·브랜드가 버전마다 다르면 `VITE_SKIN` / `getAppSkin()` 분기로만 추가
-- v1/v2에만 있는 분기를 발견하면 v3도 같은 패턴으로 빠짐없이 맞출 것
+- 매장마다 달라야 하는 값(브랜딩/기본설정)은 `StoreProfileRecord`에 필드를 추가하고
+  `store-admin.html`/`store-profile-admin.ts`에서 입력받는 방식으로 확장한다.
+  다시 빌드타임 분기로 되돌리지 말 것.
+- 배포는 `build-netlify.ps1`/`.sh`로 만든 단일 zip 하나를 모든 매장이 쓰는 Netlify 사이트에 올린다.

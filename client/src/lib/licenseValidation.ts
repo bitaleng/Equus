@@ -1,11 +1,7 @@
-import CryptoJS from 'crypto-js';
+const LICENSE_STORAGE_KEY = 'store_license_key';
 
-const skin = import.meta.env.VITE_SKIN || 'v1';
-const LICENSE_PREFIX = skin === 'v3' ? 'HOME' : skin === 'v2' ? 'HIZZ' : 'EQUS';
-const LICENSE_STORAGE_KEY = import.meta.env.VITE_LICENSE_STORAGE_KEY
-  || (skin === 'v3' ? 'rest_hotel_license_v3'
-    : skin === 'v2' ? 'rest_hotel_license_v2'
-    : 'rest_hotel_license');
+/** 서버(license-bind.ts)가 실제로 발급하는 prefix 풀. 새 매장도 이 중 하나를 재사용한다. */
+const KNOWN_LICENSE_PREFIXES = ['EQUS', 'HIZZ', 'HOME'];
 
 export interface LicenseData {
   customerCode: string;
@@ -15,125 +11,56 @@ export interface LicenseData {
   daysRemaining: number;
 }
 
-function getSecret(): string {
-  if (skin === 'v3') {
-    // V3 전용 시크릿 (v1/v2 라이센스키와 호환되지 않음)
-    const parts = [
-      String.fromCharCode(72, 111, 77, 101),
-      "2025!",
-      String.fromCharCode(72, 109, 50, 52, 83),
-      "#HmKy@",
-      String.fromCharCode(83, 99, 82, 116, 51, 116)
-    ];
-    return parts.join('');
-  }
-  if (skin === 'v2') {
-    // V2 전용 시크릿 (v1 라이센스키와 호환되지 않음)
-    const parts = [
-      String.fromCharCode(82, 101, 83, 111),
-      "2025!",
-      String.fromCharCode(82, 116, 86, 50, 83),
-      "#KyMt@",
-      String.fromCharCode(76, 99, 75, 114, 51, 116)
-    ];
-    return parts.join('');
-  }
-  // V1 시크릿 (기존)
-  const parts = [
-    String.fromCharCode(69, 113, 85, 115),
-    "2025!",
-    String.fromCharCode(72, 111, 84, 51, 76),
-    "#MnGt@",
-    String.fromCharCode(83, 101, 99, 82, 51, 116)
-  ];
-  return parts.join('');
-}
-
-function generateSignature(data: string): string {
-  const secret = getSecret();
-  const hash = CryptoJS.HmacSHA256(data, secret);
-  return hash.toString(CryptoJS.enc.Hex).substring(0, 8).toUpperCase();
-}
-
-function encodeDate(date: Date): string {
-  const year = date.getFullYear() - 2020;
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
-  const encoded = (year * 10000) + (month * 100) + day;
-  return encoded.toString(36).toUpperCase().padStart(4, '0');
-}
-
 function decodeDate(encoded: string): Date | null {
   try {
     const num = parseInt(encoded, 36);
     const day = num % 100;
     const month = Math.floor((num % 10000) / 100);
     const year = Math.floor(num / 10000) + 2020;
-    
+
     if (month < 1 || month > 12 || day < 1 || day > 31 || year < 2020 || year > 2099) {
       return null;
     }
-    
+
     return new Date(year, month - 1, day);
   } catch {
     return null;
   }
 }
 
-function encodeCustomerCode(code: string): string {
-  let hash = 0;
-  for (let i = 0; i < code.length; i++) {
-    const char = code.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return Math.abs(hash).toString(36).toUpperCase().padStart(4, '0').substring(0, 4);
-}
-
-export function generateLicenseKey(customerCode: string, expiryDate: Date): string {
-  const encodedCustomer = encodeCustomerCode(customerCode);
-  const encodedDate = encodeDate(expiryDate);
-  
-  const dataPayload = `${encodedCustomer}${encodedDate}`;
-  const signature = generateSignature(dataPayload);
-  
-  return `${LICENSE_PREFIX}-${encodedCustomer}-${encodedDate}-${signature.substring(0, 4)}`;
-}
-
+/**
+ * 키 구조(접두사·날짜)만 로컬에서 해석한다 — 서명 비밀키는 더 이상 클라이언트에 없어
+ * 진짜 발급된 키인지는 여기서 증명하지 못한다. 실제 인증(서명 검증·기기 바인딩)은
+ * netlify/functions/license-bind.ts 서버에서만 이뤄진다 (client/src/lib/licenseBind.ts 참고).
+ * 이 함수는 UI 표시용 만료일 파싱과, 이미 기기에 등록된 상태에서의 로컬 보조 잠금
+ * (패턴/비밀번호 재설정 등, 물리적 접근이 이미 전제된 화면)에만 쓰인다.
+ */
 export function validateLicenseKey(licenseKey: string): LicenseData | null {
   try {
     const cleaned = licenseKey.replace(/-/g, '').toUpperCase();
-    
+
     if (cleaned.length !== 16) {
       return null;
     }
-    
-    if (!cleaned.startsWith(LICENSE_PREFIX)) {
+
+    if (!KNOWN_LICENSE_PREFIXES.some((prefix) => cleaned.startsWith(prefix))) {
       return null;
     }
-    
+
     const customerEncoded = cleaned.substring(4, 8);
     const dateEncoded = cleaned.substring(8, 12);
-    const providedSignature = cleaned.substring(12, 16);
-    
-    const dataPayload = `${customerEncoded}${dateEncoded}`;
-    const expectedSignature = generateSignature(dataPayload).substring(0, 4);
-    
-    if (providedSignature !== expectedSignature) {
-      return null;
-    }
-    
+
     const expiryDate = decodeDate(dateEncoded);
     if (!expiryDate) {
       return null;
     }
-    
+
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    
+
     const isExpired = expiryDate < now;
     const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     return {
       customerCode: customerEncoded,
       expiryDate,
@@ -172,8 +99,19 @@ export function checkStoredLicenseValidity(): LicenseData | null {
   if (!storedLicense) {
     return null;
   }
-  
+
   return validateLicenseKey(storedLicense);
+}
+
+/** 현재 저장된 라이선스 키가 속한 prefix 풀(EQUS/HIZZ/HOME) — 없으면 null. */
+export function getCurrentLicensePool(): 'v1' | 'v2' | 'v3' | null {
+  const stored = getStoredLicense();
+  if (!stored) return null;
+  const cleaned = stored.replace(/-/g, '').toUpperCase();
+  if (cleaned.startsWith('HIZZ')) return 'v2';
+  if (cleaned.startsWith('HOME')) return 'v3';
+  if (cleaned.startsWith('EQUS')) return 'v1';
+  return null;
 }
 
 export { LICENSE_STORAGE_KEY };

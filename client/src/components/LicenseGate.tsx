@@ -17,24 +17,24 @@ import {
 import {
   validateLicenseKey,
   getStoredLicense,
-  storeLicense,
-  clearLicense,
-  checkStoredLicenseValidity,
   LicenseData,
 } from "@/lib/licenseValidation";
-import { persistLicenseToDatabase } from "@/lib/localDb";
-import { getAppDescription, getAppName, getAppSkin } from "@/lib/appMeta";
+import {
+  activateLicense,
+  syncLicenseBinding,
+  unregisterLicenseDevice,
+  reclaimLicenseDevice,
+  getBoundDeviceId,
+} from "@/lib/licenseBind";
+import { getAppDescription, getAppName } from "@/lib/appMeta";
 
 interface LicenseGateProps {
   children: React.ReactNode;
 }
 
-const skin = getAppSkin();
-const LICENSE_PLACEHOLDER =
-  skin === "v3" ? "HOME-XXXX-XXXX-XXXX"
-  : skin === "v2" ? "HIZZ-XXXX-XXXX-XXXX"
-  : "EQUS-XXXX-XXXX-XXXX";
+const LICENSE_PLACEHOLDER = "XXXX-XXXX-XXXX-XXXX";
 const DEMO_RESYNC_MS = 30 * 60 * 1000;
+const LICENSE_RESYNC_MS = 60 * 60 * 1000;
 
 export default function LicenseGate({ children }: LicenseGateProps) {
   const [isLoading, setIsLoading] = useState(true);
@@ -43,6 +43,9 @@ export default function LicenseGate({ children }: LicenseGateProps) {
   const [inputKey, setInputKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showExpiryWarning, setShowExpiryWarning] = useState(false);
+  const [showOfflineNotice, setShowOfflineNotice] = useState(false);
+  const [otherDeviceConflict, setOtherDeviceConflict] = useState<string | null>(null);
+  const [licenseBusy, setLicenseBusy] = useState(false);
   const [extensionCode, setExtensionCode] = useState("");
   const [startCode, setStartCode] = useState("");
   const [demoSnapshot, setDemoSnapshot] = useState<DemoTrialSnapshot | null>(null);
@@ -72,6 +75,34 @@ export default function LicenseGate({ children }: LicenseGateProps) {
     applyDemoSnapshot(snapshot);
     return snapshot;
   }, [applyDemoSnapshot]);
+
+  const applyLicenseSyncResult = useCallback((result: Awaited<ReturnType<typeof syncLicenseBinding>>) => {
+    if (result.ok) {
+      setOtherDeviceConflict(null);
+      setShowOfflineNotice(!!result.offline);
+      const stored = getStoredLicense();
+      const parsed = stored ? validateLicenseKey(stored) : null;
+      setLicenseData(parsed);
+      setIsValidated(true);
+      setError(null);
+      if (parsed && parsed.daysRemaining <= 30) setShowExpiryWarning(true);
+      return;
+    }
+    setIsValidated(false);
+    setShowOfflineNotice(false);
+    if (result.otherDevice) {
+      setOtherDeviceConflict(result.boundDeviceId || null);
+    } else {
+      setOtherDeviceConflict(null);
+    }
+    setError(result.error || "라이선스 확인에 실패했습니다.");
+  }, []);
+
+  const refreshLicenseSync = useCallback(async () => {
+    const result = await syncLicenseBinding();
+    applyLicenseSyncResult(result);
+    return result;
+  }, [applyLicenseSyncResult]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,33 +137,25 @@ export default function LicenseGate({ children }: LicenseGateProps) {
         return;
       }
 
-      // 정식: 로컬(및 DB에서 복구된) 라이선스만 검증 — 서버 기기 바인딩 없음
-      const storedLicenseData = checkStoredLicenseValidity();
-      if (cancelled) return;
-
-      if (storedLicenseData) {
-        if (storedLicenseData.isExpired) {
-          setError("라이선스가 만료되었습니다. 새 라이선스를 입력해주세요.");
-          clearLicense();
-          persistLicenseToDatabase(null);
-        } else {
-          setLicenseData(storedLicenseData);
-          setIsValidated(true);
-          // LS에만 있던 키를 DB에도 백업
-          const key = getStoredLicense();
-          if (key) persistLicenseToDatabase(key);
-          if (storedLicenseData.daysRemaining <= 30) {
-            setShowExpiryWarning(true);
-          }
-        }
+      // 정식: 저장된 키가 있으면 서버(license-bind)에 확인 — 오프라인이면 유예기간 내 자동 허용
+      const storedKey = getStoredLicense();
+      if (!storedKey) {
+        if (!cancelled) setIsLoading(false);
+        return;
       }
-      if (!cancelled) setIsLoading(false);
+      try {
+        const result = await syncLicenseBinding();
+        if (cancelled) return;
+        applyLicenseSyncResult(result);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [isDevelopment, isDemo, applyDemoSnapshot]);
+  }, [isDevelopment, isDemo, applyDemoSnapshot, applyLicenseSyncResult]);
 
   useEffect(() => {
     if (!isDemo || !isValidated) return;
@@ -154,7 +177,27 @@ export default function LicenseGate({ children }: LicenseGateProps) {
     };
   }, [isDemo, isValidated, refreshDemoTrial]);
 
-  const handleValidate = () => {
+  useEffect(() => {
+    if (isDemo || isDevelopment || !isValidated) return;
+
+    const tick = () => {
+      void refreshLicenseSync().catch(() => {});
+    };
+    const onFocus = () => tick();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const iv = window.setInterval(tick, LICENSE_RESYNC_MS);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(iv);
+    };
+  }, [isDemo, isDevelopment, isValidated, refreshLicenseSync]);
+
+  const handleValidate = async () => {
     setError(null);
 
     const cleanKey = inputKey.trim().toUpperCase();
@@ -163,30 +206,60 @@ export default function LicenseGate({ children }: LicenseGateProps) {
       return;
     }
 
-    const result = validateLicenseKey(cleanKey);
-    if (!result) {
-      setError("유효하지 않은 라이선스 키입니다. 키를 다시 확인해주세요.");
-      return;
-    }
-    if (result.isExpired) {
-      setError(
-        `라이선스가 만료되었습니다. (만료일: ${result.expiryDate.toLocaleDateString("ko-KR")})`
-      );
+    // 형식만 가볍게 먼저 확인(빠른 오타 피드백) — 실제 인증은 서버가 한다
+    const parsed = validateLicenseKey(cleanKey);
+    if (!parsed) {
+      setError("유효하지 않은 라이선스 키 형식입니다. 키를 다시 확인해주세요.");
       return;
     }
 
-    storeLicense(cleanKey);
-    persistLicenseToDatabase(cleanKey);
-    setLicenseData(result);
-    setIsValidated(true);
-    if (result.daysRemaining <= 30) {
-      setShowExpiryWarning(true);
+    setLicenseBusy(true);
+    setOtherDeviceConflict(null);
+    try {
+      const result = await activateLicense(cleanKey);
+      if (!result.ok) {
+        if (result.otherDevice) {
+          setOtherDeviceConflict(result.boundDeviceId || null);
+        }
+        setError(result.error || "라이선스 등록에 실패했습니다.");
+        return;
+      }
+      setLicenseData(parsed);
+      setIsValidated(true);
+      setShowOfflineNotice(false);
+      if (parsed.daysRemaining <= 30) {
+        setShowExpiryWarning(true);
+      }
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  const handleReclaim = async () => {
+    const cleanKey = inputKey.trim().toUpperCase() || getStoredLicense() || "";
+    if (!cleanKey) return;
+    setError(null);
+    setLicenseBusy(true);
+    try {
+      const result = await reclaimLicenseDevice(cleanKey);
+      if (!result.ok) {
+        setError(result.error || "기기 이전에 실패했습니다.");
+        return;
+      }
+      const parsed = validateLicenseKey(cleanKey);
+      setOtherDeviceConflict(null);
+      setLicenseData(parsed);
+      setIsValidated(true);
+      setShowOfflineNotice(false);
+      if (parsed && parsed.daysRemaining <= 30) setShowExpiryWarning(true);
+    } finally {
+      setLicenseBusy(false);
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleValidate();
+    void handleValidate();
   };
 
   const formatLicenseInput = (value: string) => {
@@ -259,6 +332,19 @@ export default function LicenseGate({ children }: LicenseGateProps) {
   if (isValidated) {
     return (
       <>
+        {showOfflineNotice && (
+          <div className="fixed top-0 left-0 right-0 z-50 bg-slate-700 text-slate-50 px-4 py-2 text-center text-sm font-medium">
+            오프라인 모드 — 인터넷 연결 시 라이선스가 자동으로 다시 확인됩니다
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-4 h-6 text-slate-50 hover:bg-slate-600"
+              onClick={() => setShowOfflineNotice(false)}
+            >
+              닫기
+            </Button>
+          </div>
+        )}
         {showExpiryWarning && licenseData && (
           <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-amber-950 px-4 py-2 text-center text-sm font-medium">
             <Calendar className="inline-block h-4 w-4 mr-2" />
@@ -404,12 +490,28 @@ export default function LicenseGate({ children }: LicenseGateProps) {
             <Button
               type="submit"
               className="w-full"
-              disabled={inputKey.length < 19}
+              disabled={inputKey.length < 19 || licenseBusy}
               data-testid="button-activate-license"
             >
-              <ShieldCheck className="mr-2 h-4 w-4" />
+              {licenseBusy ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="mr-2 h-4 w-4" />
+              )}
               라이선스 인증
             </Button>
+            {otherDeviceConflict && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={licenseBusy}
+                onClick={handleReclaim}
+              >
+                {licenseBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                기존 기기 등록 해제하고 이 기기로 사용
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>
@@ -424,23 +526,17 @@ export function useLicenseInfo() {
   return {
     licenseKey,
     licenseData,
-    deviceId: undefined as string | undefined,
+    deviceId: getBoundDeviceId() || undefined,
     isValid: licenseData?.isValid && !licenseData?.isExpired,
     daysRemaining: licenseData?.daysRemaining ?? 0,
     expiryDate: licenseData?.expiryDate,
   };
 }
 
-export function clearStoredLicense(): void {
-  clearLicense();
-  persistLicenseToDatabase(null);
+export async function clearStoredLicense(): Promise<void> {
+  await unregisterLicenseDevice();
 }
 
 export async function unregisterDevice(): Promise<{ success: boolean; message?: string }> {
-  clearLicense();
-  persistLicenseToDatabase(null);
-  return {
-    success: true,
-    message: "이 기기의 라이선스가 삭제되었습니다. 다시 입력하면 사용할 수 있습니다.",
-  };
+  return unregisterLicenseDevice();
 }

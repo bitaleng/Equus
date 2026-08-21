@@ -17,7 +17,14 @@ const outDir = path.resolve(
 
 fs.mkdirSync(outDir, { recursive: true });
 
-const entries = ["demo-trial", "license-bind", "cctv-register"];
+const entries = [
+  "demo-trial",
+  "license-bind",
+  "cctv-register",
+  "store-profile-admin",
+  "store-manifest",
+  "store-icon",
+];
 
 for (const name of entries) {
   const entryTs = path.join(root, "netlify/functions", `${name}.ts`);

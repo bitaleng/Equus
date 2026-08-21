@@ -8,14 +8,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { LockerNumberLookupDialog } from "@/components/LockerNumberLookupDialog";
+import { LogsToolWorkspace } from "@/components/LogsToolWorkspace";
+import { FilterChip } from "@/components/FilterChip";
 import * as localDb from "@/lib/localDb";
 import {
   Dialog,
@@ -69,6 +64,13 @@ interface LockerEntry {
 
 function getEntryMemoText(entry: LockerEntry): string {
   return entry.customerMemo?.trim() || "";
+}
+
+// 분리결제(현금/카드/이체 중 2개 이상 혼합) 여부 — 어떤 지불방식 필터를 선택해도 함께 표시한다
+function isSplitPayment(entry: LockerEntry): boolean {
+  const count = [entry.paymentCash, entry.paymentCard, entry.paymentTransfer]
+    .filter(v => (v ?? 0) > 0).length;
+  return count >= 2;
 }
 
 interface TodayStatusTableProps {
@@ -171,14 +173,16 @@ export default function TodayStatusTable({
     displayedEntries = displayedEntries.filter(e => e.timeType === '주간');
   } else if (timeTypeFilter === "night") {
     displayedEntries = displayedEntries.filter(e => e.timeType === '야간');
+  } else if (timeTypeFilter === "fee") {
+    displayedEntries = displayedEntries.filter(e => e.timeType === '추가요금' || e.hasSameDayFee);
   }
 
   if (paymentMethodFilter === "card") {
-    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'card');
+    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'card' || isSplitPayment(e));
   } else if (paymentMethodFilter === "cash") {
-    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'cash' || !e.paymentMethod);
+    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'cash' || !e.paymentMethod || isSplitPayment(e));
   } else if (paymentMethodFilter === "transfer") {
-    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'transfer');
+    displayedEntries = displayedEntries.filter(e => e.paymentMethod === 'transfer' || isSplitPayment(e));
   }
 
   // Sort entries based on sortBy option
@@ -361,160 +365,88 @@ export default function TodayStatusTable({
           )}
         </div>
         
-        {/* 필터 옵션 */}
-        {showFilters && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Select value={cancelledFilter} onValueChange={setCancelledFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-cancelled-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="active">정상건</SelectItem>
-                  <SelectItem value="cancelled">취소건</SelectItem>
-                  <SelectItem value="free">무료입장</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={timeTypeFilter} onValueChange={setTimeTypeFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-timetype-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="day">주간</SelectItem>
-                  <SelectItem value="night">야간</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-payment-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="card">카드</SelectItem>
-                  <SelectItem value="cash">현금</SelectItem>
-                  <SelectItem value="transfer">이체</SelectItem>
-                </SelectContent>
-              </Select>
-              
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as 'exitTime' | 'entryTime')}>
-                <SelectTrigger className="w-32 h-9" data-testid="select-sort-by">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="exitTime">퇴실시간순</SelectItem>
-                  <SelectItem value="entryTime">입실시간순</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            {/* 필터 결과 통계 */}
-            {hasActiveFilters && (
-              <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                {cancelledFilter !== "all" && (
-                  <span data-testid="text-cancelled-filter-count">
-                    {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : "정상건"}: 총 {displayedEntries.length}건
-                  </span>
-                )}
-                {timeTypeFilter !== "all" && (
-                  <span data-testid="text-timetype-filter-count">
-                    {timeTypeFilter === "day" ? "주간" : "야간"}: 총 {displayedEntries.length}건
-                  </span>
-                )}
-                {paymentMethodFilter !== "all" && (
-                  <span data-testid="text-payment-filter-count">
-                    {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}: 총 {displayedEntries.length}건
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
       </div>
       
       <div className="flex-1 overflow-y-auto pr-2" style={{ scrollbarGutter: 'stable' }}>
         <Table>
           <TableHeader className="sticky top-0 bg-muted/50">
             <TableRow>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-number, 4rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-number, 4rem)'
                 } : undefined}
               >
                 번호
               </TableHead>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-time, 5rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-time, 5rem)'
                 } : undefined}
               >
                 입실시간
               </TableHead>
-              <TableHead 
-                className="font-bold whitespace-nowrap"
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-time, 5rem)' 
+              <TableHead
+                className="data-table-head whitespace-nowrap"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-time, 5rem)'
                 } : undefined}
               >
                 퇴실시간
               </TableHead>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-type, 4rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-type, 4rem)'
                 } : undefined}
               >
                 구분
               </TableHead>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-option, 5rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-option, 5rem)'
                 } : undefined}
               >
                 옵션
               </TableHead>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-payment, 4rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-payment, 4rem)'
                 } : undefined}
               >
                 지불
               </TableHead>
-              <TableHead 
-                className="font-bold text-right" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-price, 5rem)' 
+              <TableHead
+                className="data-table-head text-right"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-price, 5rem)'
                 } : undefined}
               >
                 최종요금
               </TableHead>
-              <TableHead 
-                className="font-bold" 
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
-                  minWidth: 'var(--fluid-col-status, 5rem)' 
+              <TableHead
+                className="data-table-head"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
+                  minWidth: 'var(--fluid-col-status, 5rem)'
                 } : undefined}
               >
                 상태
               </TableHead>
               <TableHead
-                className="font-bold whitespace-nowrap"
-                style={isExpanded ? { 
-                  fontSize: 'var(--fluid-header, 1rem)', 
+                className="data-table-head whitespace-nowrap"
+                style={isExpanded ? {
+                  fontSize: 'var(--fluid-header, 1rem)',
                   minWidth: '6rem'
                 } : undefined}
               >
@@ -556,32 +488,33 @@ export default function TodayStatusTable({
                 return (
                   <TableRow
                     key={index}
-                    className="hover-elevate cursor-pointer"
+                    className="cursor-pointer"
                     onClick={() => onRowClick?.(entry)}
                     data-testid={`row-entry-${entry.lockerNumber}`}
                   >
-                    <TableCell 
-                      className="font-semibold"
-                      style={isExpanded ? { 
-                        fontSize: 'var(--fluid-large, 1.125rem)', 
-                        padding: 'var(--fluid-padding, 0.75rem)' 
+                    <TableCell
+                      className="font-semibold tabular-nums"
+                      style={isExpanded ? {
+                        fontSize: 'var(--fluid-large, 1.125rem)',
+                        padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
                     >
                       {entry.lockerNumber}
                     </TableCell>
-                    <TableCell 
-                      style={isExpanded ? { 
-                        fontSize: 'var(--fluid-base, 1rem)', 
-                        padding: 'var(--fluid-padding, 0.75rem)' 
+                    <TableCell
+                      className="tabular-nums"
+                      style={isExpanded ? {
+                        fontSize: 'var(--fluid-base, 1rem)',
+                        padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
                     >
                       {entry.entryTime || '-'}
                     </TableCell>
-                    <TableCell 
-                      className="text-muted-foreground whitespace-nowrap"
-                      style={isExpanded ? { 
-                        fontSize: 'var(--fluid-base, 1rem)', 
-                        padding: 'var(--fluid-padding, 0.75rem)' 
+                    <TableCell
+                      className="text-muted-foreground whitespace-nowrap tabular-nums"
+                      style={isExpanded ? {
+                        fontSize: 'var(--fluid-base, 1rem)',
+                        padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
                     >
                       {entry.exitTime ? new Date(entry.exitTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '-'}
@@ -592,37 +525,37 @@ export default function TodayStatusTable({
                       } : undefined}
                     >
                       <div className="flex items-center" style={isExpanded ? { gap: 'var(--fluid-gap, 0.5rem)' } : { gap: '0.375rem' }}>
-                        <span 
-                          className={`rounded whitespace-nowrap ${
-                            entry.timeType === '주간' ? 'bg-primary/10 text-primary' : 
+                        <span
+                          className={`status-badge whitespace-nowrap ${
+                            entry.timeType === '주간' ? 'bg-primary/10 text-primary' :
                             entry.timeType === '추가요금' ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300' :
                             'bg-accent text-accent-foreground'
                           }`}
-                          style={isExpanded ? { 
-                            fontSize: 'var(--fluid-badge, 0.875rem)', 
-                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
-                          } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                          style={isExpanded ? {
+                            fontSize: 'var(--fluid-badge, 0.875rem)',
+                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.85)'
+                          } : { fontSize: '0.75rem', padding: '0.15rem 0.5rem' }}
                         >
-                          {entry.timeType}
+                          {entry.timeType === '추가요금' ? '추가' : entry.timeType}
                         </span>
                         {entry.hasSameDayFee && entry.timeType !== '추가요금' && (
-                          <span 
-                            className="rounded whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
-                            style={isExpanded ? { 
-                              fontSize: 'var(--fluid-badge, 0.875rem)', 
-                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
-                            } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                          <span
+                            className="status-badge whitespace-nowrap bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300"
+                            style={isExpanded ? {
+                              fontSize: 'var(--fluid-badge, 0.875rem)',
+                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.85)'
+                            } : { fontSize: '0.75rem', padding: '0.15rem 0.5rem' }}
                           >
                             추가
                           </span>
                         )}
                         {entry.deferredPayment && (
-                          <span 
-                            className="rounded whitespace-nowrap bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300"
-                            style={isExpanded ? { 
-                              fontSize: 'var(--fluid-badge, 0.875rem)', 
-                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
-                            } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                          <span
+                            className="status-badge whitespace-nowrap bg-pink-100 dark:bg-pink-900 text-pink-700 dark:text-pink-300"
+                            style={isExpanded ? {
+                              fontSize: 'var(--fluid-badge, 0.875rem)',
+                              padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.85)'
+                            } : { fontSize: '0.75rem', padding: '0.15rem 0.5rem' }}
                           >
                             후불
                           </span>
@@ -645,37 +578,37 @@ export default function TodayStatusTable({
                     >
                       {formatPaymentMethod(entry.paymentMethod, entry.paymentCash, entry.paymentCard, entry.paymentTransfer)}
                     </TableCell>
-                    <TableCell 
-                      className={`font-semibold text-right ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}
-                      style={isExpanded ? { 
-                        fontSize: 'var(--fluid-large, 1.125rem)', 
-                        padding: 'var(--fluid-padding, 0.75rem)' 
+                    <TableCell
+                      className={`font-semibold text-right tabular-nums ${isAdditionalFeeOnly ? 'text-red-600 dark:text-red-400' : ''}`}
+                      style={isExpanded ? {
+                        fontSize: 'var(--fluid-large, 1.125rem)',
+                        padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
                     >
                       {/* 후불결제인 경우 0으로 표시, 결제완료 후 실제 금액 표시 */}
                       {entry.deferredPayment ? '0' : (
-                        <span className="inline-flex items-center gap-1">
+                        <span className="inline-flex items-center gap-1.5">
                           <span>{(entry.finalPrice - (entry.refundAmount || 0)).toLocaleString()}</span>
                           {(entry.refundAmount || 0) > 0 && (
-                            <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 px-1 py-0.5 rounded font-medium leading-none">
+                            <span className="status-badge status-badge-nodot text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 px-1.5 py-0.5 leading-none">
                               환불
                             </span>
                           )}
                         </span>
                       )}
                     </TableCell>
-                    <TableCell 
-                      style={isExpanded ? { 
-                        padding: 'var(--fluid-padding, 0.75rem)' 
+                    <TableCell
+                      style={isExpanded ? {
+                        padding: 'var(--fluid-padding, 0.75rem)'
                       } : undefined}
                     >
                       <div className="flex items-center gap-1">
-                        <span 
-                          className={`rounded whitespace-nowrap ${statusColor}`}
-                          style={isExpanded ? { 
-                            fontSize: 'var(--fluid-badge, 0.875rem)', 
-                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.75)' 
-                          } : { fontSize: '0.75rem', padding: '0.125rem 0.375rem' }}
+                        <span
+                          className={`status-badge whitespace-nowrap ${statusColor}`}
+                          style={isExpanded ? {
+                            fontSize: 'var(--fluid-badge, 0.875rem)',
+                            padding: 'calc(var(--fluid-padding, 0.75rem) * 0.5) calc(var(--fluid-padding, 0.75rem) * 0.85)'
+                          } : { fontSize: '0.75rem', padding: '0.15rem 0.5rem' }}
                         >
                           {statusText}
                         </span>
@@ -826,6 +759,72 @@ export default function TodayStatusTable({
           setLockerNumberFilter(nums);
           setShowLockerNumberDialog(false);
         }}
+      />
+
+      <LogsToolWorkspace
+        panels={showFilters ? [{
+          id: "todayFilter",
+          title: "필터",
+          content: (
+            <div className="space-y-4 w-full">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">구분</p>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip selected={cancelledFilter === "all"} onClick={() => setCancelledFilter("all")}>전체</FilterChip>
+                  <FilterChip selected={cancelledFilter === "active"} onClick={() => setCancelledFilter("active")} testId="chip-cancelled-active">정상건</FilterChip>
+                  <FilterChip selected={cancelledFilter === "cancelled"} onClick={() => setCancelledFilter("cancelled")} testId="chip-cancelled-cancelled">취소건</FilterChip>
+                  <FilterChip selected={cancelledFilter === "free"} onClick={() => setCancelledFilter("free")} testId="chip-cancelled-free">무료입장</FilterChip>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">주야</p>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip selected={timeTypeFilter === "all"} onClick={() => setTimeTypeFilter("all")}>전체</FilterChip>
+                  <FilterChip selected={timeTypeFilter === "day"} onClick={() => setTimeTypeFilter("day")} testId="chip-timetype-day">주간</FilterChip>
+                  <FilterChip selected={timeTypeFilter === "night"} onClick={() => setTimeTypeFilter("night")} testId="chip-timetype-night">야간</FilterChip>
+                  <FilterChip selected={timeTypeFilter === "fee"} onClick={() => setTimeTypeFilter("fee")} testId="chip-timetype-fee">추가요금</FilterChip>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">결제</p>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip selected={paymentMethodFilter === "all"} onClick={() => setPaymentMethodFilter("all")}>전체</FilterChip>
+                  <FilterChip selected={paymentMethodFilter === "card"} onClick={() => setPaymentMethodFilter("card")} testId="chip-payment-card">카드</FilterChip>
+                  <FilterChip selected={paymentMethodFilter === "cash"} onClick={() => setPaymentMethodFilter("cash")} testId="chip-payment-cash">현금</FilterChip>
+                  <FilterChip selected={paymentMethodFilter === "transfer"} onClick={() => setPaymentMethodFilter("transfer")} testId="chip-payment-transfer">이체</FilterChip>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">정렬</p>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip selected={sortBy === "exitTime"} onClick={() => setSortBy("exitTime")} testId="chip-sort-exit">퇴실시간순</FilterChip>
+                  <FilterChip selected={sortBy === "entryTime"} onClick={() => setSortBy("entryTime")} testId="chip-sort-entry">입실시간순</FilterChip>
+                </div>
+              </div>
+              {hasActiveFilters && (
+                <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-2 border-t">
+                  {cancelledFilter !== "all" && (
+                    <span data-testid="text-cancelled-filter-count">
+                      {cancelledFilter === "cancelled" ? "취소건" : cancelledFilter === "free" ? "무료입장" : "정상건"}: 총 {displayedEntries.length}건
+                    </span>
+                  )}
+                  {timeTypeFilter !== "all" && (
+                    <span data-testid="text-timetype-filter-count">
+                      {timeTypeFilter === "day" ? "주간" : timeTypeFilter === "night" ? "야간" : "추가요금"}: 총 {displayedEntries.length}건
+                    </span>
+                  )}
+                  {paymentMethodFilter !== "all" && (
+                    <span data-testid="text-payment-filter-count">
+                      {paymentMethodFilter === "card" ? "카드" : paymentMethodFilter === "transfer" ? "이체" : "현금"}: 총 {displayedEntries.length}건
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          ),
+        }] : []}
+        onClosePanel={() => setShowFilters(false)}
+        onCloseAll={() => setShowFilters(false)}
       />
     </div>
   );

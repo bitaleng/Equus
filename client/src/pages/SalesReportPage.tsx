@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, type ReactElement } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw, Users, FileDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw, Users, FileDown, ListTree, Rows3 } from "lucide-react";
 import jsPDF from "jspdf";
 import {
   getDailySummariesByMonth,
@@ -148,6 +149,35 @@ function ChartFrame({
   );
 }
 
+const VISITOR_LEGEND_LABELS: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료", total: "총방문" };
+const VISITOR_COLORS = { actual: "hsl(var(--primary))", cancelled: "#ef4444", free: "#a855f7" };
+
+function VisitorLegend({ payload }: any) {
+  if (!payload) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-3 pt-1">
+      {payload.map((entry: any) => (
+        <div key={entry.value} className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+          <span className="text-xs text-muted-foreground">{VISITOR_LEGEND_LABELS[entry.value] || entry.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const visitorTooltipContentStyle = {
+  borderRadius: 12,
+  border: "1px solid hsl(var(--border))",
+  backgroundColor: "hsl(var(--popover))",
+  boxShadow: "0 8px 24px -8px rgba(0,0,0,0.25)",
+  fontSize: 12,
+  padding: "8px 12px",
+};
+const visitorTooltipLabelStyle = { color: "hsl(var(--foreground))", fontWeight: 600, marginBottom: 4 };
+const visitorAxisTick = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+const visitorCursorStyle = { fill: "hsl(var(--primary) / 0.08)" };
+
 function calculateCurrentBusinessDay(): string {
   const now = toZonedTime(new Date(), TIMEZONE);
   const hour = now.getHours();
@@ -220,6 +250,8 @@ function SalesCalendar() {
     totalDiscount: 0,
   });
   const [dailyDiscounts, setDailyDiscounts] = useState<DailyDiscount[]>([]);
+  const [showDetail, setShowDetail] = useState(false);
+  const [expandedDate, setExpandedDate] = useState<string | null>(null);
 
   useEffect(() => {
     const yearMonth = format(currentMonth, "yyyy-MM");
@@ -312,8 +344,10 @@ function SalesCalendar() {
       const closing = closingMap.get(dateStr);
       const visitor = visitorMap.get(dateStr);
       const discount = discountMap.get(dateStr);
+      const cancelled = cancelledMap.get(dateStr);
       return {
         total: acc.total + (data?.totalSales || 0),
+        cancelledAmount: acc.cancelledAmount + (cancelled?.cancelledAmount || 0),
         cash: acc.cash + (payment?.cash || 0),
         card: acc.card + (payment?.card || 0),
         transfer: acc.transfer + (payment?.transfer || 0),
@@ -326,7 +360,7 @@ function SalesCalendar() {
         entryDiscount: acc.entryDiscount + (discount?.entryDiscount || 0),
         additionalDiscount: acc.additionalDiscount + (discount?.additionalDiscount || 0),
       };
-    }, { total: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0, entryDiscount: 0, additionalDiscount: 0 });
+    }, { total: 0, cancelledAmount: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0, entryDiscount: 0, additionalDiscount: 0 });
   });
 
   const exportToPDF = async () => {
@@ -624,7 +658,8 @@ function SalesCalendar() {
 
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 space-y-3">
+        {/* 1행: 월 이동 + PDF 아이콘만 심플하게 */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} data-testid="button-prev-month">
@@ -637,64 +672,81 @@ function SalesCalendar() {
               <ChevronRight className="w-5 h-5" />
             </Button>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-end gap-0.5">
-              <span className="text-lg font-bold" data-testid="text-total-sales">
-                총 {viewType === "sales" ? "실매출금액" : "취소금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancelledAmount)}원
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={exportToPDF}
+            title="PDF로 내보내기"
+            data-testid="button-export-pdf"
+          >
+            <FileDown className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* 2행: 보기 전환 버튼 */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={viewType === "sales" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewType("sales")}
+            data-testid="button-view-sales"
+          >
+            실매출금액
+          </Button>
+          <Button
+            variant={viewType === "refund" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewType("refund")}
+            data-testid="button-view-refund"
+          >
+            취소금액
+          </Button>
+          <Button
+            variant={showDetail ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowDetail((v) => !v)}
+            data-testid="button-toggle-calendar-detail"
+          >
+            {showDetail ? <Rows3 className="w-4 h-4 mr-1" /> : <ListTree className="w-4 h-4 mr-1" />}
+            상세보기
+          </Button>
+          <span className="text-xs text-muted-foreground ml-1">
+            날짜 칸에 커서를 올리거나(태블릿은 터치) 눌러보면 상세 내역이 크게 표시됩니다.
+          </span>
+        </div>
+
+        {/* 3행: 여백 */}
+        <div className="h-1" />
+
+        {/* 4행: 총액 + 지불방식별 금액 (우측 정렬) */}
+        <div className="flex flex-col items-end gap-0.5">
+          <span className="text-lg font-bold tabular-nums" data-testid="text-total-sales">
+            총 {viewType === "sales" ? "실매출금액" : "취소금액"}: {formatCurrency(viewType === "sales" ? totalSales : totalCancelledAmount)}원
+          </span>
+          {viewType === "sales" && (totalCash > 0 || totalCard > 0 || totalTransfer > 0) && (
+            <div className="flex gap-3 text-sm text-muted-foreground tabular-nums">
+              {totalCash > 0 && <span>현금 {formatCurrency(totalCash)}원</span>}
+              {totalCard > 0 && <span>카드 {formatCurrency(totalCard)}원</span>}
+              {totalTransfer > 0 && <span>이체 {formatCurrency(totalTransfer)}원</span>}
+            </div>
+          )}
+          {viewType === "sales" && (discountTotals.entryDiscount > 0 || discountTotals.additionalDiscount > 0) && (
+            <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-sm tabular-nums" data-testid="text-discount-totals">
+              {discountTotals.entryDiscount > 0 && (
+                <span className="text-rose-600 dark:text-rose-400 font-medium">
+                  입실할인 {formatCurrency(discountTotals.entryDiscount)}원
+                </span>
+              )}
+              {discountTotals.additionalDiscount > 0 && (
+                <span className="text-orange-600 dark:text-orange-400 font-medium">
+                  추가할인 {formatCurrency(discountTotals.additionalDiscount)}원
+                </span>
+              )}
+              <span className="text-fuchsia-700 dark:text-fuchsia-300 font-semibold">
+                할인합계 {formatCurrency(discountTotals.totalDiscount)}원
               </span>
-              {viewType === "sales" && (totalCash > 0 || totalCard > 0 || totalTransfer > 0) && (
-                <div className="flex gap-3 text-sm text-muted-foreground">
-                  {totalCash > 0 && <span>현금 {formatCurrency(totalCash)}원</span>}
-                  {totalCard > 0 && <span>카드 {formatCurrency(totalCard)}원</span>}
-                  {totalTransfer > 0 && <span>이체 {formatCurrency(totalTransfer)}원</span>}
-                </div>
-              )}
-              {viewType === "sales" && (discountTotals.entryDiscount > 0 || discountTotals.additionalDiscount > 0) && (
-                <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-sm" data-testid="text-discount-totals">
-                  {discountTotals.entryDiscount > 0 && (
-                    <span className="text-rose-600 dark:text-rose-400 font-medium">
-                      입실할인 {formatCurrency(discountTotals.entryDiscount)}원
-                    </span>
-                  )}
-                  {discountTotals.additionalDiscount > 0 && (
-                    <span className="text-orange-600 dark:text-orange-400 font-medium">
-                      추가할인 {formatCurrency(discountTotals.additionalDiscount)}원
-                    </span>
-                  )}
-                  <span className="text-fuchsia-700 dark:text-fuchsia-300 font-semibold">
-                    할인합계 {formatCurrency(discountTotals.totalDiscount)}원
-                  </span>
-                </div>
-              )}
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant={viewType === "sales" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewType("sales")}
-                data-testid="button-view-sales"
-              >
-                실매출금액
-              </Button>
-              <Button
-                variant={viewType === "refund" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setViewType("refund")}
-                data-testid="button-view-refund"
-              >
-                취소금액
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={exportToPDF}
-                data-testid="button-export-pdf"
-              >
-                <FileDown className="w-4 h-4 mr-1" />
-                PDF
-              </Button>
-            </div>
-          </div>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -727,153 +779,184 @@ function SalesCalendar() {
 
                 const payment = paymentMap.get(dateStr);
                 const dayDiscount = discountMap.get(dateStr);
+                const visitor = visitorMap.get(dateStr);
+                const cancelled = cancelledMap.get(dateStr);
+                const closing = closingMap.get(dateStr);
+                const isCurrentDay = dateStr === currentBusinessDay;
+                const hasAnyDetail = viewType === "sales"
+                  ? Boolean(payment || (dayDiscount && dayDiscount.totalDiscount > 0) || (visitor && visitor.totalVisitors > 0) || sales > 0)
+                  : Boolean(cancelled && cancelled.cancelledAmount > 0);
 
-                return (
-                  <div
-                    key={dateStr}
-                    className={`min-h-[100px] p-2 border-r last:border-r-0 ${
-                      !isCurrentMonth ? "bg-muted/30 text-muted-foreground" : ""
-                    } ${isToday ? "bg-blue-50 dark:bg-blue-900/20" : ""}`}
-                    data-testid={`calendar-day-${dateStr}`}
-                  >
-                    <div className={`text-sm font-medium ${
-                      dayOfWeek === 0 ? "text-red-500" : dayOfWeek === 6 ? "text-blue-500" : ""
-                    }`}>
-                      {format(day, "d")}
-                      {isMax && <span className="ml-1 text-red-500 text-xs">최고</span>}
-                      {isMin && <span className="ml-1 text-blue-500 text-xs">최저</span>}
-                    </div>
-                    {sales > 0 && viewType === "sales" && (
-                      <>
-                        <div className={`text-sm mt-1 font-semibold ${isMax ? "text-red-600" : isMin ? "text-blue-600" : ""}`}>
-                          {formatCurrency(sales)}
-                        </div>
-                        {payment && (
-                          <div className="mt-1 text-[10px] text-muted-foreground leading-tight space-y-0.5">
-                            {payment.cash > 0 && <div>현금 {formatCurrency(payment.cash)}</div>}
-                            {payment.card > 0 && <div>카드 {formatCurrency(payment.card)}</div>}
-                            {payment.transfer > 0 && <div>이체 {formatCurrency(payment.transfer)}</div>}
-                          </div>
-                        )}
-                        {dayDiscount && dayDiscount.totalDiscount > 0 && (
-                          <div className="mt-1 text-[10px] leading-tight space-y-0.5">
-                            {dayDiscount.entryDiscount > 0 && (
-                              <div className="text-rose-600 dark:text-rose-400 font-medium">
-                                입실할인 {formatCurrency(dayDiscount.entryDiscount)}
-                              </div>
-                            )}
-                            {dayDiscount.additionalDiscount > 0 && (
-                              <div className="text-orange-600 dark:text-orange-400 font-medium">
-                                추가할인 {formatCurrency(dayDiscount.additionalDiscount)}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {(() => {
-                          const closing = closingMap.get(dateStr);
-                          const isCurrentDay = dateStr === currentBusinessDay;
-                          if (isCurrentDay && (!closing || !closing.isConfirmed)) {
-                            return <div className="mt-1 text-[10px] text-orange-500">은행입금: 정산전</div>;
-                          }
-                          if (closing && closing.isConfirmed) {
-                            return (
-                              <div className="mt-1 text-[10px] text-green-600">
-                                은행입금: {closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}
-                              </div>
-                            );
-                          }
-                          return null;
-                        })()}
-                      </>
+                const dateLabel = (
+                  <div className={`flex items-center gap-1 text-sm font-semibold ${
+                    dayOfWeek === 0 ? "text-red-500" : dayOfWeek === 6 ? "text-blue-500" : ""
+                  }`}>
+                    <span>{format(day, "d")}</span>
+                    {isMax && <span className="status-badge status-badge-nodot bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] px-1.5 py-0.5">최고</span>}
+                    {isMin && <span className="status-badge status-badge-nodot bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] px-1.5 py-0.5">최저</span>}
+                  </div>
+                );
+
+                const detailBody = (
+                  <div className="space-y-1.5">
+                    {viewType === "sales" && sales > 0 && (
+                      <div className={`text-lg font-bold tabular-nums ${isMax ? "text-red-600" : isMin ? "text-blue-600" : ""}`}>
+                        {formatCurrency(sales)}원
+                      </div>
                     )}
-                    {viewType === "sales" && (!sales || sales <= 0) && dayDiscount && dayDiscount.totalDiscount > 0 && (
-                      <div className="mt-1 text-[10px] leading-tight space-y-0.5">
+                    {viewType === "sales" && payment && (payment.cash > 0 || payment.card > 0 || payment.transfer > 0) && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
+                        {payment.cash > 0 && <span>현금 {formatCurrency(payment.cash)}</span>}
+                        {payment.card > 0 && <span>카드 {formatCurrency(payment.card)}</span>}
+                        {payment.transfer > 0 && <span>이체 {formatCurrency(payment.transfer)}</span>}
+                      </div>
+                    )}
+                    {viewType === "sales" && dayDiscount && dayDiscount.totalDiscount > 0 && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs tabular-nums">
                         {dayDiscount.entryDiscount > 0 && (
-                          <div className="text-rose-600 dark:text-rose-400 font-medium">
+                          <span className="text-rose-600 dark:text-rose-400 font-medium">
                             입실할인 {formatCurrency(dayDiscount.entryDiscount)}
-                          </div>
+                          </span>
                         )}
                         {dayDiscount.additionalDiscount > 0 && (
-                          <div className="text-orange-600 dark:text-orange-400 font-medium">
+                          <span className="text-orange-600 dark:text-orange-400 font-medium">
                             추가할인 {formatCurrency(dayDiscount.additionalDiscount)}
-                          </div>
+                          </span>
                         )}
                       </div>
                     )}
-                    {viewType === "sales" && (() => {
-                      const visitor = visitorMap.get(dateStr);
-                      if (visitor && visitor.totalVisitors > 0) {
-                        return (
-                          <div className={`mt-1 text-[10px] text-purple-600 dark:text-purple-400 ${sales > 0 ? 'border-t border-muted pt-0.5' : ''}`}>
-                            방문:{visitor.totalVisitors}명(실:{visitor.actualVisitors}, 취:{visitor.cancelledVisitors}, 무:{visitor.freeVisitors})
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                    {viewType === "refund" && (() => {
-                      const cancelled = cancelledMap.get(dateStr);
-                      if (cancelled && cancelled.cancelledAmount > 0) {
-                        return (
-                          <div className="text-sm mt-1 text-red-500">
-                            -{formatCurrency(cancelled.cancelledAmount)}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
+                    {viewType === "sales" && sales > 0 && (
+                      isCurrentDay && (!closing || !closing.isConfirmed) ? (
+                        <div className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                          은행입금 정산전
+                        </div>
+                      ) : closing && closing.isConfirmed ? (
+                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400 tabular-nums">
+                          은행입금 {closing.bankDeposit ? formatCurrency(closing.bankDeposit) : 0}원
+                        </div>
+                      ) : null
+                    )}
+                    {viewType === "sales" && visitor && visitor.totalVisitors > 0 && (
+                      <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
+                        방문 {visitor.totalVisitors}명 (실 {visitor.actualVisitors} · 취 {visitor.cancelledVisitors} · 무 {visitor.freeVisitors})
+                      </div>
+                    )}
+                    {viewType === "refund" && cancelled && cancelled.cancelledAmount > 0 && (
+                      <div className="text-lg font-bold text-red-500 tabular-nums">
+                        -{formatCurrency(cancelled.cancelledAmount)}원
+                      </div>
+                    )}
                   </div>
+                );
+
+                const compactBody = (
+                  <div className="space-y-0.5">
+                    {viewType === "sales" && sales > 0 && (
+                      <div className={`text-sm font-bold tabular-nums ${isMax ? "text-red-600" : isMin ? "text-blue-600" : ""}`}>
+                        {formatCurrency(sales)}
+                      </div>
+                    )}
+                    {viewType === "sales" && visitor && visitor.totalVisitors > 0 && (
+                      <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
+                        방문 {visitor.totalVisitors}명
+                      </div>
+                    )}
+                    {viewType === "refund" && cancelled && cancelled.cancelledAmount > 0 && (
+                      <div className="text-sm font-bold text-red-500 tabular-nums">
+                        -{formatCurrency(cancelled.cancelledAmount)}
+                      </div>
+                    )}
+                  </div>
+                );
+
+                return (
+                  <Popover
+                    key={dateStr}
+                    open={expandedDate === dateStr}
+                    onOpenChange={(open) => setExpandedDate(open ? dateStr : null)}
+                  >
+                    <PopoverTrigger asChild>
+                      <div
+                        className={`min-h-[100px] p-2 border-r last:border-r-0 cursor-pointer transition-colors ${
+                          !isCurrentMonth ? "bg-muted/30 text-muted-foreground" : ""
+                        } ${isToday ? "bg-blue-50 dark:bg-blue-900/20" : ""} ${
+                          hasAnyDetail ? "hover:bg-accent/60" : ""
+                        }`}
+                        onMouseEnter={() => hasAnyDetail && setExpandedDate(dateStr)}
+                        onMouseLeave={() => setExpandedDate((cur) => (cur === dateStr ? null : cur))}
+                        onClick={() => hasAnyDetail && setExpandedDate(dateStr)}
+                        data-testid={`calendar-day-${dateStr}`}
+                      >
+                        {dateLabel}
+                        <div className="mt-1">{showDetail ? detailBody : compactBody}</div>
+                      </div>
+                    </PopoverTrigger>
+                    {hasAnyDetail && (
+                      <PopoverContent
+                        className="w-72 z-[100]"
+                        onMouseEnter={() => setExpandedDate(dateStr)}
+                        onMouseLeave={() => setExpandedDate(null)}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-semibold">{format(day, "M월 d일 (EEE)", { locale: ko })}</span>
+                          {isMax && <span className="status-badge status-badge-nodot bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] px-1.5 py-0.5">최고</span>}
+                          {isMin && <span className="status-badge status-badge-nodot bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] px-1.5 py-0.5">최저</span>}
+                        </div>
+                        {detailBody}
+                      </PopoverContent>
+                    )}
+                  </Popover>
                 );
               })}
               <div className="min-h-[100px] p-2 bg-muted/30 flex flex-col justify-center items-center">
                 <div className="text-xs text-muted-foreground">{weekIdx + 1}주</div>
-                <div className="font-semibold text-sm">
-                  {weeklyTotals[weekIdx].total > 0 ? formatCurrency(weeklyTotals[weekIdx].total) : 0}
-                </div>
-                {weeklyTotals[weekIdx].total > 0 && viewType === "sales" && (
-                  <div className="mt-1 text-[10px] text-muted-foreground leading-tight space-y-0.5 text-center">
-                    {weeklyTotals[weekIdx].cash > 0 && <div>현금 {formatCurrency(weeklyTotals[weekIdx].cash)}</div>}
-                    {weeklyTotals[weekIdx].card > 0 && <div>카드 {formatCurrency(weeklyTotals[weekIdx].card)}</div>}
-                    {weeklyTotals[weekIdx].transfer > 0 && <div>이체 {formatCurrency(weeklyTotals[weekIdx].transfer)}</div>}
+                {viewType === "sales" ? (
+                  <div className="font-semibold text-sm tabular-nums">
+                    {weeklyTotals[weekIdx].total > 0 ? formatCurrency(weeklyTotals[weekIdx].total) : 0}
+                  </div>
+                ) : (
+                  <div className="font-semibold text-sm text-red-500 tabular-nums">
+                    {weeklyTotals[weekIdx].cancelledAmount > 0 ? `-${formatCurrency(weeklyTotals[weekIdx].cancelledAmount)}` : 0}
+                  </div>
+                )}
+                {!showDetail && viewType === "sales" && weeklyTotals[weekIdx].totalVisitors > 0 && (
+                  <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
+                    방문 {weeklyTotals[weekIdx].totalVisitors}명
+                  </div>
+                )}
+                {showDetail && viewType === "sales" && (
+                  <div className="mt-1 space-y-1 text-center">
+                    {(weeklyTotals[weekIdx].cash > 0 || weeklyTotals[weekIdx].card > 0 || weeklyTotals[weekIdx].transfer > 0) && (
+                      <div className="flex flex-wrap justify-center gap-x-2 text-[11px] text-muted-foreground tabular-nums">
+                        {weeklyTotals[weekIdx].cash > 0 && <span>현금 {formatCurrency(weeklyTotals[weekIdx].cash)}</span>}
+                        {weeklyTotals[weekIdx].card > 0 && <span>카드 {formatCurrency(weeklyTotals[weekIdx].card)}</span>}
+                        {weeklyTotals[weekIdx].transfer > 0 && <span>이체 {formatCurrency(weeklyTotals[weekIdx].transfer)}</span>}
+                      </div>
+                    )}
                     {(weeklyTotals[weekIdx].entryDiscount > 0 || weeklyTotals[weekIdx].additionalDiscount > 0) && (
-                      <div className="space-y-0.5 pt-0.5 border-t border-muted mt-0.5">
+                      <div className="flex flex-wrap justify-center gap-x-2 text-[11px] tabular-nums">
                         {weeklyTotals[weekIdx].entryDiscount > 0 && (
-                          <div className="text-rose-600 dark:text-rose-400 font-medium">
+                          <span className="text-rose-600 dark:text-rose-400 font-medium">
                             입실할인 {formatCurrency(weeklyTotals[weekIdx].entryDiscount)}
-                          </div>
+                          </span>
                         )}
                         {weeklyTotals[weekIdx].additionalDiscount > 0 && (
-                          <div className="text-orange-600 dark:text-orange-400 font-medium">
+                          <span className="text-orange-600 dark:text-orange-400 font-medium">
                             추가할인 {formatCurrency(weeklyTotals[weekIdx].additionalDiscount)}
-                          </div>
+                          </span>
                         )}
                       </div>
                     )}
                     {weeklyTotals[weekIdx].hasClosing && (
-                      <div className="text-green-600 dark:text-green-400 font-medium pt-0.5 border-t border-muted mt-0.5">
-                        은행입금 {formatCurrency(weeklyTotals[weekIdx].bankDeposit)}
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 tabular-nums">
+                        은행입금 {formatCurrency(weeklyTotals[weekIdx].bankDeposit)}원
                       </div>
                     )}
-                  </div>
-                )}
-                {viewType === "sales" && weeklyTotals[weekIdx].total <= 0 && (weeklyTotals[weekIdx].entryDiscount > 0 || weeklyTotals[weekIdx].additionalDiscount > 0) && (
-                  <div className="mt-1 text-[10px] leading-tight space-y-0.5 text-center">
-                    {weeklyTotals[weekIdx].entryDiscount > 0 && (
-                      <div className="text-rose-600 dark:text-rose-400 font-medium">
-                        입실할인 {formatCurrency(weeklyTotals[weekIdx].entryDiscount)}
+                    {weeklyTotals[weekIdx].totalVisitors > 0 && (
+                      <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
+                        방문 {weeklyTotals[weekIdx].totalVisitors}명 (실 {weeklyTotals[weekIdx].actualVisitors} · 취 {weeklyTotals[weekIdx].cancelledVisitors} · 무 {weeklyTotals[weekIdx].freeVisitors})
                       </div>
                     )}
-                    {weeklyTotals[weekIdx].additionalDiscount > 0 && (
-                      <div className="text-orange-600 dark:text-orange-400 font-medium">
-                        추가할인 {formatCurrency(weeklyTotals[weekIdx].additionalDiscount)}
-                      </div>
-                    )}
-                  </div>
-                )}
-                {viewType === "sales" && weeklyTotals[weekIdx].totalVisitors > 0 && (
-                  <div className={`text-[10px] text-purple-600 dark:text-purple-400 text-center ${weeklyTotals[weekIdx].total > 0 ? 'mt-1 pt-0.5 border-t border-muted' : 'mt-1'}`}>
-                    방문:{weeklyTotals[weekIdx].totalVisitors}명
-                    <div>(실:{weeklyTotals[weekIdx].actualVisitors}, 취:{weeklyTotals[weekIdx].cancelledVisitors}, 무:{weeklyTotals[weekIdx].freeVisitors})</div>
                   </div>
                 )}
               </div>
@@ -1043,11 +1126,16 @@ function DailyGraph() {
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
             <ChartFrame>
                 <BarChart data={dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" />
-                  <YAxis tickFormatter={(v) => (v / 1000).toFixed(0)} />
-                  <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-                  <Bar dataKey="sales" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+                  <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} tickFormatter={(v) => (v / 1000).toFixed(0)} />
+                  <Tooltip
+                    cursor={visitorCursorStyle}
+                    contentStyle={visitorTooltipContentStyle}
+                    labelStyle={visitorTooltipLabelStyle}
+                    formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+                  />
+                  <Bar dataKey="sales" fill={VISITOR_COLORS.actual} radius={[6, 6, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ChartFrame>
           </TabsContent>
@@ -1073,11 +1161,16 @@ function DailyGraph() {
             <div className="text-sm text-muted-foreground mb-2">(천원단위)</div>
             <ChartFrame>
                 <BarChart data={hourlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="hour" />
-                  <YAxis tickFormatter={(v) => (v / 1000).toFixed(0)} />
-                  <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-                  <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+                  <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} tickFormatter={(v) => (v / 1000).toFixed(0)} />
+                  <Tooltip
+                    cursor={visitorCursorStyle}
+                    contentStyle={visitorTooltipContentStyle}
+                    labelStyle={visitorTooltipLabelStyle}
+                    formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+                  />
+                  <Bar dataKey="sales" fill={VISITOR_COLORS.actual} radius={[6, 6, 0, 0]} maxBarSize={28} />
                 </BarChart>
               </ChartFrame>
           </TabsContent>
@@ -1178,11 +1271,16 @@ function WeeklyGraph() {
           <TabsContent value="weekly" className="mt-4 w-full min-w-0">
             <ChartFrame>
                 <LineChart data={weeklyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="week" />
-                  <YAxis tickFormatter={(v) => (v / 1000).toFixed(0)} />
-                  <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-                  <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="week" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+                  <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} tickFormatter={(v) => (v / 1000).toFixed(0)} />
+                  <Tooltip
+                    cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+                    contentStyle={visitorTooltipContentStyle}
+                    labelStyle={visitorTooltipLabelStyle}
+                    formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+                  />
+                  <Line type="monotone" dataKey="sales" stroke={VISITOR_COLORS.actual} strokeWidth={2.5} dot={{ r: 3.5, strokeWidth: 0, fill: VISITOR_COLORS.actual }} activeDot={{ r: 5 }} />
                 </LineChart>
               </ChartFrame>
           </TabsContent>
@@ -1190,11 +1288,16 @@ function WeeklyGraph() {
           <TabsContent value="dayOfWeek" className="mt-4 w-full min-w-0">
             <ChartFrame>
                 <BarChart data={dayOfWeekData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="day" />
-                  <YAxis tickFormatter={(v) => (v / 1000).toFixed(0)} />
-                  <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-                  <Bar dataKey="sales" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+                  <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} tickFormatter={(v) => (v / 1000).toFixed(0)} />
+                  <Tooltip
+                    cursor={visitorCursorStyle}
+                    contentStyle={visitorTooltipContentStyle}
+                    labelStyle={visitorTooltipLabelStyle}
+                    formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+                  />
+                  <Bar dataKey="sales" fill={VISITOR_COLORS.actual} radius={[6, 6, 0, 0]} maxBarSize={40} />
                 </BarChart>
               </ChartFrame>
           </TabsContent>
@@ -1259,11 +1362,16 @@ function MonthlyGraph() {
 
         <ChartFrame>
             <LineChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis tickFormatter={(v) => (v / 1000000).toFixed(1) + "M"} />
-              <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-              <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={36} tickFormatter={(v) => (v / 1000000).toFixed(1) + "M"} />
+              <Tooltip
+                cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+              />
+              <Line type="monotone" dataKey="sales" stroke={VISITOR_COLORS.actual} strokeWidth={2.5} dot={{ r: 3.5, strokeWidth: 0, fill: VISITOR_COLORS.actual }} activeDot={{ r: 5 }} />
             </LineChart>
           </ChartFrame>
       </CardContent>
@@ -1317,11 +1425,16 @@ function YearlyGraph() {
 
         <ChartFrame>
             <LineChart data={yearlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="year" />
-              <YAxis tickFormatter={(v) => (v / 1000000).toFixed(1) + "M"} />
-              <Tooltip formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]} />
-              <Line type="monotone" dataKey="sales" stroke="#10b981" strokeWidth={2} dot={{ r: 6 }} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="year" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={36} tickFormatter={(v) => (v / 1000000).toFixed(1) + "M"} />
+              <Tooltip
+                cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number) => [`${formatCurrency(value)}원`, "매출"]}
+              />
+              <Line type="monotone" dataKey="sales" stroke={VISITOR_COLORS.actual} strokeWidth={2.5} dot={{ r: 4, strokeWidth: 0, fill: VISITOR_COLORS.actual }} activeDot={{ r: 6 }} />
             </LineChart>
           </ChartFrame>
       </CardContent>
@@ -1436,7 +1549,7 @@ function DailyVisitorGraph() {
           <Card className="bg-muted/30">
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">당일 실제방문</div>
-              <div className="text-2xl font-bold text-green-600">{currentDayData?.actual || 0}명</div>
+              <div className="text-2xl font-bold text-primary">{currentDayData?.actual || 0}명</div>
             </CardContent>
           </Card>
           <Card className="bg-muted/30">
@@ -1448,29 +1561,28 @@ function DailyVisitorGraph() {
           <Card className="bg-muted/30">
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">7일 실제방문</div>
-              <div className="text-2xl font-bold text-green-600">{actualVisitors}명</div>
+              <div className="text-2xl font-bold text-primary">{actualVisitors}명</div>
             </CardContent>
           </Card>
         </div>
 
         <ChartFrame>
             <BarChart data={dailyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip 
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} />
+              <Tooltip
+                cursor={visitorCursorStyle}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
                 formatter={(value: number, name: string) => {
-                  const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                  return [`${value}명`, labels[name] || name];
-                }} 
+                  return [`${value}명`, VISITOR_LEGEND_LABELS[name] || name];
+                }}
               />
-              <Legend formatter={(value) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return labels[value] || value;
-              }} />
-              <Bar dataKey="actual" stackId="a" fill="#22c55e" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+              <Legend content={<VisitorLegend />} />
+              <Bar dataKey="actual" stackId="a" fill={VISITOR_COLORS.actual} radius={[0, 0, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="cancelled" stackId="a" fill={VISITOR_COLORS.cancelled} radius={[0, 0, 0, 0]} maxBarSize={40} />
+              <Bar dataKey="free" stackId="a" fill={VISITOR_COLORS.free} radius={[6, 6, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ChartFrame>
       </CardContent>
@@ -1544,20 +1656,21 @@ function WeeklyVisitorGraph() {
 
         <ChartFrame>
             <BarChart data={weeklyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip formatter={(value: number, name: string) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return [`${value}명`, labels[name] || name];
-              }} />
-              <Legend formatter={(value) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return labels[value] || value;
-              }} />
-              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
-              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
-              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} />
+              <Tooltip
+                cursor={visitorCursorStyle}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number, name: string) => {
+                  return [`${value}명`, VISITOR_LEGEND_LABELS[name] || name];
+                }}
+              />
+              <Legend content={<VisitorLegend />} />
+              <Bar dataKey="actual" stackId="a" fill={VISITOR_COLORS.actual} maxBarSize={40} />
+              <Bar dataKey="cancelled" stackId="a" fill={VISITOR_COLORS.cancelled} maxBarSize={40} />
+              <Bar dataKey="free" stackId="a" fill={VISITOR_COLORS.free} radius={[6, 6, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ChartFrame>
       </CardContent>
@@ -1613,20 +1726,21 @@ function MonthlyVisitorGraph() {
 
         <ChartFrame>
             <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip formatter={(value: number, name: string) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return [`${value}명`, labels[name] || name];
-              }} />
-              <Legend formatter={(value) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return labels[value] || value;
-              }} />
-              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
-              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
-              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} />
+              <Tooltip
+                cursor={visitorCursorStyle}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number, name: string) => {
+                  return [`${value}명`, VISITOR_LEGEND_LABELS[name] || name];
+                }}
+              />
+              <Legend content={<VisitorLegend />} />
+              <Bar dataKey="actual" stackId="a" fill={VISITOR_COLORS.actual} maxBarSize={40} />
+              <Bar dataKey="cancelled" stackId="a" fill={VISITOR_COLORS.cancelled} maxBarSize={40} />
+              <Bar dataKey="free" stackId="a" fill={VISITOR_COLORS.free} radius={[6, 6, 0, 0]} maxBarSize={40} />
             </BarChart>
           </ChartFrame>
       </CardContent>
@@ -1676,20 +1790,21 @@ function YearlyVisitorGraph() {
 
         <ChartFrame>
             <LineChart data={yearlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip formatter={(value: number, name: string) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료", total: "총방문" };
-                return [`${value}명`, labels[name] || name];
-              }} />
-              <Legend formatter={(value) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료", total: "총방문" };
-                return labels[value] || value;
-              }} />
-              <Line type="monotone" dataKey="actual" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="cancelled" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
-              <Line type="monotone" dataKey="free" stroke="#a855f7" strokeWidth={2} dot={{ r: 4 }} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} />
+              <Tooltip
+                cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number, name: string) => {
+                  return [`${value}명`, VISITOR_LEGEND_LABELS[name] || name];
+                }}
+              />
+              <Legend content={<VisitorLegend />} />
+              <Line type="monotone" dataKey="actual" stroke={VISITOR_COLORS.actual} strokeWidth={2.5} dot={{ r: 3.5, strokeWidth: 0, fill: VISITOR_COLORS.actual }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="cancelled" stroke={VISITOR_COLORS.cancelled} strokeWidth={2.5} dot={{ r: 3.5, strokeWidth: 0, fill: VISITOR_COLORS.cancelled }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="free" stroke={VISITOR_COLORS.free} strokeWidth={2.5} dot={{ r: 3.5, strokeWidth: 0, fill: VISITOR_COLORS.free }} activeDot={{ r: 5 }} />
             </LineChart>
           </ChartFrame>
       </CardContent>
@@ -1777,20 +1892,21 @@ function HourlyVisitorGraph() {
 
         <ChartFrame>
             <BarChart data={hourlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="hour" />
-              <YAxis />
-              <Tooltip formatter={(value: number, name: string) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return [`${value}명`, labels[name] || name];
-              }} />
-              <Legend formatter={(value) => {
-                const labels: Record<string, string> = { actual: "실제방문", cancelled: "취소", free: "무료" };
-                return labels[value] || value;
-              }} />
-              <Bar dataKey="actual" stackId="a" fill="#22c55e" />
-              <Bar dataKey="cancelled" stackId="a" fill="#ef4444" />
-              <Bar dataKey="free" stackId="a" fill="#a855f7" radius={[4, 4, 0, 0]} />
+              <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={visitorAxisTick} />
+              <YAxis axisLine={false} tickLine={false} tick={visitorAxisTick} width={28} />
+              <Tooltip
+                cursor={visitorCursorStyle}
+                contentStyle={visitorTooltipContentStyle}
+                labelStyle={visitorTooltipLabelStyle}
+                formatter={(value: number, name: string) => {
+                  return [`${value}명`, VISITOR_LEGEND_LABELS[name] || name];
+                }}
+              />
+              <Legend content={<VisitorLegend />} />
+              <Bar dataKey="actual" stackId="a" fill={VISITOR_COLORS.actual} maxBarSize={28} />
+              <Bar dataKey="cancelled" stackId="a" fill={VISITOR_COLORS.cancelled} maxBarSize={28} />
+              <Bar dataKey="free" stackId="a" fill={VISITOR_COLORS.free} radius={[4, 4, 0, 0]} maxBarSize={28} />
             </BarChart>
           </ChartFrame>
       </CardContent>

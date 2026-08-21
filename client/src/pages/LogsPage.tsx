@@ -68,6 +68,13 @@ interface LogEntry {
   isStaff?: boolean; // 직원 입실 여부
 }
 
+// 분리결제(현금/카드/이체 중 2개 이상 혼합) 여부 — 어떤 지불방식 필터를 선택해도 함께 표시한다
+function isSplitPayment(log: { paymentCash?: number; paymentCard?: number; paymentTransfer?: number }): boolean {
+  const count = [log.paymentCash, log.paymentCard, log.paymentTransfer]
+    .filter(v => (v ?? 0) > 0).length;
+  return count >= 2;
+}
+
 interface AdditionalFeeEvent {
   id: string;
   lockerLogId: string;
@@ -409,11 +416,11 @@ export default function LogsPage() {
   }
 
   if (paymentMethodFilter === "card") {
-    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'card');
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'card' || isSplitPayment(log));
   } else if (paymentMethodFilter === "cash") {
-    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'cash' || !log.paymentMethod);
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'cash' || !log.paymentMethod || isSplitPayment(log));
   } else if (paymentMethodFilter === "transfer") {
-    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'transfer');
+    displayedLogs = displayedLogs.filter(log => log.paymentMethod === 'transfer' || isSplitPayment(log));
   }
 
   if (additionalFeeFilter === "with_fee") {
@@ -737,20 +744,20 @@ export default function LogsPage() {
           <Table>
             <TableHeader className="sticky top-0 bg-muted/50 z-10">
               <TableRow>
-                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커번호</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">입실날짜</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">입실시간</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">퇴실날짜</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">퇴실시간</TableHead>
-                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">주야</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">기본</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap">옵션</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">옵션금액</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap text-right">추가요금</TableHead>
-                <TableHead className="w-24 text-sm font-bold whitespace-nowrap text-right">최종요금</TableHead>
-                <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지불방식</TableHead>
-                <TableHead className="w-16 text-sm font-bold whitespace-nowrap">취소</TableHead>
-                <TableHead className="min-w-28 text-sm font-bold whitespace-nowrap">비고</TableHead>
+                <TableHead className="w-16 data-table-head whitespace-nowrap">락커번호</TableHead>
+                <TableHead className="w-24 data-table-head whitespace-nowrap">입실날짜</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap">입실시간</TableHead>
+                <TableHead className="w-24 data-table-head whitespace-nowrap">퇴실날짜</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap">퇴실시간</TableHead>
+                <TableHead className="w-16 data-table-head whitespace-nowrap">주야</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap text-right">기본</TableHead>
+                <TableHead className="w-24 data-table-head whitespace-nowrap">옵션</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap text-right">옵션금액</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap text-right">추가요금</TableHead>
+                <TableHead className="w-24 data-table-head whitespace-nowrap text-right">최종요금</TableHead>
+                <TableHead className="w-20 data-table-head whitespace-nowrap">지불방식</TableHead>
+                <TableHead className="w-16 data-table-head whitespace-nowrap">취소</TableHead>
+                <TableHead className="min-w-28 data-table-head whitespace-nowrap">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -805,17 +812,17 @@ export default function LogsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1 items-center">
-                        <span className={`text-xs px-1.5 py-0.5 rounded whitespace-nowrap ${
-                          log.timeType === '추가요금' 
+                        <span className={`text-xs px-1.5 py-0.5 status-badge whitespace-nowrap ${
+                          log.timeType === '추가요금'
                             ? 'bg-red-500/10 text-red-600 dark:text-red-400'
-                            : log.timeType === '주간' 
-                            ? 'bg-primary/10 text-primary' 
+                            : log.timeType === '주간'
+                            ? 'bg-primary/10 text-primary'
                             : 'bg-accent text-accent-foreground'
                         }`}>
-                          {log.timeType}
+                          {log.timeType === '추가요금' ? '추가' : log.timeType}
                         </span>
                         {(log as any).hasAdditionalFeeRecord && log.timeType !== '추가요금' && (
-                          <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap bg-red-500/10 text-red-600 dark:text-red-400">
+                          <span className="text-xs px-1.5 py-0.5 status-badge whitespace-nowrap bg-red-500/10 text-red-600 dark:text-red-400">
                             추가
                           </span>
                         )}
@@ -846,13 +853,13 @@ export default function LogsPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <span>{getDisplayPrice(log).toLocaleString()}</span>
                           {log.deferredPayment && (
-                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
+                            <span className="text-xs px-1.5 py-0.5 status-badge bg-orange-500/10 text-orange-600 dark:text-orange-400 whitespace-nowrap">
                               후불
                             </span>
                           )}
                         </div>
                         {(log.refundAmount || 0) > 0 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 whitespace-nowrap" data-testid={`badge-refund-${log.id}`}>
+                          <span className="text-xs px-1.5 py-0.5 status-badge bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 whitespace-nowrap" data-testid={`badge-refund-${log.id}`}>
                             환불 -{(log.refundAmount as number).toLocaleString()}
                           </span>
                         )}
@@ -862,7 +869,7 @@ export default function LogsPage() {
                       {formatPaymentMethod(log.paymentMethod, log.paymentCash, log.paymentCard, log.paymentTransfer)}
                     </TableCell>
                     <TableCell>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      <span className={`text-xs px-1.5 py-0.5 status-badge status-badge-nodot ${
                         log.cancelled ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground'
                       }`}>
                         {log.cancelled ? 'O' : '-'}
@@ -1257,14 +1264,14 @@ export default function LogsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">판매날짜</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">판매시간</TableHead>
-                      <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">판매개수</TableHead>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">판매금액</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">항목</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">판매날짜</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">판매시간</TableHead>
+                      <TableHead className="w-16 data-table-head whitespace-nowrap">락커</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">판매개수</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">판매금액</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">지급방식</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">합계</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1316,18 +1323,18 @@ export default function LogsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">항목</TableHead>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">대여날짜</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여시간</TableHead>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">반납날짜</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">반납시간</TableHead>
-                      <TableHead className="w-16 text-sm font-bold whitespace-nowrap">락커</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">대여금액</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금액</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">지급방식</TableHead>
-                      <TableHead className="w-24 text-sm font-bold whitespace-nowrap">보증금처리</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">보증금매출</TableHead>
-                      <TableHead className="w-20 text-sm font-bold whitespace-nowrap">합계</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">항목</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">대여날짜</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">대여시간</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">반납날짜</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">반납시간</TableHead>
+                      <TableHead className="w-16 data-table-head whitespace-nowrap">락커</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">대여금액</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">보증금액</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">지급방식</TableHead>
+                      <TableHead className="w-24 data-table-head whitespace-nowrap">보증금처리</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">보증금매출</TableHead>
+                      <TableHead className="w-20 data-table-head whitespace-nowrap">합계</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1370,7 +1377,7 @@ export default function LogsPage() {
                               {formatPaymentMethod(txn.paymentMethod, txn.paymentCash, txn.paymentCard, txn.paymentTransfer)}
                             </TableCell>
                             <TableCell className="text-sm">
-                              <span className={`px-2 py-1 rounded text-xs ${
+                              <span className={`px-2 py-0.5 status-badge text-xs ${
                                 txn.depositStatus === 'received' ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' :
                                 txn.depositStatus === 'refunded' ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300' :
                                 txn.depositStatus === 'forfeited' ? 'bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300' :

@@ -11,12 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Fingerprint, ChevronDown } from "lucide-react";
 import PatternLock from "@/components/PatternLock";
 import { validateLicenseKey } from "@/lib/licenseValidation";
-import { getAppName, getAppSkin } from "@/lib/appMeta";
+import { getAppName } from "@/lib/appMeta";
 
-const LICENSE_PLACEHOLDER =
-  getAppSkin() === "v3" ? "HOME-XXXX-XXXX-XXXX"
-  : getAppSkin() === "v2" ? "HIZZ-XXXX-XXXX-XXXX"
-  : "EQUS-XXXX-XXXX-XXXX";
+const LICENSE_PLACEHOLDER = "XXXX-XXXX-XXXX-XXXX";
 
 interface PatternLockDialogProps {
   open: boolean;

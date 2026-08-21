@@ -1,3 +1,5 @@
+import { getCachedStoreProfile, storeIconUrl } from "@/lib/storeProfile";
+
 export type Theme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "ivansauna-theme";
@@ -28,16 +30,18 @@ export function applyTheme(theme: Theme): void {
     );
   }
 
-  // V2: 브라우저 탭/바로가기 아이콘도 테마에 맞게 교체 (PWA 설치 아이콘은 manifest 단일 세트)
-  const skin = (import.meta as any).env?.VITE_SKIN || "v1";
-  if (skin === "v2") {
-    const iconVer = "hes3";
-    const favicon = theme === "dark" ? `/favicon.png?v=${iconVer}` : `/favicon-light.png?v=${iconVer}`;
-    const apple = theme === "dark" ? `/icon-192.png?v=${iconVer}` : `/icon-192-light.png?v=${iconVer}`;
+  // 매장이 라이트/다크 전용 아이콘을 업로드해뒀으면 브라우저 탭/바로가기 아이콘도 테마에 맞게 교체
+  // (PWA 설치 아이콘 자체는 manifest 단일 세트를 그대로 쓴다)
+  const profile = getCachedStoreProfile();
+  if (profile?.icons.faviconLight) {
     const iconLink = document.querySelector('link[rel="icon"]') as HTMLLinkElement | null;
     const appleLink = document.querySelector('link[rel="apple-touch-icon"]') as HTMLLinkElement | null;
-    if (iconLink) iconLink.href = favicon;
-    if (appleLink) appleLink.href = apple;
+    if (iconLink) {
+      iconLink.href = storeIconUrl(profile, theme === "dark" ? "favicon" : "favicon-light");
+    }
+    if (appleLink) {
+      appleLink.href = storeIconUrl(profile, theme === "dark" ? "icon-192" : "icon-192-light");
+    }
   }
 }
 

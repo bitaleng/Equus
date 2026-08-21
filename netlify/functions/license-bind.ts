@@ -1,5 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { createHmac, createHash } from "node:crypto";
+import { keymapKey, profileKey, type StoreProfileRecord } from "./lib/storeProfile";
 
 /**
  * 정식 라이선스 1기기 바인딩 (Netlify Blobs)
@@ -75,9 +76,36 @@ function json(data: unknown, status = 200) {
   });
 }
 
-function normalizeSkin(value: unknown): Skin | null {
-  if (value === "v1" || value === "v2" || value === "v3") return value;
+/**
+ * 단일 공통 빌드에는 더 이상 build-time VITE_SKIN이 없으므로, 클라이언트가 보낸 skin을
+ * 신뢰하지 않고 라이선스 키 자체의 prefix(EQUS/HIZZ/HOME)로부터 어느 비밀키 풀인지 유도한다.
+ * 이렇게 하면 기존 license-bindings Blobs 키 구조(lic:v2:... 등)는 그대로 유지된다.
+ */
+function deriveSkinFromKey(raw: string): Skin | null {
+  const cleaned = raw.replace(/[\s-]/g, "").toUpperCase();
+  const prefix = cleaned.slice(0, 4);
+  for (const skin of Object.keys(LICENSE_PREFIXES) as Skin[]) {
+    if (LICENSE_PREFIXES[skin] === prefix) return skin;
+  }
   return null;
+}
+
+async function lookupStoreProfile(
+  prefix: string,
+  customerCode: string
+): Promise<StoreProfileRecord | null> {
+  try {
+    const profileStore = getStore("store-profiles");
+    const storeId = (await profileStore.get(keymapKey(prefix, customerCode), {
+      type: "text",
+    })) as string | null;
+    if (!storeId) return null;
+    return (await profileStore.get(profileKey(storeId), {
+      type: "json",
+    })) as StoreProfileRecord | null;
+  } catch {
+    return null;
+  }
 }
 
 function hashValue(value: string): string {
@@ -258,7 +286,6 @@ export default async function handler(request: Request) {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  const skin = normalizeSkin(body.skin);
   const fingerprint =
     typeof body.fingerprint === "string" ? body.fingerprint.trim() : "";
   const installId =
@@ -276,14 +303,16 @@ export default async function handler(request: Request) {
   const licenseKeyRaw =
     typeof body.licenseKey === "string" ? body.licenseKey.trim() : "";
 
-  if (!skin) {
-    return json({ error: "skin 값이 올바르지 않습니다." }, 400);
-  }
   if (fingerprint.length < 16 || fingerprint.length > 4000) {
     return json({ error: "fingerprint 값이 올바르지 않습니다." }, 400);
   }
   if (!licenseKeyRaw) {
     return json({ error: "라이선스 키가 필요합니다." }, 400);
+  }
+
+  const skin = deriveSkinFromKey(licenseKeyRaw);
+  if (!skin) {
+    return json({ error: "유효하지 않은 라이선스 키입니다." }, 400);
   }
 
   const parsed = validateLicenseCrypto(skin, licenseKeyRaw);
@@ -361,7 +390,8 @@ export default async function handler(request: Request) {
       updatedAt: now,
     };
     await saveBinding(store, record, prevFp);
-    return json(publicOk(record));
+    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
+    return json(publicOk(record, { storeProfile }));
   }
 
   if (action === "unregister") {
@@ -426,8 +456,9 @@ export default async function handler(request: Request) {
       lastSeenAt: now,
     };
     await saveBinding(store, record);
+    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
     return json({
-      ...publicOk(record),
+      ...publicOk(record, { storeProfile }),
       reclaimed: true,
       message:
         "기존 기기 등록을 해제하고 이 기기에 라이선스를 등록했습니다.",
@@ -477,8 +508,9 @@ export default async function handler(request: Request) {
       expiresAt: expiresAtIso,
     };
     await saveBinding(store, record, prevFp);
+    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
     return json({
-      ...publicOk(record),
+      ...publicOk(record, { storeProfile }),
       message: "이미 이 기기에 등록된 라이선스입니다.",
     });
   }
@@ -496,8 +528,9 @@ export default async function handler(request: Request) {
     lastSeenAt: now,
   };
   await saveBinding(store, record);
+  const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
   return json({
-    ...publicOk(record),
+    ...publicOk(record, { storeProfile }),
     message: "라이선스가 이 기기에 등록되었습니다.",
   });
 }

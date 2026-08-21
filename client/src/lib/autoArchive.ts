@@ -1,6 +1,7 @@
 import {
   deleteAppMeta,
   exportArchiveThrough,
+  exportDatabase,
   getSettings,
   loadIdbMetaValue,
   previewArchivePurge,
@@ -11,6 +12,7 @@ import {
 import { isDemoMode } from '@/lib/demoMode';
 
 const DIR_HANDLE_KEY = 'auto_archive_dir_handle';
+const CLOSING_BACKUP_FILE_HANDLE_KEY = 'closing_backup_file_handle';
 
 type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: (options?: {
@@ -19,6 +21,35 @@ type DirectoryPickerWindow = Window & {
     startIn?: string;
   }) => Promise<FileSystemDirectoryHandle>;
 };
+
+type SaveFilePickerWindow = Window & {
+  showSaveFilePicker?: (options?: {
+    id?: string;
+    suggestedName?: string;
+    types?: { description: string; accept: Record<string, string[]> }[];
+  }) => Promise<FileSystemFileHandle>;
+};
+
+type PermissionCapableHandle = {
+  queryPermission?: (opts: { mode: 'readwrite' }) => Promise<PermissionState>;
+  requestPermission?: (opts: { mode: 'readwrite' }) => Promise<PermissionState>;
+};
+
+async function ensureHandlePermission(handle: PermissionCapableHandle): Promise<boolean> {
+  try {
+    if (typeof handle.queryPermission === 'function') {
+      const current = await handle.queryPermission({ mode: 'readwrite' });
+      if (current === 'granted') return true;
+    }
+    if (typeof handle.requestPermission === 'function') {
+      const next = await handle.requestPermission({ mode: 'readwrite' });
+      return next === 'granted';
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function clampAutoArchiveKeepMonths(value: unknown): number {
   const n = Math.floor(Number(value));
@@ -58,6 +89,106 @@ export function getAutoArchiveKeepRange(keepMonths: number, now = new Date()): {
 
 export function getArchiveBackupPrefix(): string {
   return BACKUP_PREFIX;
+}
+
+export type ClosingBackupResult = {
+  success: boolean;
+  filename?: string;
+  message?: string;
+  overwritten?: boolean;
+};
+
+export function canPickClosingBackupFile(): boolean {
+  return typeof (window as SaveFilePickerWindow).showSaveFilePicker === 'function';
+}
+
+/** PC(Chrome/Edge)에서 마감 백업을 매번 덮어쓸 고정 파일을 한 번 지정 */
+export async function pickClosingBackupFile(): Promise<{
+  ok: boolean;
+  name?: string;
+  error?: string;
+}> {
+  const picker = (window as SaveFilePickerWindow).showSaveFilePicker;
+  if (typeof picker !== 'function') {
+    return {
+      ok: false,
+      error: '이 브라우저는 파일 지정을 지원하지 않습니다. PC Chrome/Edge에서 사용해 주세요.',
+    };
+  }
+  try {
+    const handle = await picker({
+      id: 'ivansauna-closing-backup',
+      suggestedName: `${getArchiveBackupPrefix()}-closing-latest.json`,
+      types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+    });
+    const allowed = await ensureHandlePermission(handle as unknown as PermissionCapableHandle);
+    if (!allowed) {
+      return { ok: false, error: '파일 쓰기 권한이 거부되었습니다.' };
+    }
+    await saveIdbMetaValue(CLOSING_BACKUP_FILE_HANDLE_KEY, handle);
+    return { ok: true, name: handle.name };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') return { ok: false, error: 'cancelled' };
+    return { ok: false, error: err?.message || '파일을 지정하지 못했습니다.' };
+  }
+}
+
+export async function getClosingBackupFileName(): Promise<string | null> {
+  const handle = await loadIdbMetaValue<FileSystemFileHandle>(CLOSING_BACKUP_FILE_HANDLE_KEY);
+  return handle?.name || null;
+}
+
+export async function clearClosingBackupFile(): Promise<void> {
+  await deleteAppMeta(CLOSING_BACKUP_FILE_HANDLE_KEY);
+}
+
+/**
+ * 마감 확정 시 전체 DB를 백업.
+ * - PC 등 지정된 고정 파일이 있으면 그 파일 하나를 매번 덮어쓴다 (용량 누적 없음).
+ * - 지정된 파일이 없거나 권한이 없으면(안드로이드 태블릿 등), 영업일자가 포함된
+ *   파일명으로 다운로드 폴더에 저장한다 (기기 제약상 매번 새 파일로 쌓인다).
+ */
+export async function downloadClosingBackup(businessDay: string): Promise<ClosingBackupResult> {
+  if (isDemoMode()) {
+    return { success: false, message: '체험판에서는 자동 백업을 하지 않습니다.' };
+  }
+
+  const exported = exportDatabase();
+  if (!exported.success || !exported.data) {
+    return { success: false, message: exported.error || '백업 데이터 생성에 실패했습니다.' };
+  }
+
+  const fixedHandle = await loadIdbMetaValue<FileSystemFileHandle>(CLOSING_BACKUP_FILE_HANDLE_KEY);
+  if (fixedHandle) {
+    const allowed = await ensureHandlePermission(fixedHandle as unknown as PermissionCapableHandle);
+    if (allowed) {
+      try {
+        const writable = await fixedHandle.createWritable();
+        await writable.write(exported.data);
+        await writable.close();
+        return { success: true, filename: fixedHandle.name, overwritten: true };
+      } catch (err: any) {
+        // 지정 파일 쓰기 실패 시 아래 일반 다운로드로 폴백
+        console.warn('[closing-backup] fixed file write failed, falling back to download', err);
+      }
+    }
+  }
+
+  const filename = `${getArchiveBackupPrefix()}-closing-${businessDay}.json`;
+  try {
+    const blob = new Blob([exported.data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return { success: true, filename };
+  } catch (err: any) {
+    return { success: false, filename, message: err?.message || '백업 파일 다운로드에 실패했습니다.' };
+  }
 }
 
 export function buildArchiveFilename(fromDate: string | undefined, throughDate: string): string {

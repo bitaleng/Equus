@@ -33,7 +33,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
   
   const getButtonStyles = () => {
     if (outOfService) {
-      return "bg-gray-200 text-gray-400 cursor-not-allowed border-2 border-gray-300 dark:bg-gray-700 dark:text-gray-500 dark:border-gray-600";
+      return "bg-gray-200 text-gray-400 cursor-not-allowed border-2 border-gray-300 btn-ios-onlight dark:bg-gray-700 dark:text-gray-500 dark:border-gray-600";
     }
     if (status === 'disabled') {
       return "bg-white text-white cursor-not-allowed border-2 border-muted dark:bg-slate-800 dark:text-slate-800 dark:border-slate-600";
@@ -43,23 +43,23 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
       if (isOuting) {
         // 외출 시간 초과 → 다크그레이↔레드 점멸 경보
         if (outingExceeded) {
-          return "animate-outing-exceeded border-2 border-red-600 locker-btn-occupied";
+          return "animate-outing-exceeded border-2 border-red-600 btn-ios-oncolor locker-btn-occupied";
         }
         // 정상 외출중 → 라이트=다크그레이 / 다크=라이트그레이+어두운글자(빈락카와 구분, 무채색)
-        return "bg-[#374151] text-white border-2 border-[#1F2937] dark:bg-slate-300 dark:text-slate-900 dark:border-slate-400 locker-btn-occupied";
+        return "bg-[#374151] text-white border-2 border-[#1F2937] btn-ios-oncolor dark:bg-slate-300 dark:text-slate-900 dark:border-slate-400 locker-btn-occupied";
       }
       // 0.5순위: 장기투숙 퇴실경고 (외출경보와 동일 점멸)
       if (checkoutWarning) {
-        return "animate-outing-exceeded border-2 border-red-600 locker-btn-occupied";
+        return "animate-outing-exceeded border-2 border-red-600 btn-ios-oncolor locker-btn-occupied";
       }
       // 1순위: 후불결제 -> 노란색↔퍼플블루 애니메이션 (추가요금보다 우선)
       if (deferredPayment) {
-        return `${getDeferredPaymentStyles()} locker-btn-occupied`;
+        return `${getDeferredPaymentStyles()} btn-ios-oncolor locker-btn-occupied`;
       }
-      
+
       // 1순위: 추가요금 있음 -> 무조건 레드
       if (additionalFeeCount > 0) {
-        return "bg-[#FF4444] text-white border-2 border-[#CC0000] locker-btn-occupied";
+        return "bg-[#FF4444] text-white border-2 border-[#CC0000] btn-ios-oncolor locker-btn-occupied";
       }
       
       // 2순위: 이전 영업일 입실 -> 그린색
@@ -71,31 +71,31 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
         const now = new Date();
         const { start: businessDayStart } = getBusinessDayRange(now, businessDayStartHour);
         if (entryTime < businessDayStart) {
-          return "bg-[#22C55E] text-white border-2 border-[#16A34A] locker-btn-occupied";
+          return "bg-[#22C55E] text-white border-2 border-[#16A34A] btn-ios-oncolor locker-btn-occupied";
         }
       }
-      
+
       // 3순위: 직원 사용중 -> 핑크색
       if (isStaff) {
-        return "bg-[#FF69B4] text-white border-2 border-[#FF1493] locker-btn-occupied";
+        return "bg-[#FF69B4] text-white border-2 border-[#FF1493] btn-ios-oncolor locker-btn-occupied";
       }
 
       // 장기투숙 (경고 전) → 청록색으로 구분
       if (isLongTerm) {
-        return "bg-[#0D9488] text-white border-2 border-[#0F766E] locker-btn-occupied";
+        return "bg-[#0D9488] text-white border-2 border-[#0F766E] btn-ios-oncolor locker-btn-occupied";
       }
-      
+
       // 4순위: 추가요금 없음 -> 주간/야간 구분
       if (timeType === 'day') {
         // 주간: 노란색
-        return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700] locker-btn-occupied";
+        return "bg-[#FFD700] text-gray-800 border-2 border-[#FFC700] btn-ios-onlight locker-btn-occupied";
       } else {
         // 야간: 퍼플 블루
-        return "bg-[#7B68EE] text-white border-2 border-[#6A5ACD] locker-btn-occupied";
+        return "bg-[#7B68EE] text-white border-2 border-[#6A5ACD] btn-ios-oncolor locker-btn-occupied";
       }
     }
-    // 빈 락카: 라이트=흰색 / 다크=슬레이트 (번호·상태 텍스트 대비 유지)
-    return "bg-white text-gray-700 border-2 border-gray-300/90 hover-elevate active-elevate-2 locker-btn-empty dark:bg-slate-800 dark:text-slate-100 dark:border-slate-500";
+    // 빈 락카: 라이트=연한 그레이 / 다크=슬레이트 (번호·상태 텍스트 대비 유지)
+    return "bg-gray-100 text-gray-700 border-2 border-gray-300/90 btn-ios-onlight locker-btn-empty dark:bg-slate-800 dark:text-slate-100 dark:border-slate-500";
   };
 
   const getStatusText = () => {
@@ -130,6 +130,7 @@ export default function LockerButton({ number, status, additionalFeeCount = 0, t
 
   const buttonContent = (
     <Button
+      variant="tile"
       onClick={handleClick}
       disabled={status === 'disabled' || outOfService}
       className={`

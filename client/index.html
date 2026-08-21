@@ -24,6 +24,33 @@
         } catch (e) {}
       })();
     </script>
+    <script>
+      (function () {
+        // 라이선스 활성화 시 서버가 내려준 매장 프로필을 React 마운트 전에 반영 —
+        // 새로고침할 때마다 일반 브랜딩이 잠깐 보였다가 바뀌는 깜빡임을 막는다.
+        try {
+          var raw = localStorage.getItem("store_profile_cache_v1");
+          if (!raw) return;
+          var p = JSON.parse(raw);
+          if (!p || !p.storeId) return;
+          if (p.displayName) document.title = p.displayName;
+          var d = document.querySelector('meta[name="description"]');
+          if (d && p.description) d.setAttribute("content", p.description);
+          var manifestLink = document.querySelector('link[rel="manifest"]');
+          if (manifestLink) {
+            manifestLink.href = "/store/" + encodeURIComponent(p.storeId) + "/manifest.webmanifest";
+          }
+          var iconLink = document.querySelector('link[rel="icon"]');
+          if (iconLink && p.icons && p.icons.favicon) {
+            iconLink.href = "/store/" + encodeURIComponent(p.storeId) + "/icon/favicon?v=" + encodeURIComponent(p.iconVersion);
+          }
+          var appleLink = document.querySelector('link[rel="apple-touch-icon"]');
+          if (appleLink && p.icons && p.icons.icon192) {
+            appleLink.href = "/store/" + encodeURIComponent(p.storeId) + "/icon/icon-192?v=" + encodeURIComponent(p.iconVersion);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">

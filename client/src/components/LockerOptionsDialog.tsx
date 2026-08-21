@@ -4964,24 +4964,21 @@ export default function LockerOptionsDialog({
                 customerMemo && customerMemo.trim() ? 'locker-opt-memo-active animate-memo-gradient' : ''
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div
+                className={`flex items-center gap-2 w-fit ${
+                  customerMemo && customerMemo.trim()
+                    ? "ml-2 rounded-full bg-white pl-2.5 pr-2.5 py-1 dark:bg-transparent dark:rounded-none dark:pl-0 dark:pr-0 dark:py-0"
+                    : ""
+                }`}
+              >
                 <LabelHint
                   className={`text-sm font-semibold ${
-                    customerMemo && customerMemo.trim() ? "text-white" : ""
+                    customerMemo && customerMemo.trim() ? "text-gray-700 dark:text-white" : ""
                   }`}
                   content={"손님에 관한 특별한 인상이나 특이사항을 기록하세요.\n예: 야간요금 냈으므로 추가요금 발생 시 전액할인"}
                 >
-                  <span className="text-base">📝</span> 손님 메모
+                  손님 메모
                 </LabelHint>
-                {customerMemo && (
-                  <span
-                    className={`text-xs ${
-                      customerMemo && customerMemo.trim() ? 'text-white/80' : 'text-muted-foreground'
-                    }`}
-                  >
-                    (저장됨)
-                  </span>
-                )}
               </div>
               <div className="locker-opt-memo-input-shell">
                 <Textarea
@@ -5141,7 +5138,6 @@ export default function LockerOptionsDialog({
                     return (
                       <>
                         <Button
-                          variant="outline"
                           className="locker-opt-footer-btn locker-opt-footer-btn-primary"
                           onClick={() => handleCheckoutClick({ customExitTime: true })}
                           data-testid="button-checkout-custom-time"
