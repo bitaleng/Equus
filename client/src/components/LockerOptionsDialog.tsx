@@ -3564,7 +3564,7 @@ export default function LockerOptionsDialog({
                       placeholder="선지급 금액 입력 (예: 5000)"
                       value={prepaidAdditionalFeeAmount}
                       onChange={(e) => setPrepaidAdditionalFeeAmount(e.target.value)}
-                      className="w-full"
+                      className="w-full locker-opt-prepaid-input"
                       data-testid="input-prepaid-additional-fee"
                     />
                     {/* 선지급 결제방식 선택 (주결제방식과 다른 경우에만 필요) */}
