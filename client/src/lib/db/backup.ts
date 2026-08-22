@@ -94,9 +94,15 @@ export function exportDatabase(): {
       'workspaceFloatingPosition',
       'workspaceFloatingSize',
       'workspaceDockedSide',
-      'uiLayoutMode'
+      'workspaceDockedWidth',
+      'uiLayoutMode',
+      'logsToolFloatingMode',
+      'logsToolFloatingPosition',
+      'logsToolFloatingSize',
+      'logsToolDockedSide',
+      'logsToolDockedWidth'
     ];
-    
+
     localStorageKeys.forEach(key => {
       try {
         const value = localStorage.getItem(key);
@@ -215,9 +221,15 @@ export function importDatabase(jsonString: string): {
       'workspaceFloatingPosition',
       'workspaceFloatingSize',
       'workspaceDockedSide',
-      'uiLayoutMode'
+      'workspaceDockedWidth',
+      'uiLayoutMode',
+      'logsToolFloatingMode',
+      'logsToolFloatingPosition',
+      'logsToolFloatingSize',
+      'logsToolDockedSide',
+      'logsToolDockedWidth'
     ];
-    
+
     localStorageKeys.forEach(key => {
       try {
         localStorage.removeItem(key);
