@@ -183,19 +183,9 @@
 
     <div class="card">
       <h2>3. 라이선스 연결</h2>
-      <div class="form-row">
-        <div class="form-group">
-          <label for="prefix">라이선스 종류</label>
-          <select id="prefix">
-            <option value="EQUS">EQUS (v1)</option>
-            <option value="HIZZ">HIZZ (v2)</option>
-            <option value="HOME">HOME (v3)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="customerCode">고객 코드</label>
-          <input type="text" id="customerCode" placeholder="license-generator.html에 입력했던 고객 코드와 동일하게" />
-        </div>
+      <div class="form-group">
+        <label for="customerCode">매장 이름</label>
+        <input type="text" id="customerCode" placeholder="license-generator.html에 입력했던 매장 이름과 토씨 하나 틀리지 않고 동일하게" />
       </div>
       <div class="hint" id="encodedCodeHint"></div>
       <button class="btn btn-block" id="mapLicenseBtn" style="margin-top:12px;">이 매장에 라이선스 연결</button>
@@ -314,22 +304,21 @@
     document.getElementById('mapLicenseBtn').addEventListener('click', async () => {
       const el = document.getElementById('mapStatus');
       const storeId = document.getElementById('storeId').value.trim();
-      const prefix = document.getElementById('prefix').value;
       const customerCodeRaw = document.getElementById('customerCode').value.trim();
       if (!storeId || !customerCodeRaw) {
-        showStatus(el, false, 'storeId와 고객 코드를 입력하세요.');
+        showStatus(el, false, 'storeId와 매장 이름을 입력하세요.');
         return;
       }
       const customerCode = encodeCustomerCode(customerCodeRaw);
-      const { httpOk, data } = await callAdmin({ action: 'map-license', prefix, customerCode, storeId });
+      const { httpOk, data } = await callAdmin({ action: 'map-license', customerCode, storeId });
       if (httpOk && data.ok) {
-        showStatus(el, true, `연결 완료 (${prefix}-${customerCode})`);
+        showStatus(el, true, `연결 완료 (${customerCode})`);
       } else if (data && data.existingStoreId) {
         const confirmed = confirm(`이미 ${data.existingStoreId} 매장에 연결되어 있습니다. 덮어쓸까요?`);
         if (confirmed) {
-          const retry = await callAdmin({ action: 'map-license', prefix, customerCode, storeId, force: true });
+          const retry = await callAdmin({ action: 'map-license', customerCode, storeId, force: true });
           if (retry.httpOk && retry.data.ok) {
-            showStatus(el, true, `연결 완료 (${prefix}-${customerCode})`);
+            showStatus(el, true, `연결 완료 (${customerCode})`);
           } else {
             showStatus(el, false, retry.data.error || '연결에 실패했습니다.');
           }

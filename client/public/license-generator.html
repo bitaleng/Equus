@@ -39,44 +39,6 @@
       color: #ffc107;
     }
 
-    /* 버전 탭 */
-    .version-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 24px;
-      background: rgba(255,255,255,0.05);
-      border-radius: 10px;
-      padding: 4px;
-    }
-    .tab-btn {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      background: transparent;
-      color: #808080;
-    }
-    .tab-btn.active {
-      background: rgba(74,158,255,0.2);
-      color: #4a9eff;
-      border: 1px solid rgba(74,158,255,0.3);
-    }
-    .version-badge {
-      display: inline-block;
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 4px;
-      margin-left: 6px;
-      vertical-align: middle;
-    }
-    .badge-v1 { background: rgba(74,222,128,0.15); color: #4ade80; }
-    .badge-v2 { background: rgba(251,146,60,0.15); color: #fb923c; }
-    .badge-v3 { background: rgba(34,211,238,0.15); color: #22d3ee; }
-
     .form-group { margin-bottom: 20px; }
     .form-group label { display: block; margin-bottom: 8px; font-weight: 500; font-size: 14px; color: #c0c0c0; }
     .form-group input {
@@ -95,6 +57,18 @@
       box-shadow: 0 0 0 3px rgba(74,158,255,0.2);
     }
     .form-group input::placeholder { color: #707070; }
+    .hint { font-size: 12px; color: #808080; margin-top: 6px; }
+    .prefix-preview {
+      display: inline-block;
+      font-family: 'Monaco', 'Menlo', monospace;
+      background: rgba(74,158,255,0.15);
+      color: #4a9eff;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin-top: 6px;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
 
     .btn {
       width: 100%;
@@ -187,30 +161,22 @@
       안전한 장소에 보관하고 필요할 때만 사용하세요.
     </div>
 
-    <!-- 버전 선택 탭 -->
-    <div class="version-tabs">
-      <button class="tab-btn active" onclick="selectVersion('v1')">
-        V1 키 생성 <span class="version-badge badge-v1">에쿠스</span>
-      </button>
-      <button class="tab-btn" onclick="selectVersion('v2')">
-        V2 키 생성 <span class="version-badge badge-v2">히즈</span>
-      </button>
-      <button class="tab-btn" onclick="selectVersion('v3')">
-        V3 키 생성 <span class="version-badge badge-v3">홈</span>
-      </button>
-    </div>
-
     <form id="licenseForm">
       <div class="form-group">
-        <label for="customerCode">고객 코드 (업체명 또는 고유번호)</label>
-        <input type="text" id="customerCode" placeholder="예: 강남1호점, CUST001" required />
+        <label for="customerCode">매장 이름 (영문/숫자로 입력 권장)</label>
+        <input type="text" id="customerCode" placeholder="예: Shelter Gangnam" required />
+        <div class="hint">
+          라이선스 키 맨 앞 4글자에 그대로 쓰입니다. 이 텍스트는
+          <b>store-admin.html에서 라이선스를 매장에 연결할 때 토씨 하나 틀리지 않고 똑같이</b> 입력해야 합니다.
+        </div>
+        <div class="prefix-preview" id="prefixPreview">키 앞부분: ----</div>
       </div>
       <div class="form-group">
         <label for="expiryDate">만료일</label>
         <input type="date" id="expiryDate" required />
       </div>
       <button type="submit" class="btn btn-primary" id="generateBtn">
-        V1 라이센스 생성
+        라이센스 생성
       </button>
     </form>
 
@@ -232,58 +198,22 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
   <script>
-    // ── 버전별 시크릿 ──────────────────────────────────────
-    const SECRETS = {
-      v1: (function() {
-        const p = [
-          String.fromCharCode(69,113,85,115),
-          "2025!",
-          String.fromCharCode(72,111,84,51,76),
-          "#MnGt@",
-          String.fromCharCode(83,101,99,82,51,116)
-        ];
-        return p.join('');
-      })(),
-      v2: (function() {
-        const p = [
-          String.fromCharCode(82,101,83,111),
-          "2025!",
-          String.fromCharCode(82,116,86,50,83),
-          "#KyMt@",
-          String.fromCharCode(76,99,75,114,51,116)
-        ];
-        return p.join('');
-      })(),
-      v3: (function() {
-        const p = [
-          String.fromCharCode(72,111,77,101),
-          "2025!",
-          String.fromCharCode(72,109,50,52,83),
-          "#HmKy@",
-          String.fromCharCode(83,99,82,116,51,116)
-        ];
-        return p.join('');
-      })()
-    };
+    // ── 서명용 비밀키 (netlify/functions/license-bind.ts와 반드시 동일해야 함) ──
+    const SECRET = (function() {
+      const p = [
+        String.fromCharCode(76,111,99,107),
+        "2026!",
+        String.fromCharCode(77,103,114,83,118),
+        "#IvSn@",
+        String.fromCharCode(85,110,105,51,116)
+      ];
+      return p.join('');
+    })();
 
-    let currentVersion = 'v1';
-    const HISTORY_KEY = 'license_generator_history';
+    const HISTORY_KEY = 'license_generator_history_v2';
 
-    function selectVersion(ver) {
-      currentVersion = ver;
-      document.querySelectorAll('.tab-btn').forEach((btn, i) => {
-        const map = ['v1', 'v2', 'v3'];
-        btn.classList.toggle('active', map[i] === ver);
-      });
-      const labels = { v1: 'V1 라이센스 생성', v2: 'V2 라이센스 생성', v3: 'V3 라이센스 생성' };
-      document.getElementById('generateBtn').textContent = labels[ver] || '라이센스 생성';
-      document.getElementById('resultSection').classList.remove('show');
-      renderHistory();
-    }
-
-    function generateSignature(data, version) {
-      const secret = SECRETS[version];
-      const hash = CryptoJS.HmacSHA256(data, secret);
+    function generateSignature(data) {
+      const hash = CryptoJS.HmacSHA256(data, SECRET);
       return hash.toString(CryptoJS.enc.Hex).substring(0, 8).toUpperCase();
     }
 
@@ -305,14 +235,20 @@
       return Math.abs(hash).toString(36).toUpperCase().padStart(4,'0').substring(0,4);
     }
 
-    const LICENSE_PREFIXES = { v1: 'EQUS', v2: 'HIZZ', v3: 'HOME' };
+    // 매장 이름 앞 4글자(영문/숫자만) → 라이선스 키 첫 부분. 사람이 보고 읽는 용도일 뿐
+    // 서명 검증에는 쓰이지 않는다. 짧으면 X로 채우고, 길면 뒤를 자른다.
+    function deriveKeyPrefix(name) {
+      const cleaned = name.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      const truncated = cleaned.slice(0, 4);
+      return (truncated + 'XXXX').slice(0, 4);
+    }
 
-    function generateLicenseKey(customerCode, expiryDate, version) {
-      const encodedCustomer = encodeCustomerCode(customerCode);
+    function generateLicenseKey(storeName, expiryDate) {
+      const prefix = deriveKeyPrefix(storeName);
+      const encodedCustomer = encodeCustomerCode(storeName);
       const encodedDate = encodeDate(expiryDate);
       const dataPayload = encodedCustomer + encodedDate;
-      const signature = generateSignature(dataPayload, version);
-      const prefix = LICENSE_PREFIXES[version] || 'EQUS';
+      const signature = generateSignature(dataPayload);
       return prefix + "-" + encodedCustomer + "-" + encodedDate + "-" + signature.substring(0, 4);
     }
 
@@ -335,7 +271,7 @@
     }
 
     function renderHistory() {
-      const history = getHistory().filter(item => item.version === currentVersion);
+      const history = getHistory();
       const container = document.getElementById('historyList');
       const clearBtn = document.getElementById('clearHistoryBtn');
       if (history.length === 0) {
@@ -368,6 +304,12 @@
       });
     }
 
+    document.getElementById('customerCode').addEventListener('input', (e) => {
+      const preview = document.getElementById('prefixPreview');
+      const value = e.target.value.trim();
+      preview.textContent = '키 앞부분: ' + (value ? deriveKeyPrefix(value) : '----');
+    });
+
     document.getElementById('licenseForm').addEventListener('submit', function(e) {
       e.preventDefault();
       const customerCode = document.getElementById('customerCode').value.trim();
@@ -378,11 +320,10 @@
       today.setHours(0,0,0,0);
       if (expiryDate < today) { alert('만료일은 오늘 이후로 설정해주세요.'); return; }
 
-      const licenseKey = generateLicenseKey(customerCode, expiryDate, currentVersion);
+      const licenseKey = generateLicenseKey(customerCode, expiryDate);
       document.getElementById('licenseKey').textContent = licenseKey;
       document.getElementById('licenseInfo').innerHTML = `
-        <div><strong>버전:</strong> ${currentVersion.toUpperCase()}</div>
-        <div><strong>고객:</strong> ${customerCode}</div>
+        <div><strong>매장 이름:</strong> ${customerCode}</div>
         <div><strong>만료일:</strong> ${expiryDate.toLocaleDateString('ko-KR')}</div>
         <div><strong>생성일:</strong> ${new Date().toLocaleDateString('ko-KR')}</div>
       `;
@@ -391,8 +332,7 @@
         key: licenseKey,
         customer: customerCode,
         expiry: expiryDate.toLocaleDateString('ko-KR'),
-        date: new Date().toLocaleDateString('ko-KR'),
-        version: currentVersion
+        date: new Date().toLocaleDateString('ko-KR')
       });
     });
 

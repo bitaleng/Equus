@@ -143,6 +143,7 @@ export function importDatabase(jsonString: string): {
     }
     
     const validAppNames = [
+      'Locker Manager System',
       'EQUUS Hotel Management System',
       'HIZZ Hotel Management System',
       'HOME24 Hotel Management System',
@@ -403,6 +404,7 @@ function _parseArchivePayload(jsonString: string): {
   }
 
   const validAppNames = [
+    'Locker Manager System',
     'EQUUS Hotel Management System',
     'HIZZ Hotel Management System',
     'HOME24 Hotel Management System',

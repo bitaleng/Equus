@@ -11,11 +11,10 @@ import {
 } from "./lib/storeProfile";
 
 /**
- * 매장 프로필(이름/아이콘/기본설정) 등록·수정 + 라이선스 prefix/고객코드 → storeId 매핑.
+ * 매장 프로필(이름/아이콘/기본설정) 등록·수정 + 라이선스 고객코드 → storeId 매핑.
  * 코드 빌드 없이 새 매장을 온보딩하기 위한 관리자 전용 함수 — store-admin.html에서 호출한다.
  */
 
-const LICENSE_PREFIXES = ["EQUS", "HIZZ", "HOME"] as const;
 const MAX_ICON_BYTES = 2 * 1024 * 1024; // 2MB
 
 type AdminRequestBody =
@@ -23,8 +22,8 @@ type AdminRequestBody =
   | { action: "get-profile"; storeId: string }
   | { action: "upsert-profile"; profile: Partial<StoreProfileRecord> & { storeId: string } }
   | { action: "upload-icon"; storeId: string; variant: string; base64Png: string }
-  | { action: "map-license"; prefix: string; customerCode: string; storeId: string; force?: boolean }
-  | { action: "unmap-license"; prefix: string; customerCode: string };
+  | { action: "map-license"; customerCode: string; storeId: string; force?: boolean }
+  | { action: "unmap-license"; customerCode: string };
 
 function checkAuth(request: Request): Response | null {
   const expected = process.env.STORE_ADMIN_KEY;
@@ -42,10 +41,6 @@ function checkAuth(request: Request): Response | null {
 }
 
 function normalizeCustomerCode(value: unknown): string {
-  return typeof value === "string" ? value.trim().toUpperCase() : "";
-}
-
-function normalizePrefix(value: unknown): string {
   return typeof value === "string" ? value.trim().toUpperCase() : "";
 }
 
@@ -174,24 +169,20 @@ export default async function handler(request: Request) {
   }
 
   if (body.action === "map-license") {
-    const prefix = normalizePrefix(body.prefix);
     const customerCode = normalizeCustomerCode(body.customerCode);
-    if (!LICENSE_PREFIXES.includes(prefix as (typeof LICENSE_PREFIXES)[number])) {
-      return json({ ok: false, error: "prefix는 EQUS/HIZZ/HOME 중 하나여야 합니다." }, 400);
-    }
     if (!customerCode) {
       return json({ ok: false, error: "customerCode가 필요합니다." }, 400);
     }
     if (!isValidStoreId(body.storeId)) {
       return json({ ok: false, error: "storeId 형식이 올바르지 않습니다." }, 400);
     }
-    const key = keymapKey(prefix, customerCode);
+    const key = keymapKey(customerCode);
     const existingStoreId = (await profileStore.get(key, { type: "text" })) as string | null;
     if (existingStoreId && existingStoreId !== body.storeId && !body.force) {
       return json(
         {
           ok: false,
-          error: `이 prefix+고객코드는 이미 다른 매장(${existingStoreId})에 연결되어 있습니다. 덮어쓰려면 force: true로 다시 요청하세요.`,
+          error: `이 고객코드는 이미 다른 매장(${existingStoreId})에 연결되어 있습니다. 덮어쓰려면 force: true로 다시 요청하세요.`,
           existingStoreId,
         },
         409
@@ -202,12 +193,11 @@ export default async function handler(request: Request) {
   }
 
   if (body.action === "unmap-license") {
-    const prefix = normalizePrefix(body.prefix);
     const customerCode = normalizeCustomerCode(body.customerCode);
-    if (!prefix || !customerCode) {
-      return json({ ok: false, error: "prefix, customerCode가 필요합니다." }, 400);
+    if (!customerCode) {
+      return json({ ok: false, error: "customerCode가 필요합니다." }, 400);
     }
-    await profileStore.delete(keymapKey(prefix, customerCode));
+    await profileStore.delete(keymapKey(customerCode));
     return json({ ok: true });
   }
 

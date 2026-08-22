@@ -8,42 +8,26 @@ import { keymapKey, profileKey, type StoreProfileRecord } from "./lib/storeProfi
  * - sync: 이 기기가 여전히 소유자인지 확인
  * - unregister: 현재 기기에서만 등록 해제 → 다른 기기로 이전 가능
  * - reclaim: 유효한 키 소유자가 기존 바인딩을 강제 해제 후 이 기기에 다시 등록
+ *
+ * 키 형식: XXXX-CCCC-DDDD-SSSS (16자)
+ *   XXXX = 매장 이름 앞 4글자(사람이 읽는 용도, 암호학적 의미 없음)
+ *   CCCC = 고객 코드(매장 이름 전체를 해시) — 매장 구분/프로필 매핑에 실제로 쓰임
+ *   DDDD = 만료일 인코딩
+ *   SSSS = 서명(CCCC+DDDD를 단일 비밀키로 HMAC)
+ * 앱이 단일 공통 빌드가 되면서 매장별로 다른 비밀키를 쓸 이유가 없어져 하나로 통합했다.
  */
 
-const LICENSE_SECRETS = {
-  v1: () =>
-    [
-      String.fromCharCode(69, 113, 85, 115),
-      "2025!",
-      String.fromCharCode(72, 111, 84, 51, 76),
-      "#MnGt@",
-      String.fromCharCode(83, 101, 99, 82, 51, 116),
-    ].join(""),
-  v2: () =>
-    [
-      String.fromCharCode(82, 101, 83, 111),
-      "2025!",
-      String.fromCharCode(82, 116, 86, 50, 83),
-      "#KyMt@",
-      String.fromCharCode(76, 99, 75, 114, 51, 116),
-    ].join(""),
-  v3: () =>
-    [
-      String.fromCharCode(72, 111, 77, 101),
-      "2025!",
-      String.fromCharCode(72, 109, 50, 52, 83),
-      "#HmKy@",
-      String.fromCharCode(83, 99, 82, 116, 51, 116),
-    ].join(""),
-} as const;
-
-const LICENSE_PREFIXES = { v1: "EQUS", v2: "HIZZ", v3: "HOME" } as const;
-
-type Skin = keyof typeof LICENSE_SECRETS;
+const LICENSE_SECRET = () =>
+  [
+    String.fromCharCode(76, 111, 99, 107),
+    "2026!",
+    String.fromCharCode(77, 103, 114, 83, 118),
+    "#IvSn@",
+    String.fromCharCode(85, 110, 105, 51, 116),
+  ].join("");
 
 type BindingRecord = {
   licenseKey: string;
-  skin: Skin;
   deviceId: string;
   fingerprintHash: string;
   installIdHash?: string;
@@ -61,7 +45,6 @@ type RequestBody = {
   installId?: string;
   /** 이 브라우저에 저장된 이전 deviceId — 같으면 동일 기기로 인정 */
   previousDeviceId?: string;
-  skin?: string;
 };
 
 function json(data: unknown, status = 200) {
@@ -76,27 +59,10 @@ function json(data: unknown, status = 200) {
   });
 }
 
-/**
- * 단일 공통 빌드에는 더 이상 build-time VITE_SKIN이 없으므로, 클라이언트가 보낸 skin을
- * 신뢰하지 않고 라이선스 키 자체의 prefix(EQUS/HIZZ/HOME)로부터 어느 비밀키 풀인지 유도한다.
- * 이렇게 하면 기존 license-bindings Blobs 키 구조(lic:v2:... 등)는 그대로 유지된다.
- */
-function deriveSkinFromKey(raw: string): Skin | null {
-  const cleaned = raw.replace(/[\s-]/g, "").toUpperCase();
-  const prefix = cleaned.slice(0, 4);
-  for (const skin of Object.keys(LICENSE_PREFIXES) as Skin[]) {
-    if (LICENSE_PREFIXES[skin] === prefix) return skin;
-  }
-  return null;
-}
-
-async function lookupStoreProfile(
-  prefix: string,
-  customerCode: string
-): Promise<StoreProfileRecord | null> {
+async function lookupStoreProfile(customerCode: string): Promise<StoreProfileRecord | null> {
   try {
     const profileStore = getStore("store-profiles");
-    const storeId = (await profileStore.get(keymapKey(prefix, customerCode), {
+    const storeId = (await profileStore.get(keymapKey(customerCode), {
       type: "text",
     })) as string | null;
     if (!storeId) return null;
@@ -126,12 +92,12 @@ function licenseId(key: string): string {
   return key.replace(/-/g, "").toUpperCase();
 }
 
-function licStoreKey(skin: Skin, key: string) {
-  return `lic:${skin}:${licenseId(key)}`;
+function licStoreKey(key: string) {
+  return `lic:${licenseId(key)}`;
 }
 
-function devStoreKey(skin: Skin, fingerprintHash: string) {
-  return `dev:${skin}:${fingerprintHash}`;
+function devStoreKey(fingerprintHash: string) {
+  return `dev:${fingerprintHash}`;
 }
 
 function decodeDate(encoded: string): Date | null {
@@ -150,19 +116,17 @@ function decodeDate(encoded: string): Date | null {
 }
 
 function validateLicenseCrypto(
-  skin: Skin,
   licenseKeyRaw: string
 ): { licenseKey: string; customerCode: string; expiresAt: Date } | null {
   const licenseKey = normalizeLicenseKey(licenseKeyRaw);
   const cleaned = licenseId(licenseKey);
-  const prefix = LICENSE_PREFIXES[skin];
-  if (cleaned.length !== 16 || !cleaned.startsWith(prefix)) return null;
+  if (cleaned.length !== 16) return null;
 
   const customerCode = cleaned.slice(4, 8);
   const dateEncoded = cleaned.slice(8, 12);
   const providedSig = cleaned.slice(12, 16);
   const payload = `${customerCode}${dateEncoded}`;
-  const expected = createHmac("sha256", LICENSE_SECRETS[skin]())
+  const expected = createHmac("sha256", LICENSE_SECRET())
     .update(payload)
     .digest("hex")
     .slice(0, 8)
@@ -214,20 +178,18 @@ function sameDevice(
 
 async function loadByLicense(
   store: ReturnType<typeof getStore>,
-  skin: Skin,
   licenseKey: string
 ): Promise<BindingRecord | null> {
-  return (await store.get(licStoreKey(skin, licenseKey), {
+  return (await store.get(licStoreKey(licenseKey), {
     type: "json",
   })) as BindingRecord | null;
 }
 
 async function loadLicenseIdByDevice(
   store: ReturnType<typeof getStore>,
-  skin: Skin,
   fingerprintHash: string
 ): Promise<string | null> {
-  const v = (await store.get(devStoreKey(skin, fingerprintHash), {
+  const v = (await store.get(devStoreKey(fingerprintHash), {
     type: "text",
   })) as string | null;
   return v || null;
@@ -238,9 +200,9 @@ async function saveBinding(
   record: BindingRecord,
   previousFingerprintHash?: string
 ) {
-  await store.setJSON(licStoreKey(record.skin, record.licenseKey), record);
+  await store.setJSON(licStoreKey(record.licenseKey), record);
   await store.set(
-    devStoreKey(record.skin, record.fingerprintHash),
+    devStoreKey(record.fingerprintHash),
     licenseId(record.licenseKey)
   );
   if (
@@ -248,7 +210,7 @@ async function saveBinding(
     previousFingerprintHash !== record.fingerprintHash
   ) {
     try {
-      await store.delete(devStoreKey(record.skin, previousFingerprintHash));
+      await store.delete(devStoreKey(previousFingerprintHash));
     } catch {
       // ignore
     }
@@ -260,12 +222,12 @@ async function deleteBinding(
   record: BindingRecord
 ) {
   try {
-    await store.delete(licStoreKey(record.skin, record.licenseKey));
+    await store.delete(licStoreKey(record.licenseKey));
   } catch {
     // ignore
   }
   try {
-    await store.delete(devStoreKey(record.skin, record.fingerprintHash));
+    await store.delete(devStoreKey(record.fingerprintHash));
   } catch {
     // ignore
   }
@@ -310,12 +272,7 @@ export default async function handler(request: Request) {
     return json({ error: "라이선스 키가 필요합니다." }, 400);
   }
 
-  const skin = deriveSkinFromKey(licenseKeyRaw);
-  if (!skin) {
-    return json({ error: "유효하지 않은 라이선스 키입니다." }, 400);
-  }
-
-  const parsed = validateLicenseCrypto(skin, licenseKeyRaw);
+  const parsed = validateLicenseCrypto(licenseKeyRaw);
   if (!parsed) {
     return json({ error: "유효하지 않은 라이선스 키입니다." }, 400);
   }
@@ -351,7 +308,7 @@ export default async function handler(request: Request) {
     );
   }
 
-  let record = await loadByLicense(store, skin, parsed.licenseKey);
+  let record = await loadByLicense(store, parsed.licenseKey);
 
   if (action === "sync") {
     if (!record) {
@@ -390,7 +347,7 @@ export default async function handler(request: Request) {
       updatedAt: now,
     };
     await saveBinding(store, record, prevFp);
-    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
+    const storeProfile = await lookupStoreProfile(record.customerCode);
     return json(publicOk(record, { storeProfile }));
   }
 
@@ -429,15 +386,10 @@ export default async function handler(request: Request) {
     if (record) {
       await deleteBinding(store, record);
     }
-    const existingLicId = await loadLicenseIdByDevice(
-      store,
-      skin,
-      fingerprintHash
-    );
+    const existingLicId = await loadLicenseIdByDevice(store, fingerprintHash);
     if (existingLicId && existingLicId !== licenseId(parsed.licenseKey)) {
       const old = await loadByLicense(
         store,
-        skin,
         `${existingLicId.slice(0, 4)}-${existingLicId.slice(4, 8)}-${existingLicId.slice(8, 12)}-${existingLicId.slice(12, 16)}`
       );
       if (old) await deleteBinding(store, old);
@@ -445,7 +397,6 @@ export default async function handler(request: Request) {
 
     record = {
       licenseKey: parsed.licenseKey,
-      skin,
       deviceId,
       fingerprintHash,
       installIdHash: installIdHash || undefined,
@@ -456,7 +407,7 @@ export default async function handler(request: Request) {
       lastSeenAt: now,
     };
     await saveBinding(store, record);
-    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
+    const storeProfile = await lookupStoreProfile(record.customerCode);
     return json({
       ...publicOk(record, { storeProfile }),
       reclaimed: true,
@@ -481,15 +432,10 @@ export default async function handler(request: Request) {
   }
 
   // 이 기기에 묶인 다른 라이선스가 있으면 정리 (기기 1개 = 활성 라이선스 1개)
-  const existingLicId = await loadLicenseIdByDevice(
-    store,
-    skin,
-    fingerprintHash
-  );
+  const existingLicId = await loadLicenseIdByDevice(store, fingerprintHash);
   if (existingLicId && existingLicId !== licenseId(parsed.licenseKey)) {
     const old = await loadByLicense(
       store,
-      skin,
       `${existingLicId.slice(0, 4)}-${existingLicId.slice(4, 8)}-${existingLicId.slice(8, 12)}-${existingLicId.slice(12, 16)}`
     );
     if (old && sameDevice(old, fingerprintHash, installIdHash, previousDeviceId)) {
@@ -508,7 +454,7 @@ export default async function handler(request: Request) {
       expiresAt: expiresAtIso,
     };
     await saveBinding(store, record, prevFp);
-    const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
+    const storeProfile = await lookupStoreProfile(record.customerCode);
     return json({
       ...publicOk(record, { storeProfile }),
       message: "이미 이 기기에 등록된 라이선스입니다.",
@@ -517,7 +463,6 @@ export default async function handler(request: Request) {
 
   record = {
     licenseKey: parsed.licenseKey,
-    skin,
     deviceId,
     fingerprintHash,
     installIdHash: installIdHash || undefined,
@@ -528,7 +473,7 @@ export default async function handler(request: Request) {
     lastSeenAt: now,
   };
   await saveBinding(store, record);
-  const storeProfile = await lookupStoreProfile(LICENSE_PREFIXES[skin], record.customerCode);
+  const storeProfile = await lookupStoreProfile(record.customerCode);
   return json({
     ...publicOk(record, { storeProfile }),
     message: "라이선스가 이 기기에 등록되었습니다.",

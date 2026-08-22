@@ -69,8 +69,8 @@ export function profileKey(storeId: string): string {
   return `profile:${storeId}`;
 }
 
-export function keymapKey(prefix: string, customerCode: string): string {
-  return `keymap:${prefix}:${customerCode}`;
+export function keymapKey(customerCode: string): string {
+  return `keymap:${customerCode}`;
 }
 
 export function iconAssetKey(storeId: string, variant: string): string {

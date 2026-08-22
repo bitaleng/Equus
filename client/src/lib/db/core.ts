@@ -1,27 +1,20 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import LZString from 'lz-string';
 import { isDemoBuild } from '@/lib/demoMode';
-import { getCurrentLicensePool, LICENSE_STORAGE_KEY } from '@/lib/licenseValidation';
+import { LICENSE_STORAGE_KEY } from '@/lib/licenseValidation';
+import { getCachedStoreProfile } from '@/lib/storeProfile';
 
 export let SQL: SqlJsStatic | null = null;
 export let db: Database | null = null;
 
 const DB_NAME = 'rest_hotel_db';
 
-// 앱 식별자 — 빌드가 하나뿐이라 활성화된 라이선스의 prefix 풀(v1/v2/v3)로 판단한다.
-// 백업 파일의 appName 필드에 쓰이며, importDatabase()의 validAppNames 검증과 짝을 이루므로
-// 문자열 자체를 바꾸지 않는다(기존에 매장들이 이미 만든 백업 파일과의 호환을 위해).
-const _POOL = isDemoBuild() ? 'demo' : (getCurrentLicensePool() ?? 'v1');
-export const APP_SYSTEM_NAME =
-  _POOL === 'demo' ? 'Demo Hotel Management System'
-  : _POOL === 'v3' ? 'HOME24 Hotel Management System'
-  : _POOL === 'v2' ? 'HIZZ Hotel Management System'
-  : 'EQUUS Hotel Management System';
-export const BACKUP_PREFIX =
-  _POOL === 'demo' ? 'demo'
-  : _POOL === 'v3' ? 'home'
-  : _POOL === 'v2' ? 'hes'
-  : 'equus';
+// 앱 식별자 — 매장 구분 없는 단일 빌드라 매장마다 다르게 두지 않는다. 백업 파일의 appName
+// 필드에 쓰이며 importDatabase()의 validAppNames 검증과 짝을 이룬다 — 이 문자열을 바꾸면
+// backup.ts의 validAppNames도 같이 맞춰야 기존 백업 파일 가져오기가 안 깨진다.
+export const APP_SYSTEM_NAME = isDemoBuild() ? 'Demo Hotel Management System' : 'Locker Manager System';
+// 백업 파일명 접두어는 매장 이름(storeId)이 있으면 그걸 쓰고, 없으면 일반 이름으로 폴백한다.
+export const BACKUP_PREFIX = isDemoBuild() ? 'demo' : (getCachedStoreProfile()?.storeId ?? 'locker');
 
 // ── IndexedDB 설정 (메인 저장소: 비동기, 압축 불필요, UI 블로킹 없음) ──
 const IDB_NAME = 'hotel_idb';
