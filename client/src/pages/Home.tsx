@@ -1607,7 +1607,10 @@ export default function Home() {
         optionAmount = customAmount;
       } else if (option === 'foreigner') {
         optionType = 'foreigner';
-        finalPrice = resolveForeignerPrice(newLockerInfo.timeType);
+        // customAmount: 외국인 요금에 함께 적용된 할인/할증액 (음수=할인). LockerOptionsDialog에서
+        // 계산해 넘겨준 값을 그대로 신뢰 — 여기서 무시하면 재오픈 시 할인 정보가 사라짐(버그였음).
+        finalPrice = Math.max(0, resolveForeignerPrice(newLockerInfo.timeType) + (customAmount || 0));
+        optionAmount = customAmount;
       } else if (option === 'discount') {
         optionType = 'discount';
         finalPrice = Math.max(0, newLockerInfo.basePrice - discountAmount);
@@ -1778,7 +1781,10 @@ export default function Home() {
       const tt = (editedEntryTime
         ? localDb.getTimeTypeWithSettings(new Date(editedEntryTime))
         : selectedEntry.timeType) as '주간' | '야간';
-      finalPrice = resolveForeignerPrice(tt);
+      // customAmount: 외국인 요금에 함께 적용된 할인/할증액 (음수=할인). LockerOptionsDialog에서
+      // 계산해 넘겨준 값을 그대로 신뢰 — 여기서 무시하면 재오픈 시 할인 정보가 사라짐(버그였음).
+      finalPrice = Math.max(0, resolveForeignerPrice(tt) + (customAmount || 0));
+      optionAmount = customAmount;
     } else if (option === 'discount') {
       optionType = 'discount';
       finalPrice = effectiveBasePrice - discountAmount;

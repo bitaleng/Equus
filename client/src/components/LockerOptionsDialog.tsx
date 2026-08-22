@@ -1091,10 +1091,17 @@ export default function LockerOptionsDialog({
         setIsFreeEntry(false);
         setIsForeigner(true);
         setIsDirectPrice(false);
-        // amount가 있으면 외국인 요금에 기본할인이 함께 적용된 상태였다는 뜻 (저장 로직과 대응)
-        setDiscountOption(currentOptionAmount !== undefined && currentOptionAmount > 0 ? "discount" : "none");
+        // amount가 있으면 외국인 요금에 할인/할증(기본할인 또는 직접입력)이 함께 적용된 상태였다는 뜻.
+        // 어느 쪽이었는지는 구분해 저장하지 않으므로, 항상 "직접입력" 경로로 금액 그대로 복원한다
+        // (금액이 같으면 결과는 동일 — 기본할인이었어도 재오픈 시엔 직접입력으로 보임).
+        if (currentOptionAmount !== undefined && currentOptionAmount !== 0) {
+          setDiscountOption("custom");
+          setDiscountInputAmount(currentOptionAmount.toString());
+        } else {
+          setDiscountOption("none");
+          setDiscountInputAmount("");
+        }
         setDirectPrice("");
-        setDiscountInputAmount("");
       } else if (currentOptionType === 'discount') {
         setIsLongTerm(false);
         setIsFreeEntry(false);
@@ -1777,10 +1784,15 @@ export default function LockerOptionsDialog({
       if (discountOption === 'discount') {
         // 외국인 요금 + 기본할인 조합 — direct_price로 뭉개면 재오픈 시 외국인 체크가
         // 사라지고 외국인 통계에서도 빠지므로, foreigner 타입을 유지하고 할인액만 amount로 기록
+        // (음수=할인 규칙은 discountOption==='custom' 재구성 경로와 동일하게 맞춤)
         optionType = 'foreigner';
-        optionAmount = discountAmount;
+        optionAmount = -discountAmount;
+      } else if (discountOption === 'custom' && discountInputAmount) {
+        // 외국인 요금 + 할인/할증 직접입력 조합 — 위와 동일한 이유로 foreigner 타입 유지
+        optionType = 'foreigner';
+        optionAmount = parseInt(discountInputAmount);
       } else if (discountOption !== 'none') {
-        // 외국인 + 직접입력할인/사용자정의 요금옵션 조합은 금액 구성이 다양해 재구성이 어려우므로
+        // 외국인 + 사용자정의 요금옵션(pricing_*) 조합은 옵션 자체를 다시 찾아 복원하기 어려우므로
         // 기존과 동일하게 최종 계산 금액으로 저장
         optionType = 'direct_price';
         optionAmount = calculateFinalPrice();
@@ -2011,10 +2023,15 @@ export default function LockerOptionsDialog({
       if (discountOption === 'discount') {
         // 외국인 요금 + 기본할인 조합 — direct_price로 뭉개면 재오픈 시 외국인 체크가
         // 사라지고 외국인 통계에서도 빠지므로, foreigner 타입을 유지하고 할인액만 amount로 기록
+        // (음수=할인 규칙은 discountOption==='custom' 재구성 경로와 동일하게 맞춤)
         optionType = 'foreigner';
-        optionAmount = discountAmount;
+        optionAmount = -discountAmount;
+      } else if (discountOption === 'custom' && discountInputAmount) {
+        // 외국인 요금 + 할인/할증 직접입력 조합 — 위와 동일한 이유로 foreigner 타입 유지
+        optionType = 'foreigner';
+        optionAmount = parseInt(discountInputAmount);
       } else if (discountOption !== 'none') {
-        // 외국인 + 직접입력할인/사용자정의 요금옵션 조합은 금액 구성이 다양해 재구성이 어려우므로
+        // 외국인 + 사용자정의 요금옵션(pricing_*) 조합은 옵션 자체를 다시 찾아 복원하기 어려우므로
         // 기존과 동일하게 최종 계산 금액으로 저장
         optionType = 'direct_price';
         optionAmount = calculateFinalPrice();
