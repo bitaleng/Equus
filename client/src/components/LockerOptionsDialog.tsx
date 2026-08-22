@@ -32,9 +32,12 @@ import { calculateAdditionalFee, getBusinessDay, getBasePrice, getSettlementCycl
 import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw, X, Pencil, Minus, Plus, Info } from "lucide-react";
+import { RotateCcw, X, Pencil, Minus, Plus, Info, Calendar as CalendarIcon, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { ko } from "date-fns/locale";
 
 function toDatetimeLocalValue(iso?: string): string {
   if (!iso) return "";
@@ -114,6 +117,110 @@ function LabelHint({
         {content}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+const LONGTERM_CALENDAR_CLASSNAMES = {
+  months: "flex flex-col",
+  caption_label: "text-sm font-semibold",
+  table: "w-full border-collapse",
+  head_cell: "text-muted-foreground rounded-md w-9 font-medium text-[11px]",
+  cell: "h-9 w-9 text-center text-sm p-0 relative",
+  day: "h-9 w-9 p-0 font-semibold rounded-lg aria-selected:opacity-100",
+};
+
+function formatKoreanDateTime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  const hour24 = d.getHours();
+  const ampm = hour24 < 12 ? "오전" : "오후";
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. (${weekday}) ${ampm} ${pad(hour12)}:${pad(d.getMinutes())}`;
+}
+
+/** datetime-local과 동일한 "YYYY-MM-DDTHH:mm" 문자열을 다루는 커스텀 날짜·시간 선택기 (달력 팝오버 + 시간 입력). */
+function DateTimePickerField({
+  id,
+  value,
+  onChange,
+  className,
+  testId,
+}: {
+  id?: string;
+  value: string;
+  onChange: (value: string) => void;
+  className?: string;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const parsed = datetimeLocalToDate(value);
+  const [pendingDate, setPendingDate] = useState<Date | undefined>(parsed || undefined);
+  const [pendingTime, setPendingTime] = useState<string>(() => {
+    if (!parsed) return "12:00";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    const d = datetimeLocalToDate(value);
+    setPendingDate(d || undefined);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setPendingTime(d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : "12:00");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const commit = (date: Date | undefined, time: string) => {
+    if (!date) return;
+    const [h, m] = time.split(":").map((n) => parseInt(n, 10) || 0);
+    const next = new Date(date.getFullYear(), date.getMonth(), date.getDate(), h, m);
+    onChange(toDatetimeLocalValue(next.toISOString()));
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          id={id}
+          type="button"
+          className={cn(
+            "flex h-11 w-full items-center gap-2 rounded-xl border border-input bg-background px-3 text-left ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 locker-opt-longterm-input locker-opt-datetime-trigger",
+            className
+          )}
+          data-testid={testId}
+        >
+          <CalendarIcon className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+          <span className="truncate">
+            {parsed ? formatKoreanDateTime(parsed) : "날짜·시간 선택"}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="z-[80] w-auto rounded-2xl p-3">
+        <Calendar
+          mode="single"
+          locale={ko}
+          selected={pendingDate}
+          onSelect={(d) => {
+            setPendingDate(d);
+            commit(d, pendingTime);
+          }}
+          className="rounded-xl p-0"
+          classNames={LONGTERM_CALENDAR_CLASSNAMES}
+        />
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+          <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <input
+            type="time"
+            value={pendingTime}
+            onChange={(e) => {
+              setPendingTime(e.target.value);
+              commit(pendingDate, e.target.value);
+            }}
+            className="locker-opt-time-input flex-1"
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -3410,13 +3517,11 @@ export default function LockerOptionsDialog({
                           <Info className="h-3.5 w-3.5 text-teal-600/70 dark:text-teal-400/70" />
                         </LabelHint>
                       </div>
-                      <Input
+                      <DateTimePickerField
                         id="long-term-checkout"
-                        type="datetime-local"
                         value={longTermCheckoutLocal}
-                        onChange={(e) => setLongTermCheckoutLocal(e.target.value)}
-                        className="locker-opt-longterm-input locker-opt-datetime-input"
-                        data-testid="input-long-term-checkout"
+                        onChange={setLongTermCheckoutLocal}
+                        testId="input-long-term-checkout"
                       />
                       {longTermStayDays > 0 && (
                         <p className="text-[11px] text-muted-foreground">
