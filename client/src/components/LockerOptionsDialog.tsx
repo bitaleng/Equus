@@ -3288,6 +3288,7 @@ export default function LockerOptionsDialog({
                   placeholder="최종 요금 입력"
                   value={directPrice}
                   onChange={(e) => setDirectPrice(e.target.value)}
+                  className="locker-opt-direct-price-input"
                   data-testid="input-direct-price"
                 />
               )}
