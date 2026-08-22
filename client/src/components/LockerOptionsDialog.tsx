@@ -32,7 +32,7 @@ import { calculateAdditionalFee, getBusinessDay, getBasePrice, getSettlementCycl
 import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw, X, Pencil, Minus, Plus } from "lucide-react";
+import { RotateCcw, X, Pencil, Minus, Plus, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -3398,25 +3398,33 @@ export default function LockerOptionsDialog({
                 {isLongTerm && (
                   <div className="ml-6 space-y-3 rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/60 dark:bg-teal-950/30 p-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="long-term-checkout" className="text-xs">퇴실 예정 날짜·시간</Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="long-term-checkout" className="text-xs">퇴실 예정 날짜·시간</Label>
+                        <LabelHint
+                          content={
+                            "입실보다 이후 시각을 입력하면 투숙 일수가 자동 계산됩니다 (24시간 단위 올림).\n" +
+                            "장기투숙은 주·야간 요금·추가요금 로직을 적용하지 않습니다.\n" +
+                            "예정 퇴실 30분 전부터 락커에 「퇴실경고」가 표시됩니다."
+                          }
+                        >
+                          <Info className="h-3.5 w-3.5 text-teal-600/70 dark:text-teal-400/70" />
+                        </LabelHint>
+                      </div>
                       <Input
                         id="long-term-checkout"
                         type="datetime-local"
                         value={longTermCheckoutLocal}
                         onChange={(e) => setLongTermCheckoutLocal(e.target.value)}
+                        className="locker-opt-longterm-input locker-opt-datetime-input"
                         data-testid="input-long-term-checkout"
                       />
-                      <p className="text-[11px] text-muted-foreground">
-                        {longTermStayDays > 0 ? (
-                          <>
-                            투숙 <strong>{longTermStayDays}일</strong>
-                            {longTermDurationLabel ? ` · 실제 체류 ${longTermDurationLabel}` : ''}
-                            {' '}(요금은 24시간 단위 올림)
-                          </>
-                        ) : (
-                          '입실보다 이후 시각을 입력하면 투숙 일수가 자동 계산됩니다.'
-                        )}
-                      </p>
+                      {longTermStayDays > 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          투숙 <strong>{longTermStayDays}일</strong>
+                          {longTermDurationLabel ? ` · 실제 체류 ${longTermDurationLabel}` : ''}
+                          {' '}(요금은 24시간 단위 올림)
+                        </p>
+                      )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -3427,6 +3435,7 @@ export default function LockerOptionsDialog({
                           inputMode="numeric"
                           value={longTermDailyFee}
                           onChange={(e) => setLongTermDailyFee(e.target.value.replace(/[^\d]/g, ''))}
+                          className="locker-opt-longterm-input"
                           data-testid="input-long-term-daily-fee"
                         />
                       </div>
@@ -3439,6 +3448,7 @@ export default function LockerOptionsDialog({
                           value={longTermDiscount}
                           onChange={(e) => setLongTermDiscount(e.target.value.replace(/[^\d]/g, ''))}
                           placeholder="0"
+                          className="locker-opt-longterm-input"
                           data-testid="input-long-term-discount"
                         />
                       </div>
@@ -3459,9 +3469,6 @@ export default function LockerOptionsDialog({
                         <span>총 금액</span>
                         <span>{longTermTotal.toLocaleString()}원</span>
                       </div>
-                      <p className="text-[11px] text-muted-foreground pt-1">
-                        장기투숙은 주·야간 요금·추가요금 로직을 적용하지 않습니다. 예정 퇴실 30분 전부터 락커에 「퇴실경고」가 표시됩니다.
-                      </p>
                     </div>
                   </div>
                 )}
