@@ -712,7 +712,12 @@ export default function Home() {
 
   useEffect(() => {
     const clampLayout = () => {
-      const { width, height } = getViewportSize();
+      // 레이아웃(layout) 뷰포트만 사용 — visualViewport는 안드로이드에서 화면 키보드가
+      // 뜨면 그만큼 줄어드는데, 이걸 기준으로 삼으면 키보드 뜰 때마다 창이 영구적으로
+      // 작아져서 저장돼버린다(키보드 내려가도 원래 크기로 안 돌아옴). window.innerWidth/Height는
+      // 키보드 유무와 무관하게 유지되므로 회전 등 실제 창 크기 변화에만 반응한다.
+      const width = Math.round(window.innerWidth);
+      const height = Math.round(window.innerHeight);
       const maxDock = Math.max(WORKSPACE_MIN_DOCK_W, width - 72);
       setDockedWidth((w) => {
         const next = Math.min(Math.max(w, WORKSPACE_MIN_DOCK_W), maxDock);
@@ -738,11 +743,9 @@ export default function Home() {
       });
     };
     window.addEventListener('resize', clampLayout);
-    window.visualViewport?.addEventListener('resize', clampLayout);
     clampLayout();
     return () => {
       window.removeEventListener('resize', clampLayout);
-      window.visualViewport?.removeEventListener('resize', clampLayout);
     };
   }, []);
 
