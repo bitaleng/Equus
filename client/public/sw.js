@@ -1,6 +1,5 @@
-const CACHE_NAME = 'hugaetel-v37';
-// 빌드 시 스킨별로 equus-v37 / hizz-v37 / home24-v37 / demo-v37 로 교체됨.
-// 이름이 바뀌면 activate에서 이전 캐시(hugaetel-v36 등)를 전부 삭제함.
+const CACHE_NAME = 'hugaetel-v38';
+// 이름이 바뀌면 activate에서 이전 캐시(hugaetel-v37 등)를 전부 삭제함.
 
 // SPA 셸로 취급해 오프라인에서도 바로 열릴 경로
 // (React Router가 index.html을 받아 클라이언트 라우팅)
@@ -120,6 +119,19 @@ function isNavigationRequest(request) {
   );
 }
 
+// 매장별 아이콘·매니페스트(/store/*)와 API(/api/*, /.netlify/*)는 실제로는 페이지가
+// 아니라 서버가 즉석에서 만들어주는 응답이라, 주소창에 직접 입력하는 등의 이유로
+// text/html Accept 헤더가 붙어도 SPA 셸(index.html)로 가로채면 안 된다.
+// 이걸 놓치면 서버는 멀쩡한데 SW가 캐시된 index.html을 먼저 돌려줘서
+// "이미지가 안 보인다"는 식의 오진단을 유발한다.
+function isDynamicApiPath(pathname) {
+  return (
+    pathname.startsWith('/store/') ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/.netlify/')
+  );
+}
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -132,7 +144,7 @@ self.addEventListener('fetch', (event) => {
 
 async function handleFetch(request, url) {
   // 내비게이션: 쿼리스트링(?token=) 무시하고 pathname 셸 우선
-  if (isNavigationRequest(request)) {
+  if (isNavigationRequest(request) && !isDynamicApiPath(url.pathname)) {
     const shell =
       (await caches.match(url.pathname)) ||
       (await caches.match('/index.html')) ||
