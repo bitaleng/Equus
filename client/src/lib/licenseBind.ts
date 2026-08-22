@@ -1,6 +1,6 @@
 import { getStoredLicense, storeLicense, clearLicense, LICENSE_STORAGE_KEY } from "@/lib/licenseValidation";
 import { persistLicenseToDatabase } from "@/lib/localDb";
-import { cacheStoreProfile, seedSettingsFromProfileIfNeeded, type StoreProfile } from "@/lib/storeProfile";
+import { cacheStoreProfile, getCachedStoreProfile, seedSettingsFromProfileIfNeeded, type StoreProfile } from "@/lib/storeProfile";
 
 /**
  * 정식 라이선스의 실제 인증 창구. 서명 검증·기기 바인딩은 전부
@@ -234,6 +234,10 @@ export async function syncLicenseBinding(): Promise<BindResult> {
     cacheStoreProfile((data.storeProfile as StoreProfile | null) ?? null);
     return { ok: true, deviceId: String(data.deviceId), expiresAt: String(data.expiresAt) };
   } catch {
+    // 관리자가 이 매장에 "영구 오프라인" 을 켜준 경우 — 유예기간 없이 계속 허용
+    if (getCachedStoreProfile()?.offlineModeEnabled) {
+      return { ok: true, offline: true, deviceId: getBoundDeviceId() || undefined };
+    }
     // 네트워크 실패 — 유예기간 내면 오프라인 계속 허용
     const age = getLastSyncAgeMs();
     if (age !== null && age < OFFLINE_GRACE_MS) {

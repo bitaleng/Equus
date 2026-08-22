@@ -193,6 +193,25 @@
     </div>
 
     <div class="card">
+      <h2>4. 영구 오프라인 모드</h2>
+      <div class="warning" style="color:#ffc107;">
+        인터넷이 아예 없는 매장 전용입니다. 켜면 이 매장 기기는 14일 오프라인 제한 없이
+        무기한 계속 사용할 수 있지만, 그만큼 만료일·기기변경 등을 원격으로 확인·제어할 수 없게 됩니다.
+        매장과 반드시 합의한 뒤에만 켜주세요 — 매장이 스스로 켤 수 있는 방법은 없습니다.
+      </div>
+      <div class="form-group">
+        <label for="offlineStoreId">storeId (위 1번의 storeId와 동일)</label>
+        <input type="text" id="offlineStoreId" placeholder="예: gangnam-sauna" />
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn" id="checkOfflineModeBtn">현재 상태 확인</button>
+        <button class="btn" id="enableOfflineModeBtn" style="background:linear-gradient(135deg,#4ade80,#22c55e);">영구 오프라인 켜기</button>
+        <button class="btn" id="disableOfflineModeBtn" style="background:linear-gradient(135deg,#ef4444,#dc2626);">끄기</button>
+      </div>
+      <div class="status" id="offlineModeStatus"></div>
+    </div>
+
+    <div class="card">
       <h2>등록된 매장 목록</h2>
       <button class="btn" id="refreshListBtn">새로고침</button>
       <div id="profileList" style="margin-top:16px;"></div>
@@ -328,6 +347,48 @@
       }
     });
 
+    async function setOfflineMode(enabled) {
+      const el = document.getElementById('offlineModeStatus');
+      const storeId = document.getElementById('offlineStoreId').value.trim();
+      if (!storeId) {
+        showStatus(el, false, 'storeId를 입력하세요.');
+        return;
+      }
+      if (enabled) {
+        const confirmed = confirm(`${storeId} 매장의 영구 오프라인 모드를 켤까요?\n매장과 반드시 합의된 상태인지 확인하세요.`);
+        if (!confirmed) return;
+      }
+      const { httpOk, data } = await callAdmin({
+        action: 'upsert-profile',
+        profile: { storeId, offlineModeEnabled: enabled },
+      });
+      if (httpOk && data.ok) {
+        showStatus(el, true, `${storeId}: 영구 오프라인 모드 ${data.profile.offlineModeEnabled ? '켜짐' : '꺼짐'}`);
+      } else {
+        showStatus(el, false, (data && data.error) || '변경에 실패했습니다.');
+      }
+    }
+
+    document.getElementById('checkOfflineModeBtn').addEventListener('click', async () => {
+      const el = document.getElementById('offlineModeStatus');
+      const storeId = document.getElementById('offlineStoreId').value.trim();
+      if (!storeId) {
+        showStatus(el, false, 'storeId를 입력하세요.');
+        return;
+      }
+      const { httpOk, data } = await callAdmin({ action: 'get-profile', storeId });
+      if (httpOk && data.ok && data.profile) {
+        showStatus(el, true, `${storeId}: 영구 오프라인 모드 ${data.profile.offlineModeEnabled ? '켜짐' : '꺼짐'}`);
+      } else if (httpOk && data.ok && !data.profile) {
+        showStatus(el, false, '등록된 매장이 아닙니다. 먼저 1번에서 프로필을 저장하세요.');
+      } else {
+        showStatus(el, false, (data && data.error) || '조회에 실패했습니다.');
+      }
+    });
+
+    document.getElementById('enableOfflineModeBtn').addEventListener('click', () => setOfflineMode(true));
+    document.getElementById('disableOfflineModeBtn').addEventListener('click', () => setOfflineMode(false));
+
     async function refreshList() {
       const container = document.getElementById('profileList');
       const { httpOk, data } = await callAdmin({ action: 'list-profiles' });
@@ -342,7 +403,7 @@
       }
       container.innerHTML = profiles.map((p) => `
         <div class="list-item">
-          <div class="name">${p.displayName} ${p.active ? '' : '<span class="inactive">(비활성)</span>'}</div>
+          <div class="name">${p.displayName} ${p.active ? '' : '<span class="inactive">(비활성)</span>'} ${p.offlineModeEnabled ? '<span style="color:#4ade80;">(영구 오프라인)</span>' : ''}</div>
           <div class="id">${p.storeId}</div>
         </div>
       `).join('');

@@ -26,6 +26,8 @@ export interface StoreProfile {
   icons: StoreIconSet;
   iconVersion: string;
   settingsOverrides?: Record<string, unknown>;
+  /** 관리자가 매장과 합의한 뒤에만 켜는 영구 오프라인 허용 플래그. licenseBind.ts가 참조한다. */
+  offlineModeEnabled?: boolean;
   active: boolean;
 }
 

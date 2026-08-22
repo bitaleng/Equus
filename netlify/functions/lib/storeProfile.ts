@@ -60,6 +60,13 @@ export interface StoreProfileRecord {
   iconVersion: string;
   /** 이 매장의 라이선스가 처음 활성화될 때 한 번만 로컬 설정에 반영되는 기본값. */
   settingsOverrides?: Record<string, unknown>;
+  /**
+   * 관리자가 매장과 합의한 뒤에만 켜는 "영구 오프라인 허용" 플래그.
+   * true면 클라이언트(licenseBind.ts)가 14일 오프라인 유예기간 체크를 건너뛰고
+   * 인터넷이 없어도 무기한 계속 사용을 허용한다 — store-admin.html에서만 켤 수 있고
+   * 매장이 스스로 켤 수 있는 방법은 없다(반드시 관리자 조작 필요).
+   */
+  offlineModeEnabled?: boolean;
   active: boolean;
   createdAt: string;
   updatedAt: string;

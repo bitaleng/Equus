@@ -92,23 +92,26 @@ export default async function handler(request: Request) {
     if (!isValidStoreId(input?.storeId)) {
       return json({ ok: false, error: "storeId 형식이 올바르지 않습니다 (영소문자/숫자/하이픈, 2~40자)." }, 400);
     }
-    if (!input.displayName || !input.shortName) {
-      return json({ ok: false, error: "displayName, shortName은 필수입니다." }, 400);
-    }
     const now = new Date().toISOString();
     const existing = (await profileStore.get(profileKey(input.storeId), {
       type: "json",
     })) as StoreProfileRecord | null;
+    // 신규 매장 생성 시에만 필수 — 기존 매장은 필드 일부만 보내는 부분 수정도 허용한다
+    // (예: 영구 오프라인 모드 토글만 켜고 싶을 때 이름/설명까지 매번 다시 보낼 필요 없게).
+    if (!existing && (!input.displayName || !input.shortName)) {
+      return json({ ok: false, error: "새 매장을 만들 때는 displayName, shortName이 필수입니다." }, 400);
+    }
     const record: StoreProfileRecord = {
       storeId: input.storeId,
-      displayName: input.displayName,
-      shortName: input.shortName,
+      displayName: input.displayName ?? existing?.displayName ?? "",
+      shortName: input.shortName ?? existing?.shortName ?? "",
       description: input.description ?? existing?.description ?? "",
       themeColor: input.themeColor ?? existing?.themeColor ?? "#0F172A",
       backgroundColor: input.backgroundColor ?? existing?.backgroundColor ?? "#ffffff",
       icons: input.icons ?? existing?.icons ?? {},
       iconVersion: existing?.iconVersion ?? "1",
       settingsOverrides: input.settingsOverrides ?? existing?.settingsOverrides,
+      offlineModeEnabled: input.offlineModeEnabled ?? existing?.offlineModeEnabled ?? false,
       active: input.active ?? existing?.active ?? true,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
