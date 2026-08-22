@@ -1,8 +1,8 @@
 {
-  "id": "/equus",
-  "name": "EQUUS LOCKER MANAGER",
-  "short_name": "LOCKER",
-  "description": "에쿠스 휴게텔 입실 관리 시스템",
+  "id": "/",
+  "name": "입실관리매니저",
+  "short_name": "입실관리",
+  "description": "락카 입실 현황을 실시간으로 관리합니다.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

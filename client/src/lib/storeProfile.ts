@@ -34,7 +34,7 @@ const SEEDED_STORE_KEY = "store_profile_seeded_storeid_v1";
 
 /** 제네릭(활성화 전 기본값) — client/index.html에 박아둔 값과 동일하게 유지한다. */
 export const GENERIC_PROFILE_FALLBACK = {
-  displayName: "EQUUS LOCKER MANAGER",
+  displayName: "입실관리매니저",
   description: "락카 입실 현황을 실시간으로 관리합니다.",
 };
 

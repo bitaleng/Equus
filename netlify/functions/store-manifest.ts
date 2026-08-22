@@ -7,9 +7,9 @@ import { profileKey, type StoreProfileRecord } from "./lib/storeProfile";
  */
 
 const GENERIC_MANIFEST = {
-  id: "/equus",
-  name: "EQUUS LOCKER MANAGER",
-  short_name: "LOCKER",
+  id: "/",
+  name: "입실관리매니저",
+  short_name: "입실관리",
   description: "락카 입실 현황을 실시간으로 관리합니다.",
   start_url: "/",
   display: "standalone",

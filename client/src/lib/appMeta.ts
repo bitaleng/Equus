@@ -11,7 +11,7 @@ const DEMO_META = {
 
 const GENERIC_META = {
   name: GENERIC_PROFILE_FALLBACK.displayName,
-  shortName: "LOCKER",
+  shortName: "입실관리",
   description: GENERIC_PROFILE_FALLBACK.description,
 };
 
