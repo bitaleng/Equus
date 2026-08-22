@@ -3598,24 +3598,13 @@ export default function LockerOptionsDialog({
                       className="w-full locker-opt-prepaid-input"
                       data-testid="input-prepaid-additional-fee"
                     />
-                    {/* 선지급 결제방식 선택 (주결제방식과 다른 경우에만 필요) */}
+                    {/* 선지급 결제방식 선택 — 기본값은 주결제방식과 동일하게 자동 선택되고, 다르게 쓰려면 직접 눌러 바꾸면 된다 */}
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">선지급 결제방식 <span className="text-blue-500">(주결제방식과 다를 때 선택)</span></p>
                       <div className="flex gap-1">
                         <Button
                           type="button"
                           size="sm"
-                          variant={prepaidAdditionalFeePaymentMethod === null ? "default" : "outline"}
-                          onClick={() => setPrepaidAdditionalFeePaymentMethod(null)}
-                          data-testid="btn-prepaid-method-same"
-                          className="text-xs"
-                        >
-                          주결제방식과 동일
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={prepaidAdditionalFeePaymentMethod === 'cash' ? "default" : "outline"}
+                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'cash' ? "default" : "outline"}
                           onClick={() => setPrepaidAdditionalFeePaymentMethod('cash')}
                           data-testid="btn-prepaid-method-cash"
                           className="text-xs"
@@ -3625,7 +3614,7 @@ export default function LockerOptionsDialog({
                         <Button
                           type="button"
                           size="sm"
-                          variant={prepaidAdditionalFeePaymentMethod === 'card' ? "default" : "outline"}
+                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'card' ? "default" : "outline"}
                           onClick={() => setPrepaidAdditionalFeePaymentMethod('card')}
                           data-testid="btn-prepaid-method-card"
                           className="text-xs"
@@ -3635,7 +3624,7 @@ export default function LockerOptionsDialog({
                         <Button
                           type="button"
                           size="sm"
-                          variant={prepaidAdditionalFeePaymentMethod === 'transfer' ? "default" : "outline"}
+                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'transfer' ? "default" : "outline"}
                           onClick={() => setPrepaidAdditionalFeePaymentMethod('transfer')}
                           data-testid="btn-prepaid-method-transfer"
                           className="text-xs"
@@ -3643,13 +3632,13 @@ export default function LockerOptionsDialog({
                           이체
                         </Button>
                       </div>
-                      {prepaidAdditionalFeePaymentMethod !== null && prepaidAdditionalFeeAmount && (
+                      {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) !== paymentMethod && (
                         <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                           기본요금 → {paymentMethod === 'cash' ? '현금' : paymentMethod === 'card' ? '카드' : '이체'} /
                           선지급 {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 → {prepaidAdditionalFeePaymentMethod === 'cash' ? '현금' : prepaidAdditionalFeePaymentMethod === 'card' ? '카드' : '이체'} (자동 분리결제)
                         </p>
                       )}
-                      {!prepaidAdditionalFeePaymentMethod && prepaidAdditionalFeeAmount && (
+                      {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) === paymentMethod && (
                         <p className="text-xs text-muted-foreground mt-1">
                           {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 선지급
                         </p>
