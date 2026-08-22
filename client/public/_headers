@@ -1,8 +1,28 @@
+# netlify-static.toml [[headers]] 와 반드시 동기화 유지 (Netlify Drop은 _headers를 우선 적용)
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
 /sw.js
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: public, max-age=0, must-revalidate
+
+/workbox-*.js
+  Cache-Control: public, max-age=0, must-revalidate
 
 /manifest.json
-  Cache-Control: no-cache
+  Content-Type: application/manifest+json
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json
 
 /*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.woff2
   Cache-Control: public, max-age=31536000, immutable
