@@ -1091,7 +1091,8 @@ export default function LockerOptionsDialog({
         setIsFreeEntry(false);
         setIsForeigner(true);
         setIsDirectPrice(false);
-        setDiscountOption("none");
+        // amount가 있으면 외국인 요금에 기본할인이 함께 적용된 상태였다는 뜻 (저장 로직과 대응)
+        setDiscountOption(currentOptionAmount !== undefined && currentOptionAmount > 0 ? "discount" : "none");
         setDirectPrice("");
         setDiscountInputAmount("");
       } else if (currentOptionType === 'discount') {
@@ -1773,8 +1774,14 @@ export default function LockerOptionsDialog({
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
-      if (discountOption !== 'none') {
-        // 외국인 요금에 할인 옵션 적용 시 최종 계산 금액으로 저장 (handleSaveChanges와 동일)
+      if (discountOption === 'discount') {
+        // 외국인 요금 + 기본할인 조합 — direct_price로 뭉개면 재오픈 시 외국인 체크가
+        // 사라지고 외국인 통계에서도 빠지므로, foreigner 타입을 유지하고 할인액만 amount로 기록
+        optionType = 'foreigner';
+        optionAmount = discountAmount;
+      } else if (discountOption !== 'none') {
+        // 외국인 + 직접입력할인/사용자정의 요금옵션 조합은 금액 구성이 다양해 재구성이 어려우므로
+        // 기존과 동일하게 최종 계산 금액으로 저장
         optionType = 'direct_price';
         optionAmount = calculateFinalPrice();
       } else {
@@ -1791,7 +1798,7 @@ export default function LockerOptionsDialog({
       optionType = 'custom';
       optionAmount = parseInt(discountInputAmount);
     }
-    
+
     const baseFinalPrice = calculateFinalPrice();
     const prepaidAmount = (!isLongTerm && hasPrepaidAdditionalFee) ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     const computedFinalPrice = baseFinalPrice + prepaidAmount; // 선지급금 포함 총액
@@ -2001,8 +2008,14 @@ export default function LockerOptionsDialog({
       optionType = 'direct_price';
       optionAmount = parseInt(directPrice);
     } else if (isForeigner) {
-      if (discountOption !== 'none') {
-        // 외국인 요금에 할인 옵션 적용 시 최종 계산 금액으로 저장
+      if (discountOption === 'discount') {
+        // 외국인 요금 + 기본할인 조합 — direct_price로 뭉개면 재오픈 시 외국인 체크가
+        // 사라지고 외국인 통계에서도 빠지므로, foreigner 타입을 유지하고 할인액만 amount로 기록
+        optionType = 'foreigner';
+        optionAmount = discountAmount;
+      } else if (discountOption !== 'none') {
+        // 외국인 + 직접입력할인/사용자정의 요금옵션 조합은 금액 구성이 다양해 재구성이 어려우므로
+        // 기존과 동일하게 최종 계산 금액으로 저장
         optionType = 'direct_price';
         optionAmount = calculateFinalPrice();
       } else {
@@ -3658,6 +3671,7 @@ export default function LockerOptionsDialog({
                     placeholder="할인/할증 금액 입력 (음수=할인)"
                     value={discountInputAmount}
                     onChange={(e) => setDiscountInputAmount(e.target.value)}
+                    className="locker-opt-custom-discount-input"
                     data-testid="input-custom-discount"
                   />
                 )}
