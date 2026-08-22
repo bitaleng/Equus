@@ -149,6 +149,11 @@
           <input type="color" id="backgroundColor" value="#ffffff" />
         </div>
       </div>
+      <div class="form-group">
+        <label for="settingsOverrides">매장별 기본 설정값 (선택, JSON 형식)</label>
+        <textarea id="settingsOverrides" rows="4" placeholder='예: {"dayPrice": 12000, "nightPrice": 18000, "foreignerPrice": 25000, "businessDayStartHour": 10}' style="width:100%; padding:10px 14px; border:1px solid rgba(255,255,255,0.2); border-radius:8px; background:rgba(255,255,255,0.1); color:#fff; font-size:13px; font-family:'Monaco','Menlo',monospace; resize:vertical;"></textarea>
+        <div class="hint">이 매장이 라이선스를 처음 활성화할 때 딱 한 번만 적용되는 기본값입니다. 이후 매장 주인이 시스템설정에서 직접 바꾼 값은 덮어쓰지 않습니다. 비워두면 공통 기본값(원본 앱 기본값)이 그대로 쓰입니다.</div>
+      </div>
       <button class="btn btn-block" id="saveProfileBtn">프로필 저장</button>
       <div class="status" id="profileStatus"></div>
     </div>
@@ -258,9 +263,19 @@
         showStatus(el, false, 'storeId, 앱 이름, 짧은 이름은 필수입니다.');
         return;
       }
+      const settingsOverridesRaw = document.getElementById('settingsOverrides').value.trim();
+      let settingsOverrides;
+      if (settingsOverridesRaw) {
+        try {
+          settingsOverrides = JSON.parse(settingsOverridesRaw);
+        } catch {
+          showStatus(el, false, '기본 설정값 JSON 형식이 올바르지 않습니다. 예: {"dayPrice": 12000}');
+          return;
+        }
+      }
       const { httpOk, data } = await callAdmin({
         action: 'upsert-profile',
-        profile: { storeId, displayName, shortName, description, themeColor, backgroundColor },
+        profile: { storeId, displayName, shortName, description, themeColor, backgroundColor, ...(settingsOverrides ? { settingsOverrides } : {}) },
       });
       if (httpOk && data.ok) {
         showStatus(el, true, '프로필이 저장되었습니다.');
