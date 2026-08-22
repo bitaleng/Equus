@@ -9,6 +9,7 @@ type CctvRegistration = {
   source?: string;
   appOrigin?: string;
   installed?: boolean;
+  storeLabel?: string;
 };
 
 const ALLOWED_EVENTS = new Set([
@@ -62,16 +63,18 @@ function discordPayload(body: CctvRegistration) {
     token_ready: "접속 주소 준비",
   };
 
+  const storeLabel = body.storeLabel || "매장 미등록";
   return {
     content:
-      `[CCTV] ${eventLabels[body.event || ""] || body.event}\n` +
+      `[CCTV] ${storeLabel} · ${eventLabels[body.event || ""] || body.event}\n` +
       `토큰: ${body.token || ""}\n` +
       `오프라인 시: 설치된 앱 → /cctv/view · /cctv/remote · /screen/view 에서 토큰 입력`,
     embeds: [
       {
-        title: "카운터 카메라 접속 정보",
+        title: `카운터 카메라 접속 정보 — ${storeLabel}`,
         description: eventLabels[body.event || ""] || body.event,
         fields: [
+          { name: "매장", value: storeLabel },
           { name: "영상 보기", value: body.viewerUrl },
           { name: "원격 제어", value: body.remoteUrl },
           ...(body.screenUrl ? [{ name: "원격화면 (사용자 화면)", value: body.screenUrl }] : []),

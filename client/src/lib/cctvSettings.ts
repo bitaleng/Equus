@@ -1,4 +1,5 @@
 import { buildScreenViewerUrl } from "@/lib/screenShare";
+import { getCachedStoreProfile } from "@/lib/storeProfile";
 
 /** 감시(CCTV) 관리자 설정 — localStorage settings에 병합 저장 */
 
@@ -145,6 +146,9 @@ export async function notifyExternalAddress(payload: {
   }
 
   const screenUrl = payload.screenUrl || buildScreenViewerUrl(payload.token);
+  // 여러 매장이 같은 사이트 주소를 공유하므로, 링크 도메인만으로는 어느 매장인지 구분이 안 된다.
+  // 등록된 매장 프로필의 이름을 메시지에 함께 표시해 구분한다.
+  const storeLabel = getCachedStoreProfile()?.displayName || "매장 미등록";
   const body = {
     ...payload,
     screenUrl,
@@ -152,6 +156,7 @@ export async function notifyExternalAddress(payload: {
     source: "ivansauna-cctv",
     appOrigin: window.location.origin,
     installed: window.matchMedia?.("(display-mode: standalone)").matches || false,
+    storeLabel,
   };
 
   try {
@@ -168,7 +173,7 @@ export async function notifyExternalAddress(payload: {
         isDiscord
           ? {
               content:
-                `[감시카메라] ${payload.event}\n` +
+                `[감시카메라] ${storeLabel} · ${payload.event}\n` +
                 `카메라 보기: ${payload.viewerUrl}\n` +
                 `원격제어: ${payload.remoteUrl}\n` +
                 `원격화면: ${screenUrl}\n` +
@@ -176,9 +181,10 @@ export async function notifyExternalAddress(payload: {
                 `오프라인 시: 설치된 앱 → /cctv/view · /cctv/remote · /screen/view 에서 토큰 입력`,
               embeds: [
                 {
-                  title: "카운터 감시 카메라",
+                  title: `카운터 감시 카메라 — ${storeLabel}`,
                   description: `이벤트: **${payload.event}**`,
                   fields: [
+                    { name: "매장", value: storeLabel },
                     { name: "카메라 보기", value: payload.viewerUrl },
                     { name: "원격제어", value: payload.remoteUrl },
                     { name: "원격화면 (사용자 화면)", value: screenUrl },
