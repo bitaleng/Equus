@@ -18,13 +18,25 @@ function toGenericFallback(variant: string) {
   return Response.redirect(target, 302);
 }
 
+function debugResponse(info: Record<string, unknown>) {
+  return new Response(JSON.stringify(info, null, 2), {
+    status: 200,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
 export default async function handler(request: Request) {
   const url = new URL(request.url);
   const storeId = url.searchParams.get("store") || "";
   const variant = url.searchParams.get("variant") || "";
   const hasVersion = url.searchParams.has("v");
+  // 임시 진단용(?debug 붙이면 리다이렉트 대신 사람이 읽을 수 있는 JSON으로 응답) — 원인 파악 후 제거 예정.
+  const debug = url.searchParams.has("debug");
 
   if (!isValidStoreId(storeId) || !isValidIconVariant(variant)) {
+    if (debug) {
+      return debugResponse({ reason: "storeId 또는 variant 형식이 올바르지 않음", rawUrl: request.url, receivedStoreId: storeId, receivedVariant: variant });
+    }
     return toGenericFallback(variant);
   }
 
@@ -35,7 +47,14 @@ export default async function handler(request: Request) {
     })) as ArrayBuffer | null;
 
     if (!data) {
+      if (debug) {
+        return debugResponse({ reason: "Blobs 저장소에서 해당 키를 못 찾음", receivedStoreId: storeId, receivedVariant: variant, blobKey: iconAssetKey(storeId, variant) });
+      }
       return toGenericFallback(variant);
+    }
+
+    if (debug) {
+      return debugResponse({ reason: "정상 — 이미지 데이터를 찾음", receivedStoreId: storeId, receivedVariant: variant, byteLength: data.byteLength });
     }
 
     return new Response(data, {
@@ -48,7 +67,10 @@ export default async function handler(request: Request) {
         "Access-Control-Allow-Origin": "*",
       },
     });
-  } catch {
+  } catch (e) {
+    if (debug) {
+      return debugResponse({ reason: "예외 발생", error: e instanceof Error ? e.message : String(e), receivedStoreId: storeId, receivedVariant: variant });
+    }
     return toGenericFallback(variant);
   }
 }
