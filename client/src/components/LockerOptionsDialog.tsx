@@ -4513,7 +4513,7 @@ export default function LockerOptionsDialog({
 
             {/* 추가매출 항목 - 버튼형 선택 */}
             {availableRentalItems.length > 0 && (
-              <div className="space-y-3">
+              <div className="locker-opt-section locker-opt-section-rental space-y-3">
                 <Label className="text-sm font-semibold">추가매출 항목 (선택사항)</Label>
                 <div className="space-y-3">
                   {availableRentalItems.map((item) => {

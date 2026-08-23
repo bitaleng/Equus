@@ -605,7 +605,8 @@
   }
   .locker-opt-section-options,
   .locker-opt-section-payment,
-  .locker-opt-section-memo {
+  .locker-opt-section-memo,
+  .locker-opt-section-rental {
     padding: 0.875rem;
     display: flex;
     flex-direction: column;
