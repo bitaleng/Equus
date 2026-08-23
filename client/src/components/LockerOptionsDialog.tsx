@@ -262,8 +262,8 @@ interface LockerOptionsDialogProps {
   currentPaymentCard?: number;
   currentPaymentTransfer?: number;
   currentOptionType?: 'none' | 'discount' | 'custom' | 'foreigner' | 'direct_price' | 'free';
-  currentOptionAmount?: number;
-  currentFinalPrice?: number;
+  currentOptionAmount?: number | null;
+  currentFinalPrice?: number | null;
   discountAmount?: number;
   foreignerPrice?: number;
   isInUse?: boolean;
@@ -1212,13 +1212,15 @@ export default function LockerOptionsDialog({
         setDiscountOption("none");
         setDirectPrice("");
         setDiscountInputAmount("");
-      } else if (currentOptionType === 'direct_price' && currentFinalPrice !== undefined) {
+      } else if (currentOptionType === 'direct_price' && currentFinalPrice != null) {
         setIsLongTerm(false);
         setIsFreeEntry(false);
         setIsDirectPrice(true);
         // option_amount = 사용자가 입력한 직접요금 (prepaid 미포함)
         // final_price = option_amount + prepaid → 재오픈 시 이걸 쓰면 prepaid가 누적됨
-        const directPriceValue = (currentOptionAmount !== undefined && currentOptionAmount > 0)
+        // option_amount 컬럼은 NULL 허용이라 (신규체크인이 아닌) 기존 사용중 락커를 다시 열 때
+        // DB에서 null로 내려올 수 있음 — undefined만 걸러내면 null이 통과해 .toString()에서 TypeError
+        const directPriceValue = (currentOptionAmount != null && currentOptionAmount > 0)
           ? currentOptionAmount
           : currentFinalPrice;
         setDirectPrice(directPriceValue.toString());
@@ -1233,7 +1235,8 @@ export default function LockerOptionsDialog({
         // amount가 있으면 외국인 요금에 할인/할증(기본할인 또는 직접입력)이 함께 적용된 상태였다는 뜻.
         // 어느 쪽이었는지는 구분해 저장하지 않으므로, 항상 "직접입력" 경로로 금액 그대로 복원한다
         // (금액이 같으면 결과는 동일 — 기본할인이었어도 재오픈 시엔 직접입력으로 보임).
-        if (currentOptionAmount !== undefined && currentOptionAmount !== 0) {
+        // option_amount는 NULL 허용 컬럼 — 조정 없는 순수 외국인 요금이면 DB에 null로 저장되어 있음.
+        if (currentOptionAmount != null && currentOptionAmount !== 0) {
           setDiscountOption("custom");
           setDiscountInputAmount(currentOptionAmount.toString());
         } else {
@@ -1249,7 +1252,7 @@ export default function LockerOptionsDialog({
         setIsDirectPrice(false);
         setDirectPrice("");
         setDiscountInputAmount("");
-      } else if (currentOptionType === 'custom' && currentOptionAmount !== undefined) {
+      } else if (currentOptionType === 'custom' && currentOptionAmount != null) {
         setIsLongTerm(false);
         setIsFreeEntry(false);
         setDiscountOption("custom");
