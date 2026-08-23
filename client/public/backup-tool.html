@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>백업파일 도구 - 관리자용</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px 60px;
+    color: #e0e0e0;
+  }
+  .container {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 560px;
+    width: 100%;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .header { text-align: center; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  .header p { color: #a0a0a0; font-size: 14px; line-height: 1.5; }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 {
+    font-size: 16px;
+    color: #4a9eff;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card .desc {
+    font-size: 13px;
+    color: #a0a0a0;
+    line-height: 1.6;
+    margin-bottom: 14px;
+  }
+
+  .file-drop {
+    border: 2px dashed rgba(255,255,255,0.25);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+    font-size: 14px;
+    color: #c0c0c0;
+    margin-bottom: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .file-drop:active,
+  .file-drop.has-file {
+    border-color: #4a9eff;
+    background: rgba(74,158,255,0.08);
+  }
+  .file-drop input { display: none; }
+  .file-drop .fname { color: #4ade80; font-weight: 600; margin-top: 4px; word-break: break-all; }
+
+  select, .radio-group {
+    width: 100%;
+    margin-bottom: 14px;
+  }
+  select {
+    padding: 12px 14px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 15px;
+  }
+  select option { background: #16213e; color: #fff; }
+
+  .btn {
+    width: 100%;
+    padding: 13px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: linear-gradient(135deg, #4a9eff 0%, #3b82f6 100%);
+    color: #fff;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:not(:disabled):active { transform: translateY(1px); }
+
+  .result {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    display: none;
+    word-break: break-all;
+  }
+  .result.show { display: block; }
+  .result.ok { background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; }
+  .result.err { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); color: #f87171; }
+
+  .dl-btn {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    background: rgba(74,222,128,0.15);
+    color: #4ade80;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    border: 1px solid rgba(74,222,128,0.35);
+  }
+
+  .footer-note {
+    font-size: 12px;
+    color: #707070;
+    text-align: center;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>백업파일 도구</h1>
+      <p>백업(.json) 파일을 손으로 편집하지 않고 안전하게 변환합니다.<br>파일은 이 기기 밖으로 전송되지 않고, 브라우저 안에서만 처리됩니다.</p>
+    </div>
+
+    <div class="card">
+      <h2>① 구버전에서 열리게 만들기</h2>
+      <div class="desc">
+        신버전(통합 빌드)에서 내보낸 백업을 구버전(매장별 개별 빌드)에서 "가져오기" 하면
+        "호텔 관리 시스템 백업 파일이 아닙니다" 오류가 납니다. 백업 안의 앱 이름표(appName)를
+        구버전이 알아보는 이름으로 바꿔주면 해결됩니다.
+      </div>
+      <label class="file-drop" id="drop1">
+        <input type="file" id="file1" accept="application/json,.json">
+        <div>파일을 선택하세요 (.json)</div>
+        <div class="fname" id="fname1"></div>
+      </label>
+      <select id="targetStore">
+        <option value="EQUUS Hotel Management System">에쿠스 (EQUUS)</option>
+        <option value="HIZZ Hotel Management System">히즈 (HIZZ)</option>
+        <option value="HOME24 Hotel Management System">HOME24</option>
+      </select>
+      <button class="btn" id="btn1" disabled>구버전용으로 변환하고 다운로드</button>
+      <div class="result" id="result1"></div>
+    </div>
+
+    <div class="card">
+      <h2>② 구간 병합용으로 변환</h2>
+      <div class="desc">
+        빠진 구간만 담긴 백업 파일을 "시스템설정 → 오래된 데이터 정리 → 아카이브 불러오기"로
+        병합하려면 파일에 "구간 아카이브" 표시가 있어야 합니다. 이 버튼이 그 표시만 추가해줍니다
+        (이미 있는 기록은 자동으로 건너뛰고, 없는 기록만 추가되니 안전합니다).
+      </div>
+      <label class="file-drop" id="drop2">
+        <input type="file" id="file2" accept="application/json,.json">
+        <div>파일을 선택하세요 (.json)</div>
+        <div class="fname" id="fname2"></div>
+      </label>
+      <button class="btn" id="btn2" disabled>병합용으로 변환하고 다운로드</button>
+      <div class="result" id="result2"></div>
+    </div>
+
+    <p class="footer-note">문제가 있으면 원본 파일은 그대로 두고, 변환된 파일만 새로 받아지니<br>원본이 손상될 걱정 없이 여러 번 시도해도 됩니다.</p>
+  </div>
+
+<script>
+  function setupTool(fileInputId, dropId, fnameId, btnId, resultId, transform, suffix) {
+    const fileInput = document.getElementById(fileInputId);
+    const drop = document.getElementById(dropId);
+    const fname = document.getElementById(fnameId);
+    const btn = document.getElementById(btnId);
+    const result = document.getElementById(resultId);
+    let loadedText = null;
+    let loadedName = '';
+
+    drop.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files && fileInput.files[0];
+      result.className = 'result';
+      result.innerHTML = '';
+      btn.disabled = true;
+      loadedText = null;
+      if (!f) {
+        fname.textContent = '';
+        drop.classList.remove('has-file');
+        return;
+      }
+      fname.textContent = f.name;
+      loadedName = f.name;
+      drop.classList.add('has-file');
+      const reader = new FileReader();
+      reader.onload = () => {
+        loadedText = reader.result;
+        btn.disabled = false;
+      };
+      reader.onerror = () => {
+        result.className = 'result err show';
+        result.textContent = '파일을 읽지 못했습니다. 다시 선택해주세요.';
+      };
+      reader.readAsText(f, 'utf-8');
+    });
+
+    btn.addEventListener('click', () => {
+      result.className = 'result';
+      result.innerHTML = '';
+      if (!loadedText) return;
+      let data;
+      try {
+        data = JSON.parse(loadedText);
+      } catch (e) {
+        result.className = 'result err show';
+        result.textContent = '이 파일은 올바른 JSON 백업 파일이 아닙니다 (형식 오류). 원본 백업 파일을 다시 선택해주세요.';
+        return;
+      }
+      if (!data || typeof data !== 'object' || !data.version || !data.tables) {
+        result.className = 'result err show';
+        result.textContent = '이 파일은 이 앱의 백업 파일 형식이 아닌 것 같습니다.';
+        return;
+      }
+
+      const info = transform(data);
+
+      const outName = loadedName.replace(/\.json$/i, '') + suffix + '.json';
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      result.className = 'result ok show';
+      result.innerHTML = info + '<br><a class="dl-btn" download="' + outName + '" href="' + url + '">⬇ ' + outName + ' 다운로드</a>';
+    });
+  }
+
+  setupTool('file1', 'drop1', 'fname1', 'btn1', 'result1', function(data) {
+    const before = data.appName || '(없음)';
+    const after = document.getElementById('targetStore').value;
+    data.appName = after;
+    return '변환 완료: appName을 <b>' + before + '</b> → <b>' + after + '</b> 로 바꿨습니다.<br>이제 구버전 앱의 "데이터 가져오기"에서 이 파일을 사용하세요.';
+  }, '-구버전용');
+
+  setupTool('file2', 'drop2', 'fname2', 'btn2', 'result2', function(data) {
+    if (data.type === 'archive') {
+      return '이 파일은 이미 "구간 아카이브" 표시가 되어 있습니다. 그대로 "아카이브 불러오기"에 사용하시면 됩니다.';
+    }
+    data.type = 'archive';
+    return '변환 완료: "구간 아카이브" 표시를 추가했습니다.<br>이제 시스템설정 → 오래된 데이터 정리 → "아카이브 불러오기"에서 이 파일을 사용하세요.';
+  }, '-병합용');
+</script>
+</body>
+</html>
