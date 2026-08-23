@@ -489,11 +489,11 @@
      또렷한 테두리로 구분 — 그림자가 배경 그라데이션과 섞여 경계가 흐릿하다는 피드백.
      두께를 더 두껍게(3px) 키워 그룹박스 경계가 확실히 보이게 함. */
   .locker-workspace-shell.style-basic .locker-opt-section {
-    border: 3px solid hsl(220 13% 80%);
+    border: 3px solid hsl(220 13% 86%);
     box-shadow: none;
   }
   .dark .locker-workspace-shell.style-basic .locker-opt-section {
-    border: 3px solid hsl(220 10% 42%);
+    border: 3px solid hsl(220 10% 50%);
     box-shadow: none;
   }
   .logs-tool-panel {
