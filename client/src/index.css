@@ -485,6 +485,17 @@
     background: linear-gradient(180deg, hsl(232 88% 58% / 0.13) 0%, hsl(232 88% 58% / 0.05) 100%);
     border-bottom: 1px solid hsl(232 80% 58% / 0.18);
   }
+  /* 기본 스타일의 그룹박스(시간대/요금옵션/지불방식 등 섹션)도 외곽 그림자 대신
+     또렷한 테두리로 구분 — 그림자가 배경 그라데이션과 섞여 경계가 흐릿하다는 피드백.
+     두께는 얇지 않게(1.75px) 유지해 그룹박스 경계가 분명히 보이게 함. */
+  .locker-workspace-shell.style-basic .locker-opt-section {
+    border: 1.75px solid hsl(220 13% 80%);
+    box-shadow: none;
+  }
+  .dark .locker-workspace-shell.style-basic .locker-opt-section {
+    border: 1.75px solid hsl(220 10% 42%);
+    box-shadow: none;
+  }
   .logs-tool-panel {
     border-radius: 1.25rem;
     border: 1px solid hsl(var(--border) / 0.62);
