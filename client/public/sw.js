@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hugaetel-v39';
+const CACHE_NAME = 'hugaetel-v40';
 // 이름이 바뀌면 activate에서 이전 캐시(hugaetel-v37 등)를 전부 삭제함.
 
 // SPA 셸로 취급해 오프라인에서도 바로 열릴 경로
@@ -13,6 +13,17 @@ const SPA_SHELL_ROUTES = [
   '/admin/cctv',
   '/admin/licenses',
   '/settings',
+];
+
+// SPA가 아닌 독립 정적 페이지 — index.html 셸로 대체되면 안 됨.
+// 이 목록에 없으면(예: 새로 추가한 도구 페이지) 이미 SW가 설치되어 있던 기기에서
+// 첫 방문 시 캐시에 없어 index.html 셸로 잘못 대체되어 앱의 "페이지를 찾을 수
+// 없습니다" 화면이 떴다가, 백그라운드 refreshCache가 끝난 다음 방문부터 정상화되는
+// 문제가 있었음 — 아예 셸 대체 대상에서 제외하고 미리 캐시해둔다.
+const STANDALONE_PAGES = [
+  '/license-generator.html',
+  '/store-admin.html',
+  '/backup-tool.html',
 ];
 
 self.addEventListener('install', (event) => {
@@ -64,6 +75,7 @@ async function installSW() {
       '/favicon.png',
       '/icon-192.png',
       '/icon-512.png',
+      ...STANDALONE_PAGES,
     ];
 
     const allUrls = [...new Set([...assetUrls, ...precacheUrls, ...staticUrls])];
@@ -128,7 +140,8 @@ function isDynamicApiPath(pathname) {
   return (
     pathname.startsWith('/store/') ||
     pathname.startsWith('/api/') ||
-    pathname.startsWith('/.netlify/')
+    pathname.startsWith('/.netlify/') ||
+    STANDALONE_PAGES.includes(pathname)
   );
 }
 
