@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hugaetel-v38';
+const CACHE_NAME = 'hugaetel-v39';
 // 이름이 바뀌면 activate에서 이전 캐시(hugaetel-v37 등)를 전부 삭제함.
 
 // SPA 셸로 취급해 오프라인에서도 바로 열릴 경로
