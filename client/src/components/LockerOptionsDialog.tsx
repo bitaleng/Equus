@@ -32,7 +32,7 @@ import { calculateAdditionalFee, getBusinessDay, getBasePrice, getSettlementCycl
 import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { useToast } from "@/hooks/use-toast";
-import { RotateCcw, X, Pencil, Minus, Plus, Info, Calendar as CalendarIcon, Clock } from "lucide-react";
+import { RotateCcw, X, Pencil, Minus, Plus, Info, Calendar as CalendarIcon, Clock, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -614,6 +614,38 @@ export default function LockerOptionsDialog({
   const [rentalDirectInputEnabled, setRentalDirectInputEnabled] = useState<Set<string>>(new Set());
   const [rentalCustomFees, setRentalCustomFees] = useState<Map<string, string>>(new Map());
   const [rentalCustomDeposits, setRentalCustomDeposits] = useState<Map<string, string>>(new Map());
+
+  // 그룹박스 접기/펼치기 상태 — 매장 선호도가 유지되도록 localStorage에 저장
+  const [isFeeSectionCollapsed, setIsFeeSectionCollapsed] = useState<boolean>(
+    () => localStorage.getItem('locker_opt_fee_collapsed') === 'true'
+  );
+  const [isRentalSectionCollapsed, setIsRentalSectionCollapsed] = useState<boolean>(
+    () => localStorage.getItem('locker_opt_rental_collapsed') === 'true'
+  );
+  const [isMemoSectionCollapsed, setIsMemoSectionCollapsed] = useState<boolean>(
+    () => localStorage.getItem('locker_opt_memo_collapsed') === 'true'
+  );
+  const toggleFeeSectionCollapsed = () => {
+    setIsFeeSectionCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('locker_opt_fee_collapsed', String(next));
+      return next;
+    });
+  };
+  const toggleRentalSectionCollapsed = () => {
+    setIsRentalSectionCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('locker_opt_rental_collapsed', String(next));
+      return next;
+    });
+  };
+  const toggleMemoSectionCollapsed = () => {
+    setIsMemoSectionCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('locker_opt_memo_collapsed', String(next));
+      return next;
+    });
+  };
 
   // Track if this is initial open (to show warning once per dialog open)
   const initialOpenRef = useRef(false);
@@ -3372,6 +3404,21 @@ export default function LockerOptionsDialog({
 
             {/* 요금·옵션 */}
             <div className="locker-opt-section locker-opt-section-options space-y-3">
+            <button
+              type="button"
+              className="locker-opt-collapse-header"
+              onClick={toggleFeeSectionCollapsed}
+              data-testid="button-toggle-fee-section"
+            >
+              <Label className="text-sm font-semibold cursor-pointer">요금 종류</Label>
+              {isFeeSectionCollapsed ? (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+            {!isFeeSectionCollapsed && (
+            <>
             {!isStaff && !isLongTerm && (enableDirectPriceOption || isDirectPrice) && (
             <div className="space-y-2">
               <div className="flex items-center space-x-2">
@@ -3795,6 +3842,8 @@ export default function LockerOptionsDialog({
                   />
                 )}
               </div>
+            )}
+            </>
             )}
 
             </div>
@@ -4514,7 +4563,20 @@ export default function LockerOptionsDialog({
             {/* 추가매출 항목 - 버튼형 선택 */}
             {availableRentalItems.length > 0 && (
               <div className="locker-opt-section locker-opt-section-rental space-y-3">
-                <Label className="text-sm font-semibold">추가매출 항목 (선택사항)</Label>
+                <button
+                  type="button"
+                  className="locker-opt-collapse-header"
+                  onClick={toggleRentalSectionCollapsed}
+                  data-testid="button-toggle-rental-section"
+                >
+                  <Label className="text-sm font-semibold cursor-pointer">추가매출 항목 (선택사항)</Label>
+                  {isRentalSectionCollapsed ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+                {!isRentalSectionCollapsed && (
                 <div className="space-y-3">
                   {availableRentalItems.map((item) => {
                     const itemId = item.id;
@@ -5088,9 +5150,10 @@ export default function LockerOptionsDialog({
                     );
                   })}
                 </div>
+                )}
               </div>
             )}
-            
+
             {/* 손님 메모 입력 */}
             <div
               className={`locker-opt-section locker-opt-section-memo ${
@@ -5098,21 +5161,41 @@ export default function LockerOptionsDialog({
               }`}
             >
               <div
-                className={`flex items-center gap-2 w-fit ${
-                  customerMemo && customerMemo.trim()
-                    ? "ml-2 rounded-full bg-white pl-2.5 pr-2.5 py-1 dark:bg-transparent dark:rounded-none dark:pl-0 dark:pr-0 dark:py-0"
-                    : ""
-                }`}
+                className="locker-opt-collapse-header"
+                role="button"
+                tabIndex={0}
+                onClick={toggleMemoSectionCollapsed}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleMemoSectionCollapsed();
+                  }
+                }}
+                data-testid="button-toggle-memo-section"
               >
-                <LabelHint
-                  className={`text-sm font-semibold ${
-                    customerMemo && customerMemo.trim() ? "text-gray-700 dark:text-white" : ""
+                <div
+                  className={`flex items-center gap-2 w-fit ${
+                    customerMemo && customerMemo.trim()
+                      ? "ml-2 rounded-full bg-white pl-2.5 pr-2.5 py-1 dark:bg-transparent dark:rounded-none dark:pl-0 dark:pr-0 dark:py-0"
+                      : ""
                   }`}
-                  content={"손님에 관한 특별한 인상이나 특이사항을 기록하세요.\n예: 야간요금 냈으므로 추가요금 발생 시 전액할인"}
                 >
-                  손님 메모
-                </LabelHint>
+                  <LabelHint
+                    className={`text-sm font-semibold ${
+                      customerMemo && customerMemo.trim() ? "text-gray-700 dark:text-white" : ""
+                    }`}
+                    content={"손님에 관한 특별한 인상이나 특이사항을 기록하세요.\n예: 야간요금 냈으므로 추가요금 발생 시 전액할인"}
+                  >
+                    손님 메모
+                  </LabelHint>
+                </div>
+                {isMemoSectionCollapsed ? (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                )}
               </div>
+              {!isMemoSectionCollapsed && (
               <div className="locker-opt-memo-input-shell">
                 <Textarea
                   ref={memoTextareaRef}
@@ -5124,6 +5207,7 @@ export default function LockerOptionsDialog({
                   data-testid="input-customer-memo"
                 />
               </div>
+              )}
             </div>
           </div>
 

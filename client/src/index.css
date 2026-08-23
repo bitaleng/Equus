@@ -615,6 +615,22 @@
   .locker-opt-section-final {
     padding: 0.75rem 1.35rem;
   }
+  /* 그룹박스 접기/펼치기 헤더 — 요금종류/추가매출항목/손님메모 3개 그룹박스에 적용 */
+  .locker-opt-collapse-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    text-align: left;
+  }
+  .locker-opt-collapse-header:hover {
+    opacity: 0.75;
+  }
   .locker-opt-final-total {
     display: flex;
     align-items: center;
