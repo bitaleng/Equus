@@ -46,9 +46,12 @@ function buildIcon(storeId: string, variant: string, sizes: string, iconVersion:
 
 export default async function handler(request: Request) {
   const url = new URL(request.url);
-  const storeId = url.searchParams.get("store") || "";
-  // 임시 진단용 — 원인 파악 후 제거 예정. 리다이렉트가 storeId를 실제로
-  // 얼마나 잘 전달하고 있는지, Blobs 조회가 실제로 무엇을 찾았는지 응답에 그대로 노출한다.
+  // storeId는 _redirects의 쿼리스트링 치환(?store=:storeId)에 의존하지 않고 경로에서
+  // 직접 파싱한다 — Netlify 함수(V2)의 request.url이 리다이렉트 목적지가 아니라
+  // 브라우저의 원본 요청 주소를 그대로 반환해서 치환이 반영되지 않았던 게 원인이었음.
+  const pathMatch = url.pathname.match(/^\/store\/([^/]+)\/manifest\.webmanifest\/?$/);
+  const storeId = pathMatch?.[1] ? decodeURIComponent(pathMatch[1]) : "";
+  // 임시 진단용 — 원인 파악 후 제거 예정. Blobs 조회가 실제로 무엇을 찾았는지 응답에 그대로 노출한다.
   const debug = url.searchParams.has("debug");
 
   if (!storeId) {

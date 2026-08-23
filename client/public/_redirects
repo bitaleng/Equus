@@ -1,10 +1,12 @@
-# Netlify Drop에서도 인식되도록 _redirects 병행 (netlify-static.toml과 반드시 동기화 유지)
+# Netlify Drop에서도 인식되도록 _redirects 사용 (라우팅은 이 파일이 유일한 소스 — netlify.toml에는 중복 정의하지 않음)
+# /store/* 는 함수가 request.url 경로에서 storeId/variant를 직접 파싱하므로
+# 쿼리스트링 치환(?store=:storeId)에 기대지 않는다 — Netlify 함수(V2)에서는 그 값이 반영되지 않았음.
 /api/cctv/register              /.netlify/functions/cctv-register                                  200
 /api/demo/trial                 /.netlify/functions/demo-trial                                     200
 /api/license/bind               /.netlify/functions/license-bind                                   200
 /api/store/admin                /.netlify/functions/store-profile-admin                            200
-/store/:storeId/manifest.webmanifest  /.netlify/functions/store-manifest?store=:storeId            200
-/store/:storeId/icon/:variant   /.netlify/functions/store-icon?store=:storeId&variant=:variant      200
+/store/:storeId/manifest.webmanifest  /.netlify/functions/store-manifest                           200
+/store/:storeId/icon/:variant   /.netlify/functions/store-icon                                     200
 /license-generator.html         /license-generator.html                                            200
 /store-admin.html               /store-admin.html                                                  200
 /*                               /index.html                                                        200
