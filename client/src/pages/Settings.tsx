@@ -4715,7 +4715,21 @@ export default function Settings() {
                         className="hidden"
                         data-testid="input-archive-merge-file"
                       />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+                        onClick={() => window.open('/backup-tool.html', '_blank')}
+                        data-testid="button-open-backup-tool"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        백업파일 도구 열기
+                      </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      백업파일이 다른 버전(구버전 등)과 호환되지 않거나, 빠진 구간을 병합용 파일로
+                      바꿔야 할 때 「백업파일 도구」에서 손으로 편집하지 않고 안전하게 변환할 수 있습니다.
+                    </p>
                     {archivePreview && (
                       <p className="text-xs text-muted-foreground">
                         대상 {archivePreview.total.toLocaleString()}건
