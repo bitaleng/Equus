@@ -46,16 +46,14 @@ function buildIcon(storeId: string, variant: string, sizes: string, iconVersion:
 
 export default async function handler(request: Request) {
   const url = new URL(request.url);
-  // storeId는 _redirects의 쿼리스트링 치환(?store=:storeId)에 의존하지 않고 경로에서
-  // 직접 파싱한다 — Netlify 함수(V2)의 request.url이 리다이렉트 목적지가 아니라
-  // 브라우저의 원본 요청 주소를 그대로 반환해서 치환이 반영되지 않았던 게 원인이었음.
+  // storeId는 _redirects의 쿼리스트링 치환에 의존하지 않고 경로에서 직접 파싱한다 —
+  // Netlify 함수(V2)의 request.url은 리다이렉트 목적지가 아니라 브라우저의 원본 요청
+  // 주소를 그대로 반환하기 때문에, ?store=:storeId 같은 치환은 반영되지 않는다.
   const pathMatch = url.pathname.match(/^\/store\/([^/]+)\/manifest\.webmanifest\/?$/);
   const storeId = pathMatch?.[1] ? decodeURIComponent(pathMatch[1]) : "";
-  // 임시 진단용 — 원인 파악 후 제거 예정. Blobs 조회가 실제로 무엇을 찾았는지 응답에 그대로 노출한다.
-  const debug = url.searchParams.has("debug");
 
   if (!storeId) {
-    return manifestResponse(debug ? { ...GENERIC_MANIFEST, _debug: { reason: "storeId 쿼리파라미터가 비어있음(리다이렉트 문제 가능성)", rawUrl: request.url } } : GENERIC_MANIFEST);
+    return manifestResponse(GENERIC_MANIFEST);
   }
 
   try {
@@ -65,7 +63,7 @@ export default async function handler(request: Request) {
     })) as StoreProfileRecord | null;
 
     if (!profile || !profile.active) {
-      return manifestResponse(debug ? { ...GENERIC_MANIFEST, _debug: { reason: !profile ? "해당 storeId로 저장된 프로필을 못 찾음" : "프로필은 있으나 active=false", receivedStoreId: storeId, profileFound: !!profile, active: profile?.active ?? null } } : GENERIC_MANIFEST);
+      return manifestResponse(GENERIC_MANIFEST);
     }
 
     const icons = [
@@ -87,7 +85,7 @@ export default async function handler(request: Request) {
       scope: "/",
       icons: icons.length > 0 ? icons : GENERIC_MANIFEST.icons,
     });
-  } catch (e) {
-    return manifestResponse(debug ? { ...GENERIC_MANIFEST, _debug: { reason: "예외 발생", error: e instanceof Error ? e.message : String(e), receivedStoreId: storeId } } : GENERIC_MANIFEST);
+  } catch {
+    return manifestResponse(GENERIC_MANIFEST);
   }
 }

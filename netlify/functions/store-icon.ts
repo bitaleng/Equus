@@ -18,30 +18,17 @@ function toGenericFallback(variant: string) {
   return Response.redirect(target, 302);
 }
 
-function debugResponse(info: Record<string, unknown>) {
-  return new Response(JSON.stringify(info, null, 2), {
-    status: 200,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
-  });
-}
-
 export default async function handler(request: Request) {
   const url = new URL(request.url);
-  // storeId/variant는 _redirects의 쿼리스트링 치환(?store=:storeId)에 의존하지 않고
-  // 경로 자체에서 직접 파싱한다. Netlify 함수(V2, Request/Response 시그니처)에서
-  // request.url이 리다이렉트 목적지가 아니라 브라우저가 요청한 원본 주소를 그대로
-  // 반환한다는 걸 실제로 확인했음 — 쿼리스트링 치환이 반영되지 않아 계속 빈 값이었음.
+  // storeId/variant는 _redirects의 쿼리스트링 치환에 의존하지 않고 경로 자체에서 직접
+  // 파싱한다 — Netlify 함수(V2)의 request.url은 리다이렉트 목적지가 아니라 브라우저가
+  // 요청한 원본 주소를 그대로 반환하기 때문에, ?store=:storeId 같은 치환은 반영되지 않는다.
   const pathMatch = url.pathname.match(/^\/store\/([^/]+)\/icon\/([^/]+)\/?$/);
   const storeId = pathMatch?.[1] ? decodeURIComponent(pathMatch[1]) : "";
   const variant = pathMatch?.[2] ? decodeURIComponent(pathMatch[2]) : "";
   const hasVersion = url.searchParams.has("v");
-  // 임시 진단용(?debug 붙이면 리다이렉트 대신 사람이 읽을 수 있는 JSON으로 응답) — 원인 파악 후 제거 예정.
-  const debug = url.searchParams.has("debug");
 
   if (!isValidStoreId(storeId) || !isValidIconVariant(variant)) {
-    if (debug) {
-      return debugResponse({ reason: "storeId 또는 variant 형식이 올바르지 않음", rawUrl: request.url, receivedStoreId: storeId, receivedVariant: variant });
-    }
     return toGenericFallback(variant);
   }
 
@@ -52,14 +39,7 @@ export default async function handler(request: Request) {
     })) as ArrayBuffer | null;
 
     if (!data) {
-      if (debug) {
-        return debugResponse({ reason: "Blobs 저장소에서 해당 키를 못 찾음", receivedStoreId: storeId, receivedVariant: variant, blobKey: iconAssetKey(storeId, variant) });
-      }
       return toGenericFallback(variant);
-    }
-
-    if (debug) {
-      return debugResponse({ reason: "정상 — 이미지 데이터를 찾음", receivedStoreId: storeId, receivedVariant: variant, byteLength: data.byteLength });
     }
 
     return new Response(data, {
@@ -72,10 +52,7 @@ export default async function handler(request: Request) {
         "Access-Control-Allow-Origin": "*",
       },
     });
-  } catch (e) {
-    if (debug) {
-      return debugResponse({ reason: "예외 발생", error: e instanceof Error ? e.message : String(e), receivedStoreId: storeId, receivedVariant: variant });
-    }
+  } catch {
     return toGenericFallback(variant);
   }
 }
