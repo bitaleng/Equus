@@ -2801,8 +2801,10 @@ export default function Home() {
           ref={workspaceRef}
           data-workspace-root="true"
           className={`locker-workspace-shell z-50 flex flex-col min-w-0 ${
-            isFloatingMode 
-              ? "fixed rounded-[1.35rem]" 
+            settings.lockerWorkspaceStyle === 'basic' ? 'style-basic' : ''
+          } ${
+            isFloatingMode
+              ? "fixed rounded-[1.35rem]"
               : dockedSide === 'right'
                 ? "fixed right-0 top-0 bottom-0"
                 : "fixed left-0 top-0 bottom-0"

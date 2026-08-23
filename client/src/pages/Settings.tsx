@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Moon, Layers, FolderOpen } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Moon, Layers, FolderOpen, Sparkles } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -107,6 +107,8 @@ interface Settings {
   outingTimeLimitWeekendMinutes: number;  // 1회 외출 시간 제한 - 휴일(금/토/일/공휴일) (분, 0=비활성)
   /** true면 락카 스택 기본 접기(마지막 선택만 펼침), false면 모두 펼침 */
   lockerStackDefaultCollapsed: boolean;
+  /** 락카옵션창(처리중인 고객 패널) 배경 스타일: glass=모노유리, basic=불투명 단색 */
+  lockerWorkspaceStyle: 'glass' | 'basic';
   autoArchiveEnabled: boolean;
   autoArchiveKeepMonths: number;
 }
@@ -190,6 +192,7 @@ export default function Settings() {
     outingTimeLimitMinutes: 0,
     outingTimeLimitWeekendMinutes: 0,
     lockerStackDefaultCollapsed: false,
+    lockerWorkspaceStyle: 'glass',
     autoArchiveEnabled: false,
     autoArchiveKeepMonths: 2,
   });
@@ -411,6 +414,7 @@ export default function Settings() {
       enableFreeEntryOption: settings.enableFreeEntryOption !== false,
       enableLongTermOption: settings.enableLongTermOption !== false,
       lockerStackDefaultCollapsed: settings.lockerStackDefaultCollapsed === true,
+      lockerWorkspaceStyle: settings.lockerWorkspaceStyle === 'basic' ? 'basic' : 'glass',
       autoArchiveEnabled: settings.autoArchiveEnabled === true,
       autoArchiveKeepMonths: clampAutoArchiveKeepMonths(settings.autoArchiveKeepMonths),
     });
@@ -892,6 +896,7 @@ export default function Settings() {
       stagedThirdHourOffset: Math.max(0, formData.stagedThirdHourOffset ?? 2),
       stagedThirdUnitAmount: Math.max(0, formData.stagedThirdUnitAmount || 0),
       lockerStackDefaultCollapsed: formData.lockerStackDefaultCollapsed === true,
+      lockerWorkspaceStyle: (formData.lockerWorkspaceStyle === 'basic' ? 'basic' : 'glass') as 'glass' | 'basic',
       autoArchiveEnabled: formData.autoArchiveEnabled === true,
       autoArchiveKeepMonths: clampAutoArchiveKeepMonths(formData.autoArchiveKeepMonths),
     };
@@ -3100,6 +3105,54 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 변경 후 아래 <span className="font-medium text-foreground">저장</span> 버튼을 눌러야 적용됩니다.
                 처리중인 고객 창이 2개 이상일 때는 헤더의 일괄 펼치기/일괄 접기로도 조절할 수 있습니다.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* 락카옵션창 배경 스타일 */}
+          <Card data-testid="card-locker-workspace-style">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                락카옵션창 배경 스타일
+              </CardTitle>
+              <CardDescription>
+                처리중인 고객 창의 배경을 유리 느낌으로 할지, 불투명 단색으로 할지 정합니다
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <RadioGroup
+                value={formData.lockerWorkspaceStyle === 'basic' ? 'basic' : 'glass'}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    lockerWorkspaceStyle: value === 'basic' ? 'basic' : 'glass',
+                  })
+                }
+                className="grid gap-3"
+                data-testid="radio-locker-workspace-style"
+              >
+                <div className="flex items-start space-x-3 rounded-lg border bg-muted/20 px-4 py-3">
+                  <RadioGroupItem value="glass" id="workspace-style-glass" className="mt-1" />
+                  <Label htmlFor="workspace-style-glass" className="flex-1 cursor-pointer space-y-1 font-normal">
+                    <span className="block font-medium text-foreground">글래스 스타일</span>
+                    <span className="block text-sm text-muted-foreground">
+                      반투명 모노유리 느낌(블러 효과). 뒤쪽 화면이 은은하게 비칩니다. (기존과 동일)
+                    </span>
+                  </Label>
+                </div>
+                <div className="flex items-start space-x-3 rounded-lg border bg-muted/20 px-4 py-3">
+                  <RadioGroupItem value="basic" id="workspace-style-basic" className="mt-1" />
+                  <Label htmlFor="workspace-style-basic" className="flex-1 cursor-pointer space-y-1 font-normal">
+                    <span className="block font-medium text-foreground">기본 스타일</span>
+                    <span className="block text-sm text-muted-foreground">
+                      불투명한 단색 배경. 뒤쪽이 비치지 않아 메뉴에만 집중할 수 있습니다.
+                    </span>
+                  </Label>
+                </div>
+              </RadioGroup>
+              <p className="text-xs text-muted-foreground">
+                변경 후 아래 <span className="font-medium text-foreground">저장</span> 버튼을 눌러야 적용됩니다.
               </p>
             </CardContent>
           </Card>

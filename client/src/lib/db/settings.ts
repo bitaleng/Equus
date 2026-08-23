@@ -47,6 +47,8 @@ export function getSettings() {
     outingTimeLimitWeekendMinutes: 0,
     /** 락카 옵션창 스택 기본값: true면 접기(마지막 선택만 펼침), false면 모두 펼침 */
     lockerStackDefaultCollapsed: false,
+    /** 락카옵션창(처리중인 고객 패널) 배경 스타일: glass=모노유리(블러·투명도), basic=불투명 단색 */
+    lockerWorkspaceStyle: 'glass' as 'glass' | 'basic',
     /** 자동 아카이브: 오늘 달 포함 N개월만 남기고 이전은 폴더에 백업 후 삭제 */
     autoArchiveEnabled: false,
     autoArchiveKeepMonths: 2,

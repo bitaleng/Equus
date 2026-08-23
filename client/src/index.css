@@ -457,6 +457,21 @@
     background: hsl(0 0% 100% / 0.32);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.45);
   }
+
+  /* 락카옵션창 "기본 스타일" — 모노유리(블러·투명도·굴절 노이즈) 없이 불투명 단색 배경.
+     시스템설정에서 매장이 글래스/기본 중 선택 — 뒤에 락카 그리드가 비쳐서 산만하다는
+     피드백 때문에 추가됨. .locker-workspace-shell.style-basic로 글래스 규칙을 덮어쓴다. */
+  .locker-workspace-shell.style-basic {
+    background: hsl(0 0% 100%);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: hsl(220 14% 88%);
+    box-shadow: 0 18px 48px -14px rgba(30, 40, 70, 0.24);
+  }
+  .locker-workspace-shell.style-basic::before,
+  .locker-workspace-shell.style-basic::after {
+    display: none;
+  }
   .logs-tool-panel {
     border-radius: 1.25rem;
     border: 1px solid hsl(var(--border) / 0.62);
@@ -845,6 +860,15 @@
   .dark .glass-dialog-footer {
     background: hsl(210 10% 18% / 0.22);
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
+  }
+  .dark .locker-workspace-shell.style-basic {
+    background: hsl(222 20% 14%);
+    border-color: hsl(220 13% 26%);
+    box-shadow: 0 18px 48px -14px hsl(210 20% 0% / 0.5);
+  }
+  .dark .locker-workspace-shell.style-basic::before,
+  .dark .locker-workspace-shell.style-basic::after {
+    display: none;
   }
   .dark .locker-opt-popup-shell,
   .dark .logs-tool-panel,
