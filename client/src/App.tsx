@@ -37,6 +37,7 @@ import { CctvInstallNotifier } from "@/components/CctvInstallNotifier";
 import ScreenViewPage from "@/pages/ScreenViewPage";
 import { runAutoArchiveIfNeeded } from "@/lib/autoArchive";
 import { useToast } from "@/hooks/use-toast";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 function AutoArchiveRunner() {
   const { toast } = useToast();
@@ -399,7 +400,9 @@ function App() {
         <CctvProvider>
           <CctvInstallNotifier />
           <AutoArchiveRunner />
-          <AppContent />
+          <ErrorBoundary>
+            <AppContent />
+          </ErrorBoundary>
           <Toaster />
           <UpdateBanner />
         </CctvProvider>
