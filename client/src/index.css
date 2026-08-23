@@ -940,7 +940,9 @@
     box-shadow: none;
   }
   .dark .locker-opt-section {
-    border-color: hsl(var(--border) / 0.45);
+    /* 태블릿 등 대비가 낮은 화면에서 글래스 스타일일 때 그룹박스가 뒷배경과 구분이
+       잘 안 된다는 피드백 — 테두리를 불투명에 가깝게, 조금 더 두껍게 키움 */
+    border: 1.5px solid hsl(220 15% 48%);
     background: hsl(210 10% 16% / 0.96);
     box-shadow:
       0 8px 24px -10px hsl(210 20% 0% / 0.42),
