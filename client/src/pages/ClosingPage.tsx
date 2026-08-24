@@ -864,7 +864,7 @@ export default function ClosingPage() {
       startY: 28,
       theme: 'grid',
       styles: koreanFont ? { font: koreanFont } : undefined,
-      headStyles: { fillColor: [66, 139, 202], font: koreanFont || undefined },
+      headStyles: { fillColor: [66, 139, 202], font: koreanFont || undefined, fontStyle: 'normal' },
     });
 
     const finalY1 = (doc as any).lastAutoTable.finalY;
@@ -882,7 +882,7 @@ export default function ClosingPage() {
       startY: finalY1 + 10,
       theme: 'grid',
       styles: koreanFont ? { font: koreanFont } : undefined,
-      headStyles: { fillColor: [217, 83, 79], font: koreanFont || undefined },
+      headStyles: { fillColor: [217, 83, 79], font: koreanFont || undefined, fontStyle: 'normal' },
     });
 
     const finalY2 = (doc as any).lastAutoTable.finalY;
@@ -902,7 +902,7 @@ export default function ClosingPage() {
         startY: finalY2 + 16,
         theme: 'grid',
         styles: koreanFont ? { font: koreanFont } : undefined,
-        headStyles: { fillColor: [100, 100, 100], font: koreanFont || undefined },
+        headStyles: { fillColor: [100, 100, 100], font: koreanFont || undefined, fontStyle: 'normal' },
       });
     }
 
