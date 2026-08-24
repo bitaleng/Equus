@@ -613,6 +613,103 @@ export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, end
     }
   };
 }
+
+// 기간별 정산 보고서의 "영업일별" 표용 — business_day 컬럼 기준으로 하루 단위 집계.
+// 현금/카드/이체는 입실매출+추가요금(=총매출 카드와 같은 기준), 대여품목매출·지출은 별도 컬럼.
+export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, endBusinessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  type DailyRow = { cash: number; card: number; transfer: number; rentalTotal: number; expenseTotal: number };
+  const byDay = new Map<string, DailyRow>();
+  const ensure = (day: string): DailyRow => {
+    let row = byDay.get(day);
+    if (!row) {
+      row = { cash: 0, card: 0, transfer: 0, rentalTotal: 0, expenseTotal: 0 };
+      byDay.set(day, row);
+    }
+    return row;
+  };
+
+  const entryResult = db.exec(
+    `SELECT business_day,
+       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_cash, 0) ELSE 0 END), 0) as cash,
+       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_card, 0) ELSE 0 END), 0) as card,
+       COALESCE(SUM(CASE WHEN status != 'cancelled' THEN COALESCE(payment_transfer, 0) ELSE 0 END), 0) as transfer
+     FROM locker_logs
+     WHERE business_day >= ? AND business_day <= ?
+     GROUP BY business_day`,
+    [startBusinessDay, endBusinessDay]
+  );
+  if (entryResult.length > 0) {
+    entryResult[0].values.forEach((r: any) => {
+      const row = ensure(r[0] as string);
+      row.cash += r[1] as number;
+      row.card += r[2] as number;
+      row.transfer += r[3] as number;
+    });
+  }
+
+  const additionalResult = db.exec(
+    `SELECT business_day,
+       COALESCE(SUM(COALESCE(payment_cash, 0)), 0) as cash,
+       COALESCE(SUM(COALESCE(payment_card, 0)), 0) as card,
+       COALESCE(SUM(COALESCE(payment_transfer, 0)), 0) as transfer
+     FROM additional_fee_events
+     WHERE business_day >= ? AND business_day <= ?
+     GROUP BY business_day`,
+    [startBusinessDay, endBusinessDay]
+  );
+  if (additionalResult.length > 0) {
+    additionalResult[0].values.forEach((r: any) => {
+      const row = ensure(r[0] as string);
+      row.cash += r[1] as number;
+      row.card += r[2] as number;
+      row.transfer += r[3] as number;
+    });
+  }
+
+  const rentalResult = db.exec(
+    `SELECT business_day,
+       COALESCE(SUM(CASE WHEN deposit_status = 'received' OR deposit_status = 'refunded' THEN
+         COALESCE(payment_cash, 0) + COALESCE(payment_card, 0) + COALESCE(payment_transfer, 0)
+       ELSE 0 END), 0) as rental_total
+     FROM rental_transactions
+     WHERE business_day >= ? AND business_day <= ?
+     GROUP BY business_day`,
+    [startBusinessDay, endBusinessDay]
+  );
+  if (rentalResult.length > 0) {
+    rentalResult[0].values.forEach((r: any) => {
+      ensure(r[0] as string).rentalTotal += r[1] as number;
+    });
+  }
+
+  const expenseResult = db.exec(
+    `SELECT business_day, COALESCE(SUM(amount), 0) as expense_total
+     FROM expenses
+     WHERE business_day >= ? AND business_day <= ?
+     GROUP BY business_day`,
+    [startBusinessDay, endBusinessDay]
+  );
+  if (expenseResult.length > 0) {
+    expenseResult[0].values.forEach((r: any) => {
+      ensure(r[0] as string).expenseTotal += r[1] as number;
+    });
+  }
+
+  return Array.from(byDay.entries())
+    .map(([businessDay, row]) => ({
+      businessDay,
+      cash: row.cash,
+      card: row.card,
+      transfer: row.transfer,
+      total: row.cash + row.card + row.transfer,
+      rentalTotal: row.rentalTotal,
+      expenseTotal: row.expenseTotal,
+    }))
+    .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
+}
+
 // Recalculate business_day for all existing records
 export function recalculateAllBusinessDays() {
   if (!db) throw new Error('Database not initialized');

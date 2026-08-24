@@ -304,7 +304,7 @@ export default function ClosingPage() {
     total: number;
   } | null>(null);
   const [reportDailyTrend, setReportDailyTrend] = useState<
-    { businessDay: string; totalSales: number }[]
+    { businessDay: string; cash: number; card: number; transfer: number; total: number; rentalTotal: number; expenseTotal: number }[]
   >([]);
 
   useEffect(() => {
@@ -769,11 +769,7 @@ export default function ClosingPage() {
     const expenses = localDb.getExpenseSummaryByBusinessDayRange(rangeStartBusinessDay, rangeEndBusinessDay);
     setReportExpenseSummary(expenses);
 
-    const allSummaries = localDb.getAllDailySummaries() as { businessDay: string; totalSales: number }[];
-    const trend = allSummaries
-      .filter((s) => s.businessDay >= rangeStartBusinessDay && s.businessDay <= rangeEndBusinessDay)
-      .map((s) => ({ businessDay: s.businessDay, totalSales: s.totalSales || 0 }))
-      .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
+    const trend = localDb.getDailyBreakdownByBusinessDayRange(rangeStartBusinessDay, rangeEndBusinessDay);
     setReportDailyTrend(trend);
 
     setShowReport(true);
@@ -805,9 +801,9 @@ export default function ClosingPage() {
       ['', '', '', '', ''],
       ['순수익 (총매출 - 지출)', netProfit, '', '', ''],
       ['', '', '', '', ''],
-      ['일별 매출 추이', '', '', '', ''],
-      ['영업일', '매출', '', '', ''],
-      ...reportDailyTrend.map((d) => [d.businessDay, d.totalSales, '', '', '']),
+      ['영업일별 매출·지출', '', '', '', '', '', ''],
+      ['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출'],
+      ...reportDailyTrend.map((d) => [d.businessDay, d.cash, d.card, d.transfer, d.total, d.rentalTotal, d.expenseTotal]),
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -897,11 +893,19 @@ export default function ClosingPage() {
 
     if (reportDailyTrend.length > 0) {
       autoTable(doc, {
-        head: [['영업일', '매출']],
-        body: reportDailyTrend.map((d) => [d.businessDay, d.totalSales.toLocaleString()]),
+        head: [['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출']],
+        body: reportDailyTrend.map((d) => [
+          d.businessDay,
+          d.cash.toLocaleString(),
+          d.card.toLocaleString(),
+          d.transfer.toLocaleString(),
+          d.total.toLocaleString(),
+          d.rentalTotal.toLocaleString(),
+          d.expenseTotal.toLocaleString(),
+        ]),
         startY: finalY2 + 16,
         theme: 'grid',
-        styles: koreanFont ? { font: koreanFont } : undefined,
+        styles: koreanFont ? { font: koreanFont, fontSize: 9 } : { fontSize: 9 },
         headStyles: { fillColor: [100, 100, 100], font: koreanFont || undefined, fontStyle: 'normal' },
       });
     }
@@ -1439,7 +1443,7 @@ export default function ClosingPage() {
                           formatter={(value: number) => [`${formatKoreanCurrency(value)}`, "매출"]}
                           labelFormatter={(label: string) => label}
                         />
-                        <Bar dataKey="totalSales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
