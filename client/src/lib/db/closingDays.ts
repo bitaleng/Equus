@@ -619,12 +619,12 @@ export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, end
 export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, endBusinessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
-  type DailyRow = { cash: number; card: number; transfer: number; rentalTotal: number; expenseTotal: number };
+  type DailyRow = { cash: number; card: number; transfer: number; rentalTotal: number; expenseTotal: number; visitors: number };
   const byDay = new Map<string, DailyRow>();
   const ensure = (day: string): DailyRow => {
     let row = byDay.get(day);
     if (!row) {
-      row = { cash: 0, card: 0, transfer: 0, rentalTotal: 0, expenseTotal: 0 };
+      row = { cash: 0, card: 0, transfer: 0, rentalTotal: 0, expenseTotal: 0, visitors: 0 };
       byDay.set(day, row);
     }
     return row;
@@ -697,6 +697,21 @@ export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, en
     });
   }
 
+  // 방문인원: 자식 락커 제외, 직원 제외 (매출리포트의 getVisitorStatsByMonth total_visitors와 동일 기준)
+  const visitorResult = db.exec(
+    `SELECT business_day,
+       COUNT(CASE WHEN (is_staff IS NULL OR is_staff = 0) THEN 1 END) as visitors
+     FROM locker_logs
+     WHERE business_day >= ? AND business_day <= ? AND parent_locker IS NULL
+     GROUP BY business_day`,
+    [startBusinessDay, endBusinessDay]
+  );
+  if (visitorResult.length > 0) {
+    visitorResult[0].values.forEach((r: any) => {
+      ensure(r[0] as string).visitors += r[1] as number;
+    });
+  }
+
   return Array.from(byDay.entries())
     .map(([businessDay, row]) => ({
       businessDay,
@@ -706,6 +721,7 @@ export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, en
       total: row.cash + row.card + row.transfer,
       rentalTotal: row.rentalTotal,
       expenseTotal: row.expenseTotal,
+      visitors: row.visitors,
     }))
     .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
 }
