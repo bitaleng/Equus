@@ -784,6 +784,111 @@ export default function ClosingPage() {
     });
   };
 
+  // 기간별 정산 보고서를 엑셀로 내보내기 (선택된 영업일 하나가 아니라 조회한 기간 전체)
+  const handleExportReportExcel = () => {
+    if (!rangeSalesData || !reportExpenseSummary) return;
+
+    const netProfit = rangeSalesData.totalEntrySales.total - reportExpenseSummary.total;
+
+    const data: (string | number)[][] = [
+      ['정산 보고서 (기간별)', '', '', '', ''],
+      ['기간', `${rangeStartBusinessDay} ~ ${rangeEndBusinessDay}`, '', '', ''],
+      ['', '', '', '', ''],
+      ['매출 내역', '현금', '카드', '계좌이체', '합계'],
+      ['입실매출', rangeSalesData.entrySales.cash, rangeSalesData.entrySales.card, rangeSalesData.entrySales.transfer, rangeSalesData.entrySales.total],
+      ['추가요금 매출', rangeSalesData.additionalSales.cash, rangeSalesData.additionalSales.card, rangeSalesData.additionalSales.transfer, rangeSalesData.additionalSales.total],
+      ['대여물품 매출', rangeSalesData.rentalSales.cash, rangeSalesData.rentalSales.card, rangeSalesData.rentalSales.transfer, rangeSalesData.rentalSales.total],
+      ['총매출', rangeSalesData.totalEntrySales.cash, rangeSalesData.totalEntrySales.card, rangeSalesData.totalEntrySales.transfer, rangeSalesData.totalEntrySales.total],
+      ['', '', '', '', ''],
+      ['지출 내역', '현금', '카드', '계좌이체', '합계'],
+      ['지출합계', reportExpenseSummary.cashTotal, reportExpenseSummary.cardTotal, reportExpenseSummary.transferTotal, reportExpenseSummary.total],
+      ['', '', '', '', ''],
+      ['순수익 (총매출 - 지출)', netProfit, '', '', ''],
+      ['', '', '', '', ''],
+      ['일별 매출 추이', '', '', '', ''],
+      ['영업일', '매출', '', '', ''],
+      ...reportDailyTrend.map((d) => [d.businessDay, d.totalSales, '', '', '']),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '정산보고서');
+    XLSX.writeFile(wb, `정산보고서_${rangeStartBusinessDay}_${rangeEndBusinessDay}.xlsx`);
+
+    toast({
+      title: '엑셀 내보내기 완료',
+      description: `정산보고서_${rangeStartBusinessDay}_${rangeEndBusinessDay}.xlsx 파일이 다운로드되었습니다.`,
+    });
+  };
+
+  // 기간별 정산 보고서를 PDF로 내보내기
+  const handleExportReportPDF = () => {
+    if (!rangeSalesData || !reportExpenseSummary) return;
+
+    const doc = new jsPDF();
+
+    doc.setFontSize(16);
+    doc.text(`Settlement Report (${rangeStartBusinessDay} ~ ${rangeEndBusinessDay})`, 14, 20);
+
+    const salesData = [
+      ['Entry Sales', rangeSalesData.entrySales.cash.toLocaleString(), rangeSalesData.entrySales.card.toLocaleString(), rangeSalesData.entrySales.transfer.toLocaleString(), rangeSalesData.entrySales.total.toLocaleString()],
+      ['Additional Fee', rangeSalesData.additionalSales.cash.toLocaleString(), rangeSalesData.additionalSales.card.toLocaleString(), rangeSalesData.additionalSales.transfer.toLocaleString(), rangeSalesData.additionalSales.total.toLocaleString()],
+      ['Rental', rangeSalesData.rentalSales.cash.toLocaleString(), rangeSalesData.rentalSales.card.toLocaleString(), rangeSalesData.rentalSales.transfer.toLocaleString(), rangeSalesData.rentalSales.total.toLocaleString()],
+      ['Total Sales', rangeSalesData.totalEntrySales.cash.toLocaleString(), rangeSalesData.totalEntrySales.card.toLocaleString(), rangeSalesData.totalEntrySales.transfer.toLocaleString(), rangeSalesData.totalEntrySales.total.toLocaleString()],
+    ];
+
+    autoTable(doc, {
+      head: [['Category', 'Cash', 'Card', 'Transfer', 'Total']],
+      body: salesData,
+      startY: 28,
+      theme: 'grid',
+      headStyles: { fillColor: [66, 139, 202] },
+    });
+
+    const finalY1 = (doc as any).lastAutoTable.finalY;
+
+    const expenseData = [
+      ['Cash', reportExpenseSummary.cashTotal.toLocaleString()],
+      ['Card', reportExpenseSummary.cardTotal.toLocaleString()],
+      ['Transfer', reportExpenseSummary.transferTotal.toLocaleString()],
+      ['Total', reportExpenseSummary.total.toLocaleString()],
+    ];
+
+    autoTable(doc, {
+      head: [['Expenses', 'Amount']],
+      body: expenseData,
+      startY: finalY1 + 10,
+      theme: 'grid',
+      headStyles: { fillColor: [217, 83, 79] },
+    });
+
+    const finalY2 = (doc as any).lastAutoTable.finalY;
+
+    doc.setFontSize(12);
+    doc.text(
+      `Net Profit: ${(rangeSalesData.totalEntrySales.total - reportExpenseSummary.total).toLocaleString()}`,
+      14,
+      finalY2 + 10
+    );
+
+    if (reportDailyTrend.length > 0) {
+      autoTable(doc, {
+        head: [['Date', 'Sales']],
+        body: reportDailyTrend.map((d) => [d.businessDay, d.totalSales.toLocaleString()]),
+        startY: finalY2 + 16,
+        theme: 'grid',
+        headStyles: { fillColor: [100, 100, 100] },
+      });
+    }
+
+    doc.save(`정산보고서_${rangeStartBusinessDay}_${rangeEndBusinessDay}.pdf`);
+
+    toast({
+      title: 'PDF 내보내기 완료',
+      description: `정산보고서_${rangeStartBusinessDay}_${rangeEndBusinessDay}.pdf 파일이 다운로드되었습니다.`,
+    });
+  };
+
   // Export to Excel
   const handleExportExcel = () => {
     const data = [
@@ -1226,10 +1331,46 @@ export default function ClosingPage() {
         {showReport && rangeSalesData && reportExpenseSummary && (
           <Card className="border-blue-200 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/40">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                <FileBarChart2 className="h-5 w-5" />
-                정산 보고서 ({rangeStartBusinessDay} ~ {rangeEndBusinessDay})
-              </CardTitle>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                  <FileBarChart2 className="h-5 w-5" />
+                  정산 보고서 ({rangeStartBusinessDay} ~ {rangeEndBusinessDay})
+                </CardTitle>
+                <div className="flex items-center gap-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                        onClick={handleExportReportExcel}
+                        data-testid="button-export-report-excel"
+                      >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        <span className="sr-only">보고서 엑셀로 내보내기</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>보고서 엑셀로 내보내기</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                        onClick={handleExportReportPDF}
+                        data-testid="button-export-report-pdf"
+                      >
+                        <FileText className="h-4 w-4" />
+                        <span className="sr-only">보고서 PDF로 내보내기</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>보고서 PDF로 내보내기</TooltipContent>
+                  </Tooltip>
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <SalesGroup title="총매출" total={rangeSalesData.totalEntrySales.total} accent="blue">
