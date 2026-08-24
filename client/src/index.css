@@ -354,9 +354,9 @@
     overflow: hidden;
     background: linear-gradient(
       165deg,
-      rgba(237, 237, 237, 0.42) 0%,
-      rgba(237, 237, 237, 0.28) 55%,
-      rgba(232, 234, 236, 0.34) 100%
+      rgba(222, 222, 224, 0.48) 0%,
+      rgba(222, 222, 224, 0.34) 55%,
+      rgba(218, 220, 224, 0.4) 100%
     );
     background-clip: padding-box;
     /* Pane blur; rim stays clearer via transparent border (mirror edge) */
@@ -546,9 +546,9 @@
   }
   .locker-opt-badge {
     color: hsl(0 0% 100%);
-    width: 2.75rem;
-    height: 2.75rem;
-    font-size: 1.35rem;
+    width: 3.25rem;
+    height: 3.25rem;
+    font-size: 1.6rem;
     background: linear-gradient(145deg, hsl(232 92% 62%) 0%, hsl(232 88% 50%) 100%);
     box-shadow:
       0 6px 18px hsl(232 92% 48% / 0.38),
@@ -1017,9 +1017,9 @@
         padding: 1rem 1.25rem;
       }
       .locker-opt-badge {
-        width: 3.25rem;
-        height: 3.25rem;
-        font-size: 1.625rem;
+        width: 3.75rem;
+        height: 3.75rem;
+        font-size: 1.9rem;
       }
       .locker-opt-title {
         font-size: 1.125rem;
