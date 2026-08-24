@@ -839,8 +839,8 @@
     border-radius: 0.75rem;
   }
   .locker-options-container button[role="checkbox"] {
-    width: 1.15rem;
-    height: 1.15rem;
+    width: 1rem;
+    height: 1rem;
     border-radius: 9999px;
     border-width: 1.5px;
     border-color: hsl(215 13% 68%);
@@ -853,8 +853,8 @@
     color: hsl(var(--primary));
   }
   .locker-options-container button[role="checkbox"] svg {
-    width: 0.8rem;
-    height: 0.8rem;
+    width: 0.7rem;
+    height: 0.7rem;
     stroke-width: 3.25;
   }
 
