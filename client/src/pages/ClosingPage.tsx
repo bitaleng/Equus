@@ -822,62 +822,87 @@ export default function ClosingPage() {
   };
 
   // 기간별 정산 보고서를 PDF로 내보내기
-  const handleExportReportPDF = () => {
+  const handleExportReportPDF = async () => {
     if (!rangeSalesData || !reportExpenseSummary) return;
 
     const doc = new jsPDF();
 
+    // 한글 폰트 로드 (jsPDF 기본 폰트는 한글을 지원하지 않음 — 매출리포트 PDF와 동일한 방식)
+    let koreanFont: string | null = null;
+    try {
+      const fontResponse = await fetch('/fonts/NotoSansKR-Regular.ttf');
+      if (fontResponse.ok) {
+        const fontArrayBuffer = await fontResponse.arrayBuffer();
+        const fontBytes = new Uint8Array(fontArrayBuffer);
+        let fontBase64 = '';
+        for (let i = 0; i < fontBytes.length; i++) {
+          fontBase64 += String.fromCharCode(fontBytes[i]);
+        }
+        fontBase64 = btoa(fontBase64);
+        doc.addFileToVFS('NotoSansKR-Regular.ttf', fontBase64);
+        doc.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+        koreanFont = 'NotoSansKR';
+      }
+    } catch (fontError) {
+      console.warn('폰트 로드 실패:', fontError);
+    }
+    if (koreanFont) doc.setFont(koreanFont, 'normal');
+
     doc.setFontSize(16);
-    doc.text(`Settlement Report (${rangeStartBusinessDay} ~ ${rangeEndBusinessDay})`, 14, 20);
+    doc.text(`정산 보고서 (${rangeStartBusinessDay} ~ ${rangeEndBusinessDay})`, 14, 20);
 
     const salesData = [
-      ['Entry Sales', rangeSalesData.entrySales.cash.toLocaleString(), rangeSalesData.entrySales.card.toLocaleString(), rangeSalesData.entrySales.transfer.toLocaleString(), rangeSalesData.entrySales.total.toLocaleString()],
-      ['Additional Fee', rangeSalesData.additionalSales.cash.toLocaleString(), rangeSalesData.additionalSales.card.toLocaleString(), rangeSalesData.additionalSales.transfer.toLocaleString(), rangeSalesData.additionalSales.total.toLocaleString()],
-      ['Rental', rangeSalesData.rentalSales.cash.toLocaleString(), rangeSalesData.rentalSales.card.toLocaleString(), rangeSalesData.rentalSales.transfer.toLocaleString(), rangeSalesData.rentalSales.total.toLocaleString()],
-      ['Total Sales', rangeSalesData.totalEntrySales.cash.toLocaleString(), rangeSalesData.totalEntrySales.card.toLocaleString(), rangeSalesData.totalEntrySales.transfer.toLocaleString(), rangeSalesData.totalEntrySales.total.toLocaleString()],
+      ['입실매출', rangeSalesData.entrySales.cash.toLocaleString(), rangeSalesData.entrySales.card.toLocaleString(), rangeSalesData.entrySales.transfer.toLocaleString(), rangeSalesData.entrySales.total.toLocaleString()],
+      ['추가요금 매출', rangeSalesData.additionalSales.cash.toLocaleString(), rangeSalesData.additionalSales.card.toLocaleString(), rangeSalesData.additionalSales.transfer.toLocaleString(), rangeSalesData.additionalSales.total.toLocaleString()],
+      ['대여물품 매출', rangeSalesData.rentalSales.cash.toLocaleString(), rangeSalesData.rentalSales.card.toLocaleString(), rangeSalesData.rentalSales.transfer.toLocaleString(), rangeSalesData.rentalSales.total.toLocaleString()],
+      ['총매출', rangeSalesData.totalEntrySales.cash.toLocaleString(), rangeSalesData.totalEntrySales.card.toLocaleString(), rangeSalesData.totalEntrySales.transfer.toLocaleString(), rangeSalesData.totalEntrySales.total.toLocaleString()],
     ];
 
     autoTable(doc, {
-      head: [['Category', 'Cash', 'Card', 'Transfer', 'Total']],
+      head: [['매출 내역', '현금', '카드', '계좌이체', '합계']],
       body: salesData,
       startY: 28,
       theme: 'grid',
-      headStyles: { fillColor: [66, 139, 202] },
+      styles: koreanFont ? { font: koreanFont } : undefined,
+      headStyles: { fillColor: [66, 139, 202], font: koreanFont || undefined },
     });
 
     const finalY1 = (doc as any).lastAutoTable.finalY;
 
     const expenseData = [
-      ['Cash', reportExpenseSummary.cashTotal.toLocaleString()],
-      ['Card', reportExpenseSummary.cardTotal.toLocaleString()],
-      ['Transfer', reportExpenseSummary.transferTotal.toLocaleString()],
-      ['Total', reportExpenseSummary.total.toLocaleString()],
+      ['현금', reportExpenseSummary.cashTotal.toLocaleString()],
+      ['카드', reportExpenseSummary.cardTotal.toLocaleString()],
+      ['계좌이체', reportExpenseSummary.transferTotal.toLocaleString()],
+      ['합계', reportExpenseSummary.total.toLocaleString()],
     ];
 
     autoTable(doc, {
-      head: [['Expenses', 'Amount']],
+      head: [['지출 내역', '금액']],
       body: expenseData,
       startY: finalY1 + 10,
       theme: 'grid',
-      headStyles: { fillColor: [217, 83, 79] },
+      styles: koreanFont ? { font: koreanFont } : undefined,
+      headStyles: { fillColor: [217, 83, 79], font: koreanFont || undefined },
     });
 
     const finalY2 = (doc as any).lastAutoTable.finalY;
 
+    if (koreanFont) doc.setFont(koreanFont, 'normal');
     doc.setFontSize(12);
     doc.text(
-      `Net Profit: ${(rangeSalesData.totalEntrySales.total - reportExpenseSummary.total).toLocaleString()}`,
+      `순수익: ${(rangeSalesData.totalEntrySales.total - reportExpenseSummary.total).toLocaleString()}원`,
       14,
       finalY2 + 10
     );
 
     if (reportDailyTrend.length > 0) {
       autoTable(doc, {
-        head: [['Date', 'Sales']],
+        head: [['영업일', '매출']],
         body: reportDailyTrend.map((d) => [d.businessDay, d.totalSales.toLocaleString()]),
         startY: finalY2 + 16,
         theme: 'grid',
-        headStyles: { fillColor: [100, 100, 100] },
+        styles: koreanFont ? { font: koreanFont } : undefined,
+        headStyles: { fillColor: [100, 100, 100], font: koreanFont || undefined },
       });
     }
 
