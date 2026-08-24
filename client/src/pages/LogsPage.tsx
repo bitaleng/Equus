@@ -517,7 +517,7 @@ export default function LogsPage() {
   const overallTotalAmount = activeLogs.reduce((sum, log) => sum + getDisplayPrice(log), 0);
 
   const exportToExcel = () => {
-    const exportData = logs.map((log) => ({
+    const exportData = displayedLogs.map((log) => ({
       '락커번호': log.lockerNumber,
       '입실날짜': new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       '입실시간': new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
@@ -564,7 +564,7 @@ export default function LogsPage() {
     doc.setFontSize(16);
     doc.text(title, 14, 15);
     
-    const tableData = logs.map((log) => [
+    const tableData = displayedLogs.map((log) => [
       log.lockerNumber.toString(),
       new Date(log.entryTime).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }),
       new Date(log.entryTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),

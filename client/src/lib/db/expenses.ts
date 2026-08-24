@@ -146,6 +146,33 @@ export function getExpenseSummaryByBusinessDay(businessDay: string) {
   };
 }
 
+export function getExpenseSummaryByBusinessDayRange(startBusinessDay: string, endBusinessDay: string) {
+  if (!db) throw new Error('Database not initialized');
+
+  const result = db.exec(
+    `SELECT
+       SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) as cash_total,
+       SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END) as card_total,
+       SUM(CASE WHEN payment_method = 'transfer' THEN amount ELSE 0 END) as transfer_total,
+       SUM(amount) as total
+     FROM expenses
+     WHERE business_day >= ? AND business_day <= ?`,
+    [startBusinessDay, endBusinessDay]
+  );
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return { cashTotal: 0, cardTotal: 0, transferTotal: 0, total: 0 };
+  }
+
+  const row = result[0].values[0];
+  return {
+    cashTotal: (row[0] as number) || 0,
+    cardTotal: (row[1] as number) || 0,
+    transferTotal: (row[2] as number) || 0,
+    total: (row[3] as number) || 0,
+  };
+}
+
 export function updateExpense(id: string, updates: {
   date?: string;
   time?: string;

@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw, Users, FileDown, ListTree, Rows3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, BarChart3, TrendingUp, TrendingDown, RefreshCw, Users, FileDown, FileSpreadsheet, ListTree, Rows3 } from "lucide-react";
 import jsPDF from "jspdf";
+import * as XLSX from "xlsx";
 import {
   getDailySummariesByMonth,
   getLockerLogsByBusinessDay,
@@ -656,6 +657,76 @@ function SalesCalendar() {
     }
   };
 
+  // 일별/주간총계/월합계 3개 시트로 구성된 엑셀 내보내기 — 지불방식(현금/카드/이체)별 매출 포함
+  const exportToExcel = () => {
+    try {
+      const monthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+      const dailyRows = monthDays.map((day) => {
+        const dateStr = format(day, "yyyy-MM-dd");
+        const data = summaryMap.get(dateStr);
+        const payment = paymentMap.get(dateStr);
+        const visitor = visitorMap.get(dateStr);
+        const cancelled = cancelledMap.get(dateStr);
+        const discount = discountMap.get(dateStr);
+        return {
+          "날짜": dateStr,
+          "요일": DAY_NAMES[getDay(day)],
+          "총매출": data?.totalSales || 0,
+          "현금": payment?.cash || 0,
+          "카드": payment?.card || 0,
+          "이체": payment?.transfer || 0,
+          "방문인원": visitor?.totalVisitors || 0,
+          "실사용인원": visitor?.actualVisitors || 0,
+          "취소인원": visitor?.cancelledVisitors || 0,
+          "무료입장인원": visitor?.freeVisitors || 0,
+          "취소금액": cancelled?.cancelledAmount || 0,
+          "입실할인": discount?.entryDiscount || 0,
+          "추가할인": discount?.additionalDiscount || 0,
+        };
+      });
+
+      const weeklyRows = weeks.map((week, idx) => {
+        const wt = weeklyTotals[idx];
+        const first = format(week[0], "yyyy-MM-dd");
+        const last = format(week[6], "yyyy-MM-dd");
+        return {
+          "주차": `${idx + 1}주`,
+          "기간": `${first} ~ ${last}`,
+          "매출합계": wt.total,
+          "현금": wt.cash,
+          "카드": wt.card,
+          "이체": wt.transfer,
+          "방문인원": wt.totalVisitors,
+          "취소금액": wt.cancelledAmount,
+          "입실할인": wt.entryDiscount,
+          "추가할인": wt.additionalDiscount,
+        };
+      });
+
+      const monthlyRows = [
+        { "항목": "총매출", "금액": totalSales },
+        { "항목": "현금", "금액": totalCash },
+        { "항목": "카드", "금액": totalCard },
+        { "항목": "이체", "금액": totalTransfer },
+        { "항목": "취소금액", "금액": totalCancelledAmount },
+        { "항목": "입실할인", "금액": discountTotals.entryDiscount },
+        { "항목": "추가할인", "금액": discountTotals.additionalDiscount },
+        { "항목": "할인합계", "금액": discountTotals.totalDiscount },
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dailyRows), "일별매출");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weeklyRows), "주간총계");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthlyRows), "월합계");
+
+      XLSX.writeFile(wb, `매출달력_${format(currentMonth, "yyyy-MM")}.xlsx`);
+    } catch (error) {
+      console.error('엑셀 생성 오류:', error);
+      alert('엑셀 생성 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="pb-2 space-y-3">
@@ -672,15 +743,26 @@ function SalesCalendar() {
               <ChevronRight className="w-5 h-5" />
             </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={exportToPDF}
-            title="PDF로 내보내기"
-            data-testid="button-export-pdf"
-          >
-            <FileDown className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={exportToExcel}
+              title="엑셀로 내보내기 (일별·주간총계·월합계)"
+              data-testid="button-export-excel"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={exportToPDF}
+              title="PDF로 내보내기"
+              data-testid="button-export-pdf"
+            >
+              <FileDown className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
         {/* 2행: 보기 전환 버튼 */}

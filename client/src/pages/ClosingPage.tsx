@@ -1,10 +1,11 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { ArrowLeft, Save, CheckCircle, Calculator, Calendar as CalendarIcon, AlertCircle, FileSpreadsheet, FileText } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, Calculator, Calendar as CalendarIcon, AlertCircle, FileSpreadsheet, FileText, FileBarChart2 } from 'lucide-react';
 import { Link } from 'wouter';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ko } from 'date-fns/locale';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -293,6 +294,18 @@ export default function ClosingPage() {
     totalEntrySales: { cash: number; card: number; transfer: number; total: number };
   } | null>(null);
   const [showRangeSummary, setShowRangeSummary] = useState(false);
+
+  // 기간별 정산 보고서 (매출·지출 요약 + 일별 매출 추이 그래프)
+  const [showReport, setShowReport] = useState(false);
+  const [reportExpenseSummary, setReportExpenseSummary] = useState<{
+    cashTotal: number;
+    cardTotal: number;
+    transferTotal: number;
+    total: number;
+  } | null>(null);
+  const [reportDailyTrend, setReportDailyTrend] = useState<
+    { businessDay: string; totalSales: number }[]
+  >([]);
 
   useEffect(() => {
     const settings = getSettings();
@@ -730,6 +743,47 @@ export default function ClosingPage() {
     });
   };
 
+  // 기간별 정산 보고서: 매출(지불방식별)·지출 요약 + 일별 매출 추이 그래프
+  const handleGenerateReport = () => {
+    if (!rangeStartBusinessDay || !rangeEndBusinessDay) {
+      toast({
+        title: '기간 선택 필요',
+        description: '시작일과 종료일을 모두 선택해주세요.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (rangeStartBusinessDay > rangeEndBusinessDay) {
+      toast({
+        title: '날짜 오류',
+        description: '시작일이 종료일보다 늦을 수 없습니다.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const sales = getDetailedSalesByBusinessDayRange(rangeStartBusinessDay, rangeEndBusinessDay);
+    setRangeSalesData(sales);
+
+    const expenses = localDb.getExpenseSummaryByBusinessDayRange(rangeStartBusinessDay, rangeEndBusinessDay);
+    setReportExpenseSummary(expenses);
+
+    const allSummaries = localDb.getAllDailySummaries() as { businessDay: string; totalSales: number }[];
+    const trend = allSummaries
+      .filter((s) => s.businessDay >= rangeStartBusinessDay && s.businessDay <= rangeEndBusinessDay)
+      .map((s) => ({ businessDay: s.businessDay, totalSales: s.totalSales || 0 }))
+      .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
+    setReportDailyTrend(trend);
+
+    setShowReport(true);
+
+    toast({
+      title: '보고서 생성 완료',
+      description: `${rangeStartBusinessDay} ~ ${rangeEndBusinessDay} 기간의 정산 보고서를 생성했습니다.`,
+    });
+  };
+
   // Export to Excel
   const handleExportExcel = () => {
     const data = [
@@ -1149,15 +1203,87 @@ export default function ClosingPage() {
                 />
               </div>
 
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
                 <Button onClick={handleRangeQuery} className="w-full sm:w-auto" data-testid="button-query-range">
                   <Calculator className="h-4 w-4 mr-2" />
                   조회
+                </Button>
+                <Button
+                  onClick={handleGenerateReport}
+                  variant="outline"
+                  className="w-full sm:w-auto border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:text-blue-300"
+                  data-testid="button-generate-report"
+                >
+                  <FileBarChart2 className="h-4 w-4 mr-2" />
+                  보고서 조회
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Period Report: 매출·지출 요약 + 일별 매출 추이 그래프 */}
+        {showReport && rangeSalesData && reportExpenseSummary && (
+          <Card className="border-blue-200 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/40">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                <FileBarChart2 className="h-5 w-5" />
+                정산 보고서 ({rangeStartBusinessDay} ~ {rangeEndBusinessDay})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <SalesGroup title="총매출" total={rangeSalesData.totalEntrySales.total} accent="blue">
+                <PayTiles {...rangeSalesData.totalEntrySales} emphasize tone="primary" />
+              </SalesGroup>
+              <SalesGroup title="지출합계" total={reportExpenseSummary.total} accent="slate">
+                <PayTiles
+                  cash={reportExpenseSummary.cashTotal}
+                  card={reportExpenseSummary.cardTotal}
+                  transfer={reportExpenseSummary.transferTotal}
+                  total={reportExpenseSummary.total}
+                  emphasize
+                  tone="danger"
+                />
+              </SalesGroup>
+              <div className="rounded-lg border border-primary/20 bg-background/70 p-3 flex items-center justify-between">
+                <span className="text-sm font-semibold">순수익 (총매출 - 지출)</span>
+                <span className="text-lg font-bold text-primary tabular-nums" data-testid="text-report-net-profit">
+                  {formatKoreanCurrency(rangeSalesData.totalEntrySales.total - reportExpenseSummary.total)}
+                </span>
+              </div>
+
+              <div>
+                <SalesSubLabel>일별 매출 추이</SalesSubLabel>
+                {reportDailyTrend.length > 0 ? (
+                  <div className="mt-2 h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={reportDailyTrend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        <XAxis
+                          dataKey="businessDay"
+                          tickFormatter={(v: string) => v.slice(5)}
+                          fontSize={11}
+                        />
+                        <YAxis
+                          tickFormatter={(v: number) => `${Math.round(v / 10000)}만`}
+                          fontSize={11}
+                          width={40}
+                        />
+                        <RechartsTooltip
+                          formatter={(value: number) => [`${formatKoreanCurrency(value)}`, "매출"]}
+                          labelFormatter={(label: string) => label}
+                        />
+                        <Bar dataKey="totalSales" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-2">이 기간에는 매출 데이터가 없습니다.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Range Query Results */}
         {showRangeSummary && rangeSalesData && (
