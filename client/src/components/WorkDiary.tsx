@@ -177,9 +177,6 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
                     />
                   ))}
                 </div>
-                <div className="shrink-0 flex items-center pl-1.5 pr-1 text-[10px] text-muted-foreground font-mono border-l bg-muted/10 whitespace-nowrap">
-                  {row.segs.map(s => `${minToLabel(s.startMin)}~${minToLabel(s.endMin)}`).join(", ")}
-                </div>
               </div>
             );
           })}
