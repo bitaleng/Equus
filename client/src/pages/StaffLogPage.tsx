@@ -4,7 +4,7 @@ import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
   Users, Clock, LogIn, LogOut, Trash2,
-  CheckCircle, Pencil, ChevronLeft, ChevronDown, CalendarDays,
+  CheckCircle, Pencil, ChevronDown, CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,7 @@ export default function StaffLogPage() {
 
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [showAttendanceDetail, setShowAttendanceDetail] = useState(false);
   const [workLogs, setWorkLogs] = useState<StaffWorkLog[]>([]);
 
   // 오늘 근태기록 (출퇴근 버튼용) — 첫 번째 구간의 실제 출퇴근
@@ -256,82 +256,20 @@ export default function StaffLogPage() {
     );
   }
 
-  // ── 직원 선택 화면 ────────────────────────────
-  if (!selectedStaffId) {
-    return (
-      <div className="h-full flex flex-col">
-        <div className="border-b p-4">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-xl font-semibold">직원근무일지</h1>
-            <span className="text-sm text-muted-foreground">
-              {format(getKstNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}
-            </span>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto flex flex-col items-center justify-center p-8">
-          <p className="text-muted-foreground text-sm mb-8 tracking-wide">근무일지를 기록할 직원을 선택하세요</p>
-          <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 w-full max-w-2xl">
-            {staffList.map((s, idx) => {
-              const color = getStaffColor(idx);
-              const isHovered = hoveredId === s.id;
-              return (
-                <button
-                  key={s.id}
-                  data-testid={`button-staff-${s.id}`}
-                  onMouseEnter={() => setHoveredId(s.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  onClick={() => setSelectedStaffId(s.id)}
-                  style={{
-                    backgroundColor: isHovered ? color : undefined,
-                    borderColor: isHovered ? color : undefined,
-                    transform: isHovered ? "scale(1.07)" : "scale(1)",
-                    transition: "background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease",
-                  }}
-                  className="flex flex-col items-center justify-center gap-3 py-8 px-4 rounded-xl border-2 border-border bg-card cursor-pointer focus:outline-none"
-                >
-                  {s.photo ? (
-                    <img src={s.photo} alt={s.name} className="w-14 h-14 rounded-full object-cover border-2" style={{ borderColor: isHovered ? "rgba(255,255,255,0.4)" : color + "40" }} />
-                  ) : (
-                    <div style={{ backgroundColor: isHovered ? "rgba(255,255,255,0.25)" : color + "20", color: isHovered ? "white" : color, transition: "background-color 0.18s ease, color 0.18s ease" }} className="w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold">
-                      {s.name.charAt(0)}
-                    </div>
-                  )}
-                  <span style={{ color: isHovered ? "white" : undefined, transition: "color 0.18s ease" }} className="text-base font-semibold text-foreground">
-                    {s.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── 직원 상세 화면 ────────────────────────────
+  // ── 화면 ────────────────────────────
   return (
     <div className="h-full flex flex-col">
       {/* 헤더 */}
       <div className="border-b p-4 flex items-center gap-3 flex-wrap">
-        <Button size="icon" variant="ghost" onClick={() => setSelectedStaffId("")} data-testid="button-back-to-picker">
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        {selectedStaff?.photo ? (
-          <img src={selectedStaff.photo} alt={selectedStaff.name} className="w-8 h-8 rounded-full object-cover shrink-0" />
-        ) : (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0" style={{ backgroundColor: selectedColor }}>
-            {selectedStaff?.name.charAt(0)}
-          </div>
-        )}
-        <h1 className="text-xl font-semibold">{selectedStaff?.name}</h1>
+        <Users className="h-5 w-5 text-muted-foreground" />
+        <h1 className="text-xl font-semibold">직원근무일지</h1>
         <span className="text-sm text-muted-foreground ml-auto">{format(getKstNow(), "yyyy년 M월 d일 (EEEE)", { locale: ko })}</span>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        <div className="max-w-3xl mx-auto space-y-4">
+        <div className="max-w-5xl mx-auto space-y-4">
 
-          {/* ── 오늘 근태기록 (접기/펼치기) ── */}
+          {/* ── 근무자별 근태기록 (접기/펼치기) ── */}
           <Collapsible open={attendanceOpen} onOpenChange={setAttendanceOpen}>
             <Card>
               <CollapsibleTrigger asChild>
@@ -339,67 +277,266 @@ export default function StaffLogPage() {
                   <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Clock className="h-4 w-4" />
-                      오늘 근태기록
-                      {isNightShift && (
+                      근무자별 근태기록
+                      {showAttendanceDetail && selectedStaff && (
+                        <Badge variant="outline" className="text-xs" style={{ borderColor: selectedColor + "60", color: selectedColor }}>
+                          {selectedStaff.name}
+                        </Badge>
+                      )}
+                      {isNightShift && showAttendanceDetail && (
                         <Badge variant="outline" className="text-xs border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
                           야간 근무 중 ({clockLog!.workDate} 출근)
                         </Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-lg tabular-nums text-muted-foreground">
-                        {format(currentTime, "HH:mm:ss")}
-                      </span>
+                      {showAttendanceDetail && (
+                        <span className="font-mono text-lg tabular-nums text-muted-foreground">
+                          {format(currentTime, "HH:mm:ss")}
+                        </span>
+                      )}
                       <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${attendanceOpen ? "" : "-rotate-90"}`} />
                     </div>
                   </CardTitle>
                 </CardHeader>
               </CollapsibleTrigger>
               <CollapsibleContent>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* 출근 */}
-                    <div>
-                      {hasClockedIn ? (
-                        <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
-                          <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
-                          <span className="text-xs text-muted-foreground">실제 출근</span>
-                          <span className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{clockLog!.startTime}</span>
-                        </div>
-                      ) : (
-                        <button onClick={handleClockIn} data-testid="button-clock-in"
-                          className="w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer">
-                          <LogIn className="h-7 w-7" />
-                          <span className="text-base font-bold">출근</span>
-                          <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
+                <CardContent className="space-y-4">
+                  {/* 직원 선택 버튼 */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-muted-foreground shrink-0">근무자 :</span>
+                    {staffList.map((s, idx) => {
+                      const color = getStaffColor(idx);
+                      const isSel = selectedStaffId === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          data-testid={`button-staff-${s.id}`}
+                          onClick={() => setSelectedStaffId(s.id)}
+                          style={{
+                            backgroundColor: isSel ? color : undefined,
+                            borderColor: isSel ? color : color + "40",
+                            color: isSel ? "white" : undefined,
+                          }}
+                          className="flex items-center gap-1.5 pl-1.5 pr-3 py-1 rounded-full border-2 text-sm font-medium hover-elevate cursor-pointer transition-colors"
+                        >
+                          {s.photo ? (
+                            <img src={s.photo} alt={s.name} className="w-5 h-5 rounded-full object-cover" />
+                          ) : (
+                            <span
+                              style={{ backgroundColor: isSel ? "rgba(255,255,255,0.25)" : color + "20", color: isSel ? "white" : color }}
+                              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                            >
+                              {s.name.charAt(0)}
+                            </span>
+                          )}
+                          {s.name}
                         </button>
-                      )}
-                    </div>
-                    {/* 퇴근 */}
-                    <div>
-                      {hasClockedOut ? (
-                        <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
-                          <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                          <span className="text-xs text-muted-foreground">실제 퇴근</span>
-                          <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-400">{clockLog!.endTime}</span>
-                        </div>
-                      ) : (
-                        <button onClick={handleClockOut} disabled={!hasClockedIn} data-testid="button-clock-out"
-                          className={`w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 ${hasClockedIn ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer" : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"}`}>
-                          <LogOut className="h-7 w-7" />
-                          <span className="text-base font-bold">퇴근</span>
-                          <span className="text-xs opacity-80">{hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}</span>
-                        </button>
-                      )}
-                    </div>
+                      );
+                    })}
+                    <Button
+                      size="sm"
+                      disabled={!selectedStaffId}
+                      onClick={() => setShowAttendanceDetail(true)}
+                      data-testid="button-show-attendance-detail"
+                      className="ml-1"
+                    >
+                      근태기록 보기
+                    </Button>
+                    {showAttendanceDetail && (
+                      <Button size="sm" variant="ghost" onClick={() => { setShowAttendanceDetail(false); setSelectedStaffId(""); }} data-testid="button-hide-attendance-detail">
+                        닫기
+                      </Button>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2 text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
+
+                  {!showAttendanceDetail && (
+                    <p className="text-xs text-muted-foreground">근무자를 선택하고 "근태기록 보기"를 누르면 출퇴근 기록이 표시됩니다.</p>
+                  )}
+
+                  {showAttendanceDetail && selectedStaff && (
+                    <div className="pt-3 border-t space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* 출근 */}
+                        <div>
+                          {hasClockedIn ? (
+                            <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
+                              <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                              <span className="text-xs text-muted-foreground">실제 출근</span>
+                              <span className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{clockLog!.startTime}</span>
+                            </div>
+                          ) : (
+                            <button onClick={handleClockIn} data-testid="button-clock-in"
+                              className="w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer">
+                              <LogIn className="h-7 w-7" />
+                              <span className="text-base font-bold">출근</span>
+                              <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
+                            </button>
+                          )}
+                        </div>
+                        {/* 퇴근 */}
+                        <div>
+                          {hasClockedOut ? (
+                            <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
+                              <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                              <span className="text-xs text-muted-foreground">실제 퇴근</span>
+                              <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-400">{clockLog!.endTime}</span>
+                            </div>
+                          ) : (
+                            <button onClick={handleClockOut} disabled={!hasClockedIn} data-testid="button-clock-out"
+                              className={`w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 ${hasClockedIn ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer" : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"}`}>
+                              <LogOut className="h-7 w-7" />
+                              <span className="text-base font-bold">퇴근</span>
+                              <span className="text-xs opacity-80">{hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
+
+                      {/* ── 주간 / 월간 요약 ── */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <Card>
+                          <CardContent className="pt-4 pb-4">
+                            <p className="text-xs text-muted-foreground mb-1">이번 주</p>
+                            <p className="text-lg font-semibold">{formatMinutes(weekMinutes)}</p>
+                            <p className="text-sm text-muted-foreground">₩{weekPay.toLocaleString()}</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-4 pb-4">
+                            <p className="text-xs text-muted-foreground mb-1">이번 달</p>
+                            <p className="text-lg font-semibold">{formatMinutes(monthMinutes)}</p>
+                            <p className="text-sm text-muted-foreground">₩{monthPay.toLocaleString()}</p>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      {/* ── 근무기록 / 출퇴근 탭 ── */}
+                      <Tabs defaultValue="logs">
+                        <TabsList>
+                          <TabsTrigger value="logs">근무 기록</TabsTrigger>
+                          <TabsTrigger value="attendance" data-testid="tab-attendance">출퇴근 기록</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="logs" className="mt-3">
+                          {dayGroups.length === 0 ? (
+                            <div className="text-center py-12 space-y-2">
+                              <p className="text-muted-foreground text-sm">근무 기록이 없습니다.</p>
+                              <p className="text-xs text-muted-foreground">파트타임 근무·급여는 근무다이어리에서 확인하세요. (이 탭은 예전 방식 구간 기록용)</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {dayGroups.map(group => (
+                                <div key={group.date} className="border rounded-md overflow-hidden">
+                                  <div className="flex items-center gap-3 px-3 py-2 bg-muted/40 border-b flex-wrap">
+                                    <span className="font-semibold text-sm tabular-nums">{group.date}</span>
+                                    <span className="text-sm font-bold text-primary tabular-nums ml-auto">
+                                      {group.totalPay > 0
+                                        ? `${formatMinutes(group.totalMinutes)} · ₩${group.totalPay.toLocaleString()}`
+                                        : formatMinutes(group.totalMinutes)}
+                                    </span>
+                                  </div>
+                                  {group.segments.map((seg, i) => {
+                                    const timeRange = seg.agreedStartTime && seg.agreedEndTime
+                                      ? `${seg.agreedStartTime} ~ ${seg.agreedEndTime}`
+                                      : seg.startTime && seg.endTime
+                                        ? `${seg.startTime} ~ ${seg.endTime}`
+                                        : "시간 미입력";
+                                    return (
+                                      <div key={seg.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
+                                        <span className="text-xs text-muted-foreground w-4 shrink-0">#{i + 1}</span>
+                                        <Badge variant="outline" className={`shrink-0 text-xs ${PAY_TYPE_COLORS[seg.payType || "주간"]}`}>
+                                          {seg.payType || "주간"}
+                                        </Badge>
+                                        <span className="font-mono tabular-nums text-muted-foreground flex-1">{timeRange}</span>
+                                        <span className="tabular-nums shrink-0">{formatMinutes(seg.workMinutes)}</span>
+                                        {seg.hourlyRate > 0 && (
+                                          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
+                                            ₩{seg.hourlyRate.toLocaleString()}/h
+                                          </span>
+                                        )}
+                                        <span className="font-semibold tabular-nums shrink-0">₩{seg.segmentPay.toLocaleString()}</span>
+                                        {seg.notes && <span className="text-muted-foreground text-xs max-w-20 truncate">{seg.notes}</span>}
+                                        <div className="flex gap-1 shrink-0">
+                                          <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(seg)} data-testid={`button-edit-log-${seg.id}`}>
+                                            <Pencil className="h-3.5 w-3.5" />
+                                          </Button>
+                                          <Button size="icon" variant="ghost" onClick={() => handleDeleteLog(seg.id)} data-testid={`button-delete-log-${seg.id}`}>
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </TabsContent>
+
+                        <TabsContent value="attendance" className="mt-3">
+                          {(() => {
+                            // 출퇴근 버튼으로 기록된 근태 레코드만 추출 (segmentPay=0, workMinutes=0)
+                            const attLogs = workLogs
+                              .filter(l => l.segmentPay === 0 && l.workMinutes === 0 && (l.startTime || l.endTime))
+                              .sort((a, b) => b.workDate.localeCompare(a.workDate));
+                            if (attLogs.length === 0) {
+                              return (
+                                <div className="text-center py-12 space-y-2">
+                                  <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                                  <p className="text-muted-foreground text-sm">출퇴근 기록이 없습니다.</p>
+                                  <p className="text-xs text-muted-foreground">위의 출근/퇴근 버튼을 눌러 기록하세요.</p>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="border rounded-md overflow-hidden">
+                                {/* 헤더 */}
+                                <div className="grid grid-cols-4 gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold text-muted-foreground">
+                                  <span>날짜</span>
+                                  <span className="text-green-700 dark:text-green-400">출근</span>
+                                  <span className="text-blue-700 dark:text-blue-400">퇴근</span>
+                                  <span>근무시간</span>
+                                </div>
+                                {attLogs.map((log, i) => {
+                                  const mins = calcWorkMinutes(log.startTime || "", log.endTime || "");
+                                  const isToday = log.workDate === today;
+                                  return (
+                                    <div
+                                      key={log.id}
+                                      data-testid={`row-attendance-${log.id}`}
+                                      className={`grid grid-cols-4 gap-2 px-4 py-3 text-sm items-center ${i % 2 === 1 ? "bg-muted/10" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                                    >
+                                      <span className={`tabular-nums font-medium ${isToday ? "text-primary" : ""}`}>
+                                        {log.workDate}
+                                        {isToday && <span className="ml-1 text-xs text-primary font-normal">(오늘)</span>}
+                                      </span>
+                                      <span className={`tabular-nums font-mono ${log.startTime ? "text-green-700 dark:text-green-400 font-semibold" : "text-muted-foreground"}`}>
+                                        {log.startTime || "—"}
+                                      </span>
+                                      <span className={`tabular-nums font-mono ${log.endTime ? "text-blue-700 dark:text-blue-400 font-semibold" : "text-amber-600 dark:text-amber-400 text-xs"}`}>
+                                        {log.endTime || "미퇴근"}
+                                      </span>
+                                      <span className="tabular-nums text-muted-foreground">
+                                        {mins > 0 ? formatMinutes(mins) : "—"}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                        </TabsContent>
+                      </Tabs>
+                    </div>
+                  )}
                 </CardContent>
               </CollapsibleContent>
             </Card>
           </Collapsible>
 
-          {/* ── 근무다이어리 (접기/펼치기) ── */}
+          {/* ── 근무다이어리 (접기/펼치기, 근무자 선택 불필요) ── */}
           <Collapsible open={diaryOpen} onOpenChange={setDiaryOpen}>
             <Card>
               <CollapsibleTrigger asChild>
@@ -421,142 +558,6 @@ export default function StaffLogPage() {
               </CollapsibleContent>
             </Card>
           </Collapsible>
-
-          {/* ── 주간 / 월간 요약 ── */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground mb-1">이번 주</p>
-                <p className="text-lg font-semibold">{formatMinutes(weekMinutes)}</p>
-                <p className="text-sm text-muted-foreground">₩{weekPay.toLocaleString()}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-4 pb-4">
-                <p className="text-xs text-muted-foreground mb-1">이번 달</p>
-                <p className="text-lg font-semibold">{formatMinutes(monthMinutes)}</p>
-                <p className="text-sm text-muted-foreground">₩{monthPay.toLocaleString()}</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* ── 근무기록 / 출퇴근 탭 ── */}
-          <Tabs defaultValue="logs">
-            <TabsList>
-              <TabsTrigger value="logs">근무 기록</TabsTrigger>
-              <TabsTrigger value="attendance" data-testid="tab-attendance">출퇴근 기록</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="logs" className="mt-3">
-              {dayGroups.length === 0 ? (
-                <div className="text-center py-12 space-y-2">
-                  <p className="text-muted-foreground text-sm">근무 기록이 없습니다.</p>
-                  <p className="text-xs text-muted-foreground">파트타임 근무·급여는 근무다이어리에서 확인하세요. (이 탭은 예전 방식 구간 기록용)</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {dayGroups.map(group => (
-                    <div key={group.date} className="border rounded-md overflow-hidden">
-                      <div className="flex items-center gap-3 px-3 py-2 bg-muted/40 border-b flex-wrap">
-                        <span className="font-semibold text-sm tabular-nums">{group.date}</span>
-                        <span className="text-sm font-bold text-primary tabular-nums ml-auto">
-                          {group.totalPay > 0
-                            ? `${formatMinutes(group.totalMinutes)} · ₩${group.totalPay.toLocaleString()}`
-                            : formatMinutes(group.totalMinutes)}
-                        </span>
-                      </div>
-                      {group.segments.map((seg, i) => {
-                        const timeRange = seg.agreedStartTime && seg.agreedEndTime
-                          ? `${seg.agreedStartTime} ~ ${seg.agreedEndTime}`
-                          : seg.startTime && seg.endTime
-                            ? `${seg.startTime} ~ ${seg.endTime}`
-                            : "시간 미입력";
-                        return (
-                          <div key={seg.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
-                            <span className="text-xs text-muted-foreground w-4 shrink-0">#{i + 1}</span>
-                            <Badge variant="outline" className={`shrink-0 text-xs ${PAY_TYPE_COLORS[seg.payType || "주간"]}`}>
-                              {seg.payType || "주간"}
-                            </Badge>
-                            <span className="font-mono tabular-nums text-muted-foreground flex-1">{timeRange}</span>
-                            <span className="tabular-nums shrink-0">{formatMinutes(seg.workMinutes)}</span>
-                            {seg.hourlyRate > 0 && (
-                              <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                                ₩{seg.hourlyRate.toLocaleString()}/h
-                              </span>
-                            )}
-                            <span className="font-semibold tabular-nums shrink-0">₩{seg.segmentPay.toLocaleString()}</span>
-                            {seg.notes && <span className="text-muted-foreground text-xs max-w-20 truncate">{seg.notes}</span>}
-                            <div className="flex gap-1 shrink-0">
-                              <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(seg)} data-testid={`button-edit-log-${seg.id}`}>
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button size="icon" variant="ghost" onClick={() => handleDeleteLog(seg.id)} data-testid={`button-delete-log-${seg.id}`}>
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TabsContent>
-
-            <TabsContent value="attendance" className="mt-3">
-              {(() => {
-                // 출퇴근 버튼으로 기록된 근태 레코드만 추출 (segmentPay=0, workMinutes=0)
-                const attLogs = workLogs
-                  .filter(l => l.segmentPay === 0 && l.workMinutes === 0 && (l.startTime || l.endTime))
-                  .sort((a, b) => b.workDate.localeCompare(a.workDate));
-                if (attLogs.length === 0) {
-                  return (
-                    <div className="text-center py-12 space-y-2">
-                      <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
-                      <p className="text-muted-foreground text-sm">출퇴근 기록이 없습니다.</p>
-                      <p className="text-xs text-muted-foreground">위의 출근/퇴근 버튼을 눌러 기록하세요.</p>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="border rounded-md overflow-hidden">
-                    {/* 헤더 */}
-                    <div className="grid grid-cols-4 gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold text-muted-foreground">
-                      <span>날짜</span>
-                      <span className="text-green-700 dark:text-green-400">출근</span>
-                      <span className="text-blue-700 dark:text-blue-400">퇴근</span>
-                      <span>근무시간</span>
-                    </div>
-                    {attLogs.map((log, i) => {
-                      const mins = calcWorkMinutes(log.startTime || "", log.endTime || "");
-                      const isToday = log.workDate === today;
-                      return (
-                        <div
-                          key={log.id}
-                          data-testid={`row-attendance-${log.id}`}
-                          className={`grid grid-cols-4 gap-2 px-4 py-3 text-sm items-center ${i % 2 === 1 ? "bg-muted/10" : ""} ${isToday ? "bg-primary/5" : ""}`}
-                        >
-                          <span className={`tabular-nums font-medium ${isToday ? "text-primary" : ""}`}>
-                            {log.workDate}
-                            {isToday && <span className="ml-1 text-xs text-primary font-normal">(오늘)</span>}
-                          </span>
-                          <span className={`tabular-nums font-mono ${log.startTime ? "text-green-700 dark:text-green-400 font-semibold" : "text-muted-foreground"}`}>
-                            {log.startTime || "—"}
-                          </span>
-                          <span className={`tabular-nums font-mono ${log.endTime ? "text-blue-700 dark:text-blue-400 font-semibold" : "text-amber-600 dark:text-amber-400 text-xs"}`}>
-                            {log.endTime || "미퇴근"}
-                          </span>
-                          <span className="tabular-nums text-muted-foreground">
-                            {mins > 0 ? formatMinutes(mins) : "—"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </TabsContent>
-          </Tabs>
         </div>
       </div>
 
