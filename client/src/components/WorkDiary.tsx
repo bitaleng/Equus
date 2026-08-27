@@ -31,14 +31,64 @@ function monthGrid(month: Date): Date[] {
   return eachDayOfInterval({ start, end });
 }
 
-// "14:00" -> "14", "14:30" -> "14:30" — 달력 칸에 짧게 표시하기 위한 시간 포맷
-function shortHour(t: string): string {
-  const [h, m] = t.split(":").map(Number);
+function timeToMin(t: string): number {
+  const [h, m] = (t || "0:0").split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+// 절대 분(0~) -> "14" 또는 "14:30" 같은 짧은 표기. 자정을 넘긴 시각(>=1440분)은
+// 24, 25...로 이어서 표시해 시작시간보다 작아 보이는 걸 방지 (예: 22시~다음날6시 = "22~30")
+function minToLabel(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
   return m ? `${h}:${String(m).padStart(2, "0")}` : `${h}`;
 }
-// 종료시간이 자정(00:00)이면 시작시간보다 작은 "0"으로 보여 헷갈리므로 "24"로 표시
-function shortHourEnd(t: string): string {
-  return t === "00:00" ? "24" : shortHour(t);
+
+interface DisplayBlock {
+  key: string;
+  startMin: number;
+  endMin: number; // startMin보다 크거나 같음. 자정을 넘기면 1440 이상
+  members: { staffId: string; isOverridden: boolean }[];
+}
+
+/** 달력 칸 요약용 — 같은 시작·종료 시간의 슬롯끼리 하나로 묶고(근무자 이름을 함께 표시),
+ * 시간대가 다른 슬롯끼리 겹치는 구간(같이 근무하는 시간)을 계산한다. */
+function buildDisplayBlocks(slots: ResolvedScheduleSlot[]): { blocks: DisplayBlock[]; overlaps: { startMin: number; endMin: number }[] } {
+  const blockMap = new Map<string, DisplayBlock>();
+  for (const s of slots) {
+    const startMin = timeToMin(s.startTime);
+    let endMin = timeToMin(s.endTime);
+    if (endMin <= startMin) endMin += 1440;
+    const key = `${startMin}-${endMin}`;
+    let b = blockMap.get(key);
+    if (!b) {
+      b = { key, startMin, endMin, members: [] };
+      blockMap.set(key, b);
+    }
+    b.members.push({ staffId: s.staffId, isOverridden: s.isOverridden });
+  }
+  const blocks = Array.from(blockMap.values()).sort((a, b) => a.startMin - b.startMin);
+
+  // 서로 다른 시간대가 2개 이상 겹치는 구간을 sweep line으로 계산
+  const events: { t: number; delta: number }[] = [];
+  blocks.forEach(b => {
+    events.push({ t: b.startMin, delta: 1 });
+    events.push({ t: b.endMin, delta: -1 });
+  });
+  events.sort((a, b) => a.t - b.t || a.delta - b.delta); // 같은 시각이면 끝나는 쪽(-1)을 먼저 처리 — 바로 이어지는 경우는 겹침이 아님
+  const overlaps: { startMin: number; endMin: number }[] = [];
+  let count = 0;
+  let overlapStart: number | null = null;
+  for (const ev of events) {
+    const prevCount = count;
+    count += ev.delta;
+    if (prevCount < 2 && count >= 2) {
+      overlapStart = ev.t;
+    } else if (prevCount >= 2 && count < 2 && overlapStart !== null) {
+      overlaps.push({ startMin: overlapStart, endMin: ev.t });
+      overlapStart = null;
+    }
+  }
+  return { blocks, overlaps };
 }
 
 // 좌측 스크롤용: 이전 6개월 ~ 이후 3개월
@@ -138,9 +188,9 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     [selectedDate, templates, overrides]
   );
 
-  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간, 주급지급완료 여부)
+  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 겹치는 시간대, 주급지급완료 여부)
   const daySummaries = useMemo(() => {
-    const map = new Map<string, { slots: ResolvedScheduleSlot[]; paydayStaffIds: string[] }>();
+    const map = new Map<string, { blocks: DisplayBlock[]; overlaps: { startMin: number; endMin: number }[]; paydayStaffIds: string[] }>();
     bigGrid.forEach(d => {
       const dStr = toDateStr(d);
       const dow = getDay(d);
@@ -148,10 +198,8 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       const paydayStaffIds = paydays
         .filter(p => p.isEnabled && p.dayOfWeek === dow && localDb.isPaydayCompleted(p.staffId, wStart))
         .map(p => p.staffId);
-      map.set(dStr, {
-        slots: resolveScheduleForDate(dStr, templates, overrides),
-        paydayStaffIds,
-      });
+      const { blocks, overlaps } = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides));
+      map.set(dStr, { blocks, overlaps, paydayStaffIds });
     });
     return map;
   }, [bigGrid, templates, overrides, paydays, paydayVersion]);
@@ -268,18 +316,30 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                       }`}>
                         {format(d, "d")}
                       </div>
-                      {isCurrentMonth && summary && (summary.slots.length > 0 || summary.paydayStaffIds.length > 0) && (
+                      {isCurrentMonth && summary && (summary.blocks.length > 0 || summary.paydayStaffIds.length > 0) && (
                         <div className="mt-1 space-y-0.5">
-                          {summary.slots.map(s => (
+                          {summary.blocks.map(b => {
+                            const names = b.members.map(m => staffMap.get(m.staffId)?.name ?? "?").join("·");
+                            const hasOverride = b.members.some(m => m.isOverridden);
+                            return (
+                              <div
+                                key={b.key}
+                                className={`text-[10px] leading-tight truncate rounded px-1 py-0.5 ${
+                                  hasOverride
+                                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                                    : "bg-primary/10 text-primary"
+                                }`}
+                              >
+                                {minToLabel(b.startMin)}~{minToLabel(b.endMin)} {names}
+                              </div>
+                            );
+                          })}
+                          {summary.overlaps.map((o, i) => (
                             <div
-                              key={s.templateId}
-                              className={`text-[10px] leading-tight truncate rounded px-1 py-0.5 ${
-                                s.isOverridden
-                                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                                  : "bg-primary/10 text-primary"
-                              }`}
+                              key={`ov-${i}`}
+                              className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-orange-500/15 text-orange-700 dark:text-orange-400 font-medium"
                             >
-                              {staffMap.get(s.staffId)?.name ?? "?"} {shortHour(s.startTime)}~{shortHourEnd(s.endTime)}
+                              ⏱ {minToLabel(o.startMin)}~{minToLabel(o.endMin)} 겹침
                             </div>
                           ))}
                           {summary.paydayStaffIds.map(staffId => (
