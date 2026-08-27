@@ -14,18 +14,11 @@ import { WorkDiary } from "@/components/WorkDiary";
 import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
 import type { Staff, StaffWorkLog } from "@/lib/localDb";
+import { getStaffColor } from "@/lib/staffColors";
 
 const TZ = "Asia/Seoul";
 const getKstNow = () => toZonedTime(new Date(), TZ);
 const getTodayStr = () => format(getKstNow(), "yyyy-MM-dd");
-
-const STAFF_COLORS = [
-  "#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#8B5CF6",
-  "#06B6D4", "#EC4899", "#F97316", "#6366F1", "#14B8A6",
-];
-function getStaffColor(index: number): string {
-  return STAFF_COLORS[index % STAFF_COLORS.length];
-}
 
 function formatMinutes(minutes: number): string {
   if (!minutes) return "0시간";

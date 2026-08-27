@@ -17,6 +17,7 @@ import {
   resolveScheduleForDate, calculateDailyPay, calculateWeeklyPay,
   formatKoreanTimeRange, type ResolvedScheduleSlot,
 } from "@/lib/workDiaryPay";
+import { getStaffColor, multiplyBlend, multiplyBlendAll } from "@/lib/staffColors";
 
 const TZ = "Asia/Seoul";
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
@@ -35,11 +36,12 @@ function timeToMin(t: string): number {
   const [h, m] = (t || "0:0").split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
 }
-// 절대 분(0~) -> "14" 또는 "14:30" 같은 짧은 표기. 자정을 넘긴 시각(>=1440분)은
-// 24, 25...로 이어서 표시해 시작시간보다 작아 보이는 걸 방지 (예: 22시~다음날6시 = "22~30")
+// 자정을 넘긴 종료시각(>=1440분)도 24시간으로 다시 감아서 "익일 6시"를 그냥 "6"으로 표시
+// (30처럼 이어서 표시하면 오히려 헷갈려 보여 일반적인 12/24시간 표기로 되돌림)
 function minToLabel(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
+  const wrapped = ((min % 1440) + 1440) % 1440;
+  const h = Math.floor(wrapped / 60);
+  const m = wrapped % 60;
   return m ? `${h}:${String(m).padStart(2, "0")}` : `${h}`;
 }
 
@@ -50,9 +52,17 @@ interface DisplayBlock {
   members: { staffId: string; isOverridden: boolean }[];
 }
 
-/** 달력 칸 요약용 — 같은 시작·종료 시간의 슬롯끼리 하나로 묶고(근무자 이름을 함께 표시),
- * 시간대가 다른 슬롯끼리 겹치는 구간(같이 근무하는 시간)을 계산한다. */
-function buildDisplayBlocks(slots: ResolvedScheduleSlot[]): { blocks: DisplayBlock[]; overlaps: { startMin: number; endMin: number }[] } {
+/** 근무자 한 명 또는 여러 명(같은 시간대 묶음)을 대표하는 색 — 감산혼합으로 섞음 */
+function blockColor(members: { staffId: string }[], staffList: Staff[]): string {
+  const colors = members.map(m => {
+    const idx = staffList.findIndex(s => s.id === m.staffId);
+    return getStaffColor(idx >= 0 ? idx : 0);
+  });
+  return multiplyBlendAll(colors);
+}
+
+/** 달력 칸 요약용 — 같은 시작·종료 시간의 슬롯끼리 하나로 묶어 이름을 함께 표시한다 */
+function buildDisplayBlocks(slots: ResolvedScheduleSlot[]): DisplayBlock[] {
   const blockMap = new Map<string, DisplayBlock>();
   for (const s of slots) {
     const startMin = timeToMin(s.startTime);
@@ -66,29 +76,77 @@ function buildDisplayBlocks(slots: ResolvedScheduleSlot[]): { blocks: DisplayBlo
     }
     b.members.push({ staffId: s.staffId, isOverridden: s.isOverridden });
   }
-  const blocks = Array.from(blockMap.values()).sort((a, b) => a.startMin - b.startMin);
+  return Array.from(blockMap.values()).sort((a, b) => a.startMin - b.startMin);
+}
 
-  // 서로 다른 시간대가 2개 이상 겹치는 구간을 sweep line으로 계산
-  const events: { t: number; delta: number }[] = [];
-  blocks.forEach(b => {
-    events.push({ t: b.startMin, delta: 1 });
-    events.push({ t: b.endMin, delta: -1 });
+/** 날짜별 스케줄 패널에 쓰는 시계열 그래프 — 근무자별 근무시간을 가로 막대로 표시하고,
+ * 겹치는 시간대는 감산혼합(mix-blend-mode: multiply)으로 색이 섞이게 해 겹침을 직관적으로 보여준다. */
+function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staffList: Staff[] }) {
+  if (slots.length === 0) return null;
+  const withMin = slots.map(s => {
+    const startMin = timeToMin(s.startTime);
+    let endMin = timeToMin(s.endTime);
+    if (endMin <= startMin) endMin += 1440;
+    return { ...s, startMin, endMin };
   });
-  events.sort((a, b) => a.t - b.t || a.delta - b.delta); // 같은 시각이면 끝나는 쪽(-1)을 먼저 처리 — 바로 이어지는 경우는 겹침이 아님
-  const overlaps: { startMin: number; endMin: number }[] = [];
-  let count = 0;
-  let overlapStart: number | null = null;
-  for (const ev of events) {
-    const prevCount = count;
-    count += ev.delta;
-    if (prevCount < 2 && count >= 2) {
-      overlapStart = ev.t;
-    } else if (prevCount >= 2 && count < 2 && overlapStart !== null) {
-      overlaps.push({ startMin: overlapStart, endMin: ev.t });
-      overlapStart = null;
-    }
-  }
-  return { blocks, overlaps };
+  const axisEnd = Math.max(1440, ...withMin.map(s => s.endMin));
+  const ticks: number[] = [];
+  for (let t = 0; t <= axisEnd; t += 180) ticks.push(t);
+  if (ticks[ticks.length - 1] !== axisEnd) ticks.push(axisEnd);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative h-11 rounded-md overflow-hidden border">
+        <div className="absolute inset-0 bg-white" style={{ isolation: "isolate" }}>
+          {withMin.map(s => {
+            const idx = staffList.findIndex(st => st.id === s.staffId);
+            const color = getStaffColor(idx >= 0 ? idx : 0);
+            const leftPct = (s.startMin / axisEnd) * 100;
+            const widthPct = ((s.endMin - s.startMin) / axisEnd) * 100;
+            return (
+              <div
+                key={s.templateId}
+                className="absolute inset-y-0"
+                style={{ left: `${leftPct}%`, width: `${widthPct}%`, backgroundColor: color, mixBlendMode: "multiply" }}
+                title={`${staffList.find(st => st.id === s.staffId)?.name ?? ""} ${s.startTime}~${s.endTime}`}
+              />
+            );
+          })}
+        </div>
+        {/* 시간 눈금선 — 색 혼합에 영향 없도록 별도 레이어 */}
+        <div className="absolute inset-0 pointer-events-none">
+          {ticks.map(t => (
+            <div
+              key={t}
+              className={`absolute inset-y-0 border-l ${t === 1440 ? "border-foreground/25" : "border-black/10 dark:border-white/20"}`}
+              style={{ left: `${(t / axisEnd) * 100}%` }}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="relative h-4 text-[10px] text-muted-foreground">
+        {ticks.map(t => (
+          <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${(t / axisEnd) * 100}%` }}>
+            {t === 1440 ? "자정" : `${Math.floor(((t % 1440) + 1440) % 1440 / 60)}시`}
+          </span>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
+        {withMin.map(s => {
+          const idx = staffList.findIndex(st => st.id === s.staffId);
+          const color = getStaffColor(idx >= 0 ? idx : 0);
+          const name = staffList.find(st => st.id === s.staffId)?.name ?? "?";
+          return (
+            <span key={s.templateId} className="inline-flex items-center gap-1.5 text-xs">
+              <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: color }} />
+              <span className="font-medium">{name}</span>
+              <span className="text-muted-foreground font-mono">{minToLabel(s.startMin)}~{minToLabel(s.endMin)}</span>
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // 좌측 스크롤용: 이전 6개월 ~ 이후 3개월
@@ -188,9 +246,9 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     [selectedDate, templates, overrides]
   );
 
-  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 겹치는 시간대, 주급지급완료 여부)
+  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급완료 여부)
   const daySummaries = useMemo(() => {
-    const map = new Map<string, { blocks: DisplayBlock[]; overlaps: { startMin: number; endMin: number }[]; paydayStaffIds: string[] }>();
+    const map = new Map<string, { blocks: DisplayBlock[]; paydayStaffIds: string[] }>();
     bigGrid.forEach(d => {
       const dStr = toDateStr(d);
       const dow = getDay(d);
@@ -198,8 +256,8 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       const paydayStaffIds = paydays
         .filter(p => p.isEnabled && p.dayOfWeek === dow && localDb.isPaydayCompleted(p.staffId, wStart))
         .map(p => p.staffId);
-      const { blocks, overlaps } = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides));
-      map.set(dStr, { blocks, overlaps, paydayStaffIds });
+      const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides));
+      map.set(dStr, { blocks, paydayStaffIds });
     });
     return map;
   }, [bigGrid, templates, overrides, paydays, paydayVersion]);
@@ -318,30 +376,30 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                       </div>
                       {isCurrentMonth && summary && (summary.blocks.length > 0 || summary.paydayStaffIds.length > 0) && (
                         <div className="mt-1 space-y-0.5">
-                          {summary.blocks.map(b => {
+                          {summary.blocks.map((b, bi) => {
                             const names = b.members.map(m => staffMap.get(m.staffId)?.name ?? "?").join("·");
                             const hasOverride = b.members.some(m => m.isOverridden);
+                            const color = blockColor(b.members, staffList);
+                            const next = summary.blocks[bi + 1];
+                            const overlapsNext = !!next && b.endMin > next.startMin;
                             return (
-                              <div
-                                key={b.key}
-                                className={`text-[10px] leading-tight truncate rounded px-1 py-0.5 ${
-                                  hasOverride
-                                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-                                    : "bg-primary/10 text-primary"
-                                }`}
-                              >
-                                {minToLabel(b.startMin)}~{minToLabel(b.endMin)} {names}
+                              <div key={b.key}>
+                                <div
+                                  className={`text-[10px] leading-tight truncate rounded px-1 py-0.5 ${hasOverride ? "ring-1 ring-amber-400" : ""}`}
+                                  style={{ backgroundColor: color + "26", color }}
+                                >
+                                  {minToLabel(b.startMin)}~{minToLabel(b.endMin)} {names}
+                                </div>
+                                {overlapsNext && (
+                                  <div
+                                    className="h-[3px] mx-1 my-0.5 rounded-full"
+                                    style={{ backgroundColor: multiplyBlend(color, blockColor(next.members, staffList)) }}
+                                    title="근무시간 겹침"
+                                  />
+                                )}
                               </div>
                             );
                           })}
-                          {summary.overlaps.map((o, i) => (
-                            <div
-                              key={`ov-${i}`}
-                              className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-orange-500/15 text-orange-700 dark:text-orange-400 font-medium"
-                            >
-                              ⏱ {minToLabel(o.startMin)}~{minToLabel(o.endMin)} 겹침
-                            </div>
-                          ))}
                           {summary.paydayStaffIds.map(staffId => (
                             <div
                               key={staffId}
@@ -374,6 +432,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
           </p>
         ) : (
           <div className="space-y-3">
+            <DayTimeline slots={slots} staffList={staffList} />
             {slots.map(slot => {
               const staff = staffMap.get(slot.staffId);
               const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
