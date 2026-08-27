@@ -153,7 +153,8 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
       </div>
 
       <div className="relative h-11 rounded-md overflow-hidden border">
-        <div className="absolute inset-0 bg-white" style={{ isolation: "isolate" }}>
+        {/* 가산혼합(빛을 섞듯) — 캔버스를 검정으로 두고 screen 블렌드로 겹치는 색을 밝게 섞음 */}
+        <div className="absolute inset-0 bg-black" style={{ isolation: "isolate" }}>
           {withMin.map(s => {
             const idx = staffList.findIndex(st => st.id === s.staffId);
             const color = getStaffColor(idx >= 0 ? idx : 0);
@@ -161,7 +162,7 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
               <div
                 key={s.templateId}
                 className="absolute inset-y-0"
-                style={{ left: `${posPct(s.startMin)}%`, width: `${((s.endMin - s.startMin) / totalRange) * 100}%`, backgroundColor: color, mixBlendMode: "multiply" }}
+                style={{ left: `${posPct(s.startMin)}%`, width: `${((s.endMin - s.startMin) / totalRange) * 100}%`, backgroundColor: color, mixBlendMode: "screen" }}
                 title={`${nameOf(s.staffId)} ${s.startTime}~${s.endTime}`}
               />
             );
@@ -170,7 +171,7 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
         {/* 근무 시작·종료 시각 눈금선 — 색 혼합에 영향 없도록 별도 레이어 */}
         <div className="absolute inset-0 pointer-events-none">
           {ticks.map(t => (
-            <div key={t} className="absolute inset-y-0 border-l border-black/15 dark:border-white/25" style={{ left: `${posPct(t)}%` }} />
+            <div key={t} className="absolute inset-y-0 border-l border-white/25" style={{ left: `${posPct(t)}%` }} />
           ))}
         </div>
         {/* 구간별 근무자 이름 — 겹치는 구간은 "대+준"처럼 표시. 색 혼합 레이어 밖에 그려 글자색이 섞이지 않게 함 */}
@@ -468,7 +469,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                                 </div>
                                 {overlapsNext && (
                                   <div className="text-[10px] leading-tight truncate rounded px-1 py-0.5 border border-muted-foreground/30 text-muted-foreground">
-                                    {minToLabel(overlapStart)}~{minToLabel(overlapEnd)} {overlapNames} 겹침
+                                    {minToLabel(overlapStart)}~{minToLabel(overlapEnd)} {overlapNames}
                                   </div>
                                 )}
                               </div>
