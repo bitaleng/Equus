@@ -4,9 +4,10 @@ import {
   addMonths, subMonths, isSameMonth, isSameDay, getDay,
 } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, Wallet, CheckCircle2, ChevronDown, FileDown } from "lucide-react";
+import { Users, Clock, Wallet, CheckCircle2, ChevronDown, FileDown, ImageIcon } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import html2canvas from "html2canvas";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -63,6 +64,27 @@ async function loadKoreanFont(doc: jsPDF): Promise<string | null> {
 function hexToRgbTuple(hex: string): [number, number, number] {
   const n = parseInt(hex.replace('#', ''), 16);
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+// 화면에 보이는 디자인 그대로 JPEG로 내보내기 — 가로 1920px 정도(72ppi 웹 해상도)로 스케일
+async function exportElementAsJPEG(el: HTMLElement, filename: string) {
+  const targetWidth = 1920;
+  const scale = Math.min(3, Math.max(1, targetWidth / el.offsetWidth));
+  const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
+  const canvas = await html2canvas(el, { scale, backgroundColor: bg, useCORS: true });
+  await new Promise<void>(resolve => {
+    canvas.toBlob(blob => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+      resolve();
+    }, 'image/jpeg', 0.92);
+  });
 }
 // 자정을 넘긴 종료시각(>=1440분)도 24시간으로 다시 감아서 "익일 6시"를 그냥 "6"으로 표시
 // (30처럼 이어서 표시하면 오히려 헷갈려 보여 일반적인 12/24시간 표기로 되돌림)
@@ -276,6 +298,10 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const [timeChangeSlot, setTimeChangeSlot] = useState<ResolvedScheduleSlot | null>(null);
   const [timeChangeStart, setTimeChangeStart] = useState("");
   const [timeChangeEnd, setTimeChangeEnd] = useState("");
+
+  // JPEG 내보내기 캡처 대상 (화면에 보이는 디자인 그대로 이미지로 저장)
+  const monthCalendarRef = useRef<HTMLDivElement>(null);
+  const schedulePanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTemplates(localDb.getAllPartTimeTemplates());
@@ -598,6 +624,20 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     toast({ title: "PDF 내보내기 완료", description: `근무스케줄_${selectedDate}.pdf` });
   };
 
+  const handleExportMonthJPEG = async () => {
+    if (!monthCalendarRef.current) return;
+    const filename = `근무다이어리_${format(selectedMonth, "yyyy-MM")}.jpg`;
+    await exportElementAsJPEG(monthCalendarRef.current, filename);
+    toast({ title: "JPEG 내보내기 완료", description: filename });
+  };
+
+  const handleExportDayJPEG = async () => {
+    if (!schedulePanelRef.current) return;
+    const filename = `근무스케줄_${selectedDate}.jpg`;
+    await exportElementAsJPEG(schedulePanelRef.current, filename);
+    toast({ title: "JPEG 내보내기 완료", description: filename });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3 flex-col lg:flex-row">
@@ -622,13 +662,17 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
         </div>
 
         {/* 우측: 선택된 달 큰 달력 — 매출달력과 동일한 형태로 날짜칸에 근무 요약을 바로 표시 */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0" ref={monthCalendarRef}>
           <div className="flex items-center justify-between mb-2">
             <p className="text-base font-bold" data-testid="text-diary-month">{format(selectedMonth, "yyyy년 M월")}</p>
-            <Button size="sm" variant="outline" onClick={handleExportMonthPDF} data-testid="button-export-month-pdf">
-              <FileDown className="h-3.5 w-3.5 mr-1" />
-              PDF 내보내기
-            </Button>
+            <div className="flex items-center gap-1" data-html2canvas-ignore="true">
+              <Button variant="ghost" size="icon" onClick={handleExportMonthJPEG} title="JPEG로 내보내기" data-testid="button-export-month-jpeg">
+                <ImageIcon className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleExportMonthPDF} title="PDF로 내보내기" data-testid="button-export-month-pdf">
+                <FileDown className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="border rounded-lg overflow-hidden">
             <div className="grid grid-cols-7 bg-muted/50">
@@ -715,21 +759,33 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       </div>
 
       {/* 스케줄 패널 */}
-      <div className="border rounded-md p-3 bg-muted/10 space-y-3">
+      <div className="border rounded-md p-3 bg-muted/10 space-y-3" ref={schedulePanelRef}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-sm font-semibold" data-testid="text-schedule-panel-date">
             {selectedDate} ({DAY_NAMES[getDay(new Date(selectedDate + "T00:00:00"))]}요일) 스케줄
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleExportDayPDF}
-            disabled={slots.length === 0}
-            data-testid="button-export-day-pdf"
-          >
-            <FileDown className="h-3.5 w-3.5 mr-1" />
-            PDF 내보내기
-          </Button>
+          <div className="flex items-center gap-1" data-html2canvas-ignore="true">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExportDayJPEG}
+              disabled={slots.length === 0}
+              title="JPEG로 내보내기"
+              data-testid="button-export-day-jpeg"
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleExportDayPDF}
+              disabled={slots.length === 0}
+              title="PDF로 내보내기"
+              data-testid="button-export-day-pdf"
+            >
+              <FileDown className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         {slots.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
