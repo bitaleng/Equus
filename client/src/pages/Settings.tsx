@@ -404,6 +404,9 @@ export default function Settings() {
   // 기존 파트타임 그룹에 근무자 한 명 추가
   const [addMemberGroupId, setAddMemberGroupId] = useState<string | null>(null);
   const [addMemberStaffId, setAddMemberStaffId] = useState<string>("");
+  // 파트타임 삭제/근무자 제외 확인 (모바일 PWA 환경에서 window.confirm이 제대로 뜨지 않는 경우가 있어 다이얼로그로 대체)
+  const [deleteGroupTarget, setDeleteGroupTarget] = useState<string | null>(null);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ templateId: string; memberCount: number; staffName: string } | null>(null);
 
   // 근무다이어리: 요일·시간별 시급
   const [wageTiers, setWageTiers] = useState<localDb.WageTier[]>([]);
@@ -1437,20 +1440,27 @@ export default function Settings() {
   };
 
   const handleDeleteTemplateGroup = (groupId: string) => {
-    if (!confirm("이 파트타임을 삭제하시겠습니까?\n등록된 근무자 전원이 함께 제거되고, 지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.")) return;
-    localDb.deleteTemplateGroup(groupId);
-    setTemplateGroups(localDb.getTemplateGroups(false));
-    toast({ title: "파트타임 설정이 삭제되었습니다." });
+    setDeleteGroupTarget(groupId);
   };
 
-  const handleRemoveTemplateMember = (templateId: string, memberCount: number) => {
-    const msg = memberCount <= 1
-      ? "이 파트타임을 삭제하시겠습니까?\n지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다."
-      : "이 근무자를 파트타임에서 제외하시겠습니까?\n지금까지 근무다이어리에 기록된 이 근무자의 대체근무 내역도 함께 삭제됩니다.";
-    if (!confirm(msg)) return;
-    localDb.deletePartTimeTemplate(templateId);
+  const handleConfirmDeleteTemplateGroup = () => {
+    if (!deleteGroupTarget) return;
+    localDb.deleteTemplateGroup(deleteGroupTarget);
     setTemplateGroups(localDb.getTemplateGroups(false));
-    toast({ title: memberCount <= 1 ? "파트타임 설정이 삭제되었습니다." : "근무자가 제외되었습니다." });
+    toast({ title: "파트타임 설정이 삭제되었습니다." });
+    setDeleteGroupTarget(null);
+  };
+
+  const handleRemoveTemplateMember = (templateId: string, memberCount: number, staffName: string) => {
+    setRemoveMemberTarget({ templateId, memberCount, staffName });
+  };
+
+  const handleConfirmRemoveMember = () => {
+    if (!removeMemberTarget) return;
+    localDb.deletePartTimeTemplate(removeMemberTarget.templateId);
+    setTemplateGroups(localDb.getTemplateGroups(false));
+    toast({ title: removeMemberTarget.memberCount <= 1 ? "파트타임 설정이 삭제되었습니다." : "근무자가 제외되었습니다." });
+    setRemoveMemberTarget(null);
   };
 
   const handleOpenAddMember = (groupId: string) => {
@@ -5132,7 +5142,7 @@ export default function Settings() {
                                 <span key={m.templateId} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border bg-muted/40 text-xs">
                                   {staff?.name ?? "(삭제됨)"}
                                   <button
-                                    onClick={() => handleRemoveTemplateMember(m.templateId, g.members.length)}
+                                    onClick={() => handleRemoveTemplateMember(m.templateId, g.members.length, staff?.name ?? "")}
                                     className="rounded-full hover-elevate p-0.5"
                                     data-testid={`button-remove-member-${m.templateId}`}
                                   >
@@ -6134,6 +6144,45 @@ export default function Settings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 파트타임 그룹 전체 삭제 확인 */}
+      <AlertDialog open={!!deleteGroupTarget} onOpenChange={(o) => !o && setDeleteGroupTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>파트타임 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 파트타임을 삭제하시겠습니까?<br />
+              등록된 근무자 전원이 함께 제거되고, 지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteTemplateGroup} data-testid="button-confirm-delete-template-group">삭제</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 파트타임 근무자 제외 확인 */}
+      <AlertDialog open={!!removeMemberTarget} onOpenChange={(o) => !o && setRemoveMemberTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{removeMemberTarget && removeMemberTarget.memberCount <= 1 ? "파트타임 삭제" : "근무자 제외"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {removeMemberTarget && removeMemberTarget.memberCount <= 1 ? (
+                <>이 파트타임을 삭제하시겠습니까?<br />지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.</>
+              ) : (
+                <>{removeMemberTarget?.staffName}님을 이 파트타임에서 제외하시겠습니까?<br />지금까지 근무다이어리에 기록된 이 근무자의 대체근무 내역도 함께 삭제됩니다.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmRemoveMember} data-testid="button-confirm-remove-member">
+              {removeMemberTarget && removeMemberTarget.memberCount <= 1 ? "삭제" : "제외"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* 요일·시간별 시급 다이얼로그 */}
       <Dialog open={isTierDialogOpen} onOpenChange={setIsTierDialogOpen}>
