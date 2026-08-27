@@ -307,7 +307,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const schedulePanelRef = useRef<HTMLDivElement>(null);
 
   // 주급 지급 확인 (버튼 클릭 → "지급하셨습니까?" 확인 → 예 누르면 완료 처리)
-  const [paydayConfirmSlot, setPaydayConfirmSlot] = useState<ResolvedScheduleSlot | null>(null);
+  const [paydayConfirmStaffId, setPaydayConfirmStaffId] = useState<string | null>(null);
 
   useEffect(() => {
     setTemplates(localDb.getAllPartTimeTemplates());
@@ -413,21 +413,21 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     toast({ title: "근무시간이 변경되었습니다", description: `${selectedDate} · ${formatKoreanTimeRange(timeChangeStart, timeChangeEnd)}` });
   };
 
-  const handleMarkPaydayCompleted = (slot: ResolvedScheduleSlot) => {
+  const handleMarkPaydayCompleted = (staffId: string) => {
     const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-    const weekly = calculateWeeklyPay(slot.staffId, weekStart, templates, overrides, tiers);
-    localDb.markPaydayCompleted(slot.staffId, weekStart);
+    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers);
+    localDb.markPaydayCompleted(staffId, weekStart);
     setPaydayVersion(v => v + 1);
     toast({
       title: "주급 지급 완료 처리됨",
-      description: `${staffMap.get(slot.staffId)?.name ?? ""} · 이번 주 합계 ₩${weekly.totalPay.toLocaleString()}`,
+      description: `${staffMap.get(staffId)?.name ?? ""} · 이번 주 합계 ₩${weekly.totalPay.toLocaleString()}`,
     });
   };
 
   const handleConfirmPaydayPaid = () => {
-    if (!paydayConfirmSlot) return;
-    handleMarkPaydayCompleted(paydayConfirmSlot);
-    setPaydayConfirmSlot(null);
+    if (!paydayConfirmStaffId) return;
+    handleMarkPaydayCompleted(paydayConfirmStaffId);
+    setPaydayConfirmStaffId(null);
   };
 
   // 월별 다이어리(달력) PDF 내보내기 — 매출달력과 같은 방식으로 달력 그리드를 직접 그린다
@@ -504,9 +504,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
           summary.paydayItems.forEach(item => {
             if (textY > rowY + rowHeight - 1.5) return;
             const name = staffMap.get(item.staffId)?.name ?? "";
-            if (item.status === "completed") doc.setTextColor(22, 163, 74);
-            else if (item.status === "overdue") doc.setTextColor(220, 38, 38);
-            else doc.setTextColor(37, 99, 235);
+            doc.setTextColor(90, 90, 90);
             const label = item.status === "completed" ? `${name} 주급완료` : item.status === "overdue" ? `${name} 주급미납` : `${name} 주급일`;
             doc.text(label, cellX + padding, textY);
             textY += 3.2;
@@ -761,24 +759,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                           })}
                           {summary.paydayItems.map(item => {
                             const name = staffMap.get(item.staffId)?.name ?? "";
-                            if (item.status === "completed") {
-                              return (
-                                <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-green-600/15 text-green-700 dark:text-green-400 font-medium flex items-center gap-0.5">
-                                  <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
-                                  {name} 주급완료
-                                </div>
-                              );
-                            }
-                            if (item.status === "overdue") {
-                              return (
-                                <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-red-600/15 text-red-700 dark:text-red-400 font-medium">
-                                  {name} 주급미납
-                                </div>
-                              );
-                            }
+                            const label = item.status === "completed" ? "주급완료" : item.status === "overdue" ? "주급미납" : "주급일";
                             return (
-                              <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-blue-600/15 text-blue-700 dark:text-blue-400 font-medium">
-                                {name} 주급일
+                              <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-gray-600 text-white font-medium flex items-center gap-0.5">
+                                {item.status === "completed" && <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />}
+                                {name} {label}
                               </div>
                             );
                           })}
@@ -822,73 +807,89 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
             </Button>
           </div>
         </div>
-        {slots.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">
-            이 날짜에 등록된 파트타임 스케줄이 없습니다.<br />
-            <span className="text-xs">시스템설정 &gt; 직원관리에서 파트타임을 등록해주세요.</span>
-          </p>
-        ) : (
-          <div className="space-y-3">
-            <DayTimeline slots={slots} staffList={staffList} />
-            {slots.map(slot => {
-              const staff = staffMap.get(slot.staffId);
-              const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
-              const payday = localDb.getStaffPayday(slot.staffId);
-              const dow = getDay(new Date(selectedDate + "T00:00:00"));
-              const showPaydayButton = !!payday?.isEnabled && payday.dayOfWeek === dow;
-              const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-              const isCompleted = showPaydayButton && localDb.isPaydayCompleted(slot.staffId, weekStart);
-              void paydayVersion; // 지급완료 처리 후 재렌더 트리거용 참조
+        {(() => {
+          const dowToday = getDay(new Date(selectedDate + "T00:00:00"));
+          const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
+          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday);
+          void paydayVersion; // 지급완료 처리 후 재렌더 트리거용 참조
 
-              return (
-                <div key={slot.templateId} className="rounded-lg border bg-card p-3 space-y-2">
-                  {slot.isOverridden && (
-                    <Badge variant="outline" className="text-[10px] border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
-                      대체근무로 변경됨
-                    </Badge>
-                  )}
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground">근무자 :</span>
-                      <span className="font-semibold">{staff?.name ?? "(삭제된 직원)"}</span>
+          if (slots.length === 0 && todaysPaydays.length === 0) {
+            return (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                이 날짜에 등록된 파트타임 스케줄이 없습니다.<br />
+                <span className="text-xs">시스템설정 &gt; 직원관리에서 파트타임을 등록해주세요.</span>
+              </p>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              {slots.length > 0 && <DayTimeline slots={slots} staffList={staffList} />}
+              {slots.map(slot => {
+                const staff = staffMap.get(slot.staffId);
+                const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
+
+                return (
+                  <div key={slot.templateId} className="rounded-lg border bg-card p-3 space-y-2">
+                    {slot.isOverridden && (
+                      <Badge variant="outline" className="text-[10px] border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                        대체근무로 변경됨
+                      </Badge>
+                    )}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">근무자 :</span>
+                        <span className="font-semibold">{staff?.name ?? "(삭제된 직원)"}</span>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => setStaffChangeSlot(slot)} data-testid={`button-change-staff-${slot.templateId}`}>
+                        근무자변경
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setStaffChangeSlot(slot)} data-testid={`button-change-staff-${slot.templateId}`}>
-                      근무자변경
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <span className="text-muted-foreground">근무시간 :</span>
-                      <span className="font-semibold font-mono">{formatKoreanTimeRange(slot.startTime, slot.endTime)}</span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-sm">
+                        <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">근무시간 :</span>
+                        <span className="font-semibold font-mono">{formatKoreanTimeRange(slot.startTime, slot.endTime)}</span>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => openTimeChange(slot)} data-testid={`button-change-time-${slot.templateId}`}>
+                        근무시간변경
+                      </Button>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => openTimeChange(slot)} data-testid={`button-change-time-${slot.templateId}`}>
-                      근무시간변경
-                    </Button>
+                    <div className="flex items-center gap-2 text-sm pt-1 border-t">
+                      <span className="text-muted-foreground">총 근무시간 :</span>
+                      <span className="font-semibold">{(pay.totalMinutes / 60).toFixed(1)}시간</span>
+                      <span className="text-muted-foreground ml-2">예상 일급 :</span>
+                      <span className="font-bold text-primary">₩{pay.totalPay.toLocaleString()}</span>
+                    </div>
+                    {pay.segments.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        {pay.segments.map((s, i) => (
+                          <span key={i}>{i > 0 && " + "}{s.tierName} {(s.minutes / 60).toFixed(1)}h×₩{s.hourlyRate.toLocaleString()}</span>
+                        ))}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm pt-1 border-t">
-                    <span className="text-muted-foreground">총 근무시간 :</span>
-                    <span className="font-semibold">{(pay.totalMinutes / 60).toFixed(1)}시간</span>
-                    <span className="text-muted-foreground ml-2">예상 일급 :</span>
-                    <span className="font-bold text-primary">₩{pay.totalPay.toLocaleString()}</span>
-                  </div>
-                  {pay.segments.length > 1 && (
-                    <p className="text-xs text-muted-foreground">
-                      {pay.segments.map((s, i) => (
-                        <span key={i}>{i > 0 && " + "}{s.tierName} {(s.minutes / 60).toFixed(1)}h×₩{s.hourlyRate.toLocaleString()}</span>
-                      ))}
-                    </p>
-                  )}
-                  {showPaydayButton && (() => {
-                    const weekly = calculateWeeklyPay(slot.staffId, weekStart, templates, overrides, tiers);
+                );
+              })}
+
+              {/* 주급 지급 — 그 날 근무 여부와 무관하게 주급지급일인 근무자는 항상 표시 (사후 지급도 가능하게) */}
+              {todaysPaydays.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold flex items-center gap-1.5">
+                    <Wallet className="h-4 w-4 text-muted-foreground" /> 주급 지급
+                  </p>
+                  {todaysPaydays.map(p => {
+                    const name = staffMap.get(p.staffId)?.name ?? "(삭제된 직원)";
+                    const isCompleted = localDb.isPaydayCompleted(p.staffId, weekStart);
+                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers);
                     const workedDates = weekly.days
                       .filter(d => d.result.totalMinutes > 0)
                       .map(d => format(new Date(d.date + "T00:00:00"), "M/d"));
                     return (
-                      <div className="rounded-md border border-green-400/30 bg-green-500/5 p-2.5 space-y-1.5">
-                        <p className="text-xs font-semibold text-green-700 dark:text-green-400 flex items-center gap-1">
-                          <Wallet className="h-3.5 w-3.5" /> 이번 주 주급 정보
+                      <div key={p.staffId} className="rounded-md border border-blue-400/30 bg-blue-500/5 p-2.5 space-y-1.5">
+                        <p className="text-xs font-semibold flex items-center gap-1">
+                          <Users className="h-3.5 w-3.5 text-muted-foreground" /> {name}
                         </p>
                         <div className="text-xs text-muted-foreground space-y-0.5">
                           <p>근무일 : {workedDates.length > 0 ? workedDates.join(", ") : "-"}</p>
@@ -902,9 +903,9 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                         ) : (
                           <Button
                             size="sm"
-                            className="w-full bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => setPaydayConfirmSlot(slot)}
-                            data-testid={`button-payday-complete-${slot.templateId}`}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => setPaydayConfirmStaffId(p.staffId)}
+                            data-testid={`button-payday-complete-${p.staffId}`}
                           >
                             <Wallet className="h-4 w-4 mr-1" />
                             주급지급
@@ -912,12 +913,12 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                         )}
                       </div>
                     );
-                  })()}
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* 근무자 변경 다이얼로그 */}
@@ -960,14 +961,14 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       </Dialog>
 
       {/* 주급 지급 확인 */}
-      <AlertDialog open={!!paydayConfirmSlot} onOpenChange={(o) => !o && setPaydayConfirmSlot(null)}>
+      <AlertDialog open={!!paydayConfirmStaffId} onOpenChange={(o) => !o && setPaydayConfirmStaffId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>주급 지급 확인</AlertDialogTitle>
             <AlertDialogDescription>
-              {paydayConfirmSlot && (() => {
-                const weekly = calculateWeeklyPay(paydayConfirmSlot.staffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers);
-                const name = staffMap.get(paydayConfirmSlot.staffId)?.name ?? "";
+              {paydayConfirmStaffId && (() => {
+                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers);
+                const name = staffMap.get(paydayConfirmStaffId)?.name ?? "";
                 return `${name}님에게 이번 주 주급 ₩${weekly.totalPay.toLocaleString()}을 지급하셨습니까?`;
               })()}
             </AlertDialogDescription>
