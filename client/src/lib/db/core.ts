@@ -1607,6 +1607,20 @@ function migrateDatabase() {
       // 이미 존재하면 무시
     }
 
+    // Step 37: part_time_templates에 group_id 추가 — 같은 파트타임(요일·시간)에
+    // 근무자를 여러 명 묶어서 등록할 수 있도록 그룹 단위 식별자 도입
+    try {
+      db.run(`ALTER TABLE part_time_templates ADD COLUMN group_id TEXT`);
+    } catch (e) {
+      // 이미 컬럼이 있으면 무시
+    }
+    try {
+      db.run(`UPDATE part_time_templates SET group_id = id WHERE group_id IS NULL OR group_id = ''`);
+      console.log('Backfilled part_time_templates.group_id (Step 37)');
+    } catch (e) {
+      // 무시
+    }
+
     saveDatabase();
 
   } catch (error) {
@@ -1904,6 +1918,7 @@ function createTables() {
   )`);
 
   // 근무다이어리 테이블 (파트타임 스케줄·시급구간·주급지급일·날짜별 대체근무·지급완료 기록)
+  // group_id: 같은 파트타임(요일·시간)에 근무자가 여러 명이면 같은 group_id를 공유 (근무자별로 한 행씩)
   db.run(`CREATE TABLE IF NOT EXISTS part_time_templates (
     id TEXT PRIMARY KEY,
     staff_id TEXT NOT NULL,
@@ -1912,7 +1927,8 @@ function createTables() {
     end_time TEXT NOT NULL,
     label TEXT DEFAULT '',
     is_active INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT ''
+    created_at TEXT DEFAULT '',
+    group_id TEXT
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS wage_tiers (
     id TEXT PRIMARY KEY,

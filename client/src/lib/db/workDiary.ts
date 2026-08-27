@@ -13,6 +13,18 @@ export interface PartTimeTemplate {
   label: string;
   isActive: boolean;
   createdAt: string;
+  groupId: string; // 같은 파트타임(요일·시간)에 근무자가 여러 명이면 같은 groupId를 공유 — 근무자별로 한 행
+}
+
+/** 같은 groupId를 공유하는 파트타임 행들을 하나의 "파트타임(근무자 여러 명)"으로 묶은 뷰 */
+export interface TemplateGroup {
+  groupId: string;
+  daysOfWeek: number[];
+  startTime: string;
+  endTime: string;
+  label: string;
+  isActive: boolean;
+  members: { templateId: string; staffId: string }[];
 }
 
 export interface WageTier {
@@ -72,19 +84,42 @@ function rowToTemplate(r: any[]): PartTimeTemplate {
   return {
     id: r[0], staffId: r[1], daysOfWeek: strToDays(r[2]), startTime: r[3] || '',
     endTime: r[4] || '', label: r[5] || '', isActive: r[6] === 1, createdAt: r[7] || '',
+    groupId: r[8] || r[0],
   };
 }
 
-const TEMPLATE_SELECT = `SELECT id, staff_id, days_of_week, start_time, end_time, label, is_active, created_at FROM part_time_templates`;
+const TEMPLATE_SELECT = `SELECT id, staff_id, days_of_week, start_time, end_time, label, is_active, created_at, group_id FROM part_time_templates`;
 
-export function createPartTimeTemplate(data: Omit<PartTimeTemplate, 'id' | 'createdAt'>): string {
+/** 새 파트타임 그룹(요일·시간 슬롯)을 만들며 첫 근무자를 등록. groupId를 생략하면 새 그룹을 생성한다. */
+export function createPartTimeTemplate(data: Omit<PartTimeTemplate, 'id' | 'createdAt' | 'groupId'> & { groupId?: string }): string {
   if (!db) return '';
+  const id = newId('ptt');
+  const groupId = data.groupId || newId('grp');
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO part_time_templates (id, staff_id, days_of_week, start_time, end_time, label, is_active, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, data.staffId, daysToStr(data.daysOfWeek), data.startTime, data.endTime, data.label || '', data.isActive ? 1 : 0, now, groupId]
+  );
+  saveDatabaseDebounced();
+  return id;
+}
+
+/** 이미 있는 파트타임 그룹에 근무자를 한 명 더 추가 (요일·시간·라벨은 그룹의 기존 값을 그대로 복사) */
+export function addStaffToGroup(groupId: string, staffId: string): string {
+  if (!db) return '';
+  const rows = db.exec(
+    `SELECT days_of_week, start_time, end_time, label, is_active FROM part_time_templates WHERE group_id = ? LIMIT 1`,
+    [groupId]
+  );
+  if (!rows.length || !rows[0].values.length) return '';
+  const [daysOfWeekStr, startTime, endTime, label, isActive] = rows[0].values[0];
   const id = newId('ptt');
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO part_time_templates (id, staff_id, days_of_week, start_time, end_time, label, is_active, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, data.staffId, daysToStr(data.daysOfWeek), data.startTime, data.endTime, data.label || '', data.isActive ? 1 : 0, now]
+    `INSERT INTO part_time_templates (id, staff_id, days_of_week, start_time, end_time, label, is_active, created_at, group_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, staffId, daysOfWeekStr, startTime, endTime, label, isActive, now, groupId]
   );
   saveDatabaseDebounced();
   return id;
@@ -98,7 +133,22 @@ export function getAllPartTimeTemplates(activeOnly = true): PartTimeTemplate[] {
   return rows[0].values.map(rowToTemplate);
 }
 
-export function updatePartTimeTemplate(id: string, data: Partial<Omit<PartTimeTemplate, 'id' | 'createdAt'>>): boolean {
+/** groupId 기준으로 묶은 뷰 — 같은 요일·시간 슬롯에 등록된 근무자 목록을 한 번에 보여줄 때 사용 */
+export function getTemplateGroups(activeOnly = false): TemplateGroup[] {
+  const templates = getAllPartTimeTemplates(activeOnly);
+  const map = new Map<string, TemplateGroup>();
+  for (const t of templates) {
+    let g = map.get(t.groupId);
+    if (!g) {
+      g = { groupId: t.groupId, daysOfWeek: t.daysOfWeek, startTime: t.startTime, endTime: t.endTime, label: t.label, isActive: t.isActive, members: [] };
+      map.set(t.groupId, g);
+    }
+    g.members.push({ templateId: t.id, staffId: t.staffId });
+  }
+  return Array.from(map.values());
+}
+
+export function updatePartTimeTemplate(id: string, data: Partial<Omit<PartTimeTemplate, 'id' | 'createdAt' | 'groupId'>>): boolean {
   if (!db) return false;
   const sets: string[] = [];
   const values: any[] = [];
@@ -115,10 +165,41 @@ export function updatePartTimeTemplate(id: string, data: Partial<Omit<PartTimeTe
   return true;
 }
 
+/** 그룹 전체(요일·시간·라벨)를 한 번에 수정 — 그룹에 속한 모든 근무자 행에 반영 */
+export function updateTemplateGroup(groupId: string, data: Partial<Pick<PartTimeTemplate, 'daysOfWeek' | 'startTime' | 'endTime' | 'label' | 'isActive'>>): boolean {
+  if (!db) return false;
+  const sets: string[] = [];
+  const values: any[] = [];
+  if (data.daysOfWeek !== undefined) { sets.push('days_of_week = ?'); values.push(daysToStr(data.daysOfWeek)); }
+  if (data.startTime !== undefined) { sets.push('start_time = ?'); values.push(data.startTime); }
+  if (data.endTime !== undefined) { sets.push('end_time = ?'); values.push(data.endTime); }
+  if (data.label !== undefined) { sets.push('label = ?'); values.push(data.label); }
+  if (data.isActive !== undefined) { sets.push('is_active = ?'); values.push(data.isActive ? 1 : 0); }
+  if (!sets.length) return false;
+  values.push(groupId);
+  db.run(`UPDATE part_time_templates SET ${sets.join(', ')} WHERE group_id = ?`, values);
+  saveDatabaseDebounced();
+  return true;
+}
+
+/** 그룹 내 근무자 한 명만 제거 (해당 근무자의 대체근무 기록도 함께 삭제) */
 export function deletePartTimeTemplate(id: string): boolean {
   if (!db) return false;
   db.run('DELETE FROM part_time_templates WHERE id = ?', [id]);
   db.run('DELETE FROM staff_schedule_overrides WHERE template_id = ?', [id]);
+  saveDatabaseDebounced();
+  return true;
+}
+
+/** 그룹 전체(그 요일·시간 슬롯에 속한 근무자 전원)를 삭제 */
+export function deleteTemplateGroup(groupId: string): boolean {
+  if (!db) return false;
+  const rows = db.exec(`SELECT id FROM part_time_templates WHERE group_id = ?`, [groupId]);
+  const ids = rows.length ? rows[0].values.map(v => v[0] as string) : [];
+  db.run('DELETE FROM part_time_templates WHERE group_id = ?', [groupId]);
+  for (const id of ids) {
+    db.run('DELETE FROM staff_schedule_overrides WHERE template_id = ?', [id]);
+  }
   saveDatabaseDebounced();
   return true;
 }

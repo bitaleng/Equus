@@ -394,13 +394,16 @@ export default function Settings() {
   const staffFileInputRef = useRef<HTMLInputElement>(null);
   const staffCameraInputRef = useRef<HTMLInputElement>(null);
 
-  // 근무다이어리: 파트타임 설정
-  const [partTimeTemplates, setPartTimeTemplates] = useState<localDb.PartTimeTemplate[]>([]);
+  // 근무다이어리: 파트타임 설정 (같은 요일·시간 슬롯에 근무자를 여러 명 묶어서 관리)
+  const [templateGroups, setTemplateGroups] = useState<localDb.TemplateGroup[]>([]);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<localDb.PartTimeTemplate | null>(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null); // null=새 파트타임 추가, 있으면 그 그룹의 요일·시간·이름 수정
   const [templateForm, setTemplateForm] = useState<{
-    label: string; staffId: string; daysOfWeek: number[]; startTime: string; endTime: string;
-  }>({ label: "", staffId: "", daysOfWeek: [], startTime: "", endTime: "" });
+    label: string; staffIds: string[]; daysOfWeek: number[]; startTime: string; endTime: string;
+  }>({ label: "", staffIds: [], daysOfWeek: [], startTime: "", endTime: "" });
+  // 기존 파트타임 그룹에 근무자 한 명 추가
+  const [addMemberGroupId, setAddMemberGroupId] = useState<string | null>(null);
+  const [addMemberStaffId, setAddMemberStaffId] = useState<string>("");
 
   // 근무다이어리: 요일·시간별 시급
   const [wageTiers, setWageTiers] = useState<localDb.WageTier[]>([]);
@@ -464,7 +467,7 @@ export default function Settings() {
     loadBarcodeMappings();
     loadRfidMappings();
     setStaffList(localDb.getAllStaff());
-    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+    setTemplateGroups(localDb.getTemplateGroups(false));
     setWageTiers(localDb.getAllWageTiers());
     setStaffPaydays(localDb.getAllStaffPaydays());
     void getAutoArchiveDirectoryName().then((name) => {
@@ -1394,45 +1397,73 @@ export default function Settings() {
 
   // 근무다이어리: 파트타임 설정 핸들러
   const handleAddTemplate = () => {
-    setEditingTemplate(null);
-    setTemplateForm({ label: "", staffId: staffList[0]?.id || "", daysOfWeek: [], startTime: "", endTime: "" });
+    setEditingGroupId(null);
+    setTemplateForm({ label: "", staffIds: staffList[0] ? [staffList[0].id] : [], daysOfWeek: [], startTime: "", endTime: "" });
     setIsTemplateDialogOpen(true);
   };
 
-  const handleEditTemplate = (t: localDb.PartTimeTemplate) => {
-    setEditingTemplate(t);
-    setTemplateForm({ label: t.label, staffId: t.staffId, daysOfWeek: t.daysOfWeek, startTime: t.startTime, endTime: t.endTime });
+  const handleEditTemplateGroup = (g: localDb.TemplateGroup) => {
+    setEditingGroupId(g.groupId);
+    setTemplateForm({ label: g.label, staffIds: g.members.map(m => m.staffId), daysOfWeek: g.daysOfWeek, startTime: g.startTime, endTime: g.endTime });
     setIsTemplateDialogOpen(true);
   };
 
   const handleSaveTemplate = () => {
-    if (!templateForm.staffId) { toast({ title: "근무자를 선택해주세요.", variant: "destructive" }); return; }
+    if (!editingGroupId && templateForm.staffIds.length === 0) { toast({ title: "근무자를 한 명 이상 선택해주세요.", variant: "destructive" }); return; }
     if (templateForm.daysOfWeek.length === 0) { toast({ title: "요일을 하나 이상 선택해주세요.", variant: "destructive" }); return; }
     if (!templateForm.startTime || !templateForm.endTime) { toast({ title: "시작·종료 시간을 선택해주세요.", variant: "destructive" }); return; }
-    const data = {
-      label: templateForm.label || `파트타임${partTimeTemplates.length + 1}`,
-      staffId: templateForm.staffId,
-      daysOfWeek: templateForm.daysOfWeek,
-      startTime: templateForm.startTime,
-      endTime: templateForm.endTime,
-      isActive: true,
-    };
-    if (editingTemplate) {
-      localDb.updatePartTimeTemplate(editingTemplate.id, data);
+    const label = templateForm.label || `파트타임${templateGroups.length + 1}`;
+    if (editingGroupId) {
+      localDb.updateTemplateGroup(editingGroupId, {
+        label,
+        daysOfWeek: templateForm.daysOfWeek,
+        startTime: templateForm.startTime,
+        endTime: templateForm.endTime,
+      });
       toast({ title: "파트타임 설정이 수정되었습니다." });
     } else {
-      localDb.createPartTimeTemplate(data);
+      const [firstStaffId, ...restStaffIds] = templateForm.staffIds;
+      const firstId = localDb.createPartTimeTemplate({
+        label, staffId: firstStaffId, daysOfWeek: templateForm.daysOfWeek,
+        startTime: templateForm.startTime, endTime: templateForm.endTime, isActive: true,
+      });
+      const firstRow = localDb.getAllPartTimeTemplates(false).find(t => t.id === firstId);
+      const groupId = firstRow?.groupId ?? firstId;
+      restStaffIds.forEach(staffId => localDb.addStaffToGroup(groupId, staffId));
       toast({ title: "파트타임이 추가되었습니다." });
     }
-    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+    setTemplateGroups(localDb.getTemplateGroups(false));
     setIsTemplateDialogOpen(false);
   };
 
-  const handleDeleteTemplate = (id: string) => {
-    if (!confirm("이 파트타임 설정을 삭제하시겠습니까?\n지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.")) return;
-    localDb.deletePartTimeTemplate(id);
-    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+  const handleDeleteTemplateGroup = (groupId: string) => {
+    if (!confirm("이 파트타임을 삭제하시겠습니까?\n등록된 근무자 전원이 함께 제거되고, 지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.")) return;
+    localDb.deleteTemplateGroup(groupId);
+    setTemplateGroups(localDb.getTemplateGroups(false));
     toast({ title: "파트타임 설정이 삭제되었습니다." });
+  };
+
+  const handleRemoveTemplateMember = (templateId: string, memberCount: number) => {
+    const msg = memberCount <= 1
+      ? "이 파트타임을 삭제하시겠습니까?\n지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다."
+      : "이 근무자를 파트타임에서 제외하시겠습니까?\n지금까지 근무다이어리에 기록된 이 근무자의 대체근무 내역도 함께 삭제됩니다.";
+    if (!confirm(msg)) return;
+    localDb.deletePartTimeTemplate(templateId);
+    setTemplateGroups(localDb.getTemplateGroups(false));
+    toast({ title: memberCount <= 1 ? "파트타임 설정이 삭제되었습니다." : "근무자가 제외되었습니다." });
+  };
+
+  const handleOpenAddMember = (groupId: string) => {
+    setAddMemberGroupId(groupId);
+    setAddMemberStaffId("");
+  };
+
+  const handleSaveAddMember = () => {
+    if (!addMemberGroupId || !addMemberStaffId) return;
+    localDb.addStaffToGroup(addMemberGroupId, addMemberStaffId);
+    setTemplateGroups(localDb.getTemplateGroups(false));
+    setAddMemberGroupId(null);
+    toast({ title: "근무자가 추가되었습니다." });
   };
 
   // 근무다이어리: 요일·시간별 시급 핸들러
@@ -5067,31 +5098,61 @@ export default function Settings() {
                     파트타임 추가
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">요일별 반복되는 파트타임 근무자·시간을 등록합니다. 근무다이어리 달력에 자동으로 반영됩니다.</p>
+                <p className="text-xs text-muted-foreground">요일별 반복되는 근무 슬롯을 등록합니다. 같은 요일·시간에 근무자를 여러 명 묶을 수 있습니다. 근무다이어리 달력에 자동으로 반영됩니다.</p>
                 {staffList.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
-                ) : partTimeTemplates.length === 0 ? (
+                ) : templateGroups.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">등록된 파트타임이 없습니다.</p>
                 ) : (
                   <div className="space-y-2">
-                    {partTimeTemplates.map((t, i) => {
-                      const staff = staffList.find(s => s.id === t.staffId);
+                    {templateGroups.map((g, i) => {
+                      const availableToAdd = staffList.filter(s => !g.members.some(m => m.staffId === s.id));
                       return (
-                        <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
-                          <div className="text-sm">
-                            <span className="font-medium">{t.label || `파트타임${i + 1}`}</span>
-                            <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)} · </span>
-                            <span className="font-mono">{t.startTime}~{t.endTime}</span>
-                            <span className="text-muted-foreground"> · 근무자 </span>
-                            <span className="font-medium">{staff?.name ?? "(삭제됨)"}</span>
+                        <div key={g.groupId} className="p-3 border rounded-md space-y-2" data-testid={`group-template-${g.groupId}`}>
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="text-sm">
+                              <span className="font-medium">{g.label || `파트타임${i + 1}`}</span>
+                              <span className="text-muted-foreground"> · {formatDaysKorean(g.daysOfWeek)} · </span>
+                              <span className="font-mono">{g.startTime}~{g.endTime}</span>
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <Button size="icon" variant="ghost" onClick={() => handleEditTemplateGroup(g)} data-testid={`button-edit-template-${g.groupId}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleDeleteTemplateGroup(g.groupId)} data-testid={`button-delete-template-${g.groupId}`}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex gap-1 shrink-0">
-                            <Button size="icon" variant="ghost" onClick={() => handleEditTemplate(t)} data-testid={`button-edit-template-${t.id}`}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteTemplate(t.id)} data-testid={`button-delete-template-${t.id}`}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs text-muted-foreground mr-0.5">근무자</span>
+                            {g.members.map(m => {
+                              const staff = staffList.find(s => s.id === m.staffId);
+                              return (
+                                <span key={m.templateId} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border bg-muted/40 text-xs">
+                                  {staff?.name ?? "(삭제됨)"}
+                                  <button
+                                    onClick={() => handleRemoveTemplateMember(m.templateId, g.members.length)}
+                                    className="rounded-full hover-elevate p-0.5"
+                                    data-testid={`button-remove-member-${m.templateId}`}
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </span>
+                              );
+                            })}
+                            {availableToAdd.length > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-xs"
+                                onClick={() => handleOpenAddMember(g.groupId)}
+                                data-testid={`button-add-member-${g.groupId}`}
+                              >
+                                <Plus className="h-3 w-3 mr-0.5" />
+                                근무자 추가
+                              </Button>
+                            )}
                           </div>
                         </div>
                       );
@@ -5986,8 +6047,12 @@ export default function Settings() {
       <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingTemplate ? "파트타임 수정" : "파트타임 추가"}</DialogTitle>
-            <DialogDescription>요일별로 반복되는 근무자·시간을 등록하세요.</DialogDescription>
+            <DialogTitle>{editingGroupId ? "파트타임 수정" : "파트타임 추가"}</DialogTitle>
+            <DialogDescription>
+              {editingGroupId
+                ? "이름·요일·시간을 수정합니다. 근무자는 목록의 근무자 칩에서 추가·제외할 수 있습니다."
+                : "요일별로 반복되는 근무 슬롯을 등록하세요. 같은 요일·시간에 근무자를 여러 명 선택하면 한 슬롯에 함께 묶여 등록됩니다."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -5995,19 +6060,26 @@ export default function Settings() {
               <Input
                 value={templateForm.label}
                 onChange={(e) => setTemplateForm(f => ({ ...f, label: e.target.value }))}
-                placeholder={`예: 파트타임${partTimeTemplates.length + 1}`}
+                placeholder={`예: 파트타임${templateGroups.length + 1}`}
                 data-testid="input-template-label"
               />
             </div>
-            <div className="space-y-2">
-              <Label>근무자</Label>
-              <Select value={templateForm.staffId} onValueChange={(v) => setTemplateForm(f => ({ ...f, staffId: v }))}>
-                <SelectTrigger data-testid="select-template-staff"><SelectValue placeholder="근무자 선택" /></SelectTrigger>
-                <SelectContent>
-                  {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {!editingGroupId && (
+              <div className="space-y-2">
+                <Label>근무자 (여러 명 선택 가능)</Label>
+                <ToggleGroup
+                  type="multiple"
+                  variant="outline"
+                  value={templateForm.staffIds}
+                  onValueChange={(v: string[]) => setTemplateForm(f => ({ ...f, staffIds: v }))}
+                  className="flex-wrap justify-start"
+                >
+                  {staffList.map(s => (
+                    <ToggleGroupItem key={s.id} value={s.id} data-testid={`toggle-template-staff-${s.id}`}>{s.name}</ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>요일 (여러 개 선택 가능)</Label>
               <ToggleGroup
@@ -6036,8 +6108,29 @@ export default function Settings() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>취소</Button>
             <Button onClick={handleSaveTemplate} data-testid="button-save-template">
-              {editingTemplate ? "수정" : "추가"}
+              {editingGroupId ? "수정" : "추가"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 파트타임 근무자 추가 다이얼로그 */}
+      <Dialog open={!!addMemberGroupId} onOpenChange={(o) => !o && setAddMemberGroupId(null)}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader><DialogTitle>근무자 추가</DialogTitle></DialogHeader>
+          <div className="py-2">
+            <Select value={addMemberStaffId} onValueChange={setAddMemberStaffId}>
+              <SelectTrigger data-testid="select-add-member-staff"><SelectValue placeholder="근무자 선택" /></SelectTrigger>
+              <SelectContent>
+                {staffList
+                  .filter(s => !templateGroups.find(g => g.groupId === addMemberGroupId)?.members.some(m => m.staffId === s.id))
+                  .map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddMemberGroupId(null)}>취소</Button>
+            <Button onClick={handleSaveAddMember} disabled={!addMemberStaffId} data-testid="button-save-add-member">추가</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
