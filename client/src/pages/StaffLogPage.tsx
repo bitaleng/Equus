@@ -1,25 +1,19 @@
-import { useState, useEffect, useMemo } from "react";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from "date-fns";
+import { useState, useEffect } from "react";
+import { format, subDays } from "date-fns";
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
-  Users, Clock, LogIn, LogOut, Trash2,
-  CheckCircle, Pencil, ChevronDown, CalendarDays,
+  Users, Clock, LogIn, LogOut,
+  CheckCircle, ChevronDown, CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { TimePickerButton } from "@/components/TimePickerButton";
 import { WorkDiary } from "@/components/WorkDiary";
 import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
-import type { Staff, StaffWorkLog, PayType } from "@/lib/localDb";
+import type { Staff, StaffWorkLog } from "@/lib/localDb";
 
 const TZ = "Asia/Seoul";
 const getKstNow = () => toZonedTime(new Date(), TZ);
@@ -60,43 +54,6 @@ function useCurrentTime() {
   return now;
 }
 
-const PAY_TYPES: PayType[] = ["주간", "야간", "주말", "공휴일"];
-const PAY_TYPE_COLORS: Record<PayType, string> = {
-  "주간":  "border-blue-400/50 text-blue-700 dark:text-blue-300 bg-blue-500/10",
-  "야간":  "border-indigo-400/50 text-indigo-700 dark:text-indigo-300 bg-indigo-500/10",
-  "주말":  "border-green-400/50 text-green-700 dark:text-green-300 bg-green-500/10",
-  "공휴일": "border-orange-400/50 text-orange-700 dark:text-orange-300 bg-orange-500/10",
-};
-
-function isPaySegment(log: StaffWorkLog): boolean {
-  return log.workMinutes > 0 || log.segmentPay > 0;
-}
-
-// TimePickerButton은 client/src/components/TimePickerButton.tsx로 이동(직원관리 설정에서도 재사용)
-
-// 날짜별로 구간들을 묶어 요약
-interface DayGroup {
-  date: string;
-  segments: StaffWorkLog[];
-  totalMinutes: number;
-  totalPay: number;
-}
-
-function groupByDate(logs: StaffWorkLog[]): DayGroup[] {
-  const map: Record<string, StaffWorkLog[]> = {};
-  for (const l of logs) {
-    if (!map[l.workDate]) map[l.workDate] = [];
-    map[l.workDate].push(l);
-  }
-  const result: DayGroup[] = Object.entries(map).map(([date, segs]) => {
-    const totalMinutes = segs.reduce((s: number, l: StaffWorkLog) => s + l.workMinutes, 0);
-    const totalPay = segs.reduce((s: number, l: StaffWorkLog) => s + l.segmentPay, 0);
-    return { date, segments: segs, totalMinutes, totalPay };
-  });
-  result.sort((a, b) => b.date.localeCompare(a.date));
-  return result;
-}
-
 export default function StaffLogPage() {
   const { toast } = useToast();
   const today = getTodayStr();
@@ -113,13 +70,6 @@ export default function StaffLogPage() {
   // 그룹박스 펼치기/접기
   const [attendanceOpen, setAttendanceOpen] = useState(true);
   const [diaryOpen, setDiaryOpen] = useState(true);
-
-  // 수정 다이얼로그
-  const [editingLog, setEditingLog] = useState<StaffWorkLog | null>(null);
-  const [editForm, setEditForm] = useState<{
-    startTime: string; endTime: string; payType: PayType; hourlyRate: string; notes: string;
-  }>({ startTime: "", endTime: "", payType: "주간", hourlyRate: "", notes: "" });
-  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const selectedStaff = staffList.find(s => s.id === selectedStaffId) ?? null;
   const selectedStaffIndex = staffList.findIndex(s => s.id === selectedStaffId);
@@ -154,21 +104,6 @@ export default function StaffLogPage() {
     reloadStaffData(selectedStaffId);
   }, [selectedStaffId]);
 
-  // 주/월 집계
-  const { weekMinutes, weekPay, monthMinutes, monthPay } = useMemo(() => {
-    const now = getKstNow();
-    const wStart = format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const wEnd   = format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd");
-    const mStart = format(startOfMonth(now), "yyyy-MM-dd");
-    const mEnd   = format(endOfMonth(now), "yyyy-MM-dd");
-    let wMin = 0, wPay = 0, mMin = 0, mPay = 0;
-    for (const log of workLogs) {
-      if (log.workDate >= wStart && log.workDate <= wEnd) { wMin += log.workMinutes; wPay += log.segmentPay; }
-      if (log.workDate >= mStart && log.workDate <= mEnd) { mMin += log.workMinutes; mPay += log.segmentPay; }
-    }
-    return { weekMinutes: wMin, weekPay: wPay, monthMinutes: mMin, monthPay: mPay };
-  }, [workLogs]);
-
   // 출퇴근 핸들러
   const handleClockIn = () => {
     if (!selectedStaffId) return;
@@ -197,53 +132,10 @@ export default function StaffLogPage() {
     toast({ title: "퇴근 기록 완료", description: `${nowStr} 기록 (근태기록용)` });
   };
 
-  // 구간 삭제
-  const handleDeleteLog = (id: string) => {
-    if (!confirm("이 근무 구간을 삭제하시겠습니까?")) return;
-    localDb.deleteWorkLog(id);
-    reloadStaffData(selectedStaffId);
-    toast({ title: "구간이 삭제되었습니다." });
-  };
-
-  // 수정
-  const handleOpenEdit = (log: StaffWorkLog) => {
-    setEditingLog(log);
-    setEditForm({
-      startTime: log.agreedStartTime || log.startTime || "",
-      endTime: log.agreedEndTime || log.endTime || "",
-      payType: log.payType || "주간",
-      hourlyRate: log.hourlyRate ? log.hourlyRate.toString() : "",
-      notes: log.notes || "",
-    });
-    setIsEditOpen(true);
-  };
-
-  const handleSaveEdit = () => {
-    if (!editingLog) return;
-    const rate = parseInt(editForm.hourlyRate.replace(/,/g, "")) || 0;
-    const workMinutes = calcWorkMinutes(editForm.startTime, editForm.endTime);
-    const pay = rate > 0 ? Math.floor((workMinutes / 60) * rate) : 0;
-    localDb.updateWorkLog(editingLog.id, {
-      agreedStartTime: editForm.startTime,
-      agreedEndTime: editForm.endTime,
-      payType: editForm.payType,
-      segmentPay: pay,
-      hourlyRate: rate,
-      workMinutes,
-      dailyPay: pay,
-      notes: editForm.notes,
-    });
-    reloadStaffData(selectedStaffId);
-    setIsEditOpen(false);
-    toast({ title: "구간이 수정되었습니다." });
-  };
-
   const hasClockedIn = !!clockLog?.startTime;
   const hasClockedOut = !!clockLog?.endTime;
   // 전날 출근 기록이 이어지는 야간 근무 여부
   const isNightShift = !!clockLog && clockLog.workDate !== getTodayStr();
-
-  const dayGroups = useMemo(() => groupByDate(workLogs.filter(isPaySegment)), [workLogs]);
 
   // ──────────────────────────────────────────────
   if (staffList.length === 0) {
@@ -394,141 +286,61 @@ export default function StaffLogPage() {
                       </div>
                       <p className="text-xs text-muted-foreground text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
 
-                      {/* ── 주간 / 월간 요약 ── */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <Card>
-                          <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground mb-1">이번 주</p>
-                            <p className="text-lg font-semibold">{formatMinutes(weekMinutes)}</p>
-                            <p className="text-sm text-muted-foreground">₩{weekPay.toLocaleString()}</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-4 pb-4">
-                            <p className="text-xs text-muted-foreground mb-1">이번 달</p>
-                            <p className="text-lg font-semibold">{formatMinutes(monthMinutes)}</p>
-                            <p className="text-sm text-muted-foreground">₩{monthPay.toLocaleString()}</p>
-                          </CardContent>
-                        </Card>
-                      </div>
-
-                      {/* ── 근무기록 / 출퇴근 탭 ── */}
-                      <Tabs defaultValue="logs">
-                        <TabsList>
-                          <TabsTrigger value="logs">근무 기록</TabsTrigger>
-                          <TabsTrigger value="attendance" data-testid="tab-attendance">출퇴근 기록</TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="logs" className="mt-3">
-                          {dayGroups.length === 0 ? (
-                            <div className="text-center py-12 space-y-2">
-                              <p className="text-muted-foreground text-sm">근무 기록이 없습니다.</p>
-                              <p className="text-xs text-muted-foreground">파트타임 근무·급여는 근무다이어리에서 확인하세요. (이 탭은 예전 방식 구간 기록용)</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {dayGroups.map(group => (
-                                <div key={group.date} className="border rounded-md overflow-hidden">
-                                  <div className="flex items-center gap-3 px-3 py-2 bg-muted/40 border-b flex-wrap">
-                                    <span className="font-semibold text-sm tabular-nums">{group.date}</span>
-                                    <span className="text-sm font-bold text-primary tabular-nums ml-auto">
-                                      {group.totalPay > 0
-                                        ? `${formatMinutes(group.totalMinutes)} · ₩${group.totalPay.toLocaleString()}`
-                                        : formatMinutes(group.totalMinutes)}
-                                    </span>
-                                  </div>
-                                  {group.segments.map((seg, i) => {
-                                    const timeRange = seg.agreedStartTime && seg.agreedEndTime
-                                      ? `${seg.agreedStartTime} ~ ${seg.agreedEndTime}`
-                                      : seg.startTime && seg.endTime
-                                        ? `${seg.startTime} ~ ${seg.endTime}`
-                                        : "시간 미입력";
-                                    return (
-                                      <div key={seg.id} className={`flex items-center gap-3 px-3 py-2 text-sm ${i % 2 === 1 ? "bg-muted/10" : ""}`}>
-                                        <span className="text-xs text-muted-foreground w-4 shrink-0">#{i + 1}</span>
-                                        <Badge variant="outline" className={`shrink-0 text-xs ${PAY_TYPE_COLORS[seg.payType || "주간"]}`}>
-                                          {seg.payType || "주간"}
-                                        </Badge>
-                                        <span className="font-mono tabular-nums text-muted-foreground flex-1">{timeRange}</span>
-                                        <span className="tabular-nums shrink-0">{formatMinutes(seg.workMinutes)}</span>
-                                        {seg.hourlyRate > 0 && (
-                                          <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-                                            ₩{seg.hourlyRate.toLocaleString()}/h
-                                          </span>
-                                        )}
-                                        <span className="font-semibold tabular-nums shrink-0">₩{seg.segmentPay.toLocaleString()}</span>
-                                        {seg.notes && <span className="text-muted-foreground text-xs max-w-20 truncate">{seg.notes}</span>}
-                                        <div className="flex gap-1 shrink-0">
-                                          <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(seg)} data-testid={`button-edit-log-${seg.id}`}>
-                                            <Pencil className="h-3.5 w-3.5" />
-                                          </Button>
-                                          <Button size="icon" variant="ghost" onClick={() => handleDeleteLog(seg.id)} data-testid={`button-delete-log-${seg.id}`}>
-                                            <Trash2 className="h-3.5 w-3.5" />
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </TabsContent>
-
-                        <TabsContent value="attendance" className="mt-3">
-                          {(() => {
-                            // 출퇴근 버튼으로 기록된 근태 레코드만 추출 (segmentPay=0, workMinutes=0)
-                            const attLogs = workLogs
-                              .filter(l => l.segmentPay === 0 && l.workMinutes === 0 && (l.startTime || l.endTime))
-                              .sort((a, b) => b.workDate.localeCompare(a.workDate));
-                            if (attLogs.length === 0) {
-                              return (
-                                <div className="text-center py-12 space-y-2">
-                                  <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
-                                  <p className="text-muted-foreground text-sm">출퇴근 기록이 없습니다.</p>
-                                  <p className="text-xs text-muted-foreground">위의 출근/퇴근 버튼을 눌러 기록하세요.</p>
-                                </div>
-                              );
-                            }
+                      {/* ── 출퇴근 기록 ── */}
+                      <div>
+                        <p className="text-sm font-semibold mb-2">출퇴근 기록</p>
+                        {(() => {
+                          // 출퇴근 버튼으로 기록된 근태 레코드만 추출 (segmentPay=0, workMinutes=0)
+                          const attLogs = workLogs
+                            .filter(l => l.segmentPay === 0 && l.workMinutes === 0 && (l.startTime || l.endTime))
+                            .sort((a, b) => b.workDate.localeCompare(a.workDate));
+                          if (attLogs.length === 0) {
                             return (
-                              <div className="border rounded-md overflow-hidden">
-                                {/* 헤더 */}
-                                <div className="grid grid-cols-4 gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold text-muted-foreground">
-                                  <span>날짜</span>
-                                  <span className="text-green-700 dark:text-green-400">출근</span>
-                                  <span className="text-blue-700 dark:text-blue-400">퇴근</span>
-                                  <span>근무시간</span>
-                                </div>
-                                {attLogs.map((log, i) => {
-                                  const mins = calcWorkMinutes(log.startTime || "", log.endTime || "");
-                                  const isToday = log.workDate === today;
-                                  return (
-                                    <div
-                                      key={log.id}
-                                      data-testid={`row-attendance-${log.id}`}
-                                      className={`grid grid-cols-4 gap-2 px-4 py-3 text-sm items-center ${i % 2 === 1 ? "bg-muted/10" : ""} ${isToday ? "bg-primary/5" : ""}`}
-                                    >
-                                      <span className={`tabular-nums font-medium ${isToday ? "text-primary" : ""}`}>
-                                        {log.workDate}
-                                        {isToday && <span className="ml-1 text-xs text-primary font-normal">(오늘)</span>}
-                                      </span>
-                                      <span className={`tabular-nums font-mono ${log.startTime ? "text-green-700 dark:text-green-400 font-semibold" : "text-muted-foreground"}`}>
-                                        {log.startTime || "—"}
-                                      </span>
-                                      <span className={`tabular-nums font-mono ${log.endTime ? "text-blue-700 dark:text-blue-400 font-semibold" : "text-amber-600 dark:text-amber-400 text-xs"}`}>
-                                        {log.endTime || "미퇴근"}
-                                      </span>
-                                      <span className="tabular-nums text-muted-foreground">
-                                        {mins > 0 ? formatMinutes(mins) : "—"}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
+                              <div className="text-center py-12 space-y-2">
+                                <LogIn className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                                <p className="text-muted-foreground text-sm">출퇴근 기록이 없습니다.</p>
+                                <p className="text-xs text-muted-foreground">위의 출근/퇴근 버튼을 눌러 기록하세요.</p>
                               </div>
                             );
-                          })()}
-                        </TabsContent>
-                      </Tabs>
+                          }
+                          return (
+                            <div className="border rounded-md overflow-hidden">
+                              {/* 헤더 */}
+                              <div className="grid grid-cols-4 gap-2 px-4 py-2 bg-muted/50 border-b text-xs font-semibold text-muted-foreground">
+                                <span>날짜</span>
+                                <span className="text-green-700 dark:text-green-400">출근</span>
+                                <span className="text-blue-700 dark:text-blue-400">퇴근</span>
+                                <span>체류시간</span>
+                              </div>
+                              {attLogs.map((log, i) => {
+                                const mins = calcWorkMinutes(log.startTime || "", log.endTime || "");
+                                const isToday = log.workDate === today;
+                                return (
+                                  <div
+                                    key={log.id}
+                                    data-testid={`row-attendance-${log.id}`}
+                                    className={`grid grid-cols-4 gap-2 px-4 py-3 text-sm items-center ${i % 2 === 1 ? "bg-muted/10" : ""} ${isToday ? "bg-primary/5" : ""}`}
+                                  >
+                                    <span className={`tabular-nums font-medium ${isToday ? "text-primary" : ""}`}>
+                                      {log.workDate}
+                                      {isToday && <span className="ml-1 text-xs text-primary font-normal">(오늘)</span>}
+                                    </span>
+                                    <span className={`tabular-nums font-mono ${log.startTime ? "text-green-700 dark:text-green-400 font-semibold" : "text-muted-foreground"}`}>
+                                      {log.startTime || "—"}
+                                    </span>
+                                    <span className={`tabular-nums font-mono ${log.endTime ? "text-blue-700 dark:text-blue-400 font-semibold" : "text-amber-600 dark:text-amber-400 text-xs"}`}>
+                                      {log.endTime || "미퇴근"}
+                                    </span>
+                                    <span className="tabular-nums text-muted-foreground">
+                                      {mins > 0 ? formatMinutes(mins) : "—"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </div>
                   )}
                 </CardContent>
@@ -560,74 +372,6 @@ export default function StaffLogPage() {
           </Collapsible>
         </div>
       </div>
-
-      {/* ── 구간 수정 다이얼로그 ── */}
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>근무 구간 수정 — {editingLog?.workDate}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>시작 시간</Label>
-                <TimePickerButton value={editForm.startTime} onChange={v => setEditForm(f => ({ ...f, startTime: v }))} label="시작 시간" testId="input-edit-seg-start" />
-              </div>
-              <div className="space-y-1">
-                <Label>종료 시간</Label>
-                <TimePickerButton value={editForm.endTime} onChange={v => setEditForm(f => ({ ...f, endTime: v }))} label="종료 시간" testId="input-edit-seg-end" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>근무 유형</Label>
-              <Select value={editForm.payType} onValueChange={v => setEditForm(f => ({ ...f, payType: v as PayType }))}>
-                <SelectTrigger data-testid="select-edit-pay-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {PAY_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>시간당 페이 (원, 선택)</Label>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={editForm.hourlyRate}
-                onChange={e => setEditForm(f => ({ ...f, hourlyRate: e.target.value.replace(/[^0-9]/g, "") }))}
-                placeholder="예: 12000"
-                data-testid="input-edit-seg-hourly"
-              />
-            </div>
-            {editForm.startTime && editForm.endTime && (() => {
-              const mins = calcWorkMinutes(editForm.startTime, editForm.endTime);
-              const rate = parseInt(editForm.hourlyRate) || 0;
-              const total = rate > 0 ? Math.floor((mins / 60) * rate) : 0;
-              return (
-                <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-md text-sm flex-wrap">
-                  <span className="tabular-nums text-muted-foreground">{editForm.startTime} ~ {editForm.endTime}</span>
-                  <span className="font-semibold tabular-nums">{formatMinutes(mins)}</span>
-                  {rate > 0 && (
-                    <>
-                      <span className="text-muted-foreground">×</span>
-                      <span className="tabular-nums text-muted-foreground">₩{rate.toLocaleString()}/h</span>
-                      <span className="text-muted-foreground">=</span>
-                      <span className="font-bold text-primary tabular-nums">₩{total.toLocaleString()}</span>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-            <div className="space-y-1">
-              <Label>비고</Label>
-              <Input type="text" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} data-testid="input-edit-seg-notes" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>취소</Button>
-            <Button onClick={handleSaveEdit} data-testid="button-save-edit-seg">저장</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
