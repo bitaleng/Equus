@@ -4,7 +4,9 @@ import {
   addMonths, subMonths, isSameMonth, isSameDay, getDay,
 } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { Users, Clock, Wallet, CheckCircle2, ChevronDown } from "lucide-react";
+import { Users, Clock, Wallet, CheckCircle2, ChevronDown, FileDown } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,6 +37,32 @@ function monthGrid(month: Date): Date[] {
 function timeToMin(t: string): number {
   const [h, m] = (t || "0:0").split(":").map(Number);
   return (h || 0) * 60 + (m || 0);
+}
+
+// PDF 내보내기용 — jsPDF 기본 폰트는 한글을 지원하지 않아 NotoSansKR을 등록해서 사용 (매출리포트·정산보고서와 동일한 방식)
+async function loadKoreanFont(doc: jsPDF): Promise<string | null> {
+  try {
+    const fontResponse = await fetch('/fonts/NotoSansKR-Regular.ttf');
+    if (fontResponse.ok) {
+      const fontArrayBuffer = await fontResponse.arrayBuffer();
+      const fontBytes = new Uint8Array(fontArrayBuffer);
+      let fontBase64 = '';
+      for (let i = 0; i < fontBytes.length; i++) fontBase64 += String.fromCharCode(fontBytes[i]);
+      fontBase64 = btoa(fontBase64);
+      doc.addFileToVFS('NotoSansKR-Regular.ttf', fontBase64);
+      doc.addFont('NotoSansKR-Regular.ttf', 'NotoSansKR', 'normal');
+      doc.setFont('NotoSansKR', 'normal');
+      return 'NotoSansKR';
+    }
+  } catch (e) {
+    console.warn('폰트 로드 실패:', e);
+  }
+  return null;
+}
+
+function hexToRgbTuple(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 // 자정을 넘긴 종료시각(>=1440분)도 24시간으로 다시 감아서 "익일 6시"를 그냥 "6"으로 표시
 // (30처럼 이어서 표시하면 오히려 헷갈려 보여 일반적인 12/24시간 표기로 되돌림)
@@ -359,6 +387,217 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     });
   };
 
+  // 월별 다이어리(달력) PDF 내보내기 — 매출달력과 같은 방식으로 달력 그리드를 직접 그린다
+  const handleExportMonthPDF = async () => {
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+    await loadKoreanFont(doc);
+
+    const pageWidth = 420, pageHeight = 297, margin = 10;
+    const contentWidth = pageWidth - margin * 2;
+    const headerHeight = 16, dayHeaderHeight = 10;
+    const colCount = 7;
+    const colWidth = contentWidth / colCount;
+    const rowCount = bigWeeks.length;
+    const availableHeight = pageHeight * 0.92 - margin - headerHeight - dayHeaderHeight;
+    const rowHeight = availableHeight / rowCount;
+
+    doc.setFontSize(20);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${format(selectedMonth, "yyyy년 M월")} 근무다이어리`, pageWidth / 2, margin + 10, { align: "center" });
+
+    const tableStartY = margin + headerHeight;
+    doc.setDrawColor(80, 80, 80);
+    doc.setLineWidth(0.4);
+    doc.setFillColor(230, 230, 230);
+    doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, "F");
+    doc.rect(margin, tableStartY, contentWidth, dayHeaderHeight, "S");
+    doc.setFontSize(11);
+    DAY_NAMES.forEach((d, idx) => {
+      const x = margin + idx * colWidth + colWidth / 2;
+      doc.setTextColor(idx === 0 ? 220 : idx === 6 ? 59 : 0, idx === 0 ? 38 : idx === 6 ? 130 : 0, idx === 0 ? 38 : idx === 6 ? 246 : 0);
+      doc.text(d, x, tableStartY + dayHeaderHeight / 2 + 3.5, { align: "center" });
+    });
+
+    bigWeeks.forEach((week, wi) => {
+      const rowY = tableStartY + dayHeaderHeight + wi * rowHeight;
+      week.forEach((day, di) => {
+        const dStr = toDateStr(day);
+        const isCurrentMonth = isSameMonth(day, selectedMonth);
+        const summary = daySummaries.get(dStr);
+        const cellX = margin + di * colWidth;
+        const padding = 2.5;
+        if (!isCurrentMonth) {
+          doc.setFillColor(245, 245, 245);
+          doc.rect(cellX, rowY, colWidth, rowHeight, "F");
+        }
+        const dow = getDay(day);
+        doc.setFontSize(10);
+        doc.setTextColor(
+          !isCurrentMonth ? 180 : dow === 0 ? 220 : dow === 6 ? 59 : 0,
+          !isCurrentMonth ? 180 : dow === 0 ? 38 : dow === 6 ? 130 : 0,
+          !isCurrentMonth ? 180 : dow === 0 ? 38 : dow === 6 ? 246 : 0
+        );
+        doc.text(format(day, "d"), cellX + padding, rowY + padding + 3.5);
+
+        let textY = rowY + padding + 8;
+        if (isCurrentMonth && summary) {
+          doc.setFontSize(6.8);
+          summary.blocks.forEach((b, bi) => {
+            if (textY > rowY + rowHeight - 1.5) return;
+            const names = b.members.map(m => staffMap.get(m.staffId)?.name ?? "?").join("·");
+            doc.setTextColor(0, 0, 0);
+            doc.text(`${minToLabel(b.startMin)}~${minToLabel(b.endMin)} ${names}`, cellX + padding, textY);
+            textY += 3.2;
+            const next = summary.blocks[bi + 1];
+            if (next && b.endMin > next.startMin && textY <= rowY + rowHeight - 1.5) {
+              const oStart = Math.max(b.startMin, next.startMin);
+              const oEnd = Math.min(b.endMin, next.endMin);
+              const oNames = [...b.members, ...next.members].map(m => (staffMap.get(m.staffId)?.name ?? "?").charAt(0)).join("+");
+              doc.setTextColor(140, 140, 140);
+              doc.text(`${minToLabel(oStart)}~${minToLabel(oEnd)} ${oNames}`, cellX + padding, textY);
+              textY += 3.2;
+            }
+          });
+          summary.paydayStaffIds.forEach(sid => {
+            if (textY > rowY + rowHeight - 1.5) return;
+            doc.setTextColor(22, 163, 74);
+            doc.text(`${staffMap.get(sid)?.name ?? ""} 주급완료`, cellX + padding, textY);
+            textY += 3.2;
+          });
+        }
+      });
+    });
+
+    doc.setDrawColor(80, 80, 80);
+    doc.setLineWidth(0.3);
+    for (let i = 0; i <= colCount; i++) {
+      const x = margin + i * colWidth;
+      doc.line(x, tableStartY + dayHeaderHeight, x, tableStartY + dayHeaderHeight + rowCount * rowHeight);
+    }
+    for (let i = 0; i <= rowCount; i++) {
+      const y = tableStartY + dayHeaderHeight + i * rowHeight;
+      doc.line(margin, y, margin + contentWidth, y);
+    }
+    doc.line(margin, tableStartY, margin + contentWidth, tableStartY);
+
+    doc.save(`근무다이어리_${format(selectedMonth, "yyyy-MM")}.pdf`);
+    toast({ title: "PDF 내보내기 완료", description: `근무다이어리_${format(selectedMonth, "yyyy-MM")}.pdf` });
+  };
+
+  // 날짜별 스케줄 PDF 내보내기 — 화면의 근무자별 레인 그래프를 그대로 그리고, 아래에 근무자별 상세 표를 붙인다
+  const handleExportDayPDF = async () => {
+    if (slots.length === 0) return;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const koreanFont = await loadKoreanFont(doc);
+
+    const pageWidth = 210, margin = 14;
+    const contentWidth = pageWidth - margin * 2;
+
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    const dow = DAY_NAMES[getDay(new Date(selectedDate + "T00:00:00"))];
+    doc.text(`${selectedDate} (${dow}요일) 근무 스케줄`, margin, margin + 4);
+
+    // ── 근무자별 레인 그래프 (화면의 시계열 그래프와 동일한 로직) ──
+    const withMin = slots.map(s => {
+      const startMin = timeToMin(s.startTime);
+      let endMin = timeToMin(s.endTime);
+      if (endMin <= startMin) endMin += 1440;
+      return { ...s, startMin, endMin };
+    });
+    const axisStart = Math.min(TIMELINE_DEFAULT_START, ...withMin.map(s => s.startMin));
+    const axisEnd = Math.max(TIMELINE_DEFAULT_END, ...withMin.map(s => s.endMin));
+    const totalRange = axisEnd - axisStart;
+
+    const rowMap = new Map<string, typeof withMin>();
+    withMin.forEach(s => {
+      if (!rowMap.has(s.staffId)) rowMap.set(s.staffId, []);
+      rowMap.get(s.staffId)!.push(s);
+    });
+    const ganttRows = Array.from(rowMap.entries())
+      .map(([staffId, segs]) => ({ staffId, segs, firstStart: Math.min(...segs.map(x => x.startMin)) }))
+      .sort((a, b) => a.firstStart - b.firstStart);
+
+    const labelWidth = 26;
+    const ganttX = margin, ganttTop = margin + 12;
+    const barAreaX = ganttX + labelWidth, barAreaWidth = contentWidth - labelWidth;
+    const posX = (t: number) => barAreaX + ((t - axisStart) / totalRange) * barAreaWidth;
+
+    // 전날/오늘/익일 구간 표시
+    const bandY = ganttTop, bandHeight = 6;
+    doc.setFontSize(8);
+    ([{ from: axisStart, to: 0, label: "전날" }, { from: 0, to: 1440, label: "오늘" }, { from: 1440, to: axisEnd, label: "익일" }] as const)
+      .filter(z => z.to > z.from)
+      .forEach(z => {
+        doc.setDrawColor(190, 190, 190);
+        doc.rect(posX(z.from), bandY, posX(z.to) - posX(z.from), bandHeight, "S");
+        doc.setTextColor(110, 110, 110);
+        doc.text(z.label, (posX(z.from) + posX(z.to)) / 2, bandY + bandHeight / 2 + 1.2, { align: "center" });
+      });
+
+    const rowHeight = 7;
+    const ganttRowsTop = bandY + bandHeight + 2;
+    doc.setFontSize(8.5);
+    ganttRows.forEach((row, ri) => {
+      const rowY = ganttRowsTop + ri * rowHeight;
+      const idx = staffList.findIndex(st => st.id === row.staffId);
+      const color = getStaffColor(idx >= 0 ? idx : 0);
+      doc.setDrawColor(170, 170, 170);
+      doc.rect(ganttX, rowY, labelWidth, rowHeight, "S");
+      doc.setTextColor(0, 0, 0);
+      doc.text(staffMap.get(row.staffId)?.name ?? "?", ganttX + 1.5, rowY + rowHeight / 2 + 1.2);
+      doc.rect(barAreaX, rowY, barAreaWidth, rowHeight, "S");
+      row.segs.forEach(s => {
+        const [r, g, b] = hexToRgbTuple(color);
+        doc.setFillColor(r, g, b);
+        doc.rect(posX(s.startMin), rowY + 1, posX(s.endMin) - posX(s.startMin), rowHeight - 2, "F");
+      });
+    });
+
+    // 눈금(근무 시작·종료 시각)
+    const tickSet = new Set<number>([axisStart, axisEnd]);
+    withMin.forEach(s => { tickSet.add(s.startMin); tickSet.add(s.endMin); });
+    const ticks = Array.from(tickSet).sort((a, b) => a - b);
+    const tickY = ganttRowsTop + ganttRows.length * rowHeight + 4;
+    doc.setFontSize(7.5);
+    doc.setTextColor(110, 110, 110);
+    ticks.forEach(t => {
+      const align = t === axisStart ? "left" : t === axisEnd ? "right" : "center";
+      doc.text(dayRelLabel(t), posX(t), tickY, { align });
+    });
+
+    // ── 근무자별 상세 표 ──
+    const tableStartY = tickY + 8;
+    const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
+    const dowNum = getDay(new Date(selectedDate + "T00:00:00"));
+    const tableBody = slots.map(slot => {
+      const staff = staffMap.get(slot.staffId);
+      const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
+      const payday = localDb.getStaffPayday(slot.staffId);
+      const showPayday = !!payday?.isEnabled && payday.dayOfWeek === dowNum;
+      const isCompleted = showPayday && localDb.isPaydayCompleted(slot.staffId, weekStart);
+      return [
+        staff?.name ?? "(삭제된 직원)",
+        formatKoreanTimeRange(slot.startTime, slot.endTime),
+        `${(pay.totalMinutes / 60).toFixed(1)}시간`,
+        `₩${pay.totalPay.toLocaleString()}`,
+        slot.isOverridden ? "대체근무" : "",
+        showPayday ? (isCompleted ? "지급완료" : "지급예정") : "-",
+      ];
+    });
+    autoTable(doc, {
+      head: [["근무자", "근무시간", "총 근무시간", "예상 일급", "비고", "주급"]],
+      body: tableBody,
+      startY: tableStartY,
+      theme: "grid",
+      styles: koreanFont ? { font: koreanFont, fontSize: 9 } : { fontSize: 9 },
+      headStyles: { fillColor: [66, 139, 202], font: koreanFont || undefined, fontStyle: "normal" },
+    });
+
+    doc.save(`근무스케줄_${selectedDate}.pdf`);
+    toast({ title: "PDF 내보내기 완료", description: `근무스케줄_${selectedDate}.pdf` });
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex gap-3 flex-col lg:flex-row">
@@ -386,6 +625,10 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-2">
             <p className="text-base font-bold" data-testid="text-diary-month">{format(selectedMonth, "yyyy년 M월")}</p>
+            <Button size="sm" variant="outline" onClick={handleExportMonthPDF} data-testid="button-export-month-pdf">
+              <FileDown className="h-3.5 w-3.5 mr-1" />
+              PDF 내보내기
+            </Button>
           </div>
           <div className="border rounded-lg overflow-hidden">
             <div className="grid grid-cols-7 bg-muted/50">
@@ -473,9 +716,21 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
 
       {/* 스케줄 패널 */}
       <div className="border rounded-md p-3 bg-muted/10 space-y-3">
-        <p className="text-sm font-semibold" data-testid="text-schedule-panel-date">
-          {selectedDate} ({DAY_NAMES[getDay(new Date(selectedDate + "T00:00:00"))]}요일) 스케줄
-        </p>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-sm font-semibold" data-testid="text-schedule-panel-date">
+            {selectedDate} ({DAY_NAMES[getDay(new Date(selectedDate + "T00:00:00"))]}요일) 스케줄
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportDayPDF}
+            disabled={slots.length === 0}
+            data-testid="button-export-day-pdf"
+          >
+            <FileDown className="h-3.5 w-3.5 mr-1" />
+            PDF 내보내기
+          </Button>
+        </div>
         {slots.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">
             이 날짜에 등록된 파트타임 스케줄이 없습니다.<br />
