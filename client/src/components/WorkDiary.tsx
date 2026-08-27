@@ -90,26 +90,13 @@ function dayRelLabel(min: number): string {
   return minToLabel(min) === "0" ? "자정" : `${minToLabel(min)}시`;
 }
 
-/** 축 구간을 근무 시작·종료 시각 기준으로 잘라, 각 구간에 실제로 근무 중인 사람(들)을 계산.
- * 겹치는 구간은 여러 명이 함께 담긴다. */
-function segmentTimeline(withMin: { staffId: string; startMin: number; endMin: number }[]) {
-  const points = new Set<number>();
-  withMin.forEach(s => { points.add(s.startMin); points.add(s.endMin); });
-  const sorted = Array.from(points).sort((a, b) => a - b);
-  const segments: { startMin: number; endMin: number; staffIds: string[] }[] = [];
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const segStart = sorted[i], segEnd = sorted[i + 1];
-    const mid = (segStart + segEnd) / 2;
-    const staffIds = withMin.filter(s => s.startMin <= mid && s.endMin > mid).map(s => s.staffId);
-    if (staffIds.length > 0) segments.push({ startMin: segStart, endMin: segEnd, staffIds });
-  }
-  return segments;
-}
+// 시계열 그래프의 왼쪽 이름 칸 너비 — 눈금선·구간 계산 모두 이 폭을 기준으로 맞춘다
+const TIMELINE_LABEL_WIDTH = "3.5rem";
 
-/** 날짜별 스케줄 패널에 쓰는 시계열 그래프 — 근무자별 근무시간을 가로 막대로 표시하고,
- * 겹치는 시간대는 감산혼합(mix-blend-mode: multiply)으로 색이 섞이게 해 겹침을 직관적으로 보여준다.
- * 각 구간 위에 근무자 이름(겹치는 구간은 "대+준")을 직접 표시하고, 상단에는 전날/오늘/익일 구간을
- * 치수선처럼 구분해 보여준다. 눈금은 고정 간격이 아니라 각 근무 시작·종료 시각에만 표시한다. */
+/** 날짜별 스케줄 패널에 쓰는 시계열 그래프 — 근무자마다 자기 행(레인)을 따로 두고 얇은 막대로
+ * 근무시간을 표시한다. 같은 시간대에 다른 사람의 막대가 바로 위/아래 행에 나란히 보이므로
+ * 색을 섞지 않아도 겹치는 시간을 한눈에 알 수 있다. 상단에는 전날/오늘/익일 구간을 치수선처럼
+ * 구분해 보여주고, 눈금은 고정 간격이 아니라 각 근무 시작·종료 시각에만 표시한다. */
 function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staffList: Staff[] }) {
   if (slots.length === 0) return null;
   const withMin = slots.map(s => {
@@ -128,13 +115,22 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
   withMin.forEach(s => { tickSet.add(s.startMin); tickSet.add(s.endMin); });
   const ticks = Array.from(tickSet).sort((a, b) => a - b);
 
-  const segments = segmentTimeline(withMin);
   const nameOf = (id: string) => staffList.find(st => st.id === id)?.name ?? "?";
+
+  // 근무자별로 한 행씩 — 그 사람의 모든 구간을 같은 행에 묶는다(분리 근무면 막대가 여러 개)
+  const rowMap = new Map<string, typeof withMin>();
+  withMin.forEach(s => {
+    if (!rowMap.has(s.staffId)) rowMap.set(s.staffId, []);
+    rowMap.get(s.staffId)!.push(s);
+  });
+  const rows = Array.from(rowMap.entries())
+    .map(([staffId, segs]) => ({ staffId, segs, firstStart: Math.min(...segs.map(x => x.startMin)) }))
+    .sort((a, b) => a.firstStart - b.firstStart);
 
   return (
     <div className="space-y-1.5">
       {/* 전날 / 오늘 / 익일 구간 — 치수선 스타일 */}
-      <div className="relative h-5 text-[10px] text-muted-foreground">
+      <div className="relative h-5 text-[10px] text-muted-foreground" style={{ marginLeft: TIMELINE_LABEL_WIDTH }}>
         {[
           { from: axisStart, to: 0, label: "전날" },
           { from: 0, to: 1440, label: "오늘" },
@@ -152,47 +148,44 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
         {axisEnd > 1440 && <div className="absolute inset-y-0 border-l border-foreground/30" style={{ left: `${posPct(1440)}%` }} />}
       </div>
 
-      <div className="relative h-11 rounded-md overflow-hidden border">
-        {/* 가산혼합(빛을 섞듯) — 캔버스를 검정으로 두고 screen 블렌드로 겹치는 색을 밝게 섞음 */}
-        <div className="absolute inset-0 bg-black" style={{ isolation: "isolate" }}>
-          {withMin.map(s => {
-            const idx = staffList.findIndex(st => st.id === s.staffId);
-            const color = getStaffColor(idx >= 0 ? idx : 0);
-            return (
-              <div
-                key={s.templateId}
-                className="absolute inset-y-0"
-                style={{ left: `${posPct(s.startMin)}%`, width: `${((s.endMin - s.startMin) / totalRange) * 100}%`, backgroundColor: color, mixBlendMode: "screen" }}
-                title={`${nameOf(s.staffId)} ${s.startTime}~${s.endTime}`}
-              />
-            );
-          })}
-        </div>
-        {/* 근무 시작·종료 시각 눈금선 — 색 혼합에 영향 없도록 별도 레이어 */}
-        <div className="absolute inset-0 pointer-events-none">
+      <div className="relative rounded-md overflow-hidden border">
+        {/* 근무 시작·종료 시각 눈금선 — 모든 행을 관통해 어느 행끼리 겹치는지 바로 대조할 수 있게 함 */}
+        <div className="absolute inset-y-0 pointer-events-none" style={{ left: TIMELINE_LABEL_WIDTH, right: 0 }}>
           {ticks.map(t => (
-            <div key={t} className="absolute inset-y-0 border-l border-white/25" style={{ left: `${posPct(t)}%` }} />
+            <div key={t} className="absolute inset-y-0 border-l border-border" style={{ left: `${posPct(t)}%` }} />
           ))}
         </div>
-        {/* 구간별 근무자 이름 — 겹치는 구간은 "대+준"처럼 표시. 색 혼합 레이어 밖에 그려 글자색이 섞이지 않게 함 */}
-        <div className="absolute inset-0 pointer-events-none flex items-stretch">
-          {segments.map(seg => {
-            const widthPct = ((seg.endMin - seg.startMin) / totalRange) * 100;
-            if (widthPct < 5) return null;
-            const label = seg.staffIds.length === 1 ? nameOf(seg.staffIds[0]) : seg.staffIds.map(id => nameOf(id).charAt(0)).join("+");
+        <div className="divide-y divide-border relative">
+          {rows.map(row => {
+            const idx = staffList.findIndex(st => st.id === row.staffId);
+            const color = getStaffColor(idx >= 0 ? idx : 0);
             return (
-              <div
-                key={`${seg.startMin}-${seg.endMin}`}
-                className="absolute inset-y-0 flex items-center justify-center text-[11px] font-semibold text-white truncate px-0.5"
-                style={{ left: `${posPct(seg.startMin)}%`, width: `${widthPct}%`, textShadow: "0 1px 2px rgba(0,0,0,0.65)" }}
-              >
-                {label}
+              <div key={row.staffId} className="flex items-stretch h-7">
+                <div
+                  className="shrink-0 flex items-center px-1.5 text-[11px] font-medium truncate border-r bg-muted/30"
+                  style={{ width: TIMELINE_LABEL_WIDTH }}
+                >
+                  {nameOf(row.staffId)}
+                </div>
+                <div className="relative flex-1">
+                  {row.segs.map(s => (
+                    <div
+                      key={s.templateId}
+                      className="absolute inset-y-1.5 rounded-sm"
+                      style={{ left: `${posPct(s.startMin)}%`, width: `${((s.endMin - s.startMin) / totalRange) * 100}%`, backgroundColor: color }}
+                      title={`${nameOf(row.staffId)} ${s.startTime}~${s.endTime}`}
+                    />
+                  ))}
+                </div>
+                <div className="shrink-0 flex items-center pl-1.5 pr-1 text-[10px] text-muted-foreground font-mono border-l bg-muted/10 whitespace-nowrap">
+                  {row.segs.map(s => `${minToLabel(s.startMin)}~${minToLabel(s.endMin)}`).join(", ")}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
-      <div className="relative h-4 text-[10px] text-muted-foreground">
+      <div className="relative h-4 text-[10px] text-muted-foreground" style={{ marginLeft: TIMELINE_LABEL_WIDTH }}>
         {ticks.map(t => (
           <span
             key={t}
@@ -202,20 +195,6 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
             {dayRelLabel(t)}
           </span>
         ))}
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1">
-        {withMin.map(s => {
-          const idx = staffList.findIndex(st => st.id === s.staffId);
-          const color = getStaffColor(idx >= 0 ? idx : 0);
-          const name = nameOf(s.staffId);
-          return (
-            <span key={s.templateId} className="inline-flex items-center gap-1.5 text-xs">
-              <span className="w-2.5 h-2.5 rounded-sm inline-block shrink-0" style={{ backgroundColor: color }} />
-              <span className="font-medium">{name}</span>
-              <span className="text-muted-foreground font-mono">{minToLabel(s.startMin)}~{minToLabel(s.endMin)}</span>
-            </span>
-          );
-        })}
       </div>
     </div>
   );
