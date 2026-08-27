@@ -7,7 +7,7 @@ import { toZonedTime } from "date-fns-tz";
 import { Users, Clock, Wallet, CheckCircle2, ChevronDown, FileDown, ImageIcon } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import html2canvas from "html2canvas";
+import { toJpeg } from "html-to-image";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,25 +66,24 @@ function hexToRgbTuple(hex: string): [number, number, number] {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
-// 화면에 보이는 디자인 그대로 JPEG로 내보내기 — 가로 1920px 정도(72ppi 웹 해상도)로 스케일
+// 화면에 보이는 디자인 그대로 JPEG로 내보내기 — 가로 1920px 정도(72ppi 웹 해상도)로 스케일.
+// html2canvas는 CSS를 자체적으로 다시 그려서(재구현) 글자 크기가 실제 화면과 미묘하게 달라지는
+// 문제가 있어, 브라우저가 직접 렌더링한 결과를 그대로 이미지로 옮기는 html-to-image(SVG
+// foreignObject 방식)를 사용 — 실제 화면(스크린샷)과 픽셀 단위로 훨씬 가깝게 나온다.
 async function exportElementAsJPEG(el: HTMLElement, filename: string) {
   const targetWidth = 1920;
   const scale = Math.min(3, Math.max(1, targetWidth / el.offsetWidth));
   const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
-  const canvas = await html2canvas(el, { scale, backgroundColor: bg, useCORS: true });
-  await new Promise<void>(resolve => {
-    canvas.toBlob(blob => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
-      }
-      resolve();
-    }, 'image/jpeg', 0.92);
+  const dataUrl = await toJpeg(el, {
+    quality: 0.95,
+    pixelRatio: scale,
+    backgroundColor: bg,
+    filter: (node) => !(node instanceof HTMLElement && node.getAttribute('data-html2canvas-ignore') === 'true'),
   });
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = filename;
+  link.click();
 }
 // 자정을 넘긴 종료시각(>=1440분)도 24시간으로 다시 감아서 "익일 6시"를 그냥 "6"으로 표시
 // (30처럼 이어서 표시하면 오히려 헷갈려 보여 일반적인 12/24시간 표기로 되돌림)
