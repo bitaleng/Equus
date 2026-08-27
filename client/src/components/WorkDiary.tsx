@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { TimePickerButton } from "@/components/TimePickerButton";
 import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
@@ -302,6 +306,9 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const monthCalendarRef = useRef<HTMLDivElement>(null);
   const schedulePanelRef = useRef<HTMLDivElement>(null);
 
+  // 주급 지급 확인 (버튼 클릭 → "지급하셨습니까?" 확인 → 예 누르면 완료 처리)
+  const [paydayConfirmSlot, setPaydayConfirmSlot] = useState<ResolvedScheduleSlot | null>(null);
+
   useEffect(() => {
     setTemplates(localDb.getAllPartTimeTemplates());
     setTiers(localDb.getAllWageTiers());
@@ -347,21 +354,26 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     [selectedDate, templates, overrides]
   );
 
-  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급완료 여부)
+  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급일 상태)
   const daySummaries = useMemo(() => {
-    const map = new Map<string, { blocks: DisplayBlock[]; paydayStaffIds: string[] }>();
+    const todayStr = toDateStr(today);
+    const map = new Map<string, { blocks: DisplayBlock[]; paydayItems: { staffId: string; status: "due" | "completed" | "overdue" }[] }>();
     bigGrid.forEach(d => {
       const dStr = toDateStr(d);
       const dow = getDay(d);
       const wStart = toWeekStart(d);
-      const paydayStaffIds = paydays
-        .filter(p => p.isEnabled && p.dayOfWeek === dow && localDb.isPaydayCompleted(p.staffId, wStart))
-        .map(p => p.staffId);
+      const paydayItems = paydays
+        .filter(p => p.isEnabled && p.dayOfWeek === dow)
+        .map(p => {
+          const completed = localDb.isPaydayCompleted(p.staffId, wStart);
+          const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
+          return { staffId: p.staffId, status };
+        });
       const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides));
-      map.set(dStr, { blocks, paydayStaffIds });
+      map.set(dStr, { blocks, paydayItems });
     });
     return map;
-  }, [bigGrid, templates, overrides, paydays, paydayVersion]);
+  }, [bigGrid, templates, overrides, paydays, paydayVersion, today]);
 
   const handleSaveStaffChange = (newStaffId: string) => {
     if (!staffChangeSlot) return;
@@ -410,6 +422,12 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       title: "주급 지급 완료 처리됨",
       description: `${staffMap.get(slot.staffId)?.name ?? ""} · 이번 주 합계 ₩${weekly.totalPay.toLocaleString()}`,
     });
+  };
+
+  const handleConfirmPaydayPaid = () => {
+    if (!paydayConfirmSlot) return;
+    handleMarkPaydayCompleted(paydayConfirmSlot);
+    setPaydayConfirmSlot(null);
   };
 
   // 월별 다이어리(달력) PDF 내보내기 — 매출달력과 같은 방식으로 달력 그리드를 직접 그린다
@@ -483,10 +501,14 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
               textY += 3.2;
             }
           });
-          summary.paydayStaffIds.forEach(sid => {
+          summary.paydayItems.forEach(item => {
             if (textY > rowY + rowHeight - 1.5) return;
-            doc.setTextColor(22, 163, 74);
-            doc.text(`${staffMap.get(sid)?.name ?? ""} 주급완료`, cellX + padding, textY);
+            const name = staffMap.get(item.staffId)?.name ?? "";
+            if (item.status === "completed") doc.setTextColor(22, 163, 74);
+            else if (item.status === "overdue") doc.setTextColor(220, 38, 38);
+            else doc.setTextColor(37, 99, 235);
+            const label = item.status === "completed" ? `${name} 주급완료` : item.status === "overdue" ? `${name} 주급미납` : `${name} 주급일`;
+            doc.text(label, cellX + padding, textY);
             textY += 3.2;
           });
         }
@@ -708,7 +730,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                       }`}>
                         {format(d, "d")}
                       </div>
-                      {isCurrentMonth && summary && (summary.blocks.length > 0 || summary.paydayStaffIds.length > 0) && (
+                      {isCurrentMonth && summary && (summary.blocks.length > 0 || summary.paydayItems.length > 0) && (
                         <div className="mt-1 space-y-0.5">
                           {summary.blocks.map((b, bi) => {
                             const names = b.members.map(m => staffMap.get(m.staffId)?.name ?? "?").join("·");
@@ -737,15 +759,29 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                               </div>
                             );
                           })}
-                          {summary.paydayStaffIds.map(staffId => (
-                            <div
-                              key={staffId}
-                              className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-green-600/15 text-green-700 dark:text-green-400 font-medium flex items-center gap-0.5"
-                            >
-                              <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
-                              {staffMap.get(staffId)?.name ?? ""} 주급완료
-                            </div>
-                          ))}
+                          {summary.paydayItems.map(item => {
+                            const name = staffMap.get(item.staffId)?.name ?? "";
+                            if (item.status === "completed") {
+                              return (
+                                <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-green-600/15 text-green-700 dark:text-green-400 font-medium flex items-center gap-0.5">
+                                  <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                                  {name} 주급완료
+                                </div>
+                              );
+                            }
+                            if (item.status === "overdue") {
+                              return (
+                                <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-red-600/15 text-red-700 dark:text-red-400 font-medium">
+                                  {name} 주급미납
+                                </div>
+                              );
+                            }
+                            return (
+                              <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-blue-600/15 text-blue-700 dark:text-blue-400 font-medium">
+                                {name} 주급일
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -844,23 +880,39 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                       ))}
                     </p>
                   )}
-                  {showPaydayButton && (
-                    isCompleted ? (
-                      <Badge className="bg-green-600 hover:bg-green-600 text-white gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> 이번 주 주급지급완료
-                      </Badge>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="w-full bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => handleMarkPaydayCompleted(slot)}
-                        data-testid={`button-payday-complete-${slot.templateId}`}
-                      >
-                        <Wallet className="h-4 w-4 mr-1" />
-                        주급지급완료
-                      </Button>
-                    )
-                  )}
+                  {showPaydayButton && (() => {
+                    const weekly = calculateWeeklyPay(slot.staffId, weekStart, templates, overrides, tiers);
+                    const workedDates = weekly.days
+                      .filter(d => d.result.totalMinutes > 0)
+                      .map(d => format(new Date(d.date + "T00:00:00"), "M/d"));
+                    return (
+                      <div className="rounded-md border border-green-400/30 bg-green-500/5 p-2.5 space-y-1.5">
+                        <p className="text-xs font-semibold text-green-700 dark:text-green-400 flex items-center gap-1">
+                          <Wallet className="h-3.5 w-3.5" /> 이번 주 주급 정보
+                        </p>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                          <p>근무일 : {workedDates.length > 0 ? workedDates.join(", ") : "-"}</p>
+                          <p>총 근무시간 : <span className="font-medium text-foreground">{(weekly.totalMinutes / 60).toFixed(1)}시간</span></p>
+                          <p>지급액 : <span className="font-bold text-primary">₩{weekly.totalPay.toLocaleString()}</span></p>
+                        </div>
+                        {isCompleted ? (
+                          <Badge className="bg-green-600 hover:bg-green-600 text-white gap-1">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> 주급지급완료
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="w-full bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => setPaydayConfirmSlot(slot)}
+                            data-testid={`button-payday-complete-${slot.templateId}`}
+                          >
+                            <Wallet className="h-4 w-4 mr-1" />
+                            주급지급
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -906,6 +958,26 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 주급 지급 확인 */}
+      <AlertDialog open={!!paydayConfirmSlot} onOpenChange={(o) => !o && setPaydayConfirmSlot(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>주급 지급 확인</AlertDialogTitle>
+            <AlertDialogDescription>
+              {paydayConfirmSlot && (() => {
+                const weekly = calculateWeeklyPay(paydayConfirmSlot.staffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers);
+                const name = staffMap.get(paydayConfirmSlot.staffId)?.name ?? "";
+                return `${name}님에게 이번 주 주급 ₩${weekly.totalPay.toLocaleString()}을 지급하셨습니까?`;
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>아니오</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPaydayPaid} data-testid="button-confirm-payday-paid">예</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
