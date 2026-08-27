@@ -115,8 +115,9 @@ export interface StaffEmploymentInfo {
   resignDate?: string; // YYYY-MM-DD, 없으면 아직 재직 중
 }
 
-/** 그 날짜에 해당 근무자가 재직 중이었는지 — 입사일 이전·퇴사일 이후는 근무로 치지 않는다 */
-function isEmployedOn(dateStr: string, staffId: string, staffList?: StaffEmploymentInfo[]): boolean {
+/** 그 날짜에 해당 근무자가 재직 중이었는지 — 입사일 이전·퇴사일 이후는 근무로 치지 않는다.
+ * 근무 스케줄뿐 아니라 주급지급일 표시 등 재직 기간 판정이 필요한 다른 곳에서도 재사용한다. */
+export function isEmployedOn(dateStr: string, staffId: string, staffList?: StaffEmploymentInfo[]): boolean {
   if (!staffList) return true;
   const staff = staffList.find(s => s.id === staffId);
   if (!staff) return true; // 목록에 없으면(삭제된 직원 등) 걸러내지 않음 — 화면에서 별도 표시

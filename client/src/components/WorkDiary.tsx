@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
 import type { Staff, PartTimeTemplate, StaffScheduleOverride, StaffPayday, WageTier } from "@/lib/localDb";
 import {
-  resolveScheduleForDate, calculateDailyPay, calculateWeeklyPay,
+  resolveScheduleForDate, calculateDailyPay, calculateWeeklyPay, isEmployedOn,
   formatKoreanTimeRange, type ResolvedScheduleSlot,
 } from "@/lib/workDiaryPay";
 import { getStaffColor, multiplyBlendAll } from "@/lib/staffColors";
@@ -363,7 +363,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       const dow = getDay(d);
       const wStart = toWeekStart(d);
       const paydayItems = paydays
-        .filter(p => p.isEnabled && p.dayOfWeek === dow)
+        .filter(p => p.isEnabled && p.dayOfWeek === dow && isEmployedOn(dStr, p.staffId, staffList))
         .map(p => {
           const completed = localDb.isPaydayCompleted(p.staffId, wStart);
           const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
@@ -810,7 +810,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
         {(() => {
           const dowToday = getDay(new Date(selectedDate + "T00:00:00"));
           const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday);
+          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday && isEmployedOn(selectedDate, p.staffId, staffList));
           void paydayVersion; // 지급완료 처리 후 재렌더 트리거용 참조
 
           if (slots.length === 0 && todaysPaydays.length === 0) {
