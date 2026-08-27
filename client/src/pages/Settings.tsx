@@ -5003,7 +5003,7 @@ export default function Settings() {
           {/* Smart Locker Hardware Management */}
           <DeviceManagement />
 
-          {/* 직원관리 */}
+          {/* 직원관리 (파트타임 설정·요일·시간별 시급·주급지급일을 서브 카테고리로 포함) */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -5011,7 +5011,7 @@ export default function Settings() {
                   <Users className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <CardTitle>직원관리</CardTitle>
-                    <CardDescription className="mt-0.5">근무 직원을 등록하고 관리합니다</CardDescription>
+                    <CardDescription className="mt-0.5">근무 직원 등록과 파트타임 스케줄·시급·주급지급일을 관리합니다</CardDescription>
                   </div>
                 </div>
                 <Button size="sm" onClick={handleAddStaff} data-testid="button-add-staff">
@@ -5020,7 +5020,7 @@ export default function Settings() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
               {staffList.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">등록된 직원이 없습니다.</p>
               ) : (
@@ -5054,168 +5054,150 @@ export default function Settings() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
 
-          {/* 근무다이어리: 파트타임 설정 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <CalendarDays className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <CardTitle>파트타임 설정</CardTitle>
-                    <CardDescription className="mt-0.5">요일별 반복되는 파트타임 근무자·시간을 등록합니다. 근무다이어리 달력에 자동으로 반영됩니다.</CardDescription>
-                  </div>
+              {/* 서브 카테고리: 파트타임 설정 */}
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                    파트타임 설정
+                  </h4>
+                  <Button size="sm" onClick={handleAddTemplate} disabled={staffList.length === 0} data-testid="button-add-template">
+                    <Plus className="h-4 w-4 mr-1" />
+                    파트타임 추가
+                  </Button>
                 </div>
-                <Button size="sm" onClick={handleAddTemplate} disabled={staffList.length === 0} data-testid="button-add-template">
-                  <Plus className="h-4 w-4 mr-1" />
-                  파트타임 추가
-                </Button>
+                <p className="text-xs text-muted-foreground">요일별 반복되는 파트타임 근무자·시간을 등록합니다. 근무다이어리 달력에 자동으로 반영됩니다.</p>
+                {staffList.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
+                ) : partTimeTemplates.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">등록된 파트타임이 없습니다.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {partTimeTemplates.map((t, i) => {
+                      const staff = staffList.find(s => s.id === t.staffId);
+                      return (
+                        <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
+                          <div className="text-sm">
+                            <span className="font-medium">{t.label || `파트타임${i + 1}`}</span>
+                            <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)} · </span>
+                            <span className="font-mono">{t.startTime}~{t.endTime}</span>
+                            <span className="text-muted-foreground"> · 근무자 </span>
+                            <span className="font-medium">{staff?.name ?? "(삭제됨)"}</span>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button size="icon" variant="ghost" onClick={() => handleEditTemplate(t)} data-testid={`button-edit-template-${t.id}`}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDeleteTemplate(t.id)} data-testid={`button-delete-template-${t.id}`}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
-              {staffList.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
-              ) : partTimeTemplates.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">등록된 파트타임이 없습니다.</p>
-              ) : (
-                <div className="space-y-2">
-                  {partTimeTemplates.map((t, i) => {
-                    const staff = staffList.find(s => s.id === t.staffId);
-                    return (
+
+              {/* 서브 카테고리: 요일·시간별 시급 */}
+              <div className="space-y-3 border-t pt-4">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-muted-foreground" />
+                    요일·시간별 시급
+                  </h4>
+                  <Button size="sm" onClick={handleAddTier} data-testid="button-add-tier">
+                    <Plus className="h-4 w-4 mr-1" />
+                    시급 구간 추가
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  위에 있는 구간이 먼저 적용됩니다(우선순위). 예: "휴일야간"을 "평일야간"보다 위에 두면 금·토요일 밤에는 자동으로 휴일야간 시급이 적용됩니다.
+                </p>
+                {wageTiers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">등록된 시급 구간이 없습니다.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {wageTiers.map((t, i) => (
                       <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
                         <div className="text-sm">
-                          <span className="font-medium">{t.label || `파트타임${i + 1}`}</span>
-                          <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)} · </span>
+                          <span className="text-xs text-muted-foreground mr-1">#{i + 1}</span>
+                          <span className="font-medium">{t.name}</span>
+                          <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)}{t.includeHolidays ? "+공휴일" : ""} · </span>
                           <span className="font-mono">{t.startTime}~{t.endTime}</span>
-                          <span className="text-muted-foreground"> · 근무자 </span>
-                          <span className="font-medium">{staff?.name ?? "(삭제됨)"}</span>
+                          <span className="text-muted-foreground"> · </span>
+                          <span className="font-semibold text-primary">₩{t.hourlyRate.toLocaleString()}/h</span>
                         </div>
                         <div className="flex gap-1 shrink-0">
-                          <Button size="icon" variant="ghost" onClick={() => handleEditTemplate(t)} data-testid={`button-edit-template-${t.id}`}>
+                          <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "up")} disabled={i === 0} data-testid={`button-tier-up-${t.id}`}>
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "down")} disabled={i === wageTiers.length - 1} data-testid={`button-tier-down-${t.id}`}>
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleEditTier(t)} data-testid={`button-edit-tier-${t.id}`}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleDeleteTemplate(t.id)} data-testid={`button-delete-template-${t.id}`}>
+                          <Button size="icon" variant="ghost" onClick={() => handleDeleteTier(t.id)} data-testid={`button-delete-tier-${t.id}`}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 근무다이어리: 요일·시간별 시급 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <CardTitle>요일·시간별 시급</CardTitle>
-                    <CardDescription className="mt-0.5">
-                      위에 있는 구간이 먼저 적용됩니다(우선순위). 예: "휴일야간"을 "평일야간"보다 위에 두면 금·토요일 밤에는 자동으로 휴일야간 시급이 적용됩니다.
-                    </CardDescription>
+                    ))}
                   </div>
-                </div>
-                <Button size="sm" onClick={handleAddTier} data-testid="button-add-tier">
-                  <Plus className="h-4 w-4 mr-1" />
-                  시급 구간 추가
-                </Button>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
-              {wageTiers.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">등록된 시급 구간이 없습니다.</p>
-              ) : (
-                <div className="space-y-2">
-                  {wageTiers.map((t, i) => (
-                    <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
-                      <div className="text-sm">
-                        <span className="text-xs text-muted-foreground mr-1">#{i + 1}</span>
-                        <span className="font-medium">{t.name}</span>
-                        <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)}{t.includeHolidays ? "+공휴일" : ""} · </span>
-                        <span className="font-mono">{t.startTime}~{t.endTime}</span>
-                        <span className="text-muted-foreground"> · </span>
-                        <span className="font-semibold text-primary">₩{t.hourlyRate.toLocaleString()}/h</span>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "up")} disabled={i === 0} data-testid={`button-tier-up-${t.id}`}>
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "down")} disabled={i === wageTiers.length - 1} data-testid={`button-tier-down-${t.id}`}>
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleEditTier(t)} data-testid={`button-edit-tier-${t.id}`}>
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDeleteTier(t.id)} data-testid={`button-delete-tier-${t.id}`}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
-          {/* 근무다이어리: 근무자별 주급지급일 */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <CalendarClock className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <CardTitle>근무자별 주급지급일</CardTitle>
-                  <CardDescription className="mt-0.5">지급 요일·시각 30분 전에 근무다이어리에서 알림이 표시됩니다.</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {staffList.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
-              ) : (
-                <div className="space-y-2">
-                  {staffList.map(staff => {
-                    const payday = staffPaydays.find(p => p.staffId === staff.id);
-                    const dayOfWeek = payday?.dayOfWeek ?? 4;
-                    const time = payday?.time ?? "22:00";
-                    const isEnabled = payday?.isEnabled ?? false;
-                    return (
-                      <div key={staff.id} className="flex items-center gap-3 p-3 border rounded-md flex-wrap">
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={(checked) => handleSavePayday(staff.id, { dayOfWeek, time, isEnabled: checked })}
-                          data-testid={`switch-payday-${staff.id}`}
-                        />
-                        <span className="font-medium text-sm w-16 shrink-0">{staff.name}</span>
-                        <Select
-                          value={String(dayOfWeek)}
-                          onValueChange={(v) => handleSavePayday(staff.id, { dayOfWeek: parseInt(v), time, isEnabled })}
-                        >
-                          <SelectTrigger className="w-24" data-testid={`select-payday-dow-${staff.id}`}><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {DOW_LABELS.map((label, idx) => (
-                              <SelectItem key={idx} value={String(idx)}>{label}요일</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="w-32">
-                          <TimePickerButton
-                            value={time}
-                            onChange={(v) => handleSavePayday(staff.id, { dayOfWeek, time: v, isEnabled })}
-                            label={`${staff.name} 주급지급 시각`}
-                            testId={`input-payday-time-${staff.id}`}
+              {/* 서브 카테고리: 근무자별 주급지급일 */}
+              <div className="space-y-3 border-t pt-4">
+                <h4 className="font-medium flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                  근무자별 주급지급일
+                </h4>
+                <p className="text-xs text-muted-foreground">지급 요일·시각 30분 전에 근무다이어리에서 알림이 표시됩니다.</p>
+                {staffList.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {staffList.map(staff => {
+                      const payday = staffPaydays.find(p => p.staffId === staff.id);
+                      const dayOfWeek = payday?.dayOfWeek ?? 4;
+                      const time = payday?.time ?? "22:00";
+                      const isEnabled = payday?.isEnabled ?? false;
+                      return (
+                        <div key={staff.id} className="flex items-center gap-3 p-3 border rounded-md flex-wrap">
+                          <Switch
+                            checked={isEnabled}
+                            onCheckedChange={(checked) => handleSavePayday(staff.id, { dayOfWeek, time, isEnabled: checked })}
+                            data-testid={`switch-payday-${staff.id}`}
                           />
+                          <span className="font-medium text-sm w-16 shrink-0">{staff.name}</span>
+                          <Select
+                            value={String(dayOfWeek)}
+                            onValueChange={(v) => handleSavePayday(staff.id, { dayOfWeek: parseInt(v), time, isEnabled })}
+                          >
+                            <SelectTrigger className="w-24" data-testid={`select-payday-dow-${staff.id}`}><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {DOW_LABELS.map((label, idx) => (
+                                <SelectItem key={idx} value={String(idx)}>{label}요일</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <div className="w-32">
+                            <TimePickerButton
+                              value={time}
+                              onChange={(v) => handleSavePayday(staff.id, { dayOfWeek, time: v, isEnabled })}
+                              label={`${staff.name} 주급지급 시각`}
+                              testId={`input-payday-time-${staff.id}`}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 
