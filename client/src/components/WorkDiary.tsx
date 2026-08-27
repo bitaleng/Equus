@@ -282,7 +282,7 @@ function MiniMonth({ month, isSelected, onSelect, innerRef }: { month: Date; isS
 }
 
 interface WorkDiaryProps {
-  staffList: Staff[];
+  staffList: Staff[]; // 재직 중인 직원만 — 근무자변경 등 "새로 배정" 선택지에 사용
 }
 
 export function WorkDiary({ staffList }: WorkDiaryProps) {
@@ -296,6 +296,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
   const [paydays, setPaydays] = useState<StaffPayday[]>([]);
   const [paydayVersion, setPaydayVersion] = useState(0); // 지급완료 처리 후 재조회 트리거
+
+  // staffList prop은 재직 중인 직원만(근무자변경 등 "선택" 목적용) — 이름 조회·재직기간 판정·색상은
+  // 퇴사한 직원의 과거 기록도 정확해야 하므로 전체 직원을 따로 불러와 쓴다
+  const [allStaff, setAllStaff] = useState<Staff[]>([]);
+  useEffect(() => { setAllStaff(localDb.getAllStaff()); }, []);
 
   const [staffChangeSlot, setStaffChangeSlot] = useState<ResolvedScheduleSlot | null>(null);
   const [timeChangeSlot, setTimeChangeSlot] = useState<ResolvedScheduleSlot | null>(null);
@@ -347,11 +352,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const bigWeeks: Date[][] = [];
   for (let i = 0; i < bigGrid.length; i += 7) bigWeeks.push(bigGrid.slice(i, i + 7));
 
-  const staffMap = useMemo(() => new Map(staffList.map(s => [s.id, s])), [staffList]);
+  const staffMap = useMemo(() => new Map(allStaff.map(s => [s.id, s])), [allStaff]);
 
   const slots = useMemo(
-    () => resolveScheduleForDate(selectedDate, templates, overrides, staffList),
-    [selectedDate, templates, overrides, staffList]
+    () => resolveScheduleForDate(selectedDate, templates, overrides, allStaff),
+    [selectedDate, templates, overrides, allStaff]
   );
 
   // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급일 상태)
@@ -363,17 +368,17 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
       const dow = getDay(d);
       const wStart = toWeekStart(d);
       const paydayItems = paydays
-        .filter(p => p.isEnabled && p.dayOfWeek === dow && isEmployedOn(dStr, p.staffId, staffList))
+        .filter(p => p.isEnabled && p.dayOfWeek === dow && isEmployedOn(dStr, p.staffId, allStaff))
         .map(p => {
           const completed = localDb.isPaydayCompleted(p.staffId, wStart);
           const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
           return { staffId: p.staffId, status };
         });
-      const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides, staffList));
+      const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides, allStaff));
       map.set(dStr, { blocks, paydayItems });
     });
     return map;
-  }, [bigGrid, templates, overrides, paydays, paydayVersion, today, staffList]);
+  }, [bigGrid, templates, overrides, paydays, paydayVersion, today, allStaff]);
 
   const handleSaveStaffChange = (newStaffId: string) => {
     if (!staffChangeSlot) return;
@@ -415,7 +420,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
 
   const handleMarkPaydayCompleted = (staffId: string) => {
     const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers, staffList);
+    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers, allStaff);
     localDb.markPaydayCompleted(staffId, weekStart);
     setPaydayVersion(v => v + 1);
     toast({
@@ -585,7 +590,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     doc.setFontSize(8.5);
     ganttRows.forEach((row, ri) => {
       const rowY = ganttRowsTop + ri * rowHeight;
-      const idx = staffList.findIndex(st => st.id === row.staffId);
+      const idx = allStaff.findIndex(st => st.id === row.staffId);
       const color = getStaffColor(idx >= 0 ? idx : 0);
       doc.setDrawColor(170, 170, 170);
       doc.rect(ganttX, rowY, labelWidth, rowHeight, "S");
@@ -733,7 +738,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                           {summary.blocks.map((b, bi) => {
                             const names = b.members.map(m => staffMap.get(m.staffId)?.name ?? "?").join("·");
                             const hasOverride = b.members.some(m => m.isOverridden);
-                            const color = blockColor(b.members, staffList);
+                            const color = blockColor(b.members, allStaff);
                             const next = summary.blocks[bi + 1];
                             const overlapsNext = !!next && b.endMin > next.startMin;
                             const overlapStart = overlapsNext ? Math.max(b.startMin, next.startMin) : 0;
@@ -810,7 +815,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
         {(() => {
           const dowToday = getDay(new Date(selectedDate + "T00:00:00"));
           const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday && isEmployedOn(selectedDate, p.staffId, staffList));
+          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday && isEmployedOn(selectedDate, p.staffId, allStaff));
           void paydayVersion; // 지급완료 처리 후 재렌더 트리거용 참조
 
           if (slots.length === 0 && todaysPaydays.length === 0) {
@@ -824,7 +829,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
 
           return (
             <div className="space-y-3">
-              {slots.length > 0 && <DayTimeline slots={slots} staffList={staffList} />}
+              {slots.length > 0 && <DayTimeline slots={slots} staffList={allStaff} />}
               {slots.map(slot => {
                 const staff = staffMap.get(slot.staffId);
                 const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
@@ -882,7 +887,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                   {todaysPaydays.map(p => {
                     const name = staffMap.get(p.staffId)?.name ?? "(삭제된 직원)";
                     const isCompleted = localDb.isPaydayCompleted(p.staffId, weekStart);
-                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers, staffList);
+                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers, allStaff);
                     const workedDates = weekly.days
                       .filter(d => d.result.totalMinutes > 0)
                       .map(d => format(new Date(d.date + "T00:00:00"), "M/d"));
@@ -967,7 +972,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
             <AlertDialogTitle>주급 지급 확인</AlertDialogTitle>
             <AlertDialogDescription>
               {paydayConfirmStaffId && (() => {
-                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers, staffList);
+                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers, allStaff);
                 const name = staffMap.get(paydayConfirmStaffId)?.name ?? "";
                 return `${name}님에게 이번 주 주급 ₩${weekly.totalPay.toLocaleString()}을 지급하셨습니까?`;
               })()}

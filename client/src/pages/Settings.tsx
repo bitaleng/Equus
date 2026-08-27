@@ -5094,25 +5094,27 @@ export default function Settings() {
                 </div>
               )}
 
-              {/* 퇴사한 직원 — 필요할 때만 펼쳐서 확인 */}
-              {staffList.some(s => !s.isActive) && (
-                <Collapsible open={showResignedStaff} onOpenChange={setShowResignedStaff}>
-                  <CollapsibleTrigger asChild>
-                    <button
-                      type="button"
-                      className="w-full flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover-elevate rounded-md px-2 py-1.5 -mx-2"
-                      data-testid="button-toggle-resigned-staff"
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <Users className="h-3.5 w-3.5" />
-                        퇴사한 직원 ({staffList.filter(s => !s.isActive).length}명)
-                      </span>
-                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showResignedStaff ? "" : "-rotate-90"}`} />
-                    </button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div className="space-y-2 pt-2">
-                      {staffList.filter(s => !s.isActive).map(staff => (
+              {/* 퇴사한 직원 — 없어도 항목 자체는 항상 보이고, 필요할 때만 펼쳐서 확인 */}
+              <Collapsible open={showResignedStaff} onOpenChange={setShowResignedStaff}>
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover-elevate rounded-md px-2 py-1.5 -mx-2"
+                    data-testid="button-toggle-resigned-staff"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" />
+                      퇴사한 직원 ({staffList.filter(s => !s.isActive).length}명)
+                    </span>
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showResignedStaff ? "" : "-rotate-90"}`} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="space-y-2 pt-2">
+                    {staffList.filter(s => !s.isActive).length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">퇴사한 직원이 없습니다.</p>
+                    ) : (
+                      staffList.filter(s => !s.isActive).map(staff => (
                         <div key={staff.id} className="flex items-center justify-between gap-2 p-3 border rounded-md bg-muted/20">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -5134,11 +5136,11 @@ export default function Settings() {
                             </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              )}
+                      ))
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* 서브 카테고리: 파트타임 설정 */}
               <div className="space-y-3 border-t pt-4">
@@ -6039,7 +6041,22 @@ export default function Settings() {
                   data-testid="input-staff-hire-date"
                 />
               </div>
+              <div className="space-y-1">
+                <Label htmlFor="staff-resign-date">퇴사일 (선택)</Label>
+                <Input
+                  id="staff-resign-date"
+                  type="date"
+                  value={staffFormData.resignDate}
+                  onChange={e => setStaffFormData(f => ({ ...f, resignDate: e.target.value, isActive: !e.target.value }))}
+                  data-testid="input-staff-resign-date"
+                />
+              </div>
             </div>
+            {staffFormData.resignDate && (
+              <p className="text-xs text-muted-foreground -mt-2">
+                {staffFormData.resignDate} 이후로는 근무다이어리에 근무가 표시되지 않고, 직원 목록에서 "퇴사한 직원"으로 분류됩니다.
+              </p>
+            )}
             <div className="space-y-1">
               <Label htmlFor="staff-address">주소</Label>
               <Input
@@ -6066,29 +6083,20 @@ export default function Settings() {
               </div>
               <div className="space-y-1">
                 <Label>재직 상태</Label>
-                <div className="flex items-center gap-2 h-9">
-                  <Switch
-                    checked={staffFormData.isActive}
-                    onCheckedChange={v => setStaffFormData(f => ({ ...f, isActive: v, resignDate: v ? "" : f.resignDate }))}
-                    data-testid="switch-staff-active"
-                  />
-                  <span className="text-sm text-muted-foreground">{staffFormData.isActive ? "재직 중" : "퇴사"}</span>
+                <div className="flex items-center h-9">
+                  <span
+                    className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      staffFormData.isActive
+                        ? "bg-green-500/10 text-green-700 dark:text-green-400"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                    data-testid="text-staff-active-status"
+                  >
+                    {staffFormData.isActive ? "재직 중" : "퇴사"}
+                  </span>
                 </div>
               </div>
             </div>
-            {!staffFormData.isActive && (
-              <div className="space-y-1">
-                <Label htmlFor="staff-resign-date">퇴사일</Label>
-                <Input
-                  id="staff-resign-date"
-                  type="date"
-                  value={staffFormData.resignDate}
-                  onChange={e => setStaffFormData(f => ({ ...f, resignDate: e.target.value }))}
-                  data-testid="input-staff-resign-date"
-                />
-                <p className="text-xs text-muted-foreground">이 날짜 이후로는 근무다이어리에 근무가 표시되지 않습니다.</p>
-              </div>
-            )}
             <div className="space-y-1">
               <Label htmlFor="staff-notes">메모</Label>
               <Input
