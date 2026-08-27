@@ -1627,6 +1627,12 @@ function migrateDatabase() {
       console.log('Added resign_date column to staff (Step 38)');
     } catch (e) { /* 이미 존재하면 무시 */ }
 
+    // Step 39: 퇴사한 직원도 근무자추가·주급지급일에 선택 가능하게 할지 여부(근무 가능 온오프)
+    try {
+      db.run(`ALTER TABLE staff ADD COLUMN can_work INTEGER DEFAULT 1`);
+      console.log('Added can_work column to staff (Step 39)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -1898,7 +1904,8 @@ function createTables() {
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT '',
     photo TEXT DEFAULT '',
-    resign_date TEXT DEFAULT ''
+    resign_date TEXT DEFAULT '',
+    can_work INTEGER DEFAULT 1
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS staff_work_logs (
     id TEXT PRIMARY KEY,

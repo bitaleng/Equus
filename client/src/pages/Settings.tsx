@@ -1387,7 +1387,11 @@ export default function Settings() {
     if (!staffFormData.name.trim()) {
       toast({ title: "이름을 입력해주세요.", variant: "destructive" }); return;
     }
-    const dataToSave = { ...staffFormData, photo: staffPhotoPreview };
+    // 근무 가능 여부(canWork)는 "퇴사한 직원" 목록의 별도 스위치로 관리 — 이 폼에서 재직 중이던
+    // 사람이 방금 퇴사로 전환되는 순간만 기본값을 "근무 불가"로 새로 시작하고, 그 외엔 기존 값을 유지
+    const justResigned = !staffFormData.isActive && (!editingStaff || editingStaff.isActive);
+    const canWork = justResigned ? false : (editingStaff?.canWork ?? true);
+    const dataToSave = { ...staffFormData, photo: staffPhotoPreview, canWork };
     if (editingStaff) {
       localDb.updateStaff(editingStaff.id, dataToSave);
       toast({ title: "직원 정보가 수정되었습니다." });
@@ -1397,6 +1401,12 @@ export default function Settings() {
     }
     setStaffList(localDb.getAllStaff());
     setIsStaffDialogOpen(false);
+  };
+
+  // 퇴사한 직원을 근무자추가·근무자별 주급지급일 목록에 계속 노출할지 여부 (자동 저장)
+  const handleToggleCanWork = (staffId: string, canWork: boolean) => {
+    localDb.updateStaff(staffId, { canWork });
+    setStaffList(localDb.getAllStaff());
   };
 
   // 근무다이어리: 파트타임 설정 핸들러
@@ -5127,13 +5137,23 @@ export default function Settings() {
                               {staff.resignDate && `퇴사 ${staff.resignDate}`}
                             </div>
                           </div>
-                          <div className="flex gap-1 shrink-0">
-                            <Button size="icon" variant="ghost" onClick={() => handleEditStaff(staff)} data-testid={`button-edit-staff-${staff.id}`}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDeleteStaff(staff.id, staff.name)} data-testid={`button-delete-staff-${staff.id}`}>
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="flex items-center gap-1.5">
+                              <Switch
+                                checked={staff.canWork}
+                                onCheckedChange={(v) => handleToggleCanWork(staff.id, v)}
+                                data-testid={`switch-can-work-${staff.id}`}
+                              />
+                              <span className="text-xs text-muted-foreground whitespace-nowrap">근무 가능</span>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => handleEditStaff(staff)} data-testid={`button-edit-staff-${staff.id}`}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => handleDeleteStaff(staff.id, staff.name)} data-testid={`button-delete-staff-${staff.id}`}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -5162,7 +5182,7 @@ export default function Settings() {
                 ) : (
                   <div className="space-y-2">
                     {templateGroups.map((g, i) => {
-                      const availableToAdd = staffList.filter(s => !g.members.some(m => m.staffId === s.id));
+                      const availableToAdd = staffList.filter(s => (s.isActive || s.canWork) && !g.members.some(m => m.staffId === s.id));
                       return (
                         <div key={g.groupId} className="p-3 border rounded-md space-y-2" data-testid={`group-template-${g.groupId}`}>
                           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -5277,7 +5297,7 @@ export default function Settings() {
                   <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
                 ) : (
                   <div className="space-y-2">
-                    {staffList.map(staff => {
+                    {staffList.filter(s => s.isActive || s.canWork).map(staff => {
                       const payday = staffPaydays.find(p => p.staffId === staff.id);
                       const dayOfWeek = payday?.dayOfWeek ?? 4;
                       const time = payday?.time ?? "22:00";
@@ -6149,7 +6169,7 @@ export default function Settings() {
                   onValueChange={(v: string[]) => setTemplateForm(f => ({ ...f, staffIds: v }))}
                   className="flex-wrap justify-start"
                 >
-                  {staffList.map(s => (
+                  {staffList.filter(s => s.isActive || s.canWork).map(s => (
                     <ToggleGroupItem key={s.id} value={s.id} data-testid={`toggle-template-staff-${s.id}`}>{s.name}</ToggleGroupItem>
                   ))}
                 </ToggleGroup>
@@ -6198,7 +6218,7 @@ export default function Settings() {
               <SelectTrigger data-testid="select-add-member-staff"><SelectValue placeholder="근무자 선택" /></SelectTrigger>
               <SelectContent>
                 {staffList
-                  .filter(s => !templateGroups.find(g => g.groupId === addMemberGroupId)?.members.some(m => m.staffId === s.id))
+                  .filter(s => (s.isActive || s.canWork) && !templateGroups.find(g => g.groupId === addMemberGroupId)?.members.some(m => m.staffId === s.id))
                   .map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>

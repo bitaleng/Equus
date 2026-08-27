@@ -14,6 +14,7 @@ export interface Staff {
   createdAt: string;
   photo: string;
   resignDate: string; // 비어있으면 재직 중, 값이 있으면 퇴사일(YYYY-MM-DD)
+  canWork: boolean; // 퇴사한 직원인데도 근무자추가·주급지급일 목록에 계속 표시할지 여부(재직 중이면 의미 없음)
 }
 
 export type PayType = '주간' | '야간' | '주말' | '공휴일';
@@ -53,7 +54,7 @@ function rowToStaff(r: any[]): Staff {
     id: r[0], name: r[1], phone: r[2] || '', address: r[3] || '',
     hireDate: r[4] || '', hourlyPay: r[5] || 0, partTimeHours: r[6] || 0,
     pin: r[7] || '', isActive: r[8] === 1, notes: r[9] || '', createdAt: r[10] || '',
-    photo: r[11] || '', resignDate: r[12] || '',
+    photo: r[11] || '', resignDate: r[12] || '', canWork: r[13] === undefined || r[13] === null ? true : r[13] === 1,
   };
 }
 
@@ -72,11 +73,11 @@ export function createStaff(data: Omit<Staff, 'id' | 'createdAt'>): string {
   const id = `staff_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff (id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO staff (id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date, can_work)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, data.name, data.phone || '', data.address || '', data.hireDate || '',
      data.hourlyPay || 0, data.partTimeHours || 0, data.pin || '',
-     data.isActive ? 1 : 0, data.notes || '', now, data.photo || '', data.resignDate || '']
+     data.isActive ? 1 : 0, data.notes || '', now, data.photo || '', data.resignDate || '', data.canWork === false ? 0 : 1]
   );
   saveDatabaseDebounced();
   return id;
@@ -85,14 +86,14 @@ export function createStaff(data: Omit<Staff, 'id' | 'createdAt'>): string {
 export function getAllStaff(activeOnly = false): Staff[] {
   if (!db) return [];
   const where = activeOnly ? 'WHERE is_active = 1' : '';
-  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date FROM staff ${where} ORDER BY name ASC`);
+  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date, can_work FROM staff ${where} ORDER BY name ASC`);
   if (!rows.length) return [];
   return rows[0].values.map(rowToStaff);
 }
 
 export function getStaffById(id: string): Staff | null {
   if (!db) return null;
-  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date FROM staff WHERE id = ? LIMIT 1`, [id]);
+  const rows = db.exec(`SELECT id, name, phone, address, hire_date, hourly_pay, part_time_hours, pin, is_active, notes, created_at, photo, resign_date, can_work FROM staff WHERE id = ? LIMIT 1`, [id]);
   if (!rows.length || !rows[0].values.length) return null;
   return rowToStaff(rows[0].values[0]);
 }
@@ -112,6 +113,7 @@ export function updateStaff(id: string, data: Partial<Omit<Staff, 'id' | 'create
   if (data.notes !== undefined) { sets.push('notes = ?'); values.push(data.notes); }
   if (data.photo !== undefined) { sets.push('photo = ?'); values.push(data.photo); }
   if (data.resignDate !== undefined) { sets.push('resign_date = ?'); values.push(data.resignDate); }
+  if (data.canWork !== undefined) { sets.push('can_work = ?'); values.push(data.canWork ? 1 : 0); }
   if (!sets.length) return false;
   values.push(id);
   db.run(`UPDATE staff SET ${sets.join(', ')} WHERE id = ?`, values);
