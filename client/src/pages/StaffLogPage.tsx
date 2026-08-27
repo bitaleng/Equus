@@ -284,7 +284,6 @@ export default function StaffLogPage() {
                           )}
                         </div>
                       </div>
-                      <p className="text-xs text-muted-foreground text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
 
                       {/* ── 출퇴근 기록 ── */}
                       <div>
