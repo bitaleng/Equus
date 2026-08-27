@@ -350,8 +350,8 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const staffMap = useMemo(() => new Map(staffList.map(s => [s.id, s])), [staffList]);
 
   const slots = useMemo(
-    () => resolveScheduleForDate(selectedDate, templates, overrides),
-    [selectedDate, templates, overrides]
+    () => resolveScheduleForDate(selectedDate, templates, overrides, staffList),
+    [selectedDate, templates, overrides, staffList]
   );
 
   // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급일 상태)
@@ -369,11 +369,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
           const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
           return { staffId: p.staffId, status };
         });
-      const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides));
+      const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides, staffList));
       map.set(dStr, { blocks, paydayItems });
     });
     return map;
-  }, [bigGrid, templates, overrides, paydays, paydayVersion, today]);
+  }, [bigGrid, templates, overrides, paydays, paydayVersion, today, staffList]);
 
   const handleSaveStaffChange = (newStaffId: string) => {
     if (!staffChangeSlot) return;
@@ -415,7 +415,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
 
   const handleMarkPaydayCompleted = (staffId: string) => {
     const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers);
+    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers, staffList);
     localDb.markPaydayCompleted(staffId, weekStart);
     setPaydayVersion(v => v + 1);
     toast({
@@ -882,7 +882,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                   {todaysPaydays.map(p => {
                     const name = staffMap.get(p.staffId)?.name ?? "(삭제된 직원)";
                     const isCompleted = localDb.isPaydayCompleted(p.staffId, weekStart);
-                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers);
+                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers, staffList);
                     const workedDates = weekly.days
                       .filter(d => d.result.totalMinutes > 0)
                       .map(d => format(new Date(d.date + "T00:00:00"), "M/d"));
@@ -967,7 +967,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
             <AlertDialogTitle>주급 지급 확인</AlertDialogTitle>
             <AlertDialogDescription>
               {paydayConfirmStaffId && (() => {
-                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers);
+                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers, staffList);
                 const name = staffMap.get(paydayConfirmStaffId)?.name ?? "";
                 return `${name}님에게 이번 주 주급 ₩${weekly.totalPay.toLocaleString()}을 지급하셨습니까?`;
               })()}

@@ -108,17 +108,36 @@ export interface ResolvedScheduleSlot {
   isOverridden: boolean;
 }
 
-/** 특정 날짜에 적용되는 스케줄(파트타임 템플릿 + 그 날짜의 override)을 계산 */
+/** 재직 기간 판정에 필요한 최소 정보 — Staff 전체를 넘겨도 되고 이 모양만 맞으면 됨 */
+export interface StaffEmploymentInfo {
+  id: string;
+  hireDate?: string;   // YYYY-MM-DD, 없으면 제한 없음
+  resignDate?: string; // YYYY-MM-DD, 없으면 아직 재직 중
+}
+
+/** 그 날짜에 해당 근무자가 재직 중이었는지 — 입사일 이전·퇴사일 이후는 근무로 치지 않는다 */
+function isEmployedOn(dateStr: string, staffId: string, staffList?: StaffEmploymentInfo[]): boolean {
+  if (!staffList) return true;
+  const staff = staffList.find(s => s.id === staffId);
+  if (!staff) return true; // 목록에 없으면(삭제된 직원 등) 걸러내지 않음 — 화면에서 별도 표시
+  if (staff.hireDate && dateStr < staff.hireDate) return false;
+  if (staff.resignDate && dateStr > staff.resignDate) return false;
+  return true;
+}
+
+/** 특정 날짜에 적용되는 스케줄(파트타임 템플릿 + 그 날짜의 override)을 계산.
+ * staffList를 넘기면 입사일 이전·퇴사일 이후 근무자는 결과에서 제외한다. */
 export function resolveScheduleForDate(
   dateStr: string,
   templates: PartTimeTemplate[],
-  overrides: StaffScheduleOverride[]
+  overrides: StaffScheduleOverride[],
+  staffList?: StaffEmploymentInfo[]
 ): ResolvedScheduleSlot[] {
   const date = new Date(dateStr + "T00:00:00");
   const dow = date.getDay();
   const dayTemplates = templates.filter(t => t.isActive && t.daysOfWeek.includes(dow));
 
-  return dayTemplates.map(t => {
+  const slots = dayTemplates.map(t => {
     const override = overrides.find(o => o.scheduleDate === dateStr && o.templateId === t.id);
     if (override) {
       return {
@@ -139,6 +158,8 @@ export function resolveScheduleForDate(
       isOverridden: false,
     };
   });
+
+  return slots.filter(s => isEmployedOn(dateStr, s.staffId, staffList));
 }
 
 /** 특정 날짜의 특정 근무자 급여(그 날 여러 슬롯이 있으면 합산) */
@@ -147,9 +168,10 @@ export function calculateDailyPayForStaff(
   staffId: string,
   templates: PartTimeTemplate[],
   overrides: StaffScheduleOverride[],
-  tiers: WageTier[]
+  tiers: WageTier[],
+  staffList?: StaffEmploymentInfo[]
 ): DailyPayResult {
-  const slots = resolveScheduleForDate(dateStr, templates, overrides).filter(s => s.staffId === staffId);
+  const slots = resolveScheduleForDate(dateStr, templates, overrides, staffList).filter(s => s.staffId === staffId);
   const results = slots.map(s => calculateDailyPay(dateStr, s.startTime, s.endTime, tiers));
   const segments = results.flatMap(r => r.segments);
   const totalMinutes = results.reduce((s, r) => s + r.totalMinutes, 0);
@@ -163,7 +185,8 @@ export function calculateWeeklyPay(
   weekStartDate: string,
   templates: PartTimeTemplate[],
   overrides: StaffScheduleOverride[],
-  tiers: WageTier[]
+  tiers: WageTier[],
+  staffList?: StaffEmploymentInfo[]
 ): { days: { date: string; result: DailyPayResult }[]; totalPay: number; totalMinutes: number } {
   const start = new Date(weekStartDate + "T00:00:00");
   const days: { date: string; result: DailyPayResult }[] = [];
@@ -171,7 +194,7 @@ export function calculateWeeklyPay(
     const d = new Date(start);
     d.setDate(d.getDate() + i);
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    days.push({ date: dateStr, result: calculateDailyPayForStaff(dateStr, staffId, templates, overrides, tiers) });
+    days.push({ date: dateStr, result: calculateDailyPayForStaff(dateStr, staffId, templates, overrides, tiers, staffList) });
   }
   const totalPay = days.reduce((s, d) => s + d.result.totalPay, 0);
   const totalMinutes = days.reduce((s, d) => s + d.result.totalMinutes, 0);

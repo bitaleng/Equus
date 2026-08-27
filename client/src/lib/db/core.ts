@@ -1621,6 +1621,12 @@ function migrateDatabase() {
       // 무시
     }
 
+    // Step 38: 직원 퇴사일 컬럼 추가
+    try {
+      db.run(`ALTER TABLE staff ADD COLUMN resign_date TEXT DEFAULT ''`);
+      console.log('Added resign_date column to staff (Step 38)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -1891,7 +1897,8 @@ function createTables() {
     is_active INTEGER DEFAULT 1,
     notes TEXT DEFAULT '',
     created_at TEXT DEFAULT '',
-    photo TEXT DEFAULT ''
+    photo TEXT DEFAULT '',
+    resign_date TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS staff_work_logs (
     id TEXT PRIMARY KEY,

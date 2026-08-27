@@ -387,8 +387,9 @@ export default function Settings() {
   const [staffList, setStaffList] = useState<localDb.Staff[]>([]);
   const [isStaffDialogOpen, setIsStaffDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<localDb.Staff | null>(null);
+  const [showResignedStaff, setShowResignedStaff] = useState(false);
   const [staffFormData, setStaffFormData] = useState({
-    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0,
+    name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0, resignDate: "",
   });
   const [staffPhotoPreview, setStaffPhotoPreview] = useState<string>("");
   const staffFileInputRef = useRef<HTMLInputElement>(null);
@@ -1363,14 +1364,14 @@ export default function Settings() {
   // 직원관리 핸들러
   const handleAddStaff = () => {
     setEditingStaff(null);
-    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0 });
+    setStaffFormData({ name: "", phone: "", address: "", hireDate: "", hourlyPay: 0, notes: "", pin: "", isActive: true, photo: "", partTimeHours: 0, resignDate: "" });
     setStaffPhotoPreview("");
     setIsStaffDialogOpen(true);
   };
 
   const handleEditStaff = (staff: localDb.Staff) => {
     setEditingStaff(staff);
-    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive, photo: staff.photo || "", partTimeHours: staff.partTimeHours || 0 });
+    setStaffFormData({ name: staff.name, phone: staff.phone, address: staff.address, hireDate: staff.hireDate, hourlyPay: staff.hourlyPay, notes: staff.notes, pin: staff.pin, isActive: staff.isActive, photo: staff.photo || "", partTimeHours: staff.partTimeHours || 0, resignDate: staff.resignDate || "" });
     setStaffPhotoPreview(staff.photo || "");
     setIsStaffDialogOpen(true);
   };
@@ -5062,19 +5063,16 @@ export default function Settings() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              {staffList.length === 0 ? (
+              {staffList.filter(s => s.isActive).length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">등록된 직원이 없습니다.</p>
               ) : (
                 <div className="space-y-2">
-                  {staffList.map(staff => (
+                  {staffList.filter(s => s.isActive).map(staff => (
                     <div key={staff.id} className="flex items-center justify-between gap-2 p-3 border rounded-md">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-sm">{staff.name}</span>
-                            {!staff.isActive && (
-                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">비활성</span>
-                            )}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {staff.phone && `${staff.phone}`}
@@ -5094,6 +5092,52 @@ export default function Settings() {
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* 퇴사한 직원 — 필요할 때만 펼쳐서 확인 */}
+              {staffList.some(s => !s.isActive) && (
+                <Collapsible open={showResignedStaff} onOpenChange={setShowResignedStaff}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground hover-elevate rounded-md px-2 py-1.5 -mx-2"
+                      data-testid="button-toggle-resigned-staff"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5" />
+                        퇴사한 직원 ({staffList.filter(s => !s.isActive).length}명)
+                      </span>
+                      <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showResignedStaff ? "" : "-rotate-90"}`} />
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-2 pt-2">
+                      {staffList.filter(s => !s.isActive).map(staff => (
+                        <div key={staff.id} className="flex items-center justify-between gap-2 p-3 border rounded-md bg-muted/20">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium text-sm">{staff.name}</span>
+                              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">퇴사</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {staff.hireDate && `입사 ${staff.hireDate}`}
+                              {staff.hireDate && staff.resignDate && ` · `}
+                              {staff.resignDate && `퇴사 ${staff.resignDate}`}
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button size="icon" variant="ghost" onClick={() => handleEditStaff(staff)} data-testid={`button-edit-staff-${staff.id}`}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDeleteStaff(staff.id, staff.name)} data-testid={`button-delete-staff-${staff.id}`}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
 
               {/* 서브 카테고리: 파트타임 설정 */}
@@ -6025,13 +6069,26 @@ export default function Settings() {
                 <div className="flex items-center gap-2 h-9">
                   <Switch
                     checked={staffFormData.isActive}
-                    onCheckedChange={v => setStaffFormData(f => ({ ...f, isActive: v }))}
+                    onCheckedChange={v => setStaffFormData(f => ({ ...f, isActive: v, resignDate: v ? "" : f.resignDate }))}
                     data-testid="switch-staff-active"
                   />
                   <span className="text-sm text-muted-foreground">{staffFormData.isActive ? "재직 중" : "퇴사"}</span>
                 </div>
               </div>
             </div>
+            {!staffFormData.isActive && (
+              <div className="space-y-1">
+                <Label htmlFor="staff-resign-date">퇴사일</Label>
+                <Input
+                  id="staff-resign-date"
+                  type="date"
+                  value={staffFormData.resignDate}
+                  onChange={e => setStaffFormData(f => ({ ...f, resignDate: e.target.value }))}
+                  data-testid="input-staff-resign-date"
+                />
+                <p className="text-xs text-muted-foreground">이 날짜 이후로는 근무다이어리에 근무가 표시되지 않습니다.</p>
+              </div>
+            )}
             <div className="space-y-1">
               <Label htmlFor="staff-notes">메모</Label>
               <Input
