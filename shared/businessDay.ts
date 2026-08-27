@@ -9,6 +9,43 @@ import { toZonedTime, format } from 'date-fns-tz';
 const SEOUL_TIMEZONE = 'Asia/Seoul';
 
 /**
+ * 한국 공휴일 판정 (요일 조건 없음 — 순수 날짜 기준).
+ * client/src/pages/Home.tsx의 isWeekendOrHoliday()에서 공휴일 판정 부분만 분리한 것.
+ * 양력 고정 공휴일 + 음력 기반 공휴일(연도별 사전계산, 2024~2027)을 포함한다.
+ * 알려진 제약: 음력 표가 2027년까지만 있어 이후 연도는 매년 수동 업데이트가 필요함.
+ */
+export function isKoreanHoliday(date: Date): boolean {
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const y = date.getFullYear();
+
+  // 양력 고정 공휴일
+  const fixed: [number, number][] = [
+    [1, 1],   // 신정
+    [3, 1],   // 삼일절
+    [5, 5],   // 어린이날
+    [6, 6],   // 현충일
+    [8, 15],  // 광복절
+    [10, 3],  // 개천절
+    [10, 9],  // 한글날
+    [12, 25], // 크리스마스
+  ];
+  if (fixed.some(([hm, hd]) => hm === m && hd === d)) return true;
+
+  // 음력 기반 공휴일 (연도별 사전계산)
+  const lunar: Record<number, [number, number][]> = {
+    2024: [[2,9],[2,10],[2,11],[2,12],[5,15],[9,16],[9,17],[9,18]],
+    2025: [[1,28],[1,29],[1,30],[5,6],[10,5],[10,6],[10,7],[10,8]],
+    2026: [[2,16],[2,17],[2,18],[2,19],[5,24],[10,1],[10,2],[10,3]],
+    2027: [[2,6],[2,7],[2,8],[2,9],[5,13],[9,20],[9,21],[9,22],[9,23]],
+  };
+  const yearDates = lunar[y];
+  if (yearDates && yearDates.some(([hm, hd]) => hm === m && hd === d)) return true;
+
+  return false;
+}
+
+/**
  * 주어진 시간이 속한 비즈니스 데이를 계산 (KST 기준)
  */
 export function getBusinessDay(date: Date = new Date(), businessDayStartHour: number = 10): string {

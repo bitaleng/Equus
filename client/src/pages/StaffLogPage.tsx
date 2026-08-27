@@ -3,17 +3,20 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } fro
 import { ko } from "date-fns/locale";
 import { toZonedTime } from "date-fns-tz";
 import {
-  Users, Clock, LogIn, LogOut, Plus, Trash2,
-  CheckCircle, Pencil, ChevronLeft, ChevronUp, ChevronDown,
+  Users, Clock, LogIn, LogOut, Trash2,
+  CheckCircle, Pencil, ChevronLeft, ChevronDown, CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { TimePickerButton } from "@/components/TimePickerButton";
+import { WorkDiary } from "@/components/WorkDiary";
 import { useToast } from "@/hooks/use-toast";
 import * as localDb from "@/lib/localDb";
 import type { Staff, StaffWorkLog, PayType } from "@/lib/localDb";
@@ -69,65 +72,7 @@ function isPaySegment(log: StaffWorkLog): boolean {
   return log.workMinutes > 0 || log.segmentPay > 0;
 }
 
-// ── 커스텀 시간 선택기 ────────────────────────────────────────────
-interface TimePickerButtonProps {
-  value: string;
-  onChange: (v: string) => void;
-  label?: string;
-  testId?: string;
-}
-function TimePickerButton({ value, onChange, label, testId }: TimePickerButtonProps) {
-  const [open, setOpen] = useState(false);
-  const [tempH, setTempH] = useState(0);
-  const [tempM, setTempM] = useState(0);
-
-  const openPicker = () => {
-    if (value) {
-      const [h, m] = value.split(":").map(Number);
-      setTempH(h);
-      setTempM(Math.round(m / 10) * 10 % 60);  // 10분 단위 반올림
-    } else {
-      const now = toZonedTime(new Date(), TZ);
-      setTempH(now.getHours());
-      setTempM(Math.round(now.getMinutes() / 10) * 10 % 60);  // 10분 단위 반올림
-    }
-    setOpen(true);
-  };
-
-  return (
-    <>
-      <Button type="button" variant="outline" className="w-full justify-center font-mono text-base" onClick={openPicker} data-testid={testId}>
-        <Clock className="h-4 w-4 mr-2 shrink-0" />
-        {value || "시간 선택"}
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-xs">
-          <DialogHeader><DialogTitle>{label || "시간 선택"}</DialogTitle></DialogHeader>
-          <div className="flex items-center justify-center gap-6 py-4">
-            <div className="flex flex-col items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={() => setTempH(h => (h + 1) % 24)}><ChevronUp className="h-5 w-5" /></Button>
-              <div className="w-16 h-16 flex items-center justify-center text-4xl font-bold select-none">{String(tempH).padStart(2, "0")}</div>
-              <Button size="icon" variant="ghost" onClick={() => setTempH(h => (h + 23) % 24)}><ChevronDown className="h-5 w-5" /></Button>
-              <span className="text-xs text-muted-foreground mt-1">시</span>
-            </div>
-            <span className="text-4xl font-bold pb-6">:</span>
-            <div className="flex flex-col items-center gap-1">
-              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 10) % 60)}><ChevronUp className="h-5 w-5" /></Button>
-              <div className="w-16 h-16 flex items-center justify-center text-4xl font-bold select-none">{String(tempM).padStart(2, "0")}</div>
-              <Button size="icon" variant="ghost" onClick={() => setTempM(m => (m + 50) % 60)}><ChevronDown className="h-5 w-5" /></Button>
-              <span className="text-xs text-muted-foreground mt-1">분</span>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>취소</Button>
-            <Button onClick={() => { onChange(`${String(tempH).padStart(2, "0")}:${String(tempM).padStart(2, "0")}`); setOpen(false); }} data-testid="btn-timepicker-set">설정</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-// ─────────────────────────────────────────────────────────────────
+// TimePickerButton은 client/src/components/TimePickerButton.tsx로 이동(직원관리 설정에서도 재사용)
 
 // 날짜별로 구간들을 묶어 요약
 interface DayGroup {
@@ -161,15 +106,13 @@ export default function StaffLogPage() {
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [workLogs, setWorkLogs] = useState<StaffWorkLog[]>([]);
-  const [todayLogs, setTodayLogs] = useState<StaffWorkLog[]>([]);
 
   // 오늘 근태기록 (출퇴근 버튼용) — 첫 번째 구간의 실제 출퇴근
   const [clockLog, setClockLog] = useState<StaffWorkLog | null>(null);
 
-  // 새 구간 입력 폼
-  const [newSeg, setNewSeg] = useState<{
-    start: string; end: string; payType: PayType; hourlyRate: string; notes: string;
-  }>({ start: "", end: "", payType: "주간", hourlyRate: "", notes: "" });
+  // 그룹박스 펼치기/접기
+  const [attendanceOpen, setAttendanceOpen] = useState(true);
+  const [diaryOpen, setDiaryOpen] = useState(true);
 
   // 수정 다이얼로그
   const [editingLog, setEditingLog] = useState<StaffWorkLog | null>(null);
@@ -191,7 +134,6 @@ export default function StaffLogPage() {
     const logs = localDb.getWorkLogs(staffId);
     setWorkLogs(logs);
     const todSegs = localDb.getTodayWorkLogs(staffId, currentToday);
-    setTodayLogs(todSegs.filter(isPaySegment));
 
     // 근태기록: segmentPay=0, workMinutes=0인 출퇴근 전용 레코드만 사용
     // (급여 구간 레코드를 clockLog로 혼용하면 출퇴근 탭 필터에서 누락되는 버그 발생)
@@ -227,15 +169,6 @@ export default function StaffLogPage() {
     return { weekMinutes: wMin, weekPay: wPay, monthMinutes: mMin, monthPay: mPay };
   }, [workLogs]);
 
-  // 오늘 합계
-  const todayTotalMinutes = todayLogs.reduce((s, l) => s + l.workMinutes, 0);
-  const todayTotalPay = todayLogs.reduce((s, l) => s + l.segmentPay, 0);
-
-  // 새 구간 계산 미리보기
-  const newSegMinutes = calcWorkMinutes(newSeg.start, newSeg.end);
-  const newSegHourlyRate = parseInt(newSeg.hourlyRate.replace(/,/g, "")) || 0;
-  const newSegPay = newSegHourlyRate > 0 ? Math.floor((newSegMinutes / 60) * newSegHourlyRate) : 0;
-
   // 출퇴근 핸들러
   const handleClockIn = () => {
     if (!selectedStaffId) return;
@@ -262,30 +195,6 @@ export default function StaffLogPage() {
     localDb.updateWorkLog(clockLog.id, { endTime: nowStr });
     reloadStaffData(selectedStaffId);
     toast({ title: "퇴근 기록 완료", description: `${nowStr} 기록 (근태기록용)` });
-  };
-
-  // 구간 추가
-  const handleAddSegment = () => {
-    if (!selectedStaffId) return;
-    if (!newSeg.start || !newSeg.end) {
-      toast({ title: "시작 시간과 종료 시간을 입력해주세요.", variant: "destructive" });
-      return;
-    }
-    const workMinutes = newSegMinutes;
-    localDb.createWorkLog({
-      staffId: selectedStaffId, workDate: today,
-      startTime: clockLog?.startTime || "", endTime: clockLog?.endTime || "",
-      breakMinutes: 0, workMinutes,
-      dailyPay: newSegPay, notes: newSeg.notes,
-      agreedStartTime: newSeg.start, agreedEndTime: newSeg.end,
-      payType: newSeg.payType, segmentPay: newSegPay, hourlyRate: newSegHourlyRate,
-    });
-    setNewSeg({ start: "", end: "", payType: "주간", hourlyRate: "", notes: "" });
-    reloadStaffData(selectedStaffId);
-    const desc = newSegPay > 0
-      ? `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)}) · ₩${newSegPay.toLocaleString()}`
-      : `${newSeg.start}~${newSeg.end} (${formatMinutes(workMinutes)})`;
-    toast({ title: "근무 구간 추가됨", description: desc });
   };
 
   // 구간 삭제
@@ -422,203 +331,96 @@ export default function StaffLogPage() {
       <div className="flex-1 overflow-auto p-4">
         <div className="max-w-3xl mx-auto space-y-4">
 
-          {/* ── 오늘 근태기록 ── */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Clock className="h-4 w-4" />
-                  오늘 근태기록
-                  {isNightShift && (
-                    <Badge variant="outline" className="text-xs border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
-                      야간 근무 중 ({clockLog!.workDate} 출근)
-                    </Badge>
-                  )}
-                </div>
-                <span className="font-mono text-lg tabular-nums text-muted-foreground">
-                  {format(currentTime, "HH:mm:ss")}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
-                {/* 출근 */}
-                <div>
-                  {hasClockedIn ? (
-                    <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
-                      <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
-                      <span className="text-xs text-muted-foreground">실제 출근</span>
-                      <span className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{clockLog!.startTime}</span>
-                    </div>
-                  ) : (
-                    <button onClick={handleClockIn} data-testid="button-clock-in"
-                      className="w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer">
-                      <LogIn className="h-7 w-7" />
-                      <span className="text-base font-bold">출근</span>
-                      <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
-                    </button>
-                  )}
-                </div>
-                {/* 퇴근 */}
-                <div>
-                  {hasClockedOut ? (
-                    <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
-                      <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                      <span className="text-xs text-muted-foreground">실제 퇴근</span>
-                      <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-400">{clockLog!.endTime}</span>
-                    </div>
-                  ) : (
-                    <button onClick={handleClockOut} disabled={!hasClockedIn} data-testid="button-clock-out"
-                      className={`w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 ${hasClockedIn ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer" : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"}`}>
-                      <LogOut className="h-7 w-7" />
-                      <span className="text-base font-bold">퇴근</span>
-                      <span className="text-xs opacity-80">{hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mt-2 text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
-            </CardContent>
-          </Card>
-
-          {/* ── 오늘 근무 구간 ── */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Plus className="h-4 w-4 text-primary" />
-                오늘 근무 구간
-                <span className="text-xs font-normal text-muted-foreground">(파트타임·시급제)</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* 정직원 안내 */}
-              <div className="text-xs text-muted-foreground bg-muted/30 rounded-md px-3 py-2">
-                정직원(월급제)은 아래 구간 추가 없이 위 출퇴근 버튼만 사용하시면 됩니다.
-              </div>
-
-              {/* 기존 구간 목록 */}
-              {todayLogs.length > 0 && (
-                <div className="space-y-2">
-                  {todayLogs.map((seg, i) => {
-                    const timeRange = seg.agreedStartTime && seg.agreedEndTime
-                      ? `${seg.agreedStartTime} ~ ${seg.agreedEndTime}`
-                      : seg.startTime && seg.endTime
-                        ? `${seg.startTime} ~ ${seg.endTime}`
-                        : "시간 미입력";
-                    return (
-                      <div key={seg.id} className="flex items-center gap-2 p-3 border rounded-md bg-muted/20 flex-wrap">
-                        <span className="text-xs text-muted-foreground w-5 shrink-0">#{i + 1}</span>
-                        <Badge variant="outline" className={`shrink-0 text-xs ${PAY_TYPE_COLORS[seg.payType || "주간"]}`}>
-                          {seg.payType || "주간"}
+          {/* ── 오늘 근태기록 (접기/펼치기) ── */}
+          <Collapsible open={attendanceOpen} onOpenChange={setAttendanceOpen}>
+            <Card>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="pb-2 cursor-pointer hover-elevate" data-testid="button-toggle-attendance">
+                  <CardTitle className="text-base flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Clock className="h-4 w-4" />
+                      오늘 근태기록
+                      {isNightShift && (
+                        <Badge variant="outline" className="text-xs border-amber-400/60 text-amber-700 dark:text-amber-400 bg-amber-500/10">
+                          야간 근무 중 ({clockLog!.workDate} 출근)
                         </Badge>
-                        <span className="font-mono text-sm tabular-nums">{timeRange}</span>
-                        <span className="text-sm tabular-nums text-muted-foreground">{formatMinutes(seg.workMinutes)}</span>
-                        {seg.hourlyRate > 0 && (
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            시간당 ₩{seg.hourlyRate.toLocaleString()}
-                          </span>
-                        )}
-                        <span className="text-sm font-bold text-primary tabular-nums ml-auto">
-                          {seg.segmentPay > 0 ? `₩${seg.segmentPay.toLocaleString()}` : "—"}
-                        </span>
-                        <div className="flex gap-1 shrink-0">
-                          <Button size="icon" variant="ghost" onClick={() => handleOpenEdit(seg)} data-testid={`button-edit-seg-${seg.id}`}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleDeleteLog(seg.id)} data-testid={`button-delete-seg-${seg.id}`}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* 합계 */}
-                  {todayTotalPay > 0 && (
-                    <div className="flex items-center justify-end gap-4 px-3 py-2 bg-primary/5 border border-primary/20 rounded-md text-sm">
-                      <span className="text-muted-foreground">오늘 합계</span>
-                      <span className="font-semibold">{formatMinutes(todayTotalMinutes)}</span>
-                      <span className="font-bold text-primary">₩{todayTotalPay.toLocaleString()}</span>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-lg tabular-nums text-muted-foreground">
+                        {format(currentTime, "HH:mm:ss")}
+                      </span>
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${attendanceOpen ? "" : "-rotate-90"}`} />
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* 출근 */}
+                    <div>
+                      {hasClockedIn ? (
+                        <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-green-500/40 bg-green-500/5 rounded-lg">
+                          <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+                          <span className="text-xs text-muted-foreground">실제 출근</span>
+                          <span className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{clockLog!.startTime}</span>
+                        </div>
+                      ) : (
+                        <button onClick={handleClockIn} data-testid="button-clock-in"
+                          className="w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 border-green-500 bg-green-500 hover-elevate active-elevate-2 text-white cursor-pointer">
+                          <LogIn className="h-7 w-7" />
+                          <span className="text-base font-bold">출근</span>
+                          <span className="text-xs opacity-80">버튼을 눌러 출근 기록</span>
+                        </button>
+                      )}
+                    </div>
+                    {/* 퇴근 */}
+                    <div>
+                      {hasClockedOut ? (
+                        <div className="w-full flex flex-col items-center gap-1 py-4 border-2 border-blue-500/40 bg-blue-500/5 rounded-lg">
+                          <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                          <span className="text-xs text-muted-foreground">실제 퇴근</span>
+                          <span className="text-xl font-bold tabular-nums text-blue-700 dark:text-blue-400">{clockLog!.endTime}</span>
+                        </div>
+                      ) : (
+                        <button onClick={handleClockOut} disabled={!hasClockedIn} data-testid="button-clock-out"
+                          className={`w-full flex flex-col items-center gap-2 py-5 rounded-lg border-2 ${hasClockedIn ? "border-red-500 bg-red-500 hover-elevate active-elevate-2 text-white cursor-pointer" : "border-muted bg-muted/30 text-muted-foreground cursor-not-allowed opacity-50"}`}>
+                          <LogOut className="h-7 w-7" />
+                          <span className="text-base font-bold">퇴근</span>
+                          <span className="text-xs opacity-80">{hasClockedIn ? "버튼을 눌러 퇴근 기록" : "출근 후 활성화"}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">근태기록 전용 — 급여 계산에 영향 없음</p>
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
 
-              {/* 새 구간 입력 */}
-              <div className="border rounded-md p-3 space-y-3 bg-muted/10">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  {todayLogs.length > 0 ? "구간 추가" : "구간 입력"}
-                </p>
-
-                {/* 시간 + 페이타입 */}
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">시작 시간</Label>
-                    <TimePickerButton value={newSeg.start} onChange={v => setNewSeg(s => ({ ...s, start: v }))} label="시작 시간" testId="input-new-seg-start" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">종료 시간</Label>
-                    <TimePickerButton value={newSeg.end} onChange={v => setNewSeg(s => ({ ...s, end: v }))} label="종료 시간" testId="input-new-seg-end" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">근무 유형</Label>
-                    <Select value={newSeg.payType} onValueChange={v => setNewSeg(s => ({ ...s, payType: v as PayType }))}>
-                      <SelectTrigger data-testid="select-new-pay-type"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {PAY_TYPES.map(pt => <SelectItem key={pt} value={pt}>{pt}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* 시간당 페이 + 비고 */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">시간당 페이 (원, 선택)</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      value={newSeg.hourlyRate}
-                      onChange={e => setNewSeg(s => ({ ...s, hourlyRate: e.target.value.replace(/[^0-9]/g, "") }))}
-                      placeholder="예: 12000"
-                      data-testid="input-new-seg-hourly"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">비고 (선택)</Label>
-                    <Input
-                      type="text"
-                      value={newSeg.notes}
-                      onChange={e => setNewSeg(s => ({ ...s, notes: e.target.value }))}
-                      placeholder="특이사항"
-                      data-testid="input-new-seg-notes"
-                    />
-                  </div>
-                </div>
-
-                {/* 자동계산 미리보기 */}
-                {newSeg.start && newSeg.end && newSegMinutes > 0 && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-muted/40 rounded-md text-sm flex-wrap">
-                    <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    <span className="tabular-nums text-muted-foreground">{newSeg.start} ~ {newSeg.end}</span>
-                    <span className="font-semibold tabular-nums">{formatMinutes(newSegMinutes)}</span>
-                    {newSegHourlyRate > 0 && (
-                      <>
-                        <span className="text-muted-foreground">×</span>
-                        <span className="tabular-nums text-muted-foreground">₩{newSegHourlyRate.toLocaleString()}/h</span>
-                        <span className="text-muted-foreground">=</span>
-                        <span className="font-bold text-primary tabular-nums">₩{newSegPay.toLocaleString()}</span>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <Button className="w-full" onClick={handleAddSegment} data-testid="button-add-segment">
-                  <Plus className="h-4 w-4 mr-1" />
-                  구간 추가
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          {/* ── 근무다이어리 (접기/펼치기) ── */}
+          <Collapsible open={diaryOpen} onOpenChange={setDiaryOpen}>
+            <Card>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="pb-2 cursor-pointer hover-elevate" data-testid="button-toggle-diary">
+                  <CardTitle className="text-base flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-primary" />
+                      근무다이어리
+                      <span className="text-xs font-normal text-muted-foreground">(파트타임 스케줄·자동 급여계산)</span>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${diaryOpen ? "" : "-rotate-90"}`} />
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent>
+                  <WorkDiary staffList={staffList} />
+                </CardContent>
+              </CollapsibleContent>
+            </Card>
+          </Collapsible>
 
           {/* ── 주간 / 월간 요약 ── */}
           <div className="grid grid-cols-2 gap-4">
@@ -649,7 +451,7 @@ export default function StaffLogPage() {
               {dayGroups.length === 0 ? (
                 <div className="text-center py-12 space-y-2">
                   <p className="text-muted-foreground text-sm">근무 기록이 없습니다.</p>
-                  <p className="text-xs text-muted-foreground">위의 오늘 근무 구간에서 시작·종료 시간을 입력하세요.</p>
+                  <p className="text-xs text-muted-foreground">파트타임 근무·급여는 근무다이어리에서 확인하세요. (이 탭은 예전 방식 구간 기록용)</p>
                 </div>
               ) : (
                 <div className="space-y-3">

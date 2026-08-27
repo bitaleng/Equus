@@ -30,6 +30,7 @@ export * from './db/testData';
 export * from './db/additionalFee';
 export * from './db/additionalRevenue';
 export * from './db/expenses';
+export * from './db/workDiary';
 export * from './db/closingDays';
 export * from './db/mappings';
 export * from './db/backup';

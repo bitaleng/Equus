@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
+import { usePaydayAlert } from "@/hooks/usePaydayAlert";
 import { Menu, X, Maximize2, ChevronDown, ChevronUp, LayoutGrid, Columns, Receipt, Plus, Move, PanelRight, PanelRightClose, PanelLeft, Users } from "lucide-react";
 import { ResizeEdgeGrip, DockResizeGrip } from "@/components/ResizeEdgeGrip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,7 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PatternLockDialog from "@/components/PatternLockDialog";
-import { getBusinessDay, getBusinessDayRange, getPreviousBusinessDay, getBasePrice, calculateAdditionalFee, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice } from "@shared/businessDay";
+import { getBusinessDay, getBusinessDayRange, getPreviousBusinessDay, getBasePrice, calculateAdditionalFee, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice, isKoreanHoliday } from "@shared/businessDay";
 import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
@@ -100,39 +101,11 @@ function upsertLockerDialog(
   return next;
 }
 
-// 금·토·일 및 한국 공휴일 판정
+// 금·토·일 및 한국 공휴일 판정 (공휴일 판정 자체는 shared/businessDay.ts의 isKoreanHoliday로 이동)
 function isWeekendOrHoliday(date: Date): boolean {
   const day = date.getDay(); // 0=일, 5=금, 6=토
   if (day === 0 || day === 5 || day === 6) return true;
-
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  const y = date.getFullYear();
-
-  // 양력 고정 공휴일
-  const fixed: [number, number][] = [
-    [1, 1],   // 신정
-    [3, 1],   // 삼일절
-    [5, 5],   // 어린이날
-    [6, 6],   // 현충일
-    [8, 15],  // 광복절
-    [10, 3],  // 개천절
-    [10, 9],  // 한글날
-    [12, 25], // 크리스마스
-  ];
-  if (fixed.some(([hm, hd]) => hm === m && hd === d)) return true;
-
-  // 음력 기반 공휴일 (연도별 사전계산)
-  const lunar: Record<number, [number, number][]> = {
-    2024: [[2,9],[2,10],[2,11],[2,12],[5,15],[9,16],[9,17],[9,18]],
-    2025: [[1,28],[1,29],[1,30],[5,6],[10,5],[10,6],[10,7],[10,8]],
-    2026: [[2,16],[2,17],[2,18],[2,19],[5,24],[10,1],[10,2],[10,3]],
-    2027: [[2,6],[2,7],[2,8],[2,9],[5,13],[9,20],[9,21],[9,22],[9,23]],
-  };
-  const yearDates = lunar[y];
-  if (yearDates && yearDates.some(([hm, hd]) => hm === m && hd === d)) return true;
-
-  return false;
+  return isKoreanHoliday(date);
 }
 
 type StatusRawEntry = LockerLog & { additionalFeeOnly?: boolean; hasSameDayFee?: boolean };
@@ -285,6 +258,14 @@ function isWorkspaceModalOpen(): boolean {
 export default function Home() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const paydayAlert = usePaydayAlert();
+  useEffect(() => {
+    if (!paydayAlert.alerting) return;
+    toast({
+      title: "주급 지급 시간이 다가옵니다",
+      description: `${paydayAlert.staffName}님 주급 지급(${paydayAlert.time}) 30분 전입니다. 직원근무 > 근무다이어리에서 확인해주세요.`,
+    });
+  }, [paydayAlert.alerting, paydayAlert.staffId]);
   const [openDialogs, setOpenDialogs] = useState<Map<number, OpenDialog>>(new Map());
   const [childLockerAlertOpen, setChildLockerAlertOpen] = useState(false);
   const [childLockerParent, setChildLockerParent] = useState<number | null>(null);
@@ -2488,7 +2469,7 @@ export default function Home() {
                   size="sm"
                   onClick={() => setLocation('/staff-logs')}
                   data-testid="button-staff-logs-tab"
-                  className="bg-card/80 shadow-2xs"
+                  className={paydayAlert.alerting ? "animate-payday-blink" : "bg-card/80 shadow-2xs"}
                 >
                   <Users className="h-4 w-4 mr-2" />
                   직원근무
@@ -2710,7 +2691,7 @@ export default function Home() {
                 size="sm"
                 onClick={() => setLocation('/staff-logs')}
                 data-testid="button-staff-logs-header"
-                className="bg-card/80 shadow-2xs"
+                className={paydayAlert.alerting ? "animate-payday-blink" : "bg-card/80 shadow-2xs"}
               >
                 <Users className="h-4 w-4 mr-2" />
                 직원근무

@@ -53,9 +53,14 @@ export function exportDatabase(): {
       'pricing_options',  // 추가 요금옵션 (사용자 정의)
       'staff',            // 직원 정보
       'staff_work_logs',  // 직원 근무·근태 기록
-      'staff_ratings'     // 직원 평가 기록
+      'staff_ratings',    // 직원 평가 기록
+      'part_time_templates',        // 근무다이어리: 파트타임 설정
+      'wage_tiers',                 // 근무다이어리: 요일·시간별 시급
+      'staff_paydays',               // 근무다이어리: 근무자별 주급지급일
+      'staff_schedule_overrides',    // 근무다이어리: 날짜별 대체근무 기록
+      'staff_payday_completions'     // 근무다이어리: 주급지급완료 기록
     ];
-    
+
     tables.forEach(tableName => {
       try {
         exportData.tables[tableName] = exportTable(tableName);
@@ -163,6 +168,11 @@ export function importDatabase(jsonString: string): {
     
     // Clear existing data from all tables (including user-defined settings)
     const tables = [
+      'staff_payday_completions',   // 근무다이어리: 주급지급완료 기록 (staff 보다 먼저)
+      'staff_schedule_overrides',   // 근무다이어리: 날짜별 대체근무 기록 (staff 보다 먼저)
+      'staff_paydays',              // 근무다이어리: 근무자별 주급지급일 (staff 보다 먼저)
+      'wage_tiers',                 // 근무다이어리: 요일·시간별 시급
+      'part_time_templates',        // 근무다이어리: 파트타임 설정 (staff 보다 먼저)
       'staff_ratings',    // 직원 평가 기록 (staff_work_logs 보다 먼저)
       'staff_work_logs',  // 직원 근무·근태 기록 (staff 보다 먼저)
       'staff',            // 직원 정보
@@ -309,7 +319,12 @@ export function importDatabase(jsonString: string): {
       'pricing_options',  // 추가 요금옵션 (사용자 정의)
       'staff',            // 직원 정보 (staff_work_logs 보다 먼저)
       'staff_work_logs',  // 직원 근무·근태 기록
-      'staff_ratings'     // 직원 평가 기록
+      'staff_ratings',    // 직원 평가 기록
+      'part_time_templates',        // 근무다이어리: 파트타임 설정
+      'wage_tiers',                 // 근무다이어리: 요일·시간별 시급
+      'staff_paydays',               // 근무다이어리: 근무자별 주급지급일
+      'staff_schedule_overrides',    // 근무다이어리: 날짜별 대체근무 기록
+      'staff_payday_completions'     // 근무다이어리: 주급지급완료 기록
     ];
     
     // scan_logs: 최근 90일치만 가져오기 (누적 과다로 인한 DB 비대화 방지)

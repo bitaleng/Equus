@@ -1162,6 +1162,24 @@
   animation: outing-exceeded 0.8s ease-in-out infinite;
 }
 
+/* 주급 지급 30분 전 알림 — 빨강 ↔ 파랑 점멸 (직원근무 버튼) */
+@keyframes payday-blink {
+  0%, 100% {
+    background-color: #EF4444;
+    border-color: #DC2626;
+    color: white;
+  }
+  50% {
+    background-color: #3B82F6;
+    border-color: #2563EB;
+    color: white;
+  }
+}
+
+.animate-payday-blink {
+  animation: payday-blink 1s ease-in-out infinite;
+}
+
 /* 입실관리 화면 — 은은한 대기감 배경 */
 .entry-mgmt-surface {
   background:

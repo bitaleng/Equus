@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Moon, Layers, FolderOpen, Sparkles } from "lucide-react";
+import { Save, Plus, Pencil, Trash2, Lock, AlertTriangle, Database, DollarSign, Receipt, Calculator, ChevronDown, ChevronUp, Barcode, Edit3, Download, Upload, Fingerprint, CheckCircle, XCircle, Shield, ShieldOff, Grid3X3, Smartphone, CreditCard, Key, LogOut, ExternalLink, Ban, Users, Camera, ImageIcon, X, Moon, Layers, FolderOpen, Sparkles, CalendarClock, Wallet, CalendarDays } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { TimePickerButton } from "@/components/TimePickerButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -148,6 +150,25 @@ interface PricingOptionFormData {
   name: string;
   optionType: 'discount' | 'surcharge' | 'fixed';
   amount: string;
+}
+
+const DOW_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
+
+/** 요일 배열을 "월~목" 처럼 연속 구간은 묶고, 불연속이면 "월·수·금" 처럼 나열 */
+function formatDaysKorean(days: number[]): string {
+  if (days.length === 0) return "-";
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 7) return "매일";
+  // 연속 구간 탐지
+  const ranges: [number, number][] = [];
+  let start = sorted[0], prev = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === prev + 1) { prev = sorted[i]; continue; }
+    ranges.push([start, prev]);
+    start = sorted[i]; prev = sorted[i];
+  }
+  ranges.push([start, prev]);
+  return ranges.map(([s, e]) => s === e ? DOW_LABELS[s] : `${DOW_LABELS[s]}~${DOW_LABELS[e]}`).join("·");
 }
 
 export default function Settings() {
@@ -373,6 +394,25 @@ export default function Settings() {
   const staffFileInputRef = useRef<HTMLInputElement>(null);
   const staffCameraInputRef = useRef<HTMLInputElement>(null);
 
+  // 근무다이어리: 파트타임 설정
+  const [partTimeTemplates, setPartTimeTemplates] = useState<localDb.PartTimeTemplate[]>([]);
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<localDb.PartTimeTemplate | null>(null);
+  const [templateForm, setTemplateForm] = useState<{
+    label: string; staffId: string; daysOfWeek: number[]; startTime: string; endTime: string;
+  }>({ label: "", staffId: "", daysOfWeek: [], startTime: "", endTime: "" });
+
+  // 근무다이어리: 요일·시간별 시급
+  const [wageTiers, setWageTiers] = useState<localDb.WageTier[]>([]);
+  const [isTierDialogOpen, setIsTierDialogOpen] = useState(false);
+  const [editingTier, setEditingTier] = useState<localDb.WageTier | null>(null);
+  const [tierForm, setTierForm] = useState<{
+    name: string; daysOfWeek: number[]; includeHolidays: boolean; startTime: string; endTime: string; hourlyRate: string;
+  }>({ name: "", daysOfWeek: [], includeHolidays: false, startTime: "", endTime: "", hourlyRate: "" });
+
+  // 근무다이어리: 근무자별 주급지급일
+  const [staffPaydays, setStaffPaydays] = useState<localDb.StaffPayday[]>([]);
+
   // Load settings and locker groups on mount
   useEffect(() => {
     const settings = localDb.getSettings();
@@ -424,6 +464,9 @@ export default function Settings() {
     loadBarcodeMappings();
     loadRfidMappings();
     setStaffList(localDb.getAllStaff());
+    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+    setWageTiers(localDb.getAllWageTiers());
+    setStaffPaydays(localDb.getAllStaffPaydays());
     void getAutoArchiveDirectoryName().then((name) => {
       if (name) setAutoArchiveFolderName(name);
     });
@@ -1347,6 +1390,108 @@ export default function Settings() {
     }
     setStaffList(localDb.getAllStaff());
     setIsStaffDialogOpen(false);
+  };
+
+  // 근무다이어리: 파트타임 설정 핸들러
+  const handleAddTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({ label: "", staffId: staffList[0]?.id || "", daysOfWeek: [], startTime: "", endTime: "" });
+    setIsTemplateDialogOpen(true);
+  };
+
+  const handleEditTemplate = (t: localDb.PartTimeTemplate) => {
+    setEditingTemplate(t);
+    setTemplateForm({ label: t.label, staffId: t.staffId, daysOfWeek: t.daysOfWeek, startTime: t.startTime, endTime: t.endTime });
+    setIsTemplateDialogOpen(true);
+  };
+
+  const handleSaveTemplate = () => {
+    if (!templateForm.staffId) { toast({ title: "근무자를 선택해주세요.", variant: "destructive" }); return; }
+    if (templateForm.daysOfWeek.length === 0) { toast({ title: "요일을 하나 이상 선택해주세요.", variant: "destructive" }); return; }
+    if (!templateForm.startTime || !templateForm.endTime) { toast({ title: "시작·종료 시간을 선택해주세요.", variant: "destructive" }); return; }
+    const data = {
+      label: templateForm.label || `파트타임${partTimeTemplates.length + 1}`,
+      staffId: templateForm.staffId,
+      daysOfWeek: templateForm.daysOfWeek,
+      startTime: templateForm.startTime,
+      endTime: templateForm.endTime,
+      isActive: true,
+    };
+    if (editingTemplate) {
+      localDb.updatePartTimeTemplate(editingTemplate.id, data);
+      toast({ title: "파트타임 설정이 수정되었습니다." });
+    } else {
+      localDb.createPartTimeTemplate(data);
+      toast({ title: "파트타임이 추가되었습니다." });
+    }
+    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+    setIsTemplateDialogOpen(false);
+  };
+
+  const handleDeleteTemplate = (id: string) => {
+    if (!confirm("이 파트타임 설정을 삭제하시겠습니까?\n지금까지 근무다이어리에 기록된 대체근무 내역도 함께 삭제됩니다.")) return;
+    localDb.deletePartTimeTemplate(id);
+    setPartTimeTemplates(localDb.getAllPartTimeTemplates(false));
+    toast({ title: "파트타임 설정이 삭제되었습니다." });
+  };
+
+  // 근무다이어리: 요일·시간별 시급 핸들러
+  const handleAddTier = () => {
+    setEditingTier(null);
+    setTierForm({ name: "", daysOfWeek: [], includeHolidays: false, startTime: "", endTime: "", hourlyRate: "" });
+    setIsTierDialogOpen(true);
+  };
+
+  const handleEditTier = (t: localDb.WageTier) => {
+    setEditingTier(t);
+    setTierForm({ name: t.name, daysOfWeek: t.daysOfWeek, includeHolidays: t.includeHolidays, startTime: t.startTime, endTime: t.endTime, hourlyRate: String(t.hourlyRate) });
+    setIsTierDialogOpen(true);
+  };
+
+  const handleSaveTier = () => {
+    if (!tierForm.name.trim()) { toast({ title: "시급 구간 이름을 입력해주세요.", variant: "destructive" }); return; }
+    if (tierForm.daysOfWeek.length === 0 && !tierForm.includeHolidays) { toast({ title: "요일을 하나 이상 선택하거나 공휴일 포함을 켜주세요.", variant: "destructive" }); return; }
+    if (!tierForm.startTime || !tierForm.endTime) { toast({ title: "시작·종료 시간을 선택해주세요.", variant: "destructive" }); return; }
+    const rate = parseInt(tierForm.hourlyRate.replace(/[^0-9]/g, "")) || 0;
+    const data = {
+      name: tierForm.name,
+      daysOfWeek: tierForm.daysOfWeek,
+      includeHolidays: tierForm.includeHolidays,
+      startTime: tierForm.startTime,
+      endTime: tierForm.endTime,
+      hourlyRate: rate,
+    };
+    if (editingTier) {
+      localDb.updateWageTier(editingTier.id, data);
+      toast({ title: "시급 구간이 수정되었습니다." });
+    } else {
+      localDb.createWageTier(data);
+      toast({ title: "시급 구간이 추가되었습니다." });
+    }
+    setWageTiers(localDb.getAllWageTiers());
+    setIsTierDialogOpen(false);
+  };
+
+  const handleDeleteTier = (id: string) => {
+    if (!confirm("이 시급 구간을 삭제하시겠습니까?")) return;
+    localDb.deleteWageTier(id);
+    setWageTiers(localDb.getAllWageTiers());
+    toast({ title: "시급 구간이 삭제되었습니다." });
+  };
+
+  const handleMoveTier = (id: string, direction: "up" | "down") => {
+    const idx = wageTiers.findIndex(t => t.id === id);
+    if (idx < 0) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= wageTiers.length) return;
+    localDb.swapWageTierOrder(wageTiers[idx].id, wageTiers[swapIdx].id);
+    setWageTiers(localDb.getAllWageTiers());
+  };
+
+  // 근무다이어리: 근무자별 주급지급일 핸들러
+  const handleSavePayday = (staffId: string, data: { dayOfWeek: number; time: string; isEnabled: boolean }) => {
+    localDb.upsertStaffPayday({ staffId, ...data });
+    setStaffPaydays(localDb.getAllStaffPaydays());
   };
 
   const handleStaffPhotoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -4912,6 +5057,168 @@ export default function Settings() {
             </CardContent>
           </Card>
 
+          {/* 근무다이어리: 파트타임 설정 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle>파트타임 설정</CardTitle>
+                    <CardDescription className="mt-0.5">요일별 반복되는 파트타임 근무자·시간을 등록합니다. 근무다이어리 달력에 자동으로 반영됩니다.</CardDescription>
+                  </div>
+                </div>
+                <Button size="sm" onClick={handleAddTemplate} disabled={staffList.length === 0} data-testid="button-add-template">
+                  <Plus className="h-4 w-4 mr-1" />
+                  파트타임 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {staffList.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
+              ) : partTimeTemplates.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">등록된 파트타임이 없습니다.</p>
+              ) : (
+                <div className="space-y-2">
+                  {partTimeTemplates.map((t, i) => {
+                    const staff = staffList.find(s => s.id === t.staffId);
+                    return (
+                      <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
+                        <div className="text-sm">
+                          <span className="font-medium">{t.label || `파트타임${i + 1}`}</span>
+                          <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)} · </span>
+                          <span className="font-mono">{t.startTime}~{t.endTime}</span>
+                          <span className="text-muted-foreground"> · 근무자 </span>
+                          <span className="font-medium">{staff?.name ?? "(삭제됨)"}</span>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button size="icon" variant="ghost" onClick={() => handleEditTemplate(t)} data-testid={`button-edit-template-${t.id}`}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDeleteTemplate(t.id)} data-testid={`button-delete-template-${t.id}`}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 근무다이어리: 요일·시간별 시급 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <CardTitle>요일·시간별 시급</CardTitle>
+                    <CardDescription className="mt-0.5">
+                      위에 있는 구간이 먼저 적용됩니다(우선순위). 예: "휴일야간"을 "평일야간"보다 위에 두면 금·토요일 밤에는 자동으로 휴일야간 시급이 적용됩니다.
+                    </CardDescription>
+                  </div>
+                </div>
+                <Button size="sm" onClick={handleAddTier} data-testid="button-add-tier">
+                  <Plus className="h-4 w-4 mr-1" />
+                  시급 구간 추가
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {wageTiers.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">등록된 시급 구간이 없습니다.</p>
+              ) : (
+                <div className="space-y-2">
+                  {wageTiers.map((t, i) => (
+                    <div key={t.id} className="flex items-center justify-between gap-2 p-3 border rounded-md flex-wrap">
+                      <div className="text-sm">
+                        <span className="text-xs text-muted-foreground mr-1">#{i + 1}</span>
+                        <span className="font-medium">{t.name}</span>
+                        <span className="text-muted-foreground"> · {formatDaysKorean(t.daysOfWeek)}{t.includeHolidays ? "+공휴일" : ""} · </span>
+                        <span className="font-mono">{t.startTime}~{t.endTime}</span>
+                        <span className="text-muted-foreground"> · </span>
+                        <span className="font-semibold text-primary">₩{t.hourlyRate.toLocaleString()}/h</span>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "up")} disabled={i === 0} data-testid={`button-tier-up-${t.id}`}>
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleMoveTier(t.id, "down")} disabled={i === wageTiers.length - 1} data-testid={`button-tier-down-${t.id}`}>
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleEditTier(t)} data-testid={`button-edit-tier-${t.id}`}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleDeleteTier(t.id)} data-testid={`button-delete-tier-${t.id}`}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 근무다이어리: 근무자별 주급지급일 */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CalendarClock className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <CardTitle>근무자별 주급지급일</CardTitle>
+                  <CardDescription className="mt-0.5">지급 요일·시각 30분 전에 근무다이어리에서 알림이 표시됩니다.</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {staffList.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
+              ) : (
+                <div className="space-y-2">
+                  {staffList.map(staff => {
+                    const payday = staffPaydays.find(p => p.staffId === staff.id);
+                    const dayOfWeek = payday?.dayOfWeek ?? 4;
+                    const time = payday?.time ?? "22:00";
+                    const isEnabled = payday?.isEnabled ?? false;
+                    return (
+                      <div key={staff.id} className="flex items-center gap-3 p-3 border rounded-md flex-wrap">
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) => handleSavePayday(staff.id, { dayOfWeek, time, isEnabled: checked })}
+                          data-testid={`switch-payday-${staff.id}`}
+                        />
+                        <span className="font-medium text-sm w-16 shrink-0">{staff.name}</span>
+                        <Select
+                          value={String(dayOfWeek)}
+                          onValueChange={(v) => handleSavePayday(staff.id, { dayOfWeek: parseInt(v), time, isEnabled })}
+                        >
+                          <SelectTrigger className="w-24" data-testid={`select-payday-dow-${staff.id}`}><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {DOW_LABELS.map((label, idx) => (
+                              <SelectItem key={idx} value={String(idx)}>{label}요일</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="w-32">
+                          <TimePickerButton
+                            value={time}
+                            onChange={(v) => handleSavePayday(staff.id, { dayOfWeek, time: v, isEnabled })}
+                            label={`${staff.name} 주급지급 시각`}
+                            testId={`input-payday-time-${staff.id}`}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Save Button */}
           <div className="flex justify-end">
             <Button onClick={handleSave} size="lg" data-testid="button-save-settings">
@@ -5688,6 +5995,139 @@ export default function Settings() {
             <Button variant="outline" onClick={() => setIsStaffDialogOpen(false)}>취소</Button>
             <Button onClick={handleSaveStaff} data-testid="button-save-staff">
               {editingStaff ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 파트타임 설정 다이얼로그 */}
+      <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTemplate ? "파트타임 수정" : "파트타임 추가"}</DialogTitle>
+            <DialogDescription>요일별로 반복되는 근무자·시간을 등록하세요.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>이름 (선택)</Label>
+              <Input
+                value={templateForm.label}
+                onChange={(e) => setTemplateForm(f => ({ ...f, label: e.target.value }))}
+                placeholder={`예: 파트타임${partTimeTemplates.length + 1}`}
+                data-testid="input-template-label"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>근무자</Label>
+              <Select value={templateForm.staffId} onValueChange={(v) => setTemplateForm(f => ({ ...f, staffId: v }))}>
+                <SelectTrigger data-testid="select-template-staff"><SelectValue placeholder="근무자 선택" /></SelectTrigger>
+                <SelectContent>
+                  {staffList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>요일 (여러 개 선택 가능)</Label>
+              <ToggleGroup
+                type="multiple"
+                variant="outline"
+                value={templateForm.daysOfWeek.map(String)}
+                onValueChange={(v: string[]) => setTemplateForm(f => ({ ...f, daysOfWeek: v.map(Number) }))}
+                className="flex-wrap justify-start"
+              >
+                {DOW_LABELS.map((label, idx) => (
+                  <ToggleGroupItem key={idx} value={String(idx)} data-testid={`toggle-template-dow-${idx}`}>{label}</ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>시작 시간</Label>
+                <TimePickerButton value={templateForm.startTime} onChange={(v) => setTemplateForm(f => ({ ...f, startTime: v }))} label="시작 시간" testId="input-template-start" />
+              </div>
+              <div className="space-y-2">
+                <Label>종료 시간</Label>
+                <TimePickerButton value={templateForm.endTime} onChange={(v) => setTemplateForm(f => ({ ...f, endTime: v }))} label="종료 시간" testId="input-template-end" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTemplateDialogOpen(false)}>취소</Button>
+            <Button onClick={handleSaveTemplate} data-testid="button-save-template">
+              {editingTemplate ? "수정" : "추가"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 요일·시간별 시급 다이얼로그 */}
+      <Dialog open={isTierDialogOpen} onOpenChange={setIsTierDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTier ? "시급 구간 수정" : "시급 구간 추가"}</DialogTitle>
+            <DialogDescription>목록에서 위에 있을수록 먼저 적용됩니다(우선순위).</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>이름</Label>
+              <Input
+                value={tierForm.name}
+                onChange={(e) => setTierForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="예: 주간, 평일야간, 휴일야간"
+                data-testid="input-tier-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>적용 요일</Label>
+              <ToggleGroup
+                type="multiple"
+                variant="outline"
+                value={tierForm.daysOfWeek.map(String)}
+                onValueChange={(v: string[]) => setTierForm(f => ({ ...f, daysOfWeek: v.map(Number) }))}
+                className="flex-wrap justify-start"
+              >
+                {DOW_LABELS.map((label, idx) => (
+                  <ToggleGroupItem key={idx} value={String(idx)} data-testid={`toggle-tier-dow-${idx}`}>{label}</ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <Label className="text-sm">공휴일도 포함</Label>
+                <p className="text-xs text-muted-foreground">요일과 상관없이 공휴일이면 이 시급 적용</p>
+              </div>
+              <Switch
+                checked={tierForm.includeHolidays}
+                onCheckedChange={(checked) => setTierForm(f => ({ ...f, includeHolidays: checked }))}
+                data-testid="switch-tier-holidays"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>시작 시간</Label>
+                <TimePickerButton value={tierForm.startTime} onChange={(v) => setTierForm(f => ({ ...f, startTime: v }))} label="시작 시간" testId="input-tier-start" />
+              </div>
+              <div className="space-y-2">
+                <Label>종료 시간</Label>
+                <TimePickerButton value={tierForm.endTime} onChange={(v) => setTierForm(f => ({ ...f, endTime: v }))} label="종료 시간" testId="input-tier-end" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>시급 (원)</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={tierForm.hourlyRate}
+                onChange={(e) => setTierForm(f => ({ ...f, hourlyRate: e.target.value.replace(/[^0-9]/g, "") }))}
+                placeholder="예: 14000"
+                data-testid="input-tier-rate"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTierDialogOpen(false)}>취소</Button>
+            <Button onClick={handleSaveTier} data-testid="button-save-tier">
+              {editingTier ? "수정" : "추가"}
             </Button>
           </DialogFooter>
         </DialogContent>

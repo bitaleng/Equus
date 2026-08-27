@@ -1555,6 +1555,58 @@ function migrateDatabase() {
     `);
     console.log('Ensured report_daily_snapshots table (Step 35)');
 
+    // Step 36: 근무다이어리 테이블 추가 (파트타임 스케줄·시급구간·주급지급일·날짜별 대체근무·지급완료 기록)
+    try {
+      db.run(`CREATE TABLE IF NOT EXISTS part_time_templates (
+        id TEXT PRIMARY KEY,
+        staff_id TEXT NOT NULL,
+        days_of_week TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        label TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT ''
+      )`);
+      db.run(`CREATE TABLE IF NOT EXISTS wage_tiers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        days_of_week TEXT NOT NULL,
+        include_holidays INTEGER DEFAULT 0,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        hourly_rate INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT ''
+      )`);
+      db.run(`CREATE TABLE IF NOT EXISTS staff_paydays (
+        id TEXT PRIMARY KEY,
+        staff_id TEXT NOT NULL,
+        day_of_week INTEGER NOT NULL,
+        time TEXT NOT NULL,
+        is_enabled INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT ''
+      )`);
+      db.run(`CREATE TABLE IF NOT EXISTS staff_schedule_overrides (
+        id TEXT PRIMARY KEY,
+        schedule_date TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        staff_id TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        created_at TEXT DEFAULT '',
+        updated_at TEXT DEFAULT ''
+      )`);
+      db.run(`CREATE TABLE IF NOT EXISTS staff_payday_completions (
+        id TEXT PRIMARY KEY,
+        staff_id TEXT NOT NULL,
+        week_start_date TEXT NOT NULL,
+        completed_at TEXT DEFAULT ''
+      )`);
+      console.log('Created work diary tables (Step 36)');
+    } catch (e) {
+      // 이미 존재하면 무시
+    }
+
     saveDatabase();
 
   } catch (error) {
@@ -1849,6 +1901,53 @@ function createTables() {
     rating TEXT NOT NULL,
     note TEXT DEFAULT '',
     created_at TEXT DEFAULT ''
+  )`);
+
+  // 근무다이어리 테이블 (파트타임 스케줄·시급구간·주급지급일·날짜별 대체근무·지급완료 기록)
+  db.run(`CREATE TABLE IF NOT EXISTS part_time_templates (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT NOT NULL,
+    days_of_week TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    label TEXT DEFAULT '',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT ''
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS wage_tiers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    days_of_week TEXT NOT NULL,
+    include_holidays INTEGER DEFAULT 0,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    hourly_rate INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT ''
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS staff_paydays (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT NOT NULL,
+    day_of_week INTEGER NOT NULL,
+    time TEXT NOT NULL,
+    is_enabled INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT ''
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS staff_schedule_overrides (
+    id TEXT PRIMARY KEY,
+    schedule_date TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    staff_id TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    created_at TEXT DEFAULT '',
+    updated_at TEXT DEFAULT ''
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS staff_payday_completions (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT NOT NULL,
+    week_start_date TEXT NOT NULL,
+    completed_at TEXT DEFAULT ''
   )`);
 
   // 성능 인덱스: 자주 사용되는 쿼리 최적화
