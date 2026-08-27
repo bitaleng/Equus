@@ -17,7 +17,7 @@ import {
   resolveScheduleForDate, calculateDailyPay, calculateWeeklyPay,
   formatKoreanTimeRange, type ResolvedScheduleSlot,
 } from "@/lib/workDiaryPay";
-import { getStaffColor, multiplyBlend, multiplyBlendAll } from "@/lib/staffColors";
+import { getStaffColor, multiplyBlendAll } from "@/lib/staffColors";
 
 const TZ = "Asia/Seoul";
 const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
@@ -79,8 +79,13 @@ function buildDisplayBlocks(slots: ResolvedScheduleSlot[]): DisplayBlock[] {
   return Array.from(blockMap.values()).sort((a, b) => a.startMin - b.startMin);
 }
 
+// 그래프의 기본 표시 범위 — 전날 22시(-120분)부터 다음날 6시(1800분)까지를 기본 틀로 삼는다
+const TIMELINE_DEFAULT_START = -120;
+const TIMELINE_DEFAULT_END = 1800;
+
 /** 날짜별 스케줄 패널에 쓰는 시계열 그래프 — 근무자별 근무시간을 가로 막대로 표시하고,
- * 겹치는 시간대는 감산혼합(mix-blend-mode: multiply)으로 색이 섞이게 해 겹침을 직관적으로 보여준다. */
+ * 겹치는 시간대는 감산혼합(mix-blend-mode: multiply)으로 색이 섞이게 해 겹침을 직관적으로 보여준다.
+ * 눈금은 고정 간격이 아니라 각 근무 시작·종료 시각에만 표시해 근무시간의 경계를 바로 읽을 수 있게 한다. */
 function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staffList: Staff[] }) {
   if (slots.length === 0) return null;
   const withMin = slots.map(s => {
@@ -89,10 +94,14 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
     if (endMin <= startMin) endMin += 1440;
     return { ...s, startMin, endMin };
   });
-  const axisEnd = Math.max(1440, ...withMin.map(s => s.endMin));
-  const ticks: number[] = [];
-  for (let t = 0; t <= axisEnd; t += 180) ticks.push(t);
-  if (ticks[ticks.length - 1] !== axisEnd) ticks.push(axisEnd);
+  const axisStart = Math.min(TIMELINE_DEFAULT_START, ...withMin.map(s => s.startMin));
+  const axisEnd = Math.max(TIMELINE_DEFAULT_END, ...withMin.map(s => s.endMin));
+  const totalRange = axisEnd - axisStart;
+  // 눈금 = 각 근무의 시작·종료 시각만 (고정 3시간 간격 대신)
+  const tickSet = new Set<number>();
+  withMin.forEach(s => { tickSet.add(s.startMin); tickSet.add(s.endMin); });
+  const ticks = Array.from(tickSet).sort((a, b) => a - b);
+  const posPct = (t: number) => ((t - axisStart) / totalRange) * 100;
 
   return (
     <div className="space-y-1.5">
@@ -101,33 +110,27 @@ function DayTimeline({ slots, staffList }: { slots: ResolvedScheduleSlot[]; staf
           {withMin.map(s => {
             const idx = staffList.findIndex(st => st.id === s.staffId);
             const color = getStaffColor(idx >= 0 ? idx : 0);
-            const leftPct = (s.startMin / axisEnd) * 100;
-            const widthPct = ((s.endMin - s.startMin) / axisEnd) * 100;
             return (
               <div
                 key={s.templateId}
                 className="absolute inset-y-0"
-                style={{ left: `${leftPct}%`, width: `${widthPct}%`, backgroundColor: color, mixBlendMode: "multiply" }}
+                style={{ left: `${posPct(s.startMin)}%`, width: `${((s.endMin - s.startMin) / totalRange) * 100}%`, backgroundColor: color, mixBlendMode: "multiply" }}
                 title={`${staffList.find(st => st.id === s.staffId)?.name ?? ""} ${s.startTime}~${s.endTime}`}
               />
             );
           })}
         </div>
-        {/* 시간 눈금선 — 색 혼합에 영향 없도록 별도 레이어 */}
+        {/* 근무 시작·종료 시각 눈금선 — 색 혼합에 영향 없도록 별도 레이어 */}
         <div className="absolute inset-0 pointer-events-none">
           {ticks.map(t => (
-            <div
-              key={t}
-              className={`absolute inset-y-0 border-l ${t === 1440 ? "border-foreground/25" : "border-black/10 dark:border-white/20"}`}
-              style={{ left: `${(t / axisEnd) * 100}%` }}
-            />
+            <div key={t} className="absolute inset-y-0 border-l border-black/15 dark:border-white/25" style={{ left: `${posPct(t)}%` }} />
           ))}
         </div>
       </div>
       <div className="relative h-4 text-[10px] text-muted-foreground">
         {ticks.map(t => (
-          <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${(t / axisEnd) * 100}%` }}>
-            {t === 1440 ? "자정" : `${Math.floor(((t % 1440) + 1440) % 1440 / 60)}시`}
+          <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${posPct(t)}%` }}>
+            {minToLabel(t) === "0" ? "자정" : `${minToLabel(t)}시`}
           </span>
         ))}
       </div>
@@ -382,6 +385,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                             const color = blockColor(b.members, staffList);
                             const next = summary.blocks[bi + 1];
                             const overlapsNext = !!next && b.endMin > next.startMin;
+                            const overlapStart = overlapsNext ? Math.max(b.startMin, next.startMin) : 0;
+                            const overlapEnd = overlapsNext ? Math.min(b.endMin, next.endMin) : 0;
+                            const overlapNames = overlapsNext
+                              ? [...b.members, ...next.members].map(m => (staffMap.get(m.staffId)?.name ?? "?").charAt(0)).join("/")
+                              : "";
                             return (
                               <div key={b.key}>
                                 <div
@@ -391,11 +399,9 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                                   {minToLabel(b.startMin)}~{minToLabel(b.endMin)} {names}
                                 </div>
                                 {overlapsNext && (
-                                  <div
-                                    className="h-[3px] mx-1 my-0.5 rounded-full"
-                                    style={{ backgroundColor: multiplyBlend(color, blockColor(next.members, staffList)) }}
-                                    title="근무시간 겹침"
-                                  />
+                                  <div className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-orange-500/15 text-orange-700 dark:text-orange-400 font-medium">
+                                    {minToLabel(overlapStart)}~{minToLabel(overlapEnd)} {overlapNames} 겹침
+                                  </div>
                                 )}
                               </div>
                             );
