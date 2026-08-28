@@ -1,5 +1,5 @@
 import { isKoreanHoliday } from "@shared/businessDay";
-import type { PartTimeTemplate, StaffScheduleOverride, WageTier } from "@/lib/localDb";
+import type { PartTimeTemplate, StaffScheduleOverride, WageTier, PaydayDateSpec } from "@/lib/localDb";
 
 /**
  * 근무다이어리 급여 계산 엔진 — 순수 함수만 모아둠(DB 접근 없음).
@@ -216,4 +216,34 @@ export function formatKoreanHour(hhmm: string): string {
 
 export function formatKoreanTimeRange(start: string, end: string): string {
   return `${formatKoreanHour(start)}~${formatKoreanHour(end)}`;
+}
+
+/** 월급 지급일 스펙(고정 날짜 또는 '말일')을 실제 연·월의 날짜(YYYY-MM-DD)로 변환.
+ * 고정 날짜가 그 달에 없으면(예: 31일 지정 + 2월) 그 달의 마지막 날로 당겨준다. */
+export function resolvePaydayDateSpec(year: number, month0: number, spec: PaydayDateSpec): string {
+  const lastDay = new Date(year, month0 + 1, 0).getDate();
+  const day = spec === "last" ? lastDay : Math.min(Math.max(1, spec), lastDay);
+  return `${year}-${String(month0 + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export interface ResolvedMonthlyPayday {
+  date: string;  // YYYY-MM-DD
+  index: number; // 1부터 시작하는 회차 번호
+  total: number; // 총 회차 수
+  amount: number; // 그 회차의 실제 지급액
+}
+
+/** 근무자의 월급 지급일 스펙 배열을 해당 연·월의 실제 날짜들로 변환 — 회차 번호(index/total)·지급액 포함.
+ * 분할지급(총 회차 2개 이상)이면 splitAmounts[i]를 그대로 그 회차의 금액으로 쓴다(균등분할 아님 — 회차마다 직접 지정한 금액).
+ * 비분할(회차 1개)이면 nonSplitAmount(월 총액)를 그대로 쓴다. */
+export function resolveMonthlyPaydayDates(
+  year: number, month0: number, dates: PaydayDateSpec[], splitAmounts: number[], nonSplitAmount: number
+): ResolvedMonthlyPayday[] {
+  const total = dates.length;
+  return dates.map((spec, i) => ({
+    date: resolvePaydayDateSpec(year, month0, spec),
+    index: i + 1,
+    total,
+    amount: total > 1 ? (splitAmounts[i] ?? 0) : nonSplitAmount,
+  }));
 }

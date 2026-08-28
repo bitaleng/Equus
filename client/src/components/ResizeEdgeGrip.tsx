@@ -1,4 +1,4 @@
-import type { ComponentType, MouseEvent, TouchEvent } from "react";
+import type { MouseEvent, TouchEvent } from "react";
 import {
   ArrowDownLeft,
   ArrowDownRight,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronsLeftRight,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,7 @@ const EDGE_POSITION: Record<ResizeEdge, string> = {
   se: "bottom-2 right-2",
 };
 
-const EDGE_ICON: Record<ResizeEdge, ComponentType<{ className?: string }>> = {
+const EDGE_ICON: Record<ResizeEdge, LucideIcon> = {
   n: ChevronUp,
   s: ChevronDown,
   e: ChevronRight,

@@ -39,13 +39,21 @@ export interface WageTier {
   createdAt: string;
 }
 
+export type PaydayPayType = 'weekly' | 'monthly';
+export type PaydayDateSpec = number | 'last'; // 1~31일 고정, 또는 매달 말일
+
 export interface StaffPayday {
   id: string;
   staffId: string;
-  dayOfWeek: number;
-  time: string; // HH:mm
   isEnabled: boolean;
   createdAt: string;
+  payType: PaydayPayType;
+  dayOfWeek: number; // weekly 전용
+  time: string;      // weekly 전용, HH:mm
+  paydayDates: PaydayDateSpec[]; // monthly 전용 — 비분할이면 길이 1, 분할이면 여러 개(마지막 항목만 'last' 가능)
+  isSplit: boolean;    // monthly 전용
+  monthlyAmount: number; // monthly 비분할 전용 — 월 총액
+  splitAmounts: number[]; // monthly 분할 전용 — paydayDates와 같은 순서·길이로 회차별 지급액을 직접 지정(균등분할 아님)
 }
 
 export interface StaffScheduleOverride {
@@ -76,6 +84,24 @@ function daysToStr(days: number[]): string {
 function strToDays(s: string): number[] {
   if (!s) return [];
   return s.split(',').map(Number).filter(n => !Number.isNaN(n));
+}
+
+/** 월급 지급일 스펙 배열 ↔ "10,20,last" 형태의 저장 문자열 */
+function dateSpecsToStr(specs: PaydayDateSpec[]): string {
+  return specs.map(s => String(s)).join(',');
+}
+function strToDateSpecs(s: string): PaydayDateSpec[] {
+  if (!s) return [];
+  return s.split(',').filter(Boolean).map(v => (v === 'last' ? 'last' : parseInt(v, 10))).filter(v => v === 'last' || !Number.isNaN(v));
+}
+
+/** 회차별 지급액 배열 ↔ "1500000,1500000" 형태의 저장 문자열 */
+function numsToStr(nums: number[]): string {
+  return nums.map(n => String(n)).join(',');
+}
+function strToNums(s: string): number[] {
+  if (!s) return [];
+  return s.split(',').filter(Boolean).map(Number).filter(n => !Number.isNaN(n));
 }
 
 // ── 파트타임 설정 ──────────────────────────────────────────────
@@ -277,26 +303,47 @@ export function swapWageTierOrder(idA: string, idB: string): boolean {
 // ── 근무자별 주급지급일 ────────────────────────────────────────
 
 function rowToPayday(r: any[]): StaffPayday {
-  return { id: r[0], staffId: r[1], dayOfWeek: r[2], time: r[3] || '', isEnabled: r[4] === 1, createdAt: r[5] || '' };
+  return {
+    id: r[0], staffId: r[1], dayOfWeek: r[2], time: r[3] || '', isEnabled: r[4] === 1, createdAt: r[5] || '',
+    payType: (r[6] as PaydayPayType) || 'weekly',
+    paydayDates: strToDateSpecs(r[7] || ''),
+    isSplit: r[8] === 1,
+    monthlyAmount: r[9] || 0,
+    splitAmounts: strToNums(r[10] || ''),
+  };
 }
 
-const PAYDAY_SELECT = `SELECT id, staff_id, day_of_week, time, is_enabled, created_at FROM staff_paydays`;
+const PAYDAY_SELECT = `SELECT id, staff_id, day_of_week, time, is_enabled, created_at, pay_type, payday_dates, is_split, monthly_amount, split_amounts FROM staff_paydays`;
 
-export function upsertStaffPayday(data: Omit<StaffPayday, 'id' | 'createdAt'>): string {
+/** 근무자별 급여지급일 저장 — staffId 기준 1행 upsert. 넘긴 필드만 반영(부분 갱신)하고 나머지는 기존 값 유지 */
+export function upsertStaffPayday(data: Partial<Omit<StaffPayday, 'id' | 'createdAt' | 'staffId'>> & { staffId: string }): string {
   if (!db) return '';
-  const existing = db.exec(`SELECT id FROM staff_paydays WHERE staff_id = ?`, [data.staffId]);
-  if (existing.length && existing[0].values.length) {
-    const id = existing[0].values[0][0] as string;
-    db.run(`UPDATE staff_paydays SET day_of_week = ?, time = ?, is_enabled = ? WHERE id = ?`,
-      [data.dayOfWeek, data.time, data.isEnabled ? 1 : 0, id]);
+  const existingRows = db.exec(`${PAYDAY_SELECT} WHERE staff_id = ?`, [data.staffId]);
+  const existing = existingRows.length && existingRows[0].values.length ? rowToPayday(existingRows[0].values[0]) : null;
+  const merged: Omit<StaffPayday, 'id' | 'createdAt'> = {
+    staffId: data.staffId,
+    isEnabled: data.isEnabled ?? existing?.isEnabled ?? false,
+    payType: data.payType ?? existing?.payType ?? 'weekly',
+    dayOfWeek: data.dayOfWeek ?? existing?.dayOfWeek ?? 4,
+    time: data.time ?? existing?.time ?? '22:00',
+    paydayDates: data.paydayDates ?? existing?.paydayDates ?? [1],
+    isSplit: data.isSplit ?? existing?.isSplit ?? false,
+    monthlyAmount: data.monthlyAmount ?? existing?.monthlyAmount ?? 0,
+    splitAmounts: data.splitAmounts ?? existing?.splitAmounts ?? [],
+  };
+  if (existing) {
+    db.run(
+      `UPDATE staff_paydays SET day_of_week = ?, time = ?, is_enabled = ?, pay_type = ?, payday_dates = ?, is_split = ?, monthly_amount = ?, split_amounts = ? WHERE id = ?`,
+      [merged.dayOfWeek, merged.time, merged.isEnabled ? 1 : 0, merged.payType, dateSpecsToStr(merged.paydayDates), merged.isSplit ? 1 : 0, merged.monthlyAmount, numsToStr(merged.splitAmounts), existing.id]
+    );
     saveDatabaseDebounced();
-    return id;
+    return existing.id;
   }
   const id = newId('payday');
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO staff_paydays (id, staff_id, day_of_week, time, is_enabled, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, data.staffId, data.dayOfWeek, data.time, data.isEnabled ? 1 : 0, now]
+    `INSERT INTO staff_paydays (id, staff_id, day_of_week, time, is_enabled, created_at, pay_type, payday_dates, is_split, monthly_amount, split_amounts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, merged.staffId, merged.dayOfWeek, merged.time, merged.isEnabled ? 1 : 0, now, merged.payType, dateSpecsToStr(merged.paydayDates), merged.isSplit ? 1 : 0, merged.monthlyAmount, numsToStr(merged.splitAmounts)]
   );
   saveDatabaseDebounced();
   return id;

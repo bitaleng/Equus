@@ -1584,7 +1584,12 @@ function migrateDatabase() {
         day_of_week INTEGER NOT NULL,
         time TEXT NOT NULL,
         is_enabled INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT ''
+        created_at TEXT DEFAULT '',
+        pay_type TEXT DEFAULT 'weekly',
+        payday_dates TEXT DEFAULT '',
+        is_split INTEGER DEFAULT 0,
+        monthly_amount INTEGER DEFAULT 0,
+        split_amounts TEXT DEFAULT ''
       )`);
       db.run(`CREATE TABLE IF NOT EXISTS staff_schedule_overrides (
         id TEXT PRIMARY KEY,
@@ -1633,6 +1638,31 @@ function migrateDatabase() {
       console.log('Added can_work column to staff (Step 39)');
     } catch (e) { /* 이미 존재하면 무시 */ }
 
+    // Step 40: 근무자별 급여지급일 — 주급뿐 아니라 월급(분할지급 포함)도 지원
+    try { db.run(`ALTER TABLE staff_paydays ADD COLUMN pay_type TEXT DEFAULT 'weekly'`); } catch (e) { /* 이미 존재하면 무시 */ }
+    try { db.run(`ALTER TABLE staff_paydays ADD COLUMN payday_dates TEXT DEFAULT ''`); } catch (e) { /* 이미 존재하면 무시 */ }
+    try { db.run(`ALTER TABLE staff_paydays ADD COLUMN is_split INTEGER DEFAULT 0`); } catch (e) { /* 이미 존재하면 무시 */ }
+    try { db.run(`ALTER TABLE staff_paydays ADD COLUMN monthly_amount INTEGER DEFAULT 0`); } catch (e) { /* 이미 존재하면 무시 */ }
+    console.log('Added pay_type/payday_dates/is_split/monthly_amount columns to staff_paydays (Step 40)');
+
+    // Step 41: 월급 분할지급 — 회차마다 균등분할이 아닌 직접 지정한 금액을 지급할 수 있도록
+    try {
+      db.run(`ALTER TABLE staff_paydays ADD COLUMN split_amounts TEXT DEFAULT ''`);
+      console.log('Added split_amounts column to staff_paydays (Step 41)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
+    // Step 42: 추가요금 선지급 분리결제 — 선지급 총액을 현금/카드/이체로 나눠 기록
+    try { db.run(`ALTER TABLE locker_logs ADD COLUMN prepaid_additional_fee_cash INTEGER DEFAULT 0`); } catch (e) { /* 이미 존재하면 무시 */ }
+    try { db.run(`ALTER TABLE locker_logs ADD COLUMN prepaid_additional_fee_card INTEGER DEFAULT 0`); } catch (e) { /* 이미 존재하면 무시 */ }
+    try { db.run(`ALTER TABLE locker_logs ADD COLUMN prepaid_additional_fee_transfer INTEGER DEFAULT 0`); } catch (e) { /* 이미 존재하면 무시 */ }
+    console.log('Added prepaid_additional_fee_cash/card/transfer columns to locker_logs (Step 42)');
+
+    // Step 43: 연장객(하루 더 머물며 추가요금이 부과된 손님) 카운트 — 데이터 정리(purge) 이후에도 남도록 스냅샷에 저장
+    try {
+      db.run(`ALTER TABLE report_daily_snapshots ADD COLUMN extended_guest_count INTEGER NOT NULL DEFAULT 0`);
+      console.log('Added extended_guest_count column to report_daily_snapshots (Step 43)');
+    } catch (e) { /* 이미 존재하면 무시 */ }
+
     saveDatabase();
 
   } catch (error) {
@@ -1674,6 +1704,9 @@ function createTables() {
       customer_memo TEXT,
       no_additional_fee INTEGER DEFAULT 0,
       prepaid_additional_fee INTEGER DEFAULT 0,
+      prepaid_additional_fee_cash INTEGER DEFAULT 0,
+      prepaid_additional_fee_card INTEGER DEFAULT 0,
+      prepaid_additional_fee_transfer INTEGER DEFAULT 0,
       is_cash_receipt INTEGER DEFAULT 0,
       additional_fee_payment_method TEXT CHECK(additional_fee_payment_method IN ('card', 'cash', 'transfer')),
       refund_amount INTEGER DEFAULT 0,
@@ -1720,6 +1753,7 @@ function createTables() {
       actual_visitors INTEGER NOT NULL DEFAULT 0,
       cancelled_visitors INTEGER NOT NULL DEFAULT 0,
       free_visitors INTEGER NOT NULL DEFAULT 0,
+      extended_guest_count INTEGER NOT NULL DEFAULT 0,
       archived_at TEXT NOT NULL
     )
   `);
@@ -1961,7 +1995,12 @@ function createTables() {
     day_of_week INTEGER NOT NULL,
     time TEXT NOT NULL,
     is_enabled INTEGER DEFAULT 1,
-    created_at TEXT DEFAULT ''
+    created_at TEXT DEFAULT '',
+    pay_type TEXT DEFAULT 'weekly',
+    payday_dates TEXT DEFAULT '',
+    is_split INTEGER DEFAULT 0,
+    monthly_amount INTEGER DEFAULT 0,
+    split_amounts TEXT DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS staff_schedule_overrides (
     id TEXT PRIMARY KEY,

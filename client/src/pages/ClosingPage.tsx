@@ -304,7 +304,7 @@ export default function ClosingPage() {
     total: number;
   } | null>(null);
   const [reportDailyTrend, setReportDailyTrend] = useState<
-    { businessDay: string; cash: number; card: number; transfer: number; total: number; rentalTotal: number; expenseTotal: number; visitors: number }[]
+    { businessDay: string; cash: number; card: number; transfer: number; total: number; rentalTotal: number; expenseTotal: number; visitors: number; extendedGuests: number }[]
   >([]);
 
   useEffect(() => {
@@ -802,8 +802,8 @@ export default function ClosingPage() {
       ['순수익 (총매출 - 지출)', netProfit, '', '', ''],
       ['', '', '', '', ''],
       ['영업일별 매출·지출', '', '', '', '', '', '', ''],
-      ['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출', '방문인원'],
-      ...reportDailyTrend.map((d) => [d.businessDay, d.cash, d.card, d.transfer, d.total, d.rentalTotal, d.expenseTotal, d.visitors]),
+      ['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출', '방문인원', '연장객'],
+      ...reportDailyTrend.map((d) => [d.businessDay, d.cash, d.card, d.transfer, d.total, d.rentalTotal, d.expenseTotal, d.visitors, d.extendedGuests]),
     ];
 
     const ws = XLSX.utils.aoa_to_sheet(data);
@@ -893,7 +893,7 @@ export default function ClosingPage() {
 
     if (reportDailyTrend.length > 0) {
       autoTable(doc, {
-        head: [['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출', '방문인원']],
+        head: [['영업일', '현금', '카드', '이체', '총매출', '대여품목매출', '지출', '방문인원', '연장객']],
         body: reportDailyTrend.map((d) => [
           d.businessDay,
           d.cash.toLocaleString(),
@@ -903,6 +903,7 @@ export default function ClosingPage() {
           d.rentalTotal.toLocaleString(),
           d.expenseTotal.toLocaleString(),
           d.visitors.toLocaleString(),
+          d.extendedGuests.toLocaleString(),
         ]),
         startY: finalY2 + 16,
         theme: 'grid',

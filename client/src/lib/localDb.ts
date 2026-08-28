@@ -36,3 +36,4 @@ export * from './db/mappings';
 export * from './db/backup';
 export * from './db/pricingOptions';
 export * from './db/staff';
+export * from './db/extendedGuests';

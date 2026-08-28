@@ -322,6 +322,109 @@ export function countNightFeeStayDays(
   }).length;
 }
 
+/** 연장객 판정에 필요한 설정값 모음 — calculateAdditionalFee에 그대로 전달된다 */
+export type ExtendedGuestFeeConfig = {
+  dayPrice: number;
+  nightPrice: number;
+  /** 외국인 요금(주야간 동일/분리) — getForeignerPrice에 그대로 전달 */
+  foreignerPrice?: number;
+  foreignerSeparateDayNight?: boolean;
+  foreignerDayPrice?: number;
+  foreignerNightPrice?: number;
+  domesticCheckpointHour: number;
+  foreignerAdditionalFeePeriod: number;
+  domesticAdditionalFeeMode: DomesticAdditionalFeeMode | string;
+  nightStartHour: number;
+  settlementCycleOpts?: SettlementCycleOptions;
+  stagedHourlyOpts?: StagedHourlyOptions;
+  nightstartOpts?: NightstartOptions;
+};
+
+/** 연장객 판정에 필요한 최소한의 입실 기록 정보 */
+export type ExtendedGuestEntry = {
+  lockerNumber: number;
+  entryTime: string | Date;
+  exitTime?: string | Date | null;
+  timeType: '주간' | '야간';
+  optionType?: string;
+  noAdditionalFee?: boolean;
+  isLongTerm?: boolean;
+  parentLocker?: number | null;
+  isStaff?: boolean;
+  /** 지금까지 지불(정산)된 추가요금 */
+  additionalFeePaidAmount?: number;
+  /** 선지급된 추가요금 (분리결제 여부와 무관하게 총액) */
+  prepaidAdditionalFee?: number;
+};
+
+/**
+ * 이 입실 건이 asOfTime 시점까지 "연장객"인지 판정 — 다음 두 조건을 모두 만족해야 한다:
+ * 1. 추가요금 일수(countNightFeeStayDays, 야간요금 풀요금 부과 횟수 — 주간→야간 차액만 낸 첫 부과는 제외)가 1 이상.
+ *    (외국인은 야간요금 개념이 아니라 별도 주기 추가요금이므로 additionalFeeCount가 1 이상)
+ * 2. 그 추가요금이 완납되었을 것(계산된 additionalFee <= 지불액+선지급액). "추가N회" 배지는 "내야 한다"는
+ *    표시일 뿐 납부 결과가 아니므로, 미납 상태에서는 연장객으로 세지 않는다.
+ * - VIP(추가요금없음)·장기투숙은 애초에 추가요금 개념이 없으므로 항상 제외.
+ * - 내국인 모드가 "단계별 1·2·3차"(stagedHourly/pending4)이면 countNightFeeStayDays가 일수를 판정할 수 없어(null) 항상 false.
+ */
+export function isExtendedGuestAsOf(
+  entry: ExtendedGuestEntry,
+  asOfTime: Date,
+  config: ExtendedGuestFeeConfig
+): boolean {
+  if (entry.noAdditionalFee || entry.isLongTerm) return false;
+  const isForeigner = entry.optionType === 'foreigner';
+  const isFreeEntry = entry.optionType === 'free';
+
+  const { additionalFee, additionalFeeCount, feeDetails } = calculateAdditionalFee(
+    entry.entryTime,
+    entry.timeType,
+    config.dayPrice,
+    config.nightPrice,
+    asOfTime,
+    isForeigner,
+    getForeignerPrice(entry.timeType, config),
+    config.domesticCheckpointHour,
+    config.foreignerAdditionalFeePeriod,
+    isFreeEntry,
+    config.domesticAdditionalFeeMode as DomesticAdditionalFeeMode,
+    config.nightStartHour,
+    config.settlementCycleOpts,
+    config.stagedHourlyOpts,
+    config.nightstartOpts
+  );
+
+  // 완납 여부: 현재까지 계산된 추가요금이 (지불액 + 선지급액) 이하인지
+  const totalPaid = (entry.additionalFeePaidAmount || 0) + (entry.prepaidAdditionalFee || 0);
+  if (additionalFee > totalPaid) return false;
+
+  if (isForeigner) return additionalFeeCount >= 1;
+
+  const days = countNightFeeStayDays(feeDetails, config.dayPrice, config.nightPrice, config.domesticAdditionalFeeMode);
+  return (days ?? 0) >= 1;
+}
+
+/**
+ * 특정 시점(asOfTime) 기준, 락커 단위(중복 제거)로 연장객 수를 센다.
+ * 한 락커가 여러 날째 머물러도 1로만 카운트(누적 아님) — 자식 락커·직원 입실은 제외.
+ * exitTime이 asOfTime 이전이면 그 시각까지만 유효했던 것으로 판정한다.
+ */
+export function countExtendedGuestLockers(
+  entries: ExtendedGuestEntry[],
+  asOfTime: Date,
+  config: ExtendedGuestFeeConfig
+): number {
+  const lockers = new Set<number>();
+  for (const entry of entries) {
+    if (entry.parentLocker || entry.isStaff) continue;
+    const exit = entry.exitTime ? new Date(entry.exitTime) : null;
+    const effectiveAsOf = exit && exit.getTime() < asOfTime.getTime() ? exit : asOfTime;
+    if (isExtendedGuestAsOf(entry, effectiveAsOf, config)) {
+      lockers.add(entry.lockerNumber);
+    }
+  }
+  return lockers.size;
+}
+
 export type SettlementCycleOptions = {
   /** 정산시간 (영업일 시작 시) */
   businessDayStartHour?: number;

@@ -59,7 +59,7 @@ async function deviceAuth(req: Request, res: Response, next: NextFunction) {
   try {
     // Fetch device and verify shared secret
     const device = await storage.getDevice(deviceId);
-    if (!device) {
+    if (!device || !device.sharedSecret) {
       return res.status(401).json({ error: "Unknown device" });
     }
 

@@ -28,7 +28,10 @@ export function createEntry(entry: {
   deferredPayment?: boolean;  // 후불결제 여부
   customerMemo?: string;  // 손님 메모
   noAdditionalFee?: boolean;  // 추가요금없음 (VIP 등)
-  prepaidAdditionalFee?: number;  // 추가요금 선지급 금액
+  prepaidAdditionalFee?: number;  // 추가요금 선지급 금액 (총액)
+  prepaidAdditionalFeeCash?: number;  // 선지급 중 현금 분리결제 금액
+  prepaidAdditionalFeeCard?: number;  // 선지급 중 카드 분리결제 금액
+  prepaidAdditionalFeeTransfer?: number;  // 선지급 중 이체 분리결제 금액
   isCashReceipt?: boolean;  // 현금영수증 발행 여부
   additionalFeePaymentMethod?: string;  // 추가요금 결제방식
   isStaff?: boolean;  // 직원 입실 여부
@@ -48,12 +51,12 @@ export function createEntry(entry: {
     : null;
 
   db.run(
-    `INSERT INTO locker_logs 
-    (id, locker_number, entry_time, business_day, time_type, base_price, 
-     option_type, option_amount, final_price, status, cancelled, notes, payment_method, 
-     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, is_cash_receipt, additional_fee_payment_method, is_staff,
+    `INSERT INTO locker_logs
+    (id, locker_number, entry_time, business_day, time_type, base_price,
+     option_type, option_amount, final_price, status, cancelled, notes, payment_method,
+     payment_cash, payment_card, payment_transfer, rental_items, deferred_payment, customer_memo, no_additional_fee, prepaid_additional_fee, prepaid_additional_fee_cash, prepaid_additional_fee_card, prepaid_additional_fee_transfer, is_cash_receipt, additional_fee_payment_method, is_staff,
      is_long_term, planned_checkout_at, long_term_daily_fee, long_term_discount, long_term_days)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'in_use', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       entry.lockerNumber,
@@ -74,6 +77,9 @@ export function createEntry(entry: {
       entry.customerMemo || null,
       entry.noAdditionalFee ? 1 : 0,
       entry.prepaidAdditionalFee || 0,
+      entry.prepaidAdditionalFeeCash || 0,
+      entry.prepaidAdditionalFeeCard || 0,
+      entry.prepaidAdditionalFeeTransfer || 0,
       entry.isCashReceipt ? 1 : 0,
       entry.additionalFeePaymentMethod || null,
       entry.isStaff ? 1 : 0,
@@ -168,6 +174,18 @@ export function updateEntry(id: string, updates: any) {
   if (updates.prepaidAdditionalFee !== undefined) {
     sets.push('prepaid_additional_fee = ?');
     values.push(updates.prepaidAdditionalFee || 0);
+  }
+  if (updates.prepaidAdditionalFeeCash !== undefined) {
+    sets.push('prepaid_additional_fee_cash = ?');
+    values.push(updates.prepaidAdditionalFeeCash || 0);
+  }
+  if (updates.prepaidAdditionalFeeCard !== undefined) {
+    sets.push('prepaid_additional_fee_card = ?');
+    values.push(updates.prepaidAdditionalFeeCard || 0);
+  }
+  if (updates.prepaidAdditionalFeeTransfer !== undefined) {
+    sets.push('prepaid_additional_fee_transfer = ?');
+    values.push(updates.prepaidAdditionalFeeTransfer || 0);
   }
   if (updates.isCashReceipt !== undefined) {
     sets.push('is_cash_receipt = ?');

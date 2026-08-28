@@ -73,6 +73,7 @@ interface VisitorStats {
   actualVisitors: number;
   cancelledVisitors: number;
   freeVisitors: number;
+  extendedGuestCount: number;
 }
 
 interface DailyDiscount {
@@ -358,10 +359,11 @@ function SalesCalendar() {
         actualVisitors: acc.actualVisitors + (visitor?.actualVisitors || 0),
         cancelledVisitors: acc.cancelledVisitors + (visitor?.cancelledVisitors || 0),
         freeVisitors: acc.freeVisitors + (visitor?.freeVisitors || 0),
+        extendedGuestCount: acc.extendedGuestCount + (visitor?.extendedGuestCount || 0),
         entryDiscount: acc.entryDiscount + (discount?.entryDiscount || 0),
         additionalDiscount: acc.additionalDiscount + (discount?.additionalDiscount || 0),
       };
-    }, { total: 0, cancelledAmount: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0, entryDiscount: 0, additionalDiscount: 0 });
+    }, { total: 0, cancelledAmount: 0, cash: 0, card: 0, transfer: 0, bankDeposit: 0, hasClosing: false, totalVisitors: 0, actualVisitors: 0, cancelledVisitors: 0, freeVisitors: 0, extendedGuestCount: 0, entryDiscount: 0, additionalDiscount: 0 });
   });
 
   const exportToPDF = async () => {
@@ -564,7 +566,8 @@ function SalesCalendar() {
             if (visitor && visitor.totalVisitors > 0) {
               doc.setFontSize(9);
               doc.setTextColor(147, 51, 234);
-              doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors})`, cellX + padding, textY);
+              const extSuffix = visitor.extendedGuestCount > 0 ? `,연장:${visitor.extendedGuestCount}` : '';
+              doc.text(`방문:${visitor.totalVisitors}(실:${visitor.actualVisitors},취:${visitor.cancelledVisitors},무:${visitor.freeVisitors}${extSuffix})`, cellX + padding, textY);
             }
           }
 
@@ -632,7 +635,8 @@ function SalesCalendar() {
           // 방문인원 (항상 표시)
           if (weeklyTotal.totalVisitors > 0) {
             doc.setTextColor(147, 51, 234);
-            doc.text(`방문:${weeklyTotal.totalVisitors}명`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
+            const weeklyExtSuffix = weeklyTotal.extendedGuestCount > 0 ? ` · 연장:${weeklyTotal.extendedGuestCount}` : '';
+            doc.text(`방문:${weeklyTotal.totalVisitors}명${weeklyExtSuffix}`, weeklyColX + colWidth / 2, weeklyTextY, { align: "center" });
           }
         }
       });
@@ -680,6 +684,7 @@ function SalesCalendar() {
           "실사용인원": visitor?.actualVisitors || 0,
           "취소인원": visitor?.cancelledVisitors || 0,
           "무료입장인원": visitor?.freeVisitors || 0,
+          "연장객": visitor?.extendedGuestCount || 0,
           "취소금액": cancelled?.cancelledAmount || 0,
           "입실할인": discount?.entryDiscount || 0,
           "추가할인": discount?.additionalDiscount || 0,
@@ -698,6 +703,7 @@ function SalesCalendar() {
           "카드": wt.card,
           "이체": wt.transfer,
           "방문인원": wt.totalVisitors,
+          "연장객": wt.extendedGuestCount,
           "취소금액": wt.cancelledAmount,
           "입실할인": wt.entryDiscount,
           "추가할인": wt.additionalDiscount,
@@ -921,6 +927,7 @@ function SalesCalendar() {
                     {viewType === "sales" && visitor && visitor.totalVisitors > 0 && (
                       <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
                         방문 {visitor.totalVisitors}명 (실 {visitor.actualVisitors} · 취 {visitor.cancelledVisitors} · 무 {visitor.freeVisitors})
+                        {visitor.extendedGuestCount > 0 && <> · 연장 {visitor.extendedGuestCount}</>}
                       </div>
                     )}
                     {viewType === "refund" && cancelled && cancelled.cancelledAmount > 0 && (
@@ -941,6 +948,7 @@ function SalesCalendar() {
                     {viewType === "sales" && visitor && visitor.totalVisitors > 0 && (
                       <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
                         방문 {visitor.totalVisitors}명
+                        {visitor.extendedGuestCount > 0 && <> · 연장 {visitor.extendedGuestCount}</>}
                       </div>
                     )}
                     {viewType === "refund" && cancelled && cancelled.cancelledAmount > 0 && (
@@ -1004,6 +1012,7 @@ function SalesCalendar() {
                 {!showDetail && viewType === "sales" && weeklyTotals[weekIdx].totalVisitors > 0 && (
                   <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
                     방문 {weeklyTotals[weekIdx].totalVisitors}명
+                    {weeklyTotals[weekIdx].extendedGuestCount > 0 && <> · 연장 {weeklyTotals[weekIdx].extendedGuestCount}</>}
                   </div>
                 )}
                 {showDetail && viewType === "sales" && (
@@ -1037,6 +1046,7 @@ function SalesCalendar() {
                     {weeklyTotals[weekIdx].totalVisitors > 0 && (
                       <div className="text-[11px] text-purple-600 dark:text-purple-400 tabular-nums">
                         방문 {weeklyTotals[weekIdx].totalVisitors}명 (실 {weeklyTotals[weekIdx].actualVisitors} · 취 {weeklyTotals[weekIdx].cancelledVisitors} · 무 {weeklyTotals[weekIdx].freeVisitors})
+                        {weeklyTotals[weekIdx].extendedGuestCount > 0 && <> · 연장 {weeklyTotals[weekIdx].extendedGuestCount}</>}
                       </div>
                     )}
                   </div>
@@ -1592,6 +1602,7 @@ function DailyVisitorGraph() {
         actual: dayData?.actualVisitors || 0,
         cancelled: dayData?.cancelledVisitors || 0,
         free: dayData?.freeVisitors || 0,
+        extended: dayData?.extendedGuestCount || 0,
       };
     });
     setDailyData(data);
@@ -1599,6 +1610,7 @@ function DailyVisitorGraph() {
 
   const totalVisitors = dailyData.reduce((sum, d) => sum + d.total, 0);
   const actualVisitors = dailyData.reduce((sum, d) => sum + d.actual, 0);
+  const extendedGuests = dailyData.reduce((sum, d) => sum + d.extended, 0);
   const currentDayData = dailyData.find(d => d.date === format(selectedDate, "yyyy-MM-dd"));
 
   return (
@@ -1621,7 +1633,7 @@ function DailyVisitorGraph() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <Card className="bg-muted/30">
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">당일 총방문</div>
@@ -1644,6 +1656,12 @@ function DailyVisitorGraph() {
             <CardContent className="pt-4">
               <div className="text-sm text-muted-foreground">7일 실제방문</div>
               <div className="text-2xl font-bold text-primary">{actualVisitors}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">7일 연장객</div>
+              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{extendedGuests}명</div>
             </CardContent>
           </Card>
         </div>
@@ -1699,16 +1717,18 @@ function WeeklyVisitorGraph() {
       const actual = weekData.reduce((sum, v) => sum + v.actualVisitors, 0);
       const cancelled = weekData.reduce((sum, v) => sum + v.cancelledVisitors, 0);
       const free = weekData.reduce((sum, v) => sum + v.freeVisitors, 0);
+      const extended = weekData.reduce((sum, v) => sum + (v.extendedGuestCount || 0), 0);
 
       weeks.push({
         label: `${format(weekStart, "M/d")}~${format(weekEnd, "M/d")}`,
-        total, actual, cancelled, free
+        total, actual, cancelled, free, extended
       });
     }
     setWeeklyData(weeks);
   }, [selectedWeekStart]);
 
   const totalVisitors = weeklyData.reduce((sum, w) => sum + w.total, 0);
+  const extendedGuests = weeklyData.reduce((sum, w) => sum + w.extended, 0);
 
   return (
     <Card className="w-full min-w-0">
@@ -1729,12 +1749,20 @@ function WeeklyVisitorGraph() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="text-sm text-muted-foreground">4주간 총 방문</div>
-            <div className="text-2xl font-bold">{totalVisitors}명</div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">4주간 총 방문</div>
+              <div className="text-2xl font-bold">{totalVisitors}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">4주간 연장객</div>
+              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{extendedGuests}명</div>
+            </CardContent>
+          </Card>
+        </div>
 
         <ChartFrame>
             <BarChart data={weeklyData}>
@@ -1774,13 +1802,15 @@ function MonthlyVisitorGraph() {
       const actual = visitors.reduce((sum, v) => sum + v.actualVisitors, 0);
       const cancelled = visitors.reduce((sum, v) => sum + v.cancelledVisitors, 0);
       const free = visitors.reduce((sum, v) => sum + v.freeVisitors, 0);
+      const extended = visitors.reduce((sum, v) => sum + (v.extendedGuestCount || 0), 0);
 
-      months.push({ label: `${m}월`, total, actual, cancelled, free });
+      months.push({ label: `${m}월`, total, actual, cancelled, free, extended });
     }
     setMonthlyData(months);
   }, [selectedYear]);
 
   const totalVisitors = monthlyData.reduce((sum, m) => sum + m.total, 0);
+  const extendedGuests = monthlyData.reduce((sum, m) => sum + m.extended, 0);
 
   return (
     <Card className="w-full min-w-0">
@@ -1799,12 +1829,20 @@ function MonthlyVisitorGraph() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="text-sm text-muted-foreground">{selectedYear}년 총 방문</div>
-            <div className="text-2xl font-bold">{totalVisitors}명</div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">{selectedYear}년 총 방문</div>
+              <div className="text-2xl font-bold">{totalVisitors}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">{selectedYear}년 연장객</div>
+              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{extendedGuests}명</div>
+            </CardContent>
+          </Card>
+        </div>
 
         <ChartFrame>
             <BarChart data={monthlyData}>
@@ -1838,8 +1876,8 @@ function YearlyVisitorGraph() {
     const years: any[] = [];
     
     for (let y = currentYear - 2; y <= currentYear; y++) {
-      let total = 0, actual = 0, cancelled = 0, free = 0;
-      
+      let total = 0, actual = 0, cancelled = 0, free = 0, extended = 0;
+
       for (let m = 1; m <= 12; m++) {
         const yearMonth = `${y}-${String(m).padStart(2, '0')}`;
         const visitors = getVisitorStatsByMonth(yearMonth) as VisitorStats[];
@@ -1847,15 +1885,17 @@ function YearlyVisitorGraph() {
         actual += visitors.reduce((sum, v) => sum + v.actualVisitors, 0);
         cancelled += visitors.reduce((sum, v) => sum + v.cancelledVisitors, 0);
         free += visitors.reduce((sum, v) => sum + v.freeVisitors, 0);
+        extended += visitors.reduce((sum, v) => sum + (v.extendedGuestCount || 0), 0);
       }
       
-      years.push({ label: `${y}년`, total, actual, cancelled, free });
+      years.push({ label: `${y}년`, total, actual, cancelled, free, extended });
     }
-    
+
     setYearlyData(years);
   }, []);
 
   const totalVisitors = yearlyData.reduce((sum, y) => sum + y.total, 0);
+  const extendedGuests = yearlyData.reduce((sum, y) => sum + y.extended, 0);
 
   return (
     <Card className="w-full min-w-0">
@@ -1863,12 +1903,20 @@ function YearlyVisitorGraph() {
         <CardTitle className="text-lg">연도별 방문인원</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="text-sm text-muted-foreground">전체 기간 총 방문</div>
-            <div className="text-2xl font-bold">{totalVisitors}명</div>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">전체 기간 총 방문</div>
+              <div className="text-2xl font-bold">{totalVisitors}명</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-4">
+              <div className="text-sm text-muted-foreground">전체 기간 연장객</div>
+              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{extendedGuests}명</div>
+            </CardContent>
+          </Card>
+        </div>
 
         <ChartFrame>
             <LineChart data={yearlyData}>

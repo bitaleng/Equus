@@ -66,7 +66,7 @@ export function LogsToolWorkspace({
   const isDraggingRef = useRef(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const isResizingRef = useRef(false);
-  const resizeEdgeRef = useRef<ResizeEdge | null>(null);
+  const resizeEdgeRef = useRef<WorkspaceResizeEdge | null>(null);
   const resizeStartRef = useRef({ mouseX: 0, mouseY: 0, width: 0, height: 0, x: 0, y: 0 });
   const floatingPositionRef = useRef(floatingPosition);
   const floatingSizeRef = useRef(floatingSize);
@@ -118,7 +118,7 @@ export function LogsToolWorkspace({
     setFloatingPosition({ x, y });
   }, []);
 
-  const handleResizeStart = useCallback((edge: ResizeEdge, clientX: number, clientY: number) => {
+  const handleResizeStart = useCallback((edge: WorkspaceResizeEdge, clientX: number, clientY: number) => {
     isResizingRef.current = true;
     isDraggingRef.current = false;
     resizeEdgeRef.current = edge;

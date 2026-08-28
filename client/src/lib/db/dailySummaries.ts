@@ -1,4 +1,5 @@
 import { db, rowsToObjects, saveDatabase, _isBusinessDay } from './core';
+import { getExtendedGuestCountsByBusinessDayRange } from './extendedGuests';
 
 export function getDailySummary(businessDay: string) {
   if (!db) throw new Error('Database not initialized');
@@ -247,6 +248,13 @@ export function snapshotReportDailyThrough(throughDate: string): number {
   const archivedAt = new Date().toISOString();
   let count = 0;
 
+  // 연장객 수는 purge로 원본 locker_logs 행이 삭제되기 전 지금 미리 한 번에 계산해서 남겨둔다
+  // (purge 이후에는 이 값을 다시 계산할 원본 데이터가 없어짐 — getExtendedGuestCountsByBusinessDayRange 참고)
+  const businessDays = daysResult[0].values.map((row) => String(row[0]));
+  const extendedGuestCounts = businessDays.length > 0
+    ? getExtendedGuestCountsByBusinessDayRange(businessDays[0], businessDays[businessDays.length - 1])
+    : {};
+
   for (const row of daysResult[0].values) {
     const businessDay = String(row[0]);
     try {
@@ -306,12 +314,14 @@ export function snapshotReportDailyThrough(throughDate: string): number {
       freeVisitors = fv;
     }
 
+    const extendedGuestCount = extendedGuestCounts[businessDay] || 0;
+
     db.run(
       `INSERT INTO report_daily_snapshots
        (business_day, total_visitors, total_sales, cancellations, total_discount,
         foreigner_count, foreigner_sales, day_visitors, night_visitors,
-        actual_visitors, cancelled_visitors, free_visitors, archived_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        actual_visitors, cancelled_visitors, free_visitors, extended_guest_count, archived_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(business_day) DO UPDATE SET
          total_visitors = excluded.total_visitors,
          total_sales = excluded.total_sales,
@@ -324,6 +334,7 @@ export function snapshotReportDailyThrough(throughDate: string): number {
          actual_visitors = excluded.actual_visitors,
          cancelled_visitors = excluded.cancelled_visitors,
          free_visitors = excluded.free_visitors,
+         extended_guest_count = excluded.extended_guest_count,
          archived_at = excluded.archived_at`,
       [
         businessDay,
@@ -338,6 +349,7 @@ export function snapshotReportDailyThrough(throughDate: string): number {
         actualVisitors,
         cancelledVisitors,
         freeVisitors,
+        extendedGuestCount,
         archivedAt,
       ]
     );
@@ -527,8 +539,18 @@ export function getVisitorStatsByMonth(yearMonth: string) {
   const live = result.length === 0 ? [] : rowsToObjects(result[0]);
   const liveDays = new Set(live.map((v) => v.businessDay));
 
+  // 연장객 수는 SQL COUNT로 뽑을 수 없는(추가요금 계산 로직이 필요한) 값이라 별도로 계산해 붙인다
+  if (live.length > 0) {
+    const [y, m] = yearMonth.split('-').map(Number);
+    const monthStart = `${yearMonth}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const monthEnd = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+    const extendedGuestCounts = getExtendedGuestCountsByBusinessDayRange(monthStart, monthEnd);
+    live.forEach((row: any) => { row.extendedGuestCount = extendedGuestCounts[row.businessDay] || 0; });
+  }
+
   const snapResult = db.exec(
-    `SELECT business_day, total_visitors, actual_visitors, cancelled_visitors, free_visitors
+    `SELECT business_day, total_visitors, actual_visitors, cancelled_visitors, free_visitors, extended_guest_count
      FROM report_daily_snapshots
      WHERE business_day LIKE ?
      ORDER BY business_day ASC`,

@@ -34,8 +34,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import PatternLockDialog from "@/components/PatternLockDialog";
-import { getBusinessDay, getBusinessDayRange, getPreviousBusinessDay, getBasePrice, calculateAdditionalFee, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice, isKoreanHoliday } from "@shared/businessDay";
-import type { DomesticAdditionalFeeMode } from "@shared/businessDay";
+import { getBusinessDay, getBusinessDayRange, getPreviousBusinessDay, getBasePrice, calculateAdditionalFee, getSettlementCycleOptions, getStagedHourlyOptions, getNightstartOptions, getForeignerPrice, isKoreanHoliday, countExtendedGuestLockers } from "@shared/businessDay";
+import type { DomesticAdditionalFeeMode, ExtendedGuestFeeConfig, ExtendedGuestEntry } from "@shared/businessDay";
 import * as localDb from "@/lib/localDb";
 import { combinePayments } from "@/lib/utils";
 import { isTodayStatusLocked, isSalesTabLocked } from "@/lib/menuLock";
@@ -158,6 +158,7 @@ function loadStatusEntriesForBusinessDay(
       paymentCard: (event as any).paymentCard,
       paymentTransfer: (event as any).paymentTransfer,
       businessDay: event.businessDay,
+      parentLocker: null,
       additionalFeeOnly: true,
     }));
 
@@ -327,7 +328,7 @@ export default function Home() {
   
   // Ref to track openDialogs state for stale closure prevention
   const openDialogsRef = useRef<Map<number, OpenDialog>>(new Map());
-  
+
   // Popup workspace visibility toggle
   const [popupsVisible, setPopupsVisible] = useState(true);
   
@@ -346,7 +347,7 @@ export default function Home() {
     const saved = localStorage.getItem('workspaceFloatingMode');
     return saved === 'true';
   });
-  const [floatingPosition, setFloatingPosition] = useState(() => {
+  const [floatingPosition, setFloatingPosition] = useState<{ x: number; y: number }>(() => {
     const saved = localStorage.getItem('workspaceFloatingPosition');
     if (saved) {
       try {
@@ -357,7 +358,7 @@ export default function Home() {
     }
     return { x: 100, y: 100 };
   });
-  const [floatingSize, setFloatingSize] = useState(() => {
+  const [floatingSize, setFloatingSize] = useState<{ width: number; height: number }>(() => {
     const saved = localStorage.getItem('workspaceFloatingSize');
     if (saved) {
       try {
@@ -1313,7 +1314,7 @@ export default function Home() {
       // 추가요금만 있는 항목은 방문인원에서 제외 (이전 영업일 입실 고객)
       // 자식 락카(parentLocker가 있는 락카)도 방문인원에서 제외 (한 손님이 여러 락카 사용)
       // 후불결제(deferredPayment = true)는 매출에서 제외 - 결제완료 시점에만 반영
-      const activeEntries = entries.filter(e => !e.cancelled && !e.deferredPayment);
+      const activeEntries = entries.filter(e => !e.cancelled && !(e as any).deferredPayment);
       const totalRefundsToday = activeEntries.reduce((sum, e) => sum + ((e as any).refundAmount || 0), 0);
       const activeSales = activeEntries.reduce((sum, e) => sum + (e.finalPrice || 0), 0) - totalRefundsToday;
       const totalVisitors = entries.filter(e => !e.cancelled && !(e as any).parentLocker && !(e as any).isStaff).length;
@@ -1474,9 +1475,25 @@ export default function Home() {
   // 빈 락커 개수 계산
   const emptyLockerCount = Object.values(lockerStates).filter(state => state === 'empty').length;
 
+  // 연장객: 추가요금(내국인=야간요금 풀요금, 외국인=주기요금)이 최소 1회 부과되었고 그 추가요금이 완납된 락커 수
+  // ("추가N회" 배지는 미납 안내일 뿐 납부 결과가 아니므로, 완납되지 않은 미수 상태는 세지 않는다)
+  // (락커당 며칠을 더 머물든 1로만 카운트 — 누적이 아니라 그날의 스냅샷)
+  const extendedGuestConfig: ExtendedGuestFeeConfig = {
+    dayPrice, nightPrice,
+    foreignerPrice: settings.foreignerPrice, foreignerSeparateDayNight: settings.foreignerSeparateDayNight,
+    foreignerDayPrice: settings.foreignerDayPrice, foreignerNightPrice: settings.foreignerNightPrice,
+    domesticCheckpointHour, foreignerAdditionalFeePeriod,
+    domesticAdditionalFeeMode, nightStartHour, settlementCycleOpts, stagedHourlyOpts, nightstartOpts,
+  };
+  const extendedGuestCount = countExtendedGuestLockers(
+    activeLockers as unknown as ExtendedGuestEntry[],
+    lockerTickTime,
+    extendedGuestConfig
+  );
+
   const handleLockerClick = async (lockerNumber: number) => {
     const state = lockerStates[lockerNumber];
-    
+
     if (state === 'empty') {
       const timeType = localDb.getTimeTypeWithSettings(new Date());
       const basePrice = getBasePrice(timeType, dayPrice, nightPrice);
@@ -1557,7 +1574,10 @@ export default function Home() {
       dailyFee: number;
       discount: number;
       stayDays: number;
-    } | null
+    } | null,
+    prepaidAdditionalFeeCash?: number, // 선지급 중 현금 분리결제 금액
+    prepaidAdditionalFeeCard?: number, // 선지급 중 카드 분리결제 금액
+    prepaidAdditionalFeeTransfer?: number, // 선지급 중 이체 분리결제 금액
   ) => {
     // Use ref to get the latest openDialogs state (prevents stale closure issue)
     const currentOpenDialogs = openDialogsRef.current;
@@ -1641,7 +1661,10 @@ export default function Home() {
         deferredPayment: deferredPayment || false,  // 후불결제 여부
         customerMemo: customerMemo || undefined,  // 손님 메모
         noAdditionalFee: !!longTermStay || noAdditionalFee || false,  // 장기투숙·VIP 추가요금 면제
-        prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급
+        prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급 (총액)
+        prepaidAdditionalFeeCash: prepaidAdditionalFeeCash || 0,  // 선지급 중 현금
+        prepaidAdditionalFeeCard: prepaidAdditionalFeeCard || 0,  // 선지급 중 카드
+        prepaidAdditionalFeeTransfer: prepaidAdditionalFeeTransfer || 0,  // 선지급 중 이체
         isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부
         additionalFeePaymentMethod: additionalFeePaymentMethod,  // 추가요금 결제방식
         isStaff: isStaff || false,  // 직원 입실 여부
@@ -1810,7 +1833,10 @@ export default function Home() {
       deferredPayment: deferredPayment || false,
       customerMemo: customerMemo || undefined,  // 손님 메모
       noAdditionalFee: !!longTermStay || noAdditionalFee || false,  // 장기투숙·VIP 추가요금 면제
-      prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급 상태 유지
+      prepaidAdditionalFee: prepaidAdditionalFee || 0,  // 추가요금 선지급 상태 유지 (총액)
+      prepaidAdditionalFeeCash: prepaidAdditionalFeeCash || 0,  // 선지급 중 현금
+      prepaidAdditionalFeeCard: prepaidAdditionalFeeCard || 0,  // 선지급 중 카드
+      prepaidAdditionalFeeTransfer: prepaidAdditionalFeeTransfer || 0,  // 선지급 중 이체
       isCashReceipt: isCashReceipt || false,  // 현금영수증 발행 여부 유지
       additionalFeePaymentMethod: additionalFeePaymentMethod,  // 추가요금 결제방식 유지
       isLongTerm: !!longTermStay,
@@ -2330,6 +2356,11 @@ export default function Home() {
       <div className="entry-stat-chip">
         <span className="text-muted-foreground dark:text-black">방문객</span>
         <span className="stat-value">{summary?.totalVisitors || 0}</span>
+        <span className="text-muted-foreground dark:text-black">명</span>
+      </div>
+      <div className="entry-stat-chip" data-testid="chip-extended-guest-count">
+        <span className="text-muted-foreground dark:text-black">연장객</span>
+        <span className="stat-value">{extendedGuestCount}</span>
         <span className="text-muted-foreground dark:text-black">명</span>
       </div>
     </div>
@@ -2945,7 +2976,7 @@ export default function Home() {
               const newLockerInfo = dialogInfo.newLockerInfo;
               
               return (
-                <div 
+                <div
                   key={lockerNumber}
                   className="locker-opt-popup-shell overflow-hidden min-w-0"
                   style={{ minHeight: dialogInfo.isMinimized ? '60px' : 'min(500px, calc(100% - 1rem))' }}
@@ -3018,6 +3049,9 @@ export default function Home() {
                           currentCustomerMemo={(selectedEntry as any)?.customerMemo || ""}
                           currentNoAdditionalFee={(selectedEntry as any)?.noAdditionalFee || false}
                           currentPrepaidAdditionalFee={(selectedEntry as any)?.prepaidAdditionalFee || 0}
+                          currentPrepaidAdditionalFeeCash={(selectedEntry as any)?.prepaidAdditionalFeeCash || 0}
+                          currentPrepaidAdditionalFeeCard={(selectedEntry as any)?.prepaidAdditionalFeeCard || 0}
+                          currentPrepaidAdditionalFeeTransfer={(selectedEntry as any)?.prepaidAdditionalFeeTransfer || 0}
                           currentIsCashReceipt={(selectedEntry as any)?.isCashReceipt || false}
                           currentAdditionalFeePaymentMethod={(selectedEntry as any)?.additionalFeePaymentMethod}
                           currentIsStaff={!!(selectedEntry as any)?.isStaff}
@@ -3029,8 +3063,8 @@ export default function Home() {
                           onToggleOuting={(_newIsOuting, _newMemo) => {
                             loadData();
                           }}
-                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay) => 
-                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay)
+                          onApply={(option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay, prepaidAdditionalFeeCash, prepaidAdditionalFeeCard, prepaidAdditionalFeeTransfer) =>
+                            handleApplyOption(lockerNumber, option, customAmount, notes, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, deferredPayment, customerMemo, noAdditionalFee, prepaidAdditionalFee, isCashReceipt, additionalFeePaymentMethod, isStaff, editedEntryTime, longTermStay, prepaidAdditionalFeeCash, prepaidAdditionalFeeCard, prepaidAdditionalFeeTransfer)
                           }
                           onCheckout={(paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod, exitTimeISO) => 
                             handleCheckout(lockerNumber, paymentMethod, rentalItems, paymentCash, paymentCard, paymentTransfer, additionalFeePayment, customerMemo, refundAmount, refundNote, refundMethod, exitTimeISO)

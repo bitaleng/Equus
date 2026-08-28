@@ -175,7 +175,7 @@ export function getTodayWorkLogs(staffId: string, date: string): StaffWorkLog[] 
   return rows[0].values.map(rowToWorkLog);
 }
 
-export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes' | 'agreedStartTime' | 'agreedEndTime' | 'payType' | 'segmentPay'>>): boolean {
+export function updateWorkLog(id: string, data: Partial<Pick<StaffWorkLog, 'startTime' | 'endTime' | 'breakMinutes' | 'workMinutes' | 'dailyPay' | 'notes' | 'agreedStartTime' | 'agreedEndTime' | 'payType' | 'segmentPay' | 'hourlyRate'>>): boolean {
   if (!db) return false;
   const sets: string[] = [];
   const values: any[] = [];

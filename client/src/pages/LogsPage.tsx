@@ -516,6 +516,27 @@ export default function LogsPage() {
   const overallTotalCount = activeLogs.length;
   const overallTotalAmount = activeLogs.reduce((sum, log) => sum + getDisplayPrice(log), 0);
 
+  // 연장객: 날짜 범위가 좁혀져 있을 때만 계산(전체 누적 조회는 계산량이 커질 수 있어 생략)
+  const extendedGuestCount = useMemo(() => {
+    let rangeStart: string | null = null;
+    let rangeEnd: string | null = null;
+    if (activeBusinessDays.length > 0) {
+      const sorted = [...activeBusinessDays].sort();
+      rangeStart = sorted[0];
+      rangeEnd = sorted[sorted.length - 1];
+    } else if (startDate && endDate) {
+      rangeStart = startDate;
+      rangeEnd = endDate;
+    } else if (startDate) {
+      rangeStart = startDate;
+      rangeEnd = startDate;
+    }
+    if (!rangeStart || !rangeEnd) return null; // 전체 누적 조회 — 계산하지 않음
+    const counts = localDb.getExtendedGuestCountsByBusinessDayRange(rangeStart, rangeEnd);
+    const relevantDays = activeBusinessDays.length > 0 ? activeBusinessDays : Object.keys(counts);
+    return relevantDays.reduce((sum, day) => sum + (counts[day] || 0), 0);
+  }, [activeBusinessDays, startDate, endDate]);
+
   const exportToExcel = () => {
     const exportData = displayedLogs.map((log) => ({
       '락커번호': log.lockerNumber,
@@ -663,6 +684,13 @@ export default function LogsPage() {
                   <span className="text-base font-bold">{overallTotalCount}건</span>
                   <span className="text-sm text-muted-foreground">|</span>
                   <span className="text-lg font-bold text-primary">₩{overallTotalAmount.toLocaleString()}</span>
+                  {extendedGuestCount !== null && (
+                    <>
+                      <span className="text-sm text-muted-foreground">|</span>
+                      <span className="text-sm text-muted-foreground">연장객:</span>
+                      <span className="text-base font-bold text-amber-600 dark:text-amber-400">{extendedGuestCount}명</span>
+                    </>
+                  )}
                 </div>
               )}
               <div className="flex items-center gap-1.5">

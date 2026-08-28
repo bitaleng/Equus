@@ -10,6 +10,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TimePickerButton } from "@/components/TimePickerButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -169,6 +170,26 @@ function formatDaysKorean(days: number[]): string {
   }
   ranges.push([start, prev]);
   return ranges.map(([s, e]) => s === e ? DOW_LABELS[s] : `${DOW_LABELS[s]}~${DOW_LABELS[e]}`).join("·");
+}
+
+/** 월급 지급일 하나를 고르는 Select — "1일"~"31일" + (allowLast일 때만) "매달 말일" */
+function PaydayDateSelect({ value, onChange, allowLast, testId }: {
+  value: localDb.PaydayDateSpec;
+  onChange: (v: localDb.PaydayDateSpec) => void;
+  allowLast: boolean;
+  testId?: string;
+}) {
+  return (
+    <Select value={String(value)} onValueChange={(v) => onChange(v === "last" ? "last" : parseInt(v, 10))}>
+      <SelectTrigger className="w-28" data-testid={testId}><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+          <SelectItem key={d} value={String(d)}>{d}일</SelectItem>
+        ))}
+        {allowLast && <SelectItem value="last">매달 말일</SelectItem>}
+      </SelectContent>
+    </Select>
+  );
 }
 
 export default function Settings() {
@@ -1540,8 +1561,8 @@ export default function Settings() {
     setWageTiers(localDb.getAllWageTiers());
   };
 
-  // 근무다이어리: 근무자별 주급지급일 핸들러
-  const handleSavePayday = (staffId: string, data: { dayOfWeek: number; time: string; isEnabled: boolean }) => {
+  // 근무다이어리: 근무자별 급여지급일 핸들러 — 넘긴 필드만 부분 갱신(나머지는 기존 값 유지)
+  const handleSavePayday = (staffId: string, data: Partial<Omit<localDb.StaffPayday, 'id' | 'createdAt' | 'staffId'>>) => {
     localDb.upsertStaffPayday({ staffId, ...data });
     setStaffPaydays(localDb.getAllStaffPaydays());
   };
@@ -5286,49 +5307,168 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* 서브 카테고리: 근무자별 주급지급일 */}
+              {/* 서브 카테고리: 근무자별 급여지급일 */}
               <div className="space-y-3 border-t pt-4">
                 <h4 className="font-medium flex items-center gap-2">
                   <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                  근무자별 주급지급일
+                  근무자별 급여지급일
                 </h4>
-                <p className="text-xs text-muted-foreground">지급 요일·시각 30분 전에 근무다이어리에서 알림이 표시됩니다.</p>
+                <p className="text-xs text-muted-foreground">지급일이 되면 근무다이어리에 표시됩니다. 미지급 상태는 근무다이어리에서 사후에도 지급 완료 처리할 수 있습니다.</p>
                 {staffList.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">먼저 위에서 직원을 등록해주세요.</p>
                 ) : (
                   <div className="space-y-2">
                     {staffList.filter(s => s.isActive || s.canWork).map(staff => {
                       const payday = staffPaydays.find(p => p.staffId === staff.id);
+                      const payType = payday?.payType ?? 'weekly';
                       const dayOfWeek = payday?.dayOfWeek ?? 4;
                       const time = payday?.time ?? "22:00";
                       const isEnabled = payday?.isEnabled ?? false;
+                      const isSplit = payday?.isSplit ?? false;
+                      const paydayDates = payday?.paydayDates && payday.paydayDates.length > 0 ? payday.paydayDates : [1];
+                      const monthlyAmount = payday?.monthlyAmount ?? 0;
+                      const splitAmounts = paydayDates.map((_, i) => payday?.splitAmounts?.[i] ?? 0);
+                      const splitTotal = splitAmounts.reduce((s, n) => s + n, 0);
+
+                      /** 날짜(+회차별 금액) 저장 — 오름차순 정렬(단 'last'는 항상 맨 뒤)해서 회차 번호가 날짜 순서와 일치하게 하고,
+                       * 금액도 같은 순서로 맞바꿔 각 날짜에 지정한 금액이 그대로 따라가게 함 */
+                      const saveInstallments = (dates: localDb.PaydayDateSpec[], amounts: number[]) => {
+                        const paired = dates.map((d, i) => ({ d, a: amounts[i] ?? 0 }));
+                        paired.sort((x, y) => {
+                          const xv = x.d === 'last' ? Infinity : x.d, yv = y.d === 'last' ? Infinity : y.d;
+                          return xv - yv;
+                        });
+                        handleSavePayday(staff.id, { paydayDates: paired.map(p => p.d), splitAmounts: paired.map(p => p.a) });
+                      };
+
                       return (
-                        <div key={staff.id} className="flex items-center gap-3 p-3 border rounded-md flex-wrap">
-                          <Switch
-                            checked={isEnabled}
-                            onCheckedChange={(checked) => handleSavePayday(staff.id, { dayOfWeek, time, isEnabled: checked })}
-                            data-testid={`switch-payday-${staff.id}`}
-                          />
-                          <span className="font-medium text-sm w-16 shrink-0">{staff.name}</span>
-                          <Select
-                            value={String(dayOfWeek)}
-                            onValueChange={(v) => handleSavePayday(staff.id, { dayOfWeek: parseInt(v), time, isEnabled })}
-                          >
-                            <SelectTrigger className="w-24" data-testid={`select-payday-dow-${staff.id}`}><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {DOW_LABELS.map((label, idx) => (
-                                <SelectItem key={idx} value={String(idx)}>{label}요일</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <div className="w-32">
-                            <TimePickerButton
-                              value={time}
-                              onChange={(v) => handleSavePayday(staff.id, { dayOfWeek, time: v, isEnabled })}
-                              label={`${staff.name} 주급지급 시각`}
-                              testId={`input-payday-time-${staff.id}`}
+                        <div key={staff.id} className="p-3 border rounded-md space-y-2.5">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <Switch
+                              checked={isEnabled}
+                              onCheckedChange={(checked) => handleSavePayday(staff.id, { isEnabled: checked })}
+                              data-testid={`switch-payday-${staff.id}`}
                             />
+                            <span className="font-medium text-sm w-16 shrink-0">{staff.name}</span>
+                            <Select
+                              value={payType}
+                              onValueChange={(v) => handleSavePayday(staff.id, { payType: v as localDb.PaydayPayType })}
+                            >
+                              <SelectTrigger className="w-20" data-testid={`select-payday-type-${staff.id}`}><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="weekly">주급</SelectItem>
+                                <SelectItem value="monthly">월급</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
+
+                          {payType === 'weekly' ? (
+                            <div className="flex items-center gap-3 flex-wrap pl-1">
+                              <Select
+                                value={String(dayOfWeek)}
+                                onValueChange={(v) => handleSavePayday(staff.id, { dayOfWeek: parseInt(v) })}
+                              >
+                                <SelectTrigger className="w-24" data-testid={`select-payday-dow-${staff.id}`}><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {DOW_LABELS.map((label, idx) => (
+                                    <SelectItem key={idx} value={String(idx)}>{label}요일</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <div className="w-32">
+                                <TimePickerButton
+                                  value={time}
+                                  onChange={(v) => handleSavePayday(staff.id, { time: v })}
+                                  label={`${staff.name} 주급지급 시각`}
+                                  testId={`input-payday-time-${staff.id}`}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2 pl-1">
+                              <label className="flex items-center gap-2 text-sm">
+                                <Checkbox
+                                  checked={isSplit}
+                                  onCheckedChange={(checked) => {
+                                    const nowSplit = checked === true;
+                                    if (nowSplit) {
+                                      const nextDates = paydayDates.length > 1 ? paydayDates : [10, 20, 'last' as const];
+                                      // 처음 분할지급으로 전환할 때는 기존 총액을 균등분할한 값을 시작점으로 제안 — 각 회차 금액은 이후 자유롭게 수정 가능
+                                      const suggested = nextDates.map((_, i, arr) => monthlyAmount > 0 ? Math.round(monthlyAmount / arr.length) : 0);
+                                      handleSavePayday(staff.id, { isSplit: true, paydayDates: nextDates, splitAmounts: suggested });
+                                    } else {
+                                      handleSavePayday(staff.id, { isSplit: false, paydayDates: [paydayDates[0]], splitAmounts: [] });
+                                    }
+                                  }}
+                                  data-testid={`checkbox-payday-split-${staff.id}`}
+                                />
+                                분할지급
+                              </label>
+
+                              {!isSplit ? (
+                                <>
+                                  <PaydayDateSelect
+                                    value={paydayDates[0]}
+                                    onChange={(v) => handleSavePayday(staff.id, { paydayDates: [v] })}
+                                    allowLast
+                                    testId={`select-payday-date-${staff.id}`}
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm text-muted-foreground shrink-0">월급여 총액</span>
+                                    <Input
+                                      type="number"
+                                      className="w-36"
+                                      value={monthlyAmount || ""}
+                                      onChange={(e) => handleSavePayday(staff.id, { monthlyAmount: parseInt(e.target.value) || 0 })}
+                                      placeholder="0"
+                                      data-testid={`input-payday-amount-${staff.id}`}
+                                    />
+                                    <span className="text-sm text-muted-foreground">원</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {paydayDates.map((d, di) => (
+                                    <div key={di} className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground w-10 shrink-0">{di + 1}회차</span>
+                                      <PaydayDateSelect
+                                        value={d}
+                                        onChange={(v) => saveInstallments(paydayDates.map((x, xi) => xi === di ? v : x), splitAmounts)}
+                                        allowLast={di === paydayDates.length - 1}
+                                        testId={`select-payday-date-${staff.id}-${di}`}
+                                      />
+                                      <Input
+                                        type="number"
+                                        className="w-32"
+                                        value={splitAmounts[di] || ""}
+                                        onChange={(e) => saveInstallments(paydayDates, splitAmounts.map((x, xi) => xi === di ? (parseInt(e.target.value) || 0) : x))}
+                                        placeholder="0"
+                                        data-testid={`input-payday-split-amount-${staff.id}-${di}`}
+                                      />
+                                      <span className="text-sm text-muted-foreground">원</span>
+                                      {paydayDates.length > 1 && (
+                                        <Button
+                                          variant="ghost" size="icon" className="h-8 w-8"
+                                          onClick={() => saveInstallments(paydayDates.filter((_, xi) => xi !== di), splitAmounts.filter((_, xi) => xi !== di))}
+                                          data-testid={`button-remove-payday-date-${staff.id}-${di}`}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ))}
+                                  <Button
+                                    variant="outline" size="sm"
+                                    onClick={() => saveInstallments([...paydayDates, 1], [...splitAmounts, 0])}
+                                    data-testid={`button-add-payday-date-${staff.id}`}
+                                  >
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> 날짜 추가
+                                  </Button>
+                                  <p className="text-xs text-muted-foreground">합계 : ₩{splitTotal.toLocaleString()}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

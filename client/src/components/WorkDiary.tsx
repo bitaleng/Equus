@@ -22,7 +22,7 @@ import * as localDb from "@/lib/localDb";
 import type { Staff, PartTimeTemplate, StaffScheduleOverride, StaffPayday, WageTier } from "@/lib/localDb";
 import {
   resolveScheduleForDate, calculateDailyPay, calculateWeeklyPay, isEmployedOn,
-  formatKoreanTimeRange, type ResolvedScheduleSlot,
+  formatKoreanTimeRange, resolveMonthlyPaydayDates, type ResolvedScheduleSlot,
 } from "@/lib/workDiaryPay";
 import { getStaffColor, multiplyBlendAll } from "@/lib/staffColors";
 
@@ -103,6 +103,29 @@ interface DisplayBlock {
   startMin: number;
   endMin: number; // startMin보다 크거나 같음. 자정을 넘기면 1440 이상
   members: { staffId: string; isOverridden: boolean }[];
+}
+
+/** 급여지급일 항목의 표시 라벨 — 주급/월급/월급(분할) 각각 "OO일/OO완료/OO미납" 형태 */
+function paydayItemLabel(item: PaydayCellItem): string {
+  if (item.payType === "weekly") {
+    return item.status === "completed" ? "주급완료" : item.status === "overdue" ? "주급미납" : "주급일";
+  }
+  const base = item.status === "completed" ? "월급완료" : item.status === "overdue" ? "월급미납" : "월급지급";
+  if (item.isSplit && item.index && item.total) return `${base}(${item.index}/${item.total})`;
+  return item.status === "completed" ? "월급완료" : item.status === "overdue" ? "월급미납" : "월급일";
+}
+
+/** 달력 칸·스케줄 패널에서 쓰는 급여지급일 항목 — 주급/월급(분할 포함) 공통 표현.
+ * periodKey는 지급완료 기록(staff_payday_completions)의 키: 주급=주 시작일, 월급=그 회차의 실제 지급 날짜. */
+interface PaydayCellItem {
+  staffId: string;
+  status: "due" | "completed" | "overdue";
+  payType: "weekly" | "monthly";
+  periodKey: string;
+  isSplit?: boolean;
+  index?: number;
+  total?: number;
+  amount?: number; // monthly 전용(분할 시 회차 금액); weekly는 필요할 때 calculateWeeklyPay로 별도 계산
 }
 
 /** 근무자 한 명 또는 여러 명(같은 시간대 묶음)을 대표하는 색 — 감산혼합으로 섞음 */
@@ -311,8 +334,8 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   const monthCalendarRef = useRef<HTMLDivElement>(null);
   const schedulePanelRef = useRef<HTMLDivElement>(null);
 
-  // 주급 지급 확인 (버튼 클릭 → "지급하셨습니까?" 확인 → 예 누르면 완료 처리)
-  const [paydayConfirmStaffId, setPaydayConfirmStaffId] = useState<string | null>(null);
+  // 급여 지급 확인 (버튼 클릭 → "지급하셨습니까?" 확인 → 예 누르면 완료 처리) — 주급·월급 공통
+  const [paydayConfirm, setPaydayConfirm] = useState<{ staffId: string; periodKey: string; amount: number; label: string } | null>(null);
 
   useEffect(() => {
     setTemplates(localDb.getAllPartTimeTemplates());
@@ -353,29 +376,44 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
   for (let i = 0; i < bigGrid.length; i += 7) bigWeeks.push(bigGrid.slice(i, i + 7));
 
   const staffMap = useMemo(() => new Map(allStaff.map(s => [s.id, s])), [allStaff]);
+  // 근무자별 급여유형(주급/월급) — 월급 근무자는 근무시간×시급 자동계산을 화면에 표시하지 않는다
+  const payTypeMap = useMemo(() => new Map(paydays.map(p => [p.staffId, p.payType])), [paydays]);
 
   const slots = useMemo(
     () => resolveScheduleForDate(selectedDate, templates, overrides, allStaff),
     [selectedDate, templates, overrides, allStaff]
   );
 
-  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 주급지급일 상태)
+  // 달력 칸에 바로 보여줄 날짜별 요약 (근무자·시간대별로 묶은 블록, 급여지급일 상태)
   const daySummaries = useMemo(() => {
     const todayStr = toDateStr(today);
-    const map = new Map<string, { blocks: DisplayBlock[]; paydayItems: { staffId: string; status: "due" | "completed" | "overdue" }[] }>();
+    const map = new Map<string, { blocks: DisplayBlock[]; paydayItems: PaydayCellItem[] }>();
     bigGrid.forEach(d => {
       const dStr = toDateStr(d);
       const dow = getDay(d);
       const wStart = toWeekStart(d);
-      const paydayItems = paydays
-        .filter(p => p.isEnabled && p.dayOfWeek === dow && isEmployedOn(dStr, p.staffId, allStaff))
+
+      const weeklyItems: PaydayCellItem[] = paydays
+        .filter(p => p.isEnabled && p.payType === "weekly" && p.dayOfWeek === dow && isEmployedOn(dStr, p.staffId, allStaff))
         .map(p => {
           const completed = localDb.isPaydayCompleted(p.staffId, wStart);
           const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
-          return { staffId: p.staffId, status };
+          return { staffId: p.staffId, status, payType: "weekly" as const, periodKey: wStart };
         });
+
+      const monthlyItems: PaydayCellItem[] = paydays
+        .filter(p => p.isEnabled && p.payType === "monthly" && isEmployedOn(dStr, p.staffId, allStaff))
+        .flatMap(p => {
+          const resolved = resolveMonthlyPaydayDates(d.getFullYear(), d.getMonth(), p.paydayDates, p.splitAmounts, p.monthlyAmount);
+          const match = resolved.find(r => r.date === dStr);
+          if (!match) return [];
+          const completed = localDb.isPaydayCompleted(p.staffId, dStr);
+          const status: "due" | "completed" | "overdue" = completed ? "completed" : dStr < todayStr ? "overdue" : "due";
+          return [{ staffId: p.staffId, status, payType: "monthly" as const, periodKey: dStr, isSplit: p.isSplit, index: match.index, total: match.total, amount: match.amount }];
+        });
+
       const blocks = buildDisplayBlocks(resolveScheduleForDate(dStr, templates, overrides, allStaff));
-      map.set(dStr, { blocks, paydayItems });
+      map.set(dStr, { blocks, paydayItems: [...weeklyItems, ...monthlyItems] });
     });
     return map;
   }, [bigGrid, templates, overrides, paydays, paydayVersion, today, allStaff]);
@@ -418,21 +456,15 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     toast({ title: "근무시간이 변경되었습니다", description: `${selectedDate} · ${formatKoreanTimeRange(timeChangeStart, timeChangeEnd)}` });
   };
 
-  const handleMarkPaydayCompleted = (staffId: string) => {
-    const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-    const weekly = calculateWeeklyPay(staffId, weekStart, templates, overrides, tiers, allStaff);
-    localDb.markPaydayCompleted(staffId, weekStart);
+  const handleConfirmPaydayPaid = () => {
+    if (!paydayConfirm) return;
+    localDb.markPaydayCompleted(paydayConfirm.staffId, paydayConfirm.periodKey);
     setPaydayVersion(v => v + 1);
     toast({
-      title: "주급 지급 완료 처리됨",
-      description: `${staffMap.get(staffId)?.name ?? ""} · 이번 주 합계 ₩${weekly.totalPay.toLocaleString()}`,
+      title: "지급 완료 처리됨",
+      description: `${staffMap.get(paydayConfirm.staffId)?.name ?? ""} · ${paydayConfirm.label} ₩${paydayConfirm.amount.toLocaleString()}`,
     });
-  };
-
-  const handleConfirmPaydayPaid = () => {
-    if (!paydayConfirmStaffId) return;
-    handleMarkPaydayCompleted(paydayConfirmStaffId);
-    setPaydayConfirmStaffId(null);
+    setPaydayConfirm(null);
   };
 
   // 월별 다이어리(달력) PDF 내보내기 — 매출달력과 같은 방식으로 달력 그리드를 직접 그린다
@@ -510,8 +542,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
             if (textY > rowY + rowHeight - 1.5) return;
             const name = staffMap.get(item.staffId)?.name ?? "";
             doc.setTextColor(90, 90, 90);
-            const label = item.status === "completed" ? `${name} 주급완료` : item.status === "overdue" ? `${name} 주급미납` : `${name} 주급일`;
-            doc.text(label, cellX + padding, textY);
+            doc.text(`${name} ${paydayItemLabel(item)}`, cellX + padding, textY);
             textY += 3.2;
           });
         }
@@ -620,23 +651,31 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
     const tableStartY = tickY + 8;
     const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
     const dowNum = getDay(new Date(selectedDate + "T00:00:00"));
+    const selDate = new Date(selectedDate + "T00:00:00");
     const tableBody = slots.map(slot => {
       const staff = staffMap.get(slot.staffId);
       const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
+      const isMonthlyPay = payTypeMap.get(slot.staffId) === "monthly";
       const payday = localDb.getStaffPayday(slot.staffId);
-      const showPayday = !!payday?.isEnabled && payday.dayOfWeek === dowNum;
-      const isCompleted = showPayday && localDb.isPaydayCompleted(slot.staffId, weekStart);
+      let showPayday = false, isCompleted = false;
+      if (payday?.isEnabled && payday.payType === "weekly" && payday.dayOfWeek === dowNum) {
+        showPayday = true;
+        isCompleted = localDb.isPaydayCompleted(slot.staffId, weekStart);
+      } else if (payday?.isEnabled && payday.payType === "monthly") {
+        const match = resolveMonthlyPaydayDates(selDate.getFullYear(), selDate.getMonth(), payday.paydayDates, payday.splitAmounts, payday.monthlyAmount).find(r => r.date === selectedDate);
+        if (match) { showPayday = true; isCompleted = localDb.isPaydayCompleted(slot.staffId, selectedDate); }
+      }
       return [
         staff?.name ?? "(삭제된 직원)",
         formatKoreanTimeRange(slot.startTime, slot.endTime),
         `${(pay.totalMinutes / 60).toFixed(1)}시간`,
-        `₩${pay.totalPay.toLocaleString()}`,
+        isMonthlyPay ? "월급제" : `₩${pay.totalPay.toLocaleString()}`,
         slot.isOverridden ? "대체근무" : "",
         showPayday ? (isCompleted ? "지급완료" : "지급예정") : "-",
       ];
     });
     autoTable(doc, {
-      head: [["근무자", "근무시간", "총 근무시간", "예상 일급", "비고", "주급"]],
+      head: [["근무자", "근무시간", "총 근무시간", "예상 일급", "비고", "급여"]],
       body: tableBody,
       startY: tableStartY,
       theme: "grid",
@@ -762,11 +801,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                               </div>
                             );
                           })}
-                          {summary.paydayItems.map(item => {
+                          {summary.paydayItems.map((item, ii) => {
                             const name = staffMap.get(item.staffId)?.name ?? "";
-                            const label = item.status === "completed" ? "주급완료" : item.status === "overdue" ? "주급미납" : "주급일";
+                            const label = paydayItemLabel(item);
                             return (
-                              <div key={item.staffId} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-gray-600 text-white font-medium flex items-center gap-0.5">
+                              <div key={`${item.staffId}-${item.payType}-${ii}`} className="text-[10px] leading-tight truncate rounded px-1 py-0.5 bg-gray-600 text-white font-medium flex items-center gap-0.5">
                                 {item.status === "completed" && <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />}
                                 {name} {label}
                               </div>
@@ -813,12 +852,11 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
           </div>
         </div>
         {(() => {
-          const dowToday = getDay(new Date(selectedDate + "T00:00:00"));
           const weekStart = toWeekStart(new Date(selectedDate + "T00:00:00"));
-          const todaysPaydays = paydays.filter(p => p.isEnabled && p.dayOfWeek === dowToday && isEmployedOn(selectedDate, p.staffId, allStaff));
+          const todaysPaydayItems = daySummaries.get(selectedDate)?.paydayItems ?? [];
           void paydayVersion; // 지급완료 처리 후 재렌더 트리거용 참조
 
-          if (slots.length === 0 && todaysPaydays.length === 0) {
+          if (slots.length === 0 && todaysPaydayItems.length === 0) {
             return (
               <p className="text-sm text-muted-foreground text-center py-6">
                 이 날짜에 등록된 파트타임 스케줄이 없습니다.<br />
@@ -833,6 +871,7 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
               {slots.map(slot => {
                 const staff = staffMap.get(slot.staffId);
                 const pay = calculateDailyPay(selectedDate, slot.startTime, slot.endTime, tiers);
+                const isMonthlyPay = payTypeMap.get(slot.staffId) === "monthly";
 
                 return (
                   <div key={slot.templateId} className="rounded-lg border bg-card p-3 space-y-2">
@@ -864,10 +903,16 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                     <div className="flex items-center gap-2 text-sm pt-1 border-t">
                       <span className="text-muted-foreground">총 근무시간 :</span>
                       <span className="font-semibold">{(pay.totalMinutes / 60).toFixed(1)}시간</span>
-                      <span className="text-muted-foreground ml-2">예상 일급 :</span>
-                      <span className="font-bold text-primary">₩{pay.totalPay.toLocaleString()}</span>
+                      {isMonthlyPay ? (
+                        <span className="text-muted-foreground ml-2 text-xs">(월급제 — 시급 계산 제외)</span>
+                      ) : (
+                        <>
+                          <span className="text-muted-foreground ml-2">예상 일급 :</span>
+                          <span className="font-bold text-primary">₩{pay.totalPay.toLocaleString()}</span>
+                        </>
+                      )}
                     </div>
-                    {pay.segments.length > 1 && (
+                    {!isMonthlyPay && pay.segments.length > 1 && (
                       <p className="text-xs text-muted-foreground">
                         {pay.segments.map((s, i) => (
                           <span key={i}>{i > 0 && " + "}{s.tierName} {(s.minutes / 60).toFixed(1)}h×₩{s.hourlyRate.toLocaleString()}</span>
@@ -878,42 +923,53 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
                 );
               })}
 
-              {/* 주급 지급 — 그 날 근무 여부와 무관하게 주급지급일인 근무자는 항상 표시 (사후 지급도 가능하게) */}
-              {todaysPaydays.length > 0 && (
+              {/* 급여 지급 — 그 날 근무 여부와 무관하게 지급일인 근무자는 항상 표시 (사후 지급도 가능하게) */}
+              {todaysPaydayItems.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-semibold flex items-center gap-1.5">
-                    <Wallet className="h-4 w-4 text-muted-foreground" /> 주급 지급
+                    <Wallet className="h-4 w-4 text-muted-foreground" /> 급여 지급
                   </p>
-                  {todaysPaydays.map(p => {
-                    const name = staffMap.get(p.staffId)?.name ?? "(삭제된 직원)";
-                    const isCompleted = localDb.isPaydayCompleted(p.staffId, weekStart);
-                    const weekly = calculateWeeklyPay(p.staffId, weekStart, templates, overrides, tiers, allStaff);
-                    const workedDates = weekly.days
-                      .filter(d => d.result.totalMinutes > 0)
-                      .map(d => format(new Date(d.date + "T00:00:00"), "M/d"));
+                  {todaysPaydayItems.map((item, ii) => {
+                    const name = staffMap.get(item.staffId)?.name ?? "(삭제된 직원)";
+                    const isCompleted = item.status === "completed";
+                    const isWeekly = item.payType === "weekly";
+                    const weekly = isWeekly ? calculateWeeklyPay(item.staffId, weekStart, templates, overrides, tiers, allStaff) : null;
+                    const amount = isWeekly ? (weekly?.totalPay ?? 0) : (item.amount ?? 0);
+                    const workedDates = weekly
+                      ? weekly.days.filter(d => d.result.totalMinutes > 0).map(d => format(new Date(d.date + "T00:00:00"), "M/d"))
+                      : [];
+                    const typeBadge = isWeekly ? "주급" : item.isSplit ? `월급 ${item.index}/${item.total}회차` : "월급";
+                    const confirmLabel = isWeekly ? "이번 주 주급" : item.isSplit ? `월급 ${item.index}/${item.total}회차` : "월급";
                     return (
-                      <div key={p.staffId} className="rounded-md border border-blue-400/30 bg-blue-500/5 p-2.5 space-y-1.5">
-                        <p className="text-xs font-semibold flex items-center gap-1">
+                      <div key={`${item.staffId}-${item.payType}-${ii}`} className="rounded-md border border-blue-400/30 bg-blue-500/5 p-2.5 space-y-1.5">
+                        <p className="text-xs font-semibold flex items-center gap-1.5">
                           <Users className="h-3.5 w-3.5 text-muted-foreground" /> {name}
+                          <Badge variant="outline" className="text-[10px] font-normal">{typeBadge}</Badge>
                         </p>
                         <div className="text-xs text-muted-foreground space-y-0.5">
-                          <p>근무일 : {workedDates.length > 0 ? workedDates.join(", ") : "-"}</p>
-                          <p>총 근무시간 : <span className="font-medium text-foreground">{(weekly.totalMinutes / 60).toFixed(1)}시간</span></p>
-                          <p>지급액 : <span className="font-bold text-primary">₩{weekly.totalPay.toLocaleString()}</span></p>
+                          {isWeekly ? (
+                            <>
+                              <p>근무일 : {workedDates.length > 0 ? workedDates.join(", ") : "-"}</p>
+                              <p>총 근무시간 : <span className="font-medium text-foreground">{(weekly!.totalMinutes / 60).toFixed(1)}시간</span></p>
+                            </>
+                          ) : (
+                            <p>지급일 : {selectedDate}</p>
+                          )}
+                          <p>지급액 : <span className="font-bold text-primary">₩{amount.toLocaleString()}</span></p>
                         </div>
                         {isCompleted ? (
                           <Badge className="bg-green-600 hover:bg-green-600 text-white gap-1">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> 주급지급완료
+                            <CheckCircle2 className="h-3.5 w-3.5" /> {isWeekly ? "주급지급완료" : "월급지급완료"}
                           </Badge>
                         ) : (
                           <Button
                             size="sm"
                             className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                            onClick={() => setPaydayConfirmStaffId(p.staffId)}
-                            data-testid={`button-payday-complete-${p.staffId}`}
+                            onClick={() => setPaydayConfirm({ staffId: item.staffId, periodKey: item.periodKey, amount, label: confirmLabel })}
+                            data-testid={`button-payday-complete-${item.staffId}-${item.payType}`}
                           >
                             <Wallet className="h-4 w-4 mr-1" />
-                            주급지급
+                            {isWeekly ? "주급지급" : "월급지급"}
                           </Button>
                         )}
                       </div>
@@ -965,16 +1021,15 @@ export function WorkDiary({ staffList }: WorkDiaryProps) {
         </DialogContent>
       </Dialog>
 
-      {/* 주급 지급 확인 */}
-      <AlertDialog open={!!paydayConfirmStaffId} onOpenChange={(o) => !o && setPaydayConfirmStaffId(null)}>
+      {/* 급여 지급 확인 */}
+      <AlertDialog open={!!paydayConfirm} onOpenChange={(o) => !o && setPaydayConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>주급 지급 확인</AlertDialogTitle>
+            <AlertDialogTitle>급여 지급 확인</AlertDialogTitle>
             <AlertDialogDescription>
-              {paydayConfirmStaffId && (() => {
-                const weekly = calculateWeeklyPay(paydayConfirmStaffId, toWeekStart(new Date(selectedDate + "T00:00:00")), templates, overrides, tiers, allStaff);
-                const name = staffMap.get(paydayConfirmStaffId)?.name ?? "";
-                return `${name}님에게 이번 주 주급 ₩${weekly.totalPay.toLocaleString()}을 지급하셨습니까?`;
+              {paydayConfirm && (() => {
+                const name = staffMap.get(paydayConfirm.staffId)?.name ?? "";
+                return `${name}님에게 ${paydayConfirm.label} ₩${paydayConfirm.amount.toLocaleString()}을 지급하셨습니까?`;
               })()}
             </AlertDialogDescription>
           </AlertDialogHeader>

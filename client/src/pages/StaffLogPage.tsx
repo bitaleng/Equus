@@ -110,7 +110,7 @@ export default function StaffLogPage() {
         startTime: nowStr, endTime: "",
         breakMinutes: 0, workMinutes: 0, dailyPay: 0,
         notes: "", agreedStartTime: "", agreedEndTime: "",
-        payType: "주간", segmentPay: 0,
+        payType: "주간", segmentPay: 0, hourlyRate: 0,
       });
     }
     reloadStaffData(selectedStaffId);

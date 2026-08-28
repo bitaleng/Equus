@@ -273,7 +273,10 @@ interface LockerOptionsDialogProps {
   currentDeferredPayment?: boolean; // 현재 후불결제 상태
   currentCustomerMemo?: string; // 현재 손님 메모
   currentNoAdditionalFee?: boolean; // 현재 추가요금없음 상태
-  currentPrepaidAdditionalFee?: number; // 현재 선지급 추가요금
+  currentPrepaidAdditionalFee?: number; // 현재 선지급 추가요금 (총액)
+  currentPrepaidAdditionalFeeCash?: number; // 현재 선지급 중 현금 분리결제 금액
+  currentPrepaidAdditionalFeeCard?: number; // 현재 선지급 중 카드 분리결제 금액
+  currentPrepaidAdditionalFeeTransfer?: number; // 현재 선지급 중 이체 분리결제 금액
   currentIsCashReceipt?: boolean; // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod?: 'card' | 'cash' | 'transfer'; // 현재 추가요금 결제방식
   isOuting?: boolean; // 현재 외출 중 여부
@@ -288,7 +291,7 @@ interface LockerOptionsDialogProps {
     dailyFee: number;
     discount: number;
     stayDays: number;
-  } | null) => void;
+  } | null, prepaidAdditionalFeeCash?: number, prepaidAdditionalFeeCard?: number, prepaidAdditionalFeeTransfer?: number) => void;
   onCheckout: (
     paymentMethod: 'card' | 'cash' | 'transfer', 
     rentalItems?: RentalItemInfo[], 
@@ -426,7 +429,10 @@ export default function LockerOptionsDialog({
   currentDeferredPayment = false, // 현재 후불결제 상태
   currentCustomerMemo = "", // 현재 손님 메모
   currentNoAdditionalFee = false, // 현재 추가요금없음 상태
-  currentPrepaidAdditionalFee = 0, // 현재 선지급 추가요금
+  currentPrepaidAdditionalFee = 0, // 현재 선지급 추가요금 (총액)
+  currentPrepaidAdditionalFeeCash = 0, // 현재 선지급 중 현금 분리결제 금액
+  currentPrepaidAdditionalFeeCard = 0, // 현재 선지급 중 카드 분리결제 금액
+  currentPrepaidAdditionalFeeTransfer = 0, // 현재 선지급 중 이체 분리결제 금액
   currentIsCashReceipt = false, // 현재 현금영수증 발행 여부
   currentAdditionalFeePaymentMethod, // 현재 추가요금 결제방식
   isOuting = false, // 현재 외출 중 여부
@@ -484,6 +490,10 @@ export default function LockerOptionsDialog({
   const [hasPrepaidAdditionalFee, setHasPrepaidAdditionalFee] = useState(false); // 추가요금 선지급 체크박스
   const [prepaidAdditionalFeeAmount, setPrepaidAdditionalFeeAmount] = useState<string>(""); // 추가요금 선지급 금액
   const [prepaidAdditionalFeePaymentMethod, setPrepaidAdditionalFeePaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(null); // 선지급 별도 결제방식 (null=주결제방식과 동일)
+  const [usePrepaidSplitPayment, setUsePrepaidSplitPayment] = useState(false); // 선지급금 분리결제 체크박스
+  const [prepaidAdditionalFeeCash, setPrepaidAdditionalFeeCash] = useState<string>(""); // 선지급 분리결제 - 현금
+  const [prepaidAdditionalFeeCard, setPrepaidAdditionalFeeCard] = useState<string>(""); // 선지급 분리결제 - 카드
+  const [prepaidAdditionalFeeTransfer, setPrepaidAdditionalFeeTransfer] = useState<string>(""); // 선지급 분리결제 - 이체
   const [isDirectPrice, setIsDirectPrice] = useState(false);
   const [directPrice, setDirectPrice] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'transfer' | null>(isInUse ? currentPaymentMethod : null);
@@ -773,9 +783,30 @@ export default function LockerOptionsDialog({
       if (currentPrepaidAdditionalFee && currentPrepaidAdditionalFee > 0) {
         setHasPrepaidAdditionalFee(true);
         setPrepaidAdditionalFeeAmount(String(currentPrepaidAdditionalFee));
+        // 저장된 3개 버킷 중 2개 이상이 0보다 크면 분리결제였던 것으로 보고 복원 (기존 hasExistingSplitPayment와 동일한 판정 방식)
+        const splitBucketCount = [
+          currentPrepaidAdditionalFeeCash > 0,
+          currentPrepaidAdditionalFeeCard > 0,
+          currentPrepaidAdditionalFeeTransfer > 0,
+        ].filter(Boolean).length;
+        if (splitBucketCount > 1) {
+          setUsePrepaidSplitPayment(true);
+          setPrepaidAdditionalFeeCash(currentPrepaidAdditionalFeeCash > 0 ? String(currentPrepaidAdditionalFeeCash) : "");
+          setPrepaidAdditionalFeeCard(currentPrepaidAdditionalFeeCard > 0 ? String(currentPrepaidAdditionalFeeCard) : "");
+          setPrepaidAdditionalFeeTransfer(currentPrepaidAdditionalFeeTransfer > 0 ? String(currentPrepaidAdditionalFeeTransfer) : "");
+        } else {
+          setUsePrepaidSplitPayment(false);
+          setPrepaidAdditionalFeeCash("");
+          setPrepaidAdditionalFeeCard("");
+          setPrepaidAdditionalFeeTransfer("");
+        }
       } else {
         setHasPrepaidAdditionalFee(false);
         setPrepaidAdditionalFeeAmount("");
+        setUsePrepaidSplitPayment(false);
+        setPrepaidAdditionalFeeCash("");
+        setPrepaidAdditionalFeeCard("");
+        setPrepaidAdditionalFeeTransfer("");
       }
       setPrepaidAdditionalFeePaymentMethod(null); // 선지급 결제방식은 항상 null로 초기화 (주결제방식 따름)
       // 현금영수증 발행 상태를 현재 값으로 초기화
@@ -794,7 +825,7 @@ export default function LockerOptionsDialog({
       }
       initialOpenRef.current = true;
     }
-  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentIsCashReceipt, currentAdditionalFeePaymentMethod, currentPaymentMethod]);
+  }, [open, isInUse, currentLockerLogId, entryTime, timeType, dayPrice, nightPrice, foreignerPrice, domesticCheckpointHour, foreignerAdditionalFeePeriod, currentOptionType, currentNoAdditionalFee, currentPrepaidAdditionalFee, currentPrepaidAdditionalFeeCash, currentPrepaidAdditionalFeeCard, currentPrepaidAdditionalFeeTransfer, currentIsCashReceipt, currentAdditionalFeePaymentMethod, currentPaymentMethod]);
   
     
   // Initialize payment fields when dialog opens (한번만 — loadData 주기 갱신으로 UI가 덮어씌워지지 않게)
@@ -1293,6 +1324,10 @@ export default function LockerOptionsDialog({
       setHasPrepaidAdditionalFee(false); // 선지급 추가요금 상태도 초기화
       setPrepaidAdditionalFeeAmount(""); // 선지급 추가요금 금액도 초기화
       setPrepaidAdditionalFeePaymentMethod(null); // 선지급 결제방식 초기화
+      setUsePrepaidSplitPayment(false); // 선지급 분리결제 상태도 초기화
+      setPrepaidAdditionalFeeCash("");
+      setPrepaidAdditionalFeeCard("");
+      setPrepaidAdditionalFeeTransfer("");
       setIsDirectPrice(false);
       setDirectPrice("");
       setPaymentMethod(null);
@@ -1430,10 +1465,74 @@ export default function LockerOptionsDialog({
     return effectiveBasePrice;
   };
 
-  /** 분리결제 자동완성 기준 금액 (기본요금±선지급, 또는 사용자 지정 총금액) */
+  /** 분리결제 자동완성 기준 금액 (기본요금±선지급, 또는 사용자 지정 총금액)
+   * 선지급이 자기 자신의 분리결제(usePrepaidSplitPayment)를 쓰는 경우엔 여기서 이중으로 더하지 않는다. */
   const getDefaultSplitTarget = () => {
-    const prepaid = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
+    const prepaid = (hasPrepaidAdditionalFee && !usePrepaidSplitPayment) ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
     return calculateFinalPrice() + prepaid;
+  };
+
+  /** 선지급 총액(prepaidAmount)을 결제수단별 버킷으로 분해 — 분리결제/단일결제 두 경우를 하나로 통일.
+   * 분리결제 켜짐이면 3칸 입력값 그대로, 꺼짐이면 기존처럼 단일 버킷(주결제방식과 동일 또는 별도 지정한 방식)에 전액을 담는다. */
+  const getPrepaidSplitBuckets = (prepaidAmount: number): { cash: number; card: number; transfer: number } => {
+    if (prepaidAmount <= 0) return { cash: 0, card: 0, transfer: 0 };
+    if (usePrepaidSplitPayment) {
+      return {
+        cash: parseInt(prepaidAdditionalFeeCash) || 0,
+        card: parseInt(prepaidAdditionalFeeCard) || 0,
+        transfer: parseInt(prepaidAdditionalFeeTransfer) || 0,
+      };
+    }
+    const method = prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash';
+    return {
+      cash: method === 'cash' ? prepaidAmount : 0,
+      card: method === 'card' ? prepaidAmount : 0,
+      transfer: method === 'transfer' ? prepaidAmount : 0,
+    };
+  };
+
+  /** 선지급 분리결제 3칸 중 하나를 바꿀 때 나머지 한 칸을 자동으로 채워준다 (기존 분리결제 입력 패턴과 동일) */
+  const applyPrepaidSplitAmount = (field: 'cash' | 'card', newValue: string) => {
+    const target = parseInt(prepaidAdditionalFeeAmount) || 0;
+    if (field === 'cash') {
+      setPrepaidAdditionalFeeCash(newValue);
+      const cashVal = parseInt(newValue) || 0;
+      const remaining = target - cashVal;
+      setPrepaidAdditionalFeeCard(remaining > 0 ? String(remaining) : "");
+      setPrepaidAdditionalFeeTransfer("");
+    } else {
+      setPrepaidAdditionalFeeCard(newValue);
+      const cashVal = parseInt(prepaidAdditionalFeeCash) || 0;
+      const cardVal = parseInt(newValue) || 0;
+      const remaining = target - cashVal - cardVal;
+      setPrepaidAdditionalFeeTransfer(remaining > 0 ? String(remaining) : "");
+    }
+  };
+
+  /** 선지급 분리결제 3칸 합계가 선지급 총액과 일치하는지 검증 (기존 validateMixedPayment와 동일한 방식) */
+  const validatePrepaidSplitPayment = (): boolean => {
+    const cashVal = parseInt(prepaidAdditionalFeeCash) || 0;
+    const cardVal = parseInt(prepaidAdditionalFeeCard) || 0;
+    const transferVal = parseInt(prepaidAdditionalFeeTransfer) || 0;
+    if (cashVal < 0 || cardVal < 0 || transferVal < 0) {
+      toast({
+        title: "결제 금액 오류",
+        description: "선지급 결제 금액은 0 이상이어야 합니다.",
+        variant: "destructive",
+      });
+      return false;
+    }
+    const total = cashVal + cardVal + transferVal;
+    const target = parseInt(prepaidAdditionalFeeAmount) || 0;
+    if (total !== target) {
+      toast({
+        title: "선지급 결제 금액 오류",
+        description: `선지급 분리결제 합계(${total.toLocaleString()}원)가 선지급 총액(${target.toLocaleString()}원)과 일치하지 않습니다.`,
+        variant: "destructive",
+      });
+      return false;
+    }
+    return true;
   };
 
   const getSplitAutoFillTarget = () => {
@@ -1590,12 +1689,23 @@ export default function LockerOptionsDialog({
     // 선지급금 (입실 처리 시)
     let prepaidAmount = hasPrepaidAdditionalFee ? (parseInt(prepaidAdditionalFeeAmount) || 0) : 0;
 
-    // 선지급금 부가세: 선지급 결제방식 기준으로 주결제와 독립적으로 계산
+    // 선지급금 부가세: 분리결제면 버킷별로, 아니면 선지급 결제방식(또는 주결제방식) 기준으로 계산
     let prepaidWithVat = prepaidAmount;
     if (prepaidAmount > 0) {
-      const effectivePrepaidMethod = prepaidAdditionalFeePaymentMethod || paymentMethod;
-      if (shouldApplyVat(effectivePrepaidMethod, false)) {
-        prepaidWithVat = Math.round(prepaidAmount * 1.1);
+      if (usePrepaidSplitPayment) {
+        const buckets = getPrepaidSplitBuckets(prepaidAmount);
+        const settingsForVat = localDb.getSettings();
+        const withVat = applyVatToSplitBases(buckets.cash, buckets.card, buckets.transfer, {
+          enableCardVat: !!settingsForVat.enableCardVat,
+          enableCashReceiptVat: !!settingsForVat.enableCashReceiptVat,
+          isCashReceipt,
+        });
+        prepaidWithVat = (withVat.cash || 0) + (withVat.card || 0) + (withVat.transfer || 0);
+      } else {
+        const effectivePrepaidMethod = prepaidAdditionalFeePaymentMethod || paymentMethod;
+        if (shouldApplyVat(effectivePrepaidMethod, false)) {
+          prepaidWithVat = Math.round(prepaidAmount * 1.1);
+        }
       }
     }
 
@@ -1611,7 +1721,8 @@ export default function LockerOptionsDialog({
         ? Math.round(cardAmt * 0.1) : 0;
       // 기존 입실 재오픈 시 선지급금은 이미 결제 버킷에 포함됨 → 중복 합산 방지
       // 신규 입실(isInUse=false) 또는 새로 추가된 선지급금(금액 변경)만 추가
-      const prepaidAlreadyInBuckets = isInUse && prepaidAmount === currentPrepaidAdditionalFee;
+      // (단, 선지급금이 자기 자신의 분리결제를 쓰는 경우엔 기본요금 버킷에 애초에 합쳐지지 않으므로 항상 별도로 더한다)
+      const prepaidAlreadyInBuckets = !usePrepaidSplitPayment && isInUse && prepaidAmount === currentPrepaidAdditionalFee;
       const extraPrepaid = prepaidAlreadyInBuckets ? 0 : prepaidWithVat;
       return total + cashTransferVat + cardVat + extraPrepaid;
     }
@@ -1999,7 +2110,7 @@ export default function LockerOptionsDialog({
       const generatedNotes = generateNotes();
       const rentalItemInfo = generateRentalItemInfo();
       const prepaidFee = hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
+      onApply(optionType, 0, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload, 0, 0, 0);
       console.log('[handleProcessEntry] onApply called, now closing dialog');
       setDialogOpen(false);
       return;
@@ -2012,11 +2123,12 @@ export default function LockerOptionsDialog({
     
     // 선지급 별도 결제방식 결정 (null이면 주결제방식과 동일)
     const effectivePrepaidMethod = prepaidAdditionalFeePaymentMethod || paymentMethod;
-    // 선지급이 있고 주결제방식과 다른 경우 → 자동 분리결제
-    const isPrepaidAutoSplit = !useSplitPayment && prepaidAmount > 0 && effectivePrepaidMethod !== paymentMethod;
+    // 선지급이 있고, (주결제방식과 다르거나 / 선지급 자체를 분리결제하는) 경우 → 기본요금과 별도 버킷으로 처리
+    const isPrepaidAutoSplit = !useSplitPayment && prepaidAmount > 0 && (usePrepaidSplitPayment || effectivePrepaidMethod !== paymentMethod);
+    const prepaidBuckets = getPrepaidSplitBuckets(prepaidAmount);
 
     if (useSplitPayment) {
-      if (prepaidAdditionalFeePaymentMethod !== null && prepaidAmount > 0 && !splitCustomTotalEnabled) {
+      if (!usePrepaidSplitPayment && prepaidAdditionalFeePaymentMethod !== null && prepaidAmount > 0 && !splitCustomTotalEnabled) {
         // 분리결제 + 선지급 별도 결제방식: 기본요금 합계만 검증하고 선지급은 자동 추가
         if (!validateMixedPayment(baseFinalPrice)) {
           return;
@@ -2029,7 +2141,7 @@ export default function LockerOptionsDialog({
         else if (effectivePrepaidMethod === 'card') cardVal = (cardVal || 0) + prepaidAmount;
         else if (effectivePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + prepaidAmount;
       } else {
-        // 분리결제 (총금액 모드 포함): 자동완성 기준 금액으로 검증
+        // 분리결제 (총금액 모드 포함, 또는 선지급 자체 분리결제): 자동완성 기준 금액으로 검증
         if (splitCustomTotalEnabled && !(parseInt(splitCustomTotal) > 0)) {
           toast({
             title: "총금액 미입력",
@@ -2041,21 +2153,24 @@ export default function LockerOptionsDialog({
         if (!validateMixedPayment(getSplitAutoFillTarget())) {
           return;
         }
-        cashVal = parseInt(paymentCash) || undefined;
-        cardVal = parseInt(paymentCard) || undefined;
-        transferVal = parseInt(paymentTransfer) || undefined;
+        if (usePrepaidSplitPayment && !validatePrepaidSplitPayment()) {
+          return;
+        }
+        cashVal = (parseInt(paymentCash) || 0) + prepaidBuckets.cash || undefined;
+        cardVal = (parseInt(paymentCard) || 0) + prepaidBuckets.card || undefined;
+        transferVal = (parseInt(paymentTransfer) || 0) + prepaidBuckets.transfer || undefined;
       }
     } else if (isPrepaidAutoSplit) {
-      // 선지급 결제방식이 달라 자동 분리: 기본요금 → 주결제방식, 선지급 → prepaidMethod
-      cashVal = paymentMethod === 'cash' ? baseFinalPrice
-              : effectivePrepaidMethod === 'cash' ? prepaidAmount
-              : undefined;
-      cardVal = paymentMethod === 'card' ? baseFinalPrice
-              : effectivePrepaidMethod === 'card' ? prepaidAmount
-              : undefined;
-      transferVal = paymentMethod === 'transfer' ? baseFinalPrice
-                  : effectivePrepaidMethod === 'transfer' ? prepaidAmount
-                  : undefined;
+      if (usePrepaidSplitPayment && !validatePrepaidSplitPayment()) {
+        return;
+      }
+      // 선지급을 기본요금과 별도 버킷으로 처리: 기본요금 → 주결제방식, 선지급 → 지정된 결제수단(들)
+      const cashSum = (paymentMethod === 'cash' ? baseFinalPrice : 0) + prepaidBuckets.cash;
+      const cardSum = (paymentMethod === 'card' ? baseFinalPrice : 0) + prepaidBuckets.card;
+      const transferSum = (paymentMethod === 'transfer' ? baseFinalPrice : 0) + prepaidBuckets.transfer;
+      cashVal = cashSum || undefined;
+      cardVal = cardSum || undefined;
+      transferVal = transferSum || undefined;
     } else {
       // Single payment method - automatically assign full amount (선지급금 포함)
       if (paymentMethod === 'cash') {
@@ -2075,16 +2190,16 @@ export default function LockerOptionsDialog({
 
     const generatedNotes = generateNotes();
     const rentalItemInfo = generateRentalItemInfo();
-    
+
     // 후불결제 시 결제 금액을 0원으로 처리
     if (isDeferredPayment) {
       // 후불결제: paymentMethod = cash (임시), 금액은 0원으로 기록
       const prepaidFee = (!isLongTerm && hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount) ? parseInt(prepaidAdditionalFeeAmount) : 0;
-      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
+      onApply(optionType, optionAmount, generatedNotes, 'cash', rentalItemInfo, 0, 0, 0, true, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, false, additionalFeePaymentMethod, isStaff, undefined, longTermPayload, 0, 0, 0);
       setDialogOpen(false);
       return;
     }
-    
+
     // 부가세 적용 (분리결제 또는 선지급 자동분리 시 수단별 적용)
     if (useSplitPayment || isPrepaidAutoSplit) {
       // 분리결제 시 각 결제 수단별로 부가세 적용
@@ -2122,7 +2237,8 @@ export default function LockerOptionsDialog({
     // paymentMethod is guaranteed to be non-null here due to validation above or split payment
     const finalPaymentMethod = paymentMethod || 'cash';
     const prepaidFee = (!isLongTerm && hasPrepaidAdditionalFee && prepaidAdditionalFeeAmount) ? parseInt(prepaidAdditionalFeeAmount) : 0;
-    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff, undefined, longTermPayload);
+    const finalPrepaidBuckets = getPrepaidSplitBuckets(prepaidFee);
+    onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, false, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethod, isStaff, undefined, longTermPayload, finalPrepaidBuckets.cash, finalPrepaidBuckets.card, finalPrepaidBuckets.transfer);
     setDialogOpen(false);
   };
 
@@ -2330,53 +2446,67 @@ export default function LockerOptionsDialog({
       cardVal = withVat.card;
       transferVal = withVat.transfer;
 
-      // 새 선지급금이 추가된 경우 해당 결제 버킷에 금액 합산
-      const savePrepaidMethodSplit = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
+      // 새 선지급금이 추가/변경된 경우, 실제 저장돼 있던 버킷과의 차액만큼만 해당 결제 버킷에 반영
+      // (분리결제를 쓰면 버킷별 차액, 아니면 기존처럼 단일 버킷에 차액 전부)
       const isNewPrepaidAddedToSplit =
         hasPrepaidAdditionalFee &&
         prepaidAmount > 0 &&
         prepaidAmount !== currentPrepaidAdditionalFee;
       if (isNewPrepaidAddedToSplit) {
-        const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
-        if (savePrepaidMethodSplit === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
-        else if (savePrepaidMethodSplit === 'card') cardVal = (cardVal || 0) + addedPrepaid;
-        else if (savePrepaidMethodSplit === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
+        if (usePrepaidSplitPayment && !validatePrepaidSplitPayment()) {
+          return;
+        }
+        const newPrepaidBuckets = getPrepaidSplitBuckets(prepaidAmount);
+        const oldPrepaidBuckets = {
+          cash: currentPrepaidAdditionalFeeCash || 0,
+          card: currentPrepaidAdditionalFeeCard || 0,
+          transfer: currentPrepaidAdditionalFeeTransfer || 0,
+        };
+        cashVal = Math.max(0, (cashVal || 0) + (newPrepaidBuckets.cash - oldPrepaidBuckets.cash));
+        cardVal = Math.max(0, (cardVal || 0) + (newPrepaidBuckets.card - oldPrepaidBuckets.card));
+        transferVal = Math.max(0, (transferVal || 0) + (newPrepaidBuckets.transfer - oldPrepaidBuckets.transfer));
       }
     } else {
       // 결제방식 변경 여부 확인 (핵심!)
       const paymentMethodChanged = paymentMethod !== currentPaymentMethod;
-      
+      // 선지급이 분리결제를 쓰는 경우, 기본요금과 선지급을 각각 별도 버킷(+각자의 VAT 규칙)으로 합산
+      // (아니면 기존처럼 기본요금+선지급 total 하나를 한 버킷에 담고 단일결제 VAT 규칙 적용)
+      const prepaidBuckets = usePrepaidSplitPayment ? getPrepaidSplitBuckets(prepaidAmount) : null;
+      if (usePrepaidSplitPayment && prepaidAmount > 0 && !validatePrepaidSplitPayment()) {
+        return;
+      }
+      const assignBaseAndPrepaid = (baseAmount: number, method: 'card' | 'cash' | 'transfer') => {
+        const baseVat = shouldApplyVat(method, isCashReceipt);
+        const baseWithVat = baseVat ? Math.round(baseAmount * 1.1) : baseAmount;
+        if (!prepaidBuckets) {
+          return {
+            cash: method === 'cash' ? baseWithVat : 0,
+            card: method === 'card' ? baseWithVat : 0,
+            transfer: method === 'transfer' ? baseWithVat : 0,
+          };
+        }
+        const vatSettings = localDb.getSettings();
+        const prepaidWithVat = applyVatToSplitBases(prepaidBuckets.cash, prepaidBuckets.card, prepaidBuckets.transfer, {
+          enableCardVat: !!vatSettings.enableCardVat,
+          enableCashReceiptVat: !!vatSettings.enableCashReceiptVat,
+          isCashReceipt,
+        });
+        return {
+          cash: (method === 'cash' ? baseWithVat : 0) + (prepaidWithVat.cash || 0),
+          card: (method === 'card' ? baseWithVat : 0) + (prepaidWithVat.card || 0),
+          transfer: (method === 'transfer' ? baseWithVat : 0) + (prepaidWithVat.transfer || 0),
+        };
+      };
+
       // 결제방식이 변경된 경우: 새로운 결제방식으로 금액 재할당 (우선순위 최상위, 선지급금 포함 총액)
       if (paymentMethodChanged) {
-        if (paymentMethod === 'cash') {
-          cashVal = totalPriceForPayment;
-          cardVal = undefined;
-          transferVal = undefined;
-        } else if (paymentMethod === 'card') {
-          cashVal = undefined;
-          cardVal = totalPriceForPayment;
-          transferVal = undefined;
-        } else if (paymentMethod === 'transfer') {
-          cashVal = undefined;
-          cardVal = undefined;
-          transferVal = totalPriceForPayment;
-        }
-        
-        // 단일 결제 시 부가세 적용
-        const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-        if (vatApplied) {
-          const priceWithVat = Math.round(totalPriceForPayment * 1.1);
-          if (paymentMethod === 'cash') {
-            cashVal = priceWithVat;
-          } else if (paymentMethod === 'card') {
-            cardVal = priceWithVat;
-          } else if (paymentMethod === 'transfer') {
-            transferVal = priceWithVat;
-          }
-        }
+        const baseOnly = prepaidBuckets ? computedFinalPrice : totalPriceForPayment;
+        const sums = assignBaseAndPrepaid(baseOnly, paymentMethod || 'cash');
+        cashVal = sums.cash || undefined;
+        cardVal = sums.card || undefined;
+        transferVal = sums.transfer || undefined;
       } else if (hasExistingSinglePayment && paymentMethod === currentPaymentMethod) {
         // 기존 단일결제 + 결제방식 유지: 요금 변경 시에만 재계산
-        const savePrepaidMethod = (prepaidAdditionalFeePaymentMethod || paymentMethod || 'cash') as 'cash' | 'card' | 'transfer';
         const isNewPrepaidAdded =
           hasPrepaidAdditionalFee &&
           prepaidAmount > 0 &&
@@ -2391,23 +2521,22 @@ export default function LockerOptionsDialog({
         const priceChangedFromExisting = existingPaymentSum !== expectedStoredTotal;
 
         if (isNewPrepaidAdded) {
-          const addedPrepaid = prepaidAmount - (currentPrepaidAdditionalFee || 0);
-          cashVal = currentPaymentCash || undefined;
-          cardVal = currentPaymentCard || undefined;
-          transferVal = currentPaymentTransfer || undefined;
-          if (savePrepaidMethod === 'cash') cashVal = (cashVal || 0) + addedPrepaid;
-          else if (savePrepaidMethod === 'card') cardVal = (cardVal || 0) + addedPrepaid;
-          else if (savePrepaidMethod === 'transfer') transferVal = (transferVal || 0) + addedPrepaid;
+          // 실제 저장돼 있던 선지급 버킷과의 차액만큼만 반영 (분리결제면 버킷별 차액, 아니면 단일 버킷 차액 전부)
+          const newPrepaidBuckets = getPrepaidSplitBuckets(prepaidAmount);
+          const oldPrepaidBuckets = {
+            cash: currentPrepaidAdditionalFeeCash || 0,
+            card: currentPrepaidAdditionalFeeCard || 0,
+            transfer: currentPrepaidAdditionalFeeTransfer || 0,
+          };
+          cashVal = Math.max(0, (currentPaymentCash || 0) + (newPrepaidBuckets.cash - oldPrepaidBuckets.cash)) || undefined;
+          cardVal = Math.max(0, (currentPaymentCard || 0) + (newPrepaidBuckets.card - oldPrepaidBuckets.card)) || undefined;
+          transferVal = Math.max(0, (currentPaymentTransfer || 0) + (newPrepaidBuckets.transfer - oldPrepaidBuckets.transfer)) || undefined;
         } else if (priceChangedFromExisting) {
-          if (paymentMethod === 'cash') { cashVal = totalPriceForPayment; cardVal = undefined; transferVal = undefined; }
-          else if (paymentMethod === 'card') { cashVal = undefined; cardVal = totalPriceForPayment; transferVal = undefined; }
-          else if (paymentMethod === 'transfer') { cashVal = undefined; cardVal = undefined; transferVal = totalPriceForPayment; }
-          if (vatOn) {
-            const priceWithVat = Math.round(totalPriceForPayment * 1.1);
-            if (paymentMethod === 'cash') cashVal = priceWithVat;
-            else if (paymentMethod === 'card') cardVal = priceWithVat;
-            else if (paymentMethod === 'transfer') transferVal = priceWithVat;
-          }
+          const baseOnly = prepaidBuckets ? computedFinalPrice : totalPriceForPayment;
+          const sums = assignBaseAndPrepaid(baseOnly, paymentMethod || 'cash');
+          cashVal = sums.cash || undefined;
+          cardVal = sums.card || undefined;
+          transferVal = sums.transfer || undefined;
         } else {
           cashVal = currentPaymentCash;
           cardVal = currentPaymentCard;
@@ -2415,32 +2544,11 @@ export default function LockerOptionsDialog({
         }
       } else {
         // 신규 단일결제: 금액 할당 및 부가세 적용 (선지급금 포함 총액 사용)
-        if (paymentMethod === 'cash') {
-          cashVal = totalPriceForPayment;
-          cardVal = undefined;
-          transferVal = undefined;
-        } else if (paymentMethod === 'card') {
-          cashVal = undefined;
-          cardVal = totalPriceForPayment;
-          transferVal = undefined;
-        } else if (paymentMethod === 'transfer') {
-          cashVal = undefined;
-          cardVal = undefined;
-          transferVal = totalPriceForPayment;
-        }
-        
-        // 단일 결제 시 부가세 적용
-        const vatApplied = shouldApplyVat(paymentMethod, isCashReceipt);
-        if (vatApplied) {
-          const priceWithVat = Math.round(totalPriceForPayment * 1.1);
-          if (paymentMethod === 'cash') {
-            cashVal = priceWithVat;
-          } else if (paymentMethod === 'card') {
-            cardVal = priceWithVat;
-          } else if (paymentMethod === 'transfer') {
-            transferVal = priceWithVat;
-          }
-        }
+        const baseOnly = prepaidBuckets ? computedFinalPrice : totalPriceForPayment;
+        const sums = assignBaseAndPrepaid(baseOnly, paymentMethod || 'cash');
+        cashVal = sums.cash || undefined;
+        cardVal = sums.card || undefined;
+        transferVal = sums.transfer || undefined;
       }
     }
 
@@ -2462,7 +2570,8 @@ export default function LockerOptionsDialog({
       const additionalFeePaymentMethodToSave = additionalFeePaymentMethodUserChangedRef.current
         ? additionalFeePaymentMethod
         : (currentAdditionalFeePaymentMethod || undefined);
-      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethodToSave, isStaff, editedEntryTimeToSave, longTermPayload);
+      const savedPrepaidBuckets = getPrepaidSplitBuckets(prepaidFee);
+      onApply(optionType, optionAmount, generatedNotes, finalPaymentMethod, rentalItemInfo, cashVal, cardVal, transferVal, isDeferredPayment, finalCustomerMemo, effectiveNoAdditionalFee, prepaidFee, isCashReceipt, additionalFeePaymentMethodToSave, isStaff, editedEntryTimeToSave, longTermPayload, savedPrepaidBuckets.cash, savedPrepaidBuckets.card, savedPrepaidBuckets.transfer);
       
       // 수정저장 후 추가요금 결제방식이 loadData 리프레시로 인해 리셋되지 않도록 잠금
       additionalFeePaymentMethodUserChangedRef.current = true;
@@ -3736,11 +3845,19 @@ export default function LockerOptionsDialog({
                           
                           setHasPrepaidAdditionalFee(false);
                           setPrepaidAdditionalFeeAmount("");
+                          setUsePrepaidSplitPayment(false);
+                          setPrepaidAdditionalFeeCash("");
+                          setPrepaidAdditionalFeeCard("");
+                          setPrepaidAdditionalFeeTransfer("");
                         }
                       } else {
                         setHasPrepaidAdditionalFee(checked as boolean);
                         if (!checked) {
                           setPrepaidAdditionalFeeAmount("");
+                          setUsePrepaidSplitPayment(false);
+                          setPrepaidAdditionalFeeCash("");
+                          setPrepaidAdditionalFeeCard("");
+                          setPrepaidAdditionalFeeTransfer("");
                         }
                       }
                     }}
@@ -3760,52 +3877,115 @@ export default function LockerOptionsDialog({
                       className="w-full locker-opt-prepaid-input"
                       data-testid="input-prepaid-additional-fee"
                     />
-                    {/* 선지급 결제방식 선택 — 기본값은 주결제방식과 동일하게 자동 선택되고, 다르게 쓰려면 직접 눌러 바꾸면 된다 */}
-                    <div>
-                      <div className="flex gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'cash' ? "default" : "outline"}
-                          onClick={() => setPrepaidAdditionalFeePaymentMethod('cash')}
-                          data-testid="btn-prepaid-method-cash"
-                          className="text-xs"
-                        >
-                          현금
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'card' ? "default" : "outline"}
-                          onClick={() => setPrepaidAdditionalFeePaymentMethod('card')}
-                          data-testid="btn-prepaid-method-card"
-                          className="text-xs"
-                        >
-                          카드
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'transfer' ? "default" : "outline"}
-                          onClick={() => setPrepaidAdditionalFeePaymentMethod('transfer')}
-                          data-testid="btn-prepaid-method-transfer"
-                          className="text-xs"
-                        >
-                          이체
-                        </Button>
-                      </div>
-                      {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) !== paymentMethod && (
-                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                          기본요금 → {paymentMethod === 'cash' ? '현금' : paymentMethod === 'card' ? '카드' : '이체'} /
-                          선지급 {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 → {prepaidAdditionalFeePaymentMethod === 'cash' ? '현금' : prepaidAdditionalFeePaymentMethod === 'card' ? '카드' : '이체'} (자동 분리결제)
-                        </p>
-                      )}
-                      {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) === paymentMethod && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 선지급
-                        </p>
-                      )}
+
+                    {/* 선지급금 분리결제 — 체크하면 아래 3버튼 대신 현금/카드/이체 3칸 입력으로 나눠 기록 */}
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="prepaid-split-payment"
+                        checked={usePrepaidSplitPayment}
+                        onCheckedChange={(checked) => {
+                          setUsePrepaidSplitPayment(checked as boolean);
+                          setPrepaidAdditionalFeeCash("");
+                          setPrepaidAdditionalFeeCard("");
+                          setPrepaidAdditionalFeeTransfer("");
+                        }}
+                        data-testid="checkbox-prepaid-split-payment"
+                      />
+                      <Label htmlFor="prepaid-split-payment" className="text-xs cursor-pointer">
+                        선지급금 분리결제
+                      </Label>
                     </div>
+
+                    {usePrepaidSplitPayment ? (
+                      <div className="locker-opt-split-grid">
+                        <div>
+                          <Label htmlFor="prepaid-payment-cash" className="text-xs text-muted-foreground">현금</Label>
+                          <Input
+                            id="prepaid-payment-cash"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={prepaidAdditionalFeeCash}
+                            onChange={(e) => applyPrepaidSplitAmount('cash', e.target.value.replace(/[^\d]/g, ""))}
+                            data-testid="input-prepaid-payment-cash"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="prepaid-payment-card" className="text-xs text-muted-foreground">카드</Label>
+                          <Input
+                            id="prepaid-payment-card"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={prepaidAdditionalFeeCard}
+                            onChange={(e) => applyPrepaidSplitAmount('card', e.target.value.replace(/[^\d]/g, ""))}
+                            data-testid="input-prepaid-payment-card"
+                            className="mt-1"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="prepaid-payment-transfer" className="text-xs text-muted-foreground">이체</Label>
+                          <Input
+                            id="prepaid-payment-transfer"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={prepaidAdditionalFeeTransfer}
+                            onChange={(e) => setPrepaidAdditionalFeeTransfer(e.target.value.replace(/[^\d]/g, ""))}
+                            data-testid="input-prepaid-payment-transfer"
+                            className="mt-1"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* 선지급 결제방식 선택 — 기본값은 주결제방식과 동일하게 자동 선택되고, 다르게 쓰려면 직접 눌러 바꾸면 된다 */
+                      <div>
+                        <div className="flex gap-1">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'cash' ? "default" : "outline"}
+                            onClick={() => setPrepaidAdditionalFeePaymentMethod('cash')}
+                            data-testid="btn-prepaid-method-cash"
+                            className="text-xs"
+                          >
+                            현금
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'card' ? "default" : "outline"}
+                            onClick={() => setPrepaidAdditionalFeePaymentMethod('card')}
+                            data-testid="btn-prepaid-method-card"
+                            className="text-xs"
+                          >
+                            카드
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={(prepaidAdditionalFeePaymentMethod || paymentMethod) === 'transfer' ? "default" : "outline"}
+                            onClick={() => setPrepaidAdditionalFeePaymentMethod('transfer')}
+                            data-testid="btn-prepaid-method-transfer"
+                            className="text-xs"
+                          >
+                            이체
+                          </Button>
+                        </div>
+                        {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) !== paymentMethod && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                            기본요금 → {paymentMethod === 'cash' ? '현금' : paymentMethod === 'card' ? '카드' : '이체'} /
+                            선지급 {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 → {prepaidAdditionalFeePaymentMethod === 'cash' ? '현금' : prepaidAdditionalFeePaymentMethod === 'card' ? '카드' : '이체'} (자동 분리결제)
+                          </p>
+                        )}
+                        {prepaidAdditionalFeeAmount && (prepaidAdditionalFeePaymentMethod || paymentMethod) === paymentMethod && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {parseInt(prepaidAdditionalFeeAmount).toLocaleString()}원 선지급
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

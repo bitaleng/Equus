@@ -2,6 +2,7 @@ import { db, saveDatabaseDebounced } from './core';
 import { updateDailySummary } from './dailySummaries';
 import { getSettings } from './settings';
 import { getAdditionalRevenueItems } from './additionalRevenue';
+import { getExtendedGuestCountsByBusinessDayRange } from './extendedGuests';
 import { getBusinessDayRange, getBusinessDay } from '@shared/businessDay';
 
 
@@ -619,12 +620,12 @@ export function getDetailedSalesByBusinessDayRange(startBusinessDay: string, end
 export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, endBusinessDay: string) {
   if (!db) throw new Error('Database not initialized');
 
-  type DailyRow = { cash: number; card: number; transfer: number; rentalTotal: number; expenseTotal: number; visitors: number };
+  type DailyRow = { cash: number; card: number; transfer: number; rentalTotal: number; expenseTotal: number; visitors: number; extendedGuests: number };
   const byDay = new Map<string, DailyRow>();
   const ensure = (day: string): DailyRow => {
     let row = byDay.get(day);
     if (!row) {
-      row = { cash: 0, card: 0, transfer: 0, rentalTotal: 0, expenseTotal: 0, visitors: 0 };
+      row = { cash: 0, card: 0, transfer: 0, rentalTotal: 0, expenseTotal: 0, visitors: 0, extendedGuests: 0 };
       byDay.set(day, row);
     }
     return row;
@@ -712,6 +713,12 @@ export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, en
     });
   }
 
+  // 연장객: 방문인원과 동일한 한계(purge된 과거일은 원본 행이 없어 0)를 그대로 물려받음 — 매출리포트와 같은 계산 기준 재사용
+  const extendedGuestCounts = getExtendedGuestCountsByBusinessDayRange(startBusinessDay, endBusinessDay);
+  Object.entries(extendedGuestCounts).forEach(([day, count]) => {
+    if (count > 0) ensure(day).extendedGuests = count;
+  });
+
   return Array.from(byDay.entries())
     .map(([businessDay, row]) => ({
       businessDay,
@@ -722,6 +729,7 @@ export function getDailyBreakdownByBusinessDayRange(startBusinessDay: string, en
       rentalTotal: row.rentalTotal,
       expenseTotal: row.expenseTotal,
       visitors: row.visitors,
+      extendedGuests: row.extendedGuests,
     }))
     .sort((a, b) => a.businessDay.localeCompare(b.businessDay));
 }
